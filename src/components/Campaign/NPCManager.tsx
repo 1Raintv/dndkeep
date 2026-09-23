@@ -13,6 +13,11 @@ import {
 // v2.354.0 — folder browser sidebar + place-on-map flow.
 import CreatureFolderBrowser from './CreatureFolderBrowser';
 import * as tokensApi from '../../lib/api/tokensApiRouter';
+// v2.746.0 — pre-create the combatant so token AND participant share one
+// instance id (see createCombatantForDefinition). Also lets "Add to
+// Combat" ×3 create three bandits again: each add gets its own combatant
+// instead of tripping the per-definition UNIQUE.
+import { getUseCombatantsFlag, createCombatantForDefinition } from '../../lib/api/scenePlacements';
 import { snapTokenAnchor } from '../../lib/map/coords';
 // v2.390.0 — Direct API access for the cold-fetch path was a v2.390
 // workaround for the router's stateful singleton cache (only set after
@@ -269,6 +274,14 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
   // dedupe (RAW, an encounter can have 3 bandits with identical
   // stats). Each insert gets its own participant_id via
   // gen_random_uuid.
+  //
+  // v2.746.0 — "3 bandits" had been broken since the phase-D
+  // UNIQUE(encounter_id, participant_type, entity_id): the second add
+  // failed with 23505 and showed the 'error' state. Participants are
+  // per instance now — on the placements path each add pre-creates its
+  // own combatant (HP from the creature) and seeds combatantId, so the
+  // unique key is (encounter, combatant). Until migration
+  // 20260922120000 is applied the second copy still shows 'error'.
   async function addToCombat(npc: NPC) {
     setAddingNpcId(npc.id);
     try {
@@ -282,7 +295,18 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
         }), 4000);
         return;
       }
-      const seed = npcToSeed(npc, /* hiddenFromPlayers */ false);
+      let combatantId: string | null = null;
+      if (await getUseCombatantsFlag(campaignId)) {
+        combatantId = await createCombatantForDefinition({
+          campaignId,
+          name: npc.name,
+          definitionType: 'narrative_npc',
+          definitionId: npc.id,
+          currentHp: npc.hp ?? npc.max_hp ?? null,
+          maxHp: npc.max_hp ?? npc.hp ?? null,
+        });
+      }
+      const seed = { ...npcToSeed(npc, /* hiddenFromPlayers */ false), combatantId };
       const participant = await addParticipantToEncounter(
         enc.id, campaignId, seed,
         enc.initiative_mode as 'auto_all' | 'player_agency',
@@ -369,6 +393,20 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
         // v2.413.0 — no granted controller by default.
         playerId: null,
       };
+      // v2.746.0 — pre-create the combatant with the creature's HP and
+      // put its id on the token + the seed (same pattern as
+      // CreaturePickerModal.placeOne; rationale there).
+      if (await getUseCombatantsFlag(campaignId)) {
+        const cid = await createCombatantForDefinition({
+          campaignId,
+          name: npc.name,
+          definitionType: 'narrative_npc',
+          definitionId: npc.id,
+          currentHp: npc.hp ?? npc.max_hp ?? null,
+          maxHp: npc.max_hp ?? npc.hp ?? null,
+        });
+        if (cid) newToken.combatantId = cid;
+      }
       // Optimistic store update so the token appears immediately if
       // the user switches to the map tab.
       useBattleMapStore.getState().addToken(newToken);
@@ -380,8 +418,18 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
       try {
         const enc = await getActiveEncounter(campaignId);
         if (enc) {
-          const seed = npcToSeed(npc, !(npc.visible_to_players ?? true));
-          await addParticipantToEncounter(enc.id, campaignId, seed);
+          const seed = { ...npcToSeed(npc, !(npc.visible_to_players ?? true)), combatantId: newToken.combatantId ?? null };
+          const participant = await addParticipantToEncounter(enc.id, campaignId, seed);
+          if (!participant) {
+            // v2.746 — surface it instead of a silent warn: the token is
+            // placed but is NOT in initiative.
+            setAddToCombatStatus(prev => ({ ...prev, [npc.id]: 'error' }));
+            setTimeout(() => setAddToCombatStatus(prev => {
+              const copy = { ...prev };
+              delete copy[npc.id];
+              return copy;
+            }), 4000);
+          }
         }
       } catch (combatErr) {
         // Placement still succeeded; the combat add is best-effort.

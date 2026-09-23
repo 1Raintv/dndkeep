@@ -26,3 +26,11 @@ it('tracks local drags, remote locks and scene changes',()=>{
   expect(isMapMovementBusy('other-scene')).toBe(false);
   act(()=>useBattleMapStore.setState({currentSceneId:null}));expect(result.current).toBe(false);
 });
+it('a peer lease that outlives the save keeps attacks disabled',()=>{
+  // v2.746 — the sender renews its lease until its PATCH settles, so a peer
+  // with no local drag or reservation stays busy purely on the remote lock.
+  useBattleMapStore.setState({currentSceneId:'scene',tokens:{a:{id:'a'} as Token},remoteDragLocks:{a:'peer'}});
+  expect(isMapMovementBusy()).toBe(true);
+  useBattleMapStore.setState({remoteDragLocks:{}});
+  expect(isMapMovementBusy()).toBe(false);
+});

@@ -18,7 +18,7 @@
 // onDeclared so the parent can burn the slot + flash + set
 // concentration if applicable.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import { declareAttack } from '../../lib/pendingAttack';
@@ -30,8 +30,12 @@ import {
   // v2.458.0 — Footprint-aware Chebyshev for inline distance display.
   distanceBetweenParticipantsFtUsingMap,
   type ActiveBattleMap,
-  type ParticipantForTokenLookup,
+  participantLookup,
 } from '../../lib/battleMapGeometry';
+// v2.746.0 — ranked rows (enemies, allies, 0-HP, dead). A ray at a corpse
+// is legal (if wasteful), so dead rows are listed last, not hidden.
+import { rankTargets, groupRanked } from '../../rules/targetOrder';
+import { TargetGroupChip, rowStyleFor } from './TargetGroupChip';
 import { logAction } from '../shared/ActionLog';
 import type { SpellData, CombatParticipant, Character } from '../../types';
 
@@ -77,6 +81,26 @@ export default function MultiAttackPickerModal({
   // — range checking happens at attack time), so we don't compute
   // OOR here, just expose the raw distance for the player's planning.
   const [battleMap, setBattleMap] = useState<ActiveBattleMap | null>(null);
+  // v2.746 — caster's combatant_id (exact instance link for the "from"
+  // side of distance; see participantLookup).
+  const [casterCombatantId, setCasterCombatantId] = useState<string | null>(null);
+
+  // v2.746 — ranked + grouped rows: enemies, allies, 0-HP, dead (listed,
+  // a ray at a corpse is legal). Distance is the v2.458 footprint-aware
+  // measure, null while the map loads / when a side has no token.
+  // `self` carries participant_type because the caster is filtered out of
+  // `participants` — from an id alone the ranker cannot tell sides apart
+  // and would file the party under "Enemies" (reviewer-caught, v2.746).
+  const groups = useMemo(() => groupRanked(rankTargets(participants, {
+    self: casterParticipantId ? { id: casterParticipantId, participant_type: 'character' } : null,
+    distanceFt: p => {
+      if (!battleMap || !casterParticipantId) return null;
+      return distanceBetweenParticipantsFtUsingMap(
+        participantLookup({ id: casterParticipantId, name: character.name, participant_type: 'character', entity_id: character.id, combatant_id: casterCombatantId }),
+        participantLookup(p), battleMap,
+      );
+    },
+  })), [participants, casterParticipantId, casterCombatantId, battleMap, character.id, character.name]);
 
   // Reset state when the modal opens. `defaultAttackCount` might differ
   // across sequential casts (e.g. Warlock leveling up between sessions).
@@ -109,7 +133,7 @@ export default function MultiAttackPickerModal({
 
       const { data: caster } = await supabase
         .from('combat_participants')
-        .select('id')
+        .select('id, combatant_id')
         .eq('encounter_id', enc.id)
         .eq('entity_id', character.id)
         .eq('participant_type', 'character')
@@ -121,6 +145,14 @@ export default function MultiAttackPickerModal({
         return;
       }
       setCasterParticipantId(caster.id as string);
+      // v2.746 — the caster's combatant_id makes the "from" lookup an
+      // exact instance match (see participantLookup).
+      setCasterCombatantId((caster as { combatant_id?: string | null }).combatant_id ?? null);
+      const casterRef = {
+        id: caster.id as string, participant_type: 'character',
+        entity_id: character.id, name: character.name,
+        combatant_id: (caster as { combatant_id?: string | null }).combatant_id ?? null,
+      };
 
       const { data: allRaw } = await (supabase as any)
         .from('combat_participants')
@@ -129,8 +161,9 @@ export default function MultiAttackPickerModal({
         .order('turn_order', { ascending: true });
   const all = ((allRaw ?? []) as any[]).map(normalizeParticipantRow);
       if (cancelled) return;
+      // v2.746 — dead rows are kept (listed last), only the caster drops.
       const list = ((all ?? []) as CombatParticipant[])
-        .filter(p => p.id !== caster.id && !p.is_dead);
+        .filter(p => p.id !== caster.id);
       setParticipants(list);
 
       // Cover preview if a map exists. Per-beam cover applies to every
@@ -146,20 +179,7 @@ export default function MultiAttackPickerModal({
           setBattleMap(map);
         }
         if (!cancelled && map) {
-          const posInput = [
-            {
-              id: caster.id as string,
-              participant_type: 'character' as const,
-              entity_id: character.id,
-              name: character.name,
-            },
-            ...list.map(p => ({
-              id: p.id,
-              participant_type: p.participant_type,
-              entity_id: p.entity_id,
-              name: p.name,
-            })),
-          ];
+          const posInput = [participantLookup(casterRef), ...list.map(participantLookup)];
           const positions = buildParticipantPositions(posInput, map.tokens);
           const casterPos = positions.get(caster.id as string);
           if (casterPos) {
@@ -350,7 +370,17 @@ export default function MultiAttackPickerModal({
             <div style={{ fontSize: 12, color: 'var(--t-3)' }}>No valid targets in this encounter.</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {participants.map(p => {
+              {groups.map(g => [
+                groups.length > 1 ? (
+                  <div key={`hdr-${g.group}`} data-target-group-header={g.group} style={{
+                    fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
+                    color: 'var(--t-3)', textAlign: 'center', padding: '6px 0 2px',
+                  }}>
+                    {g.label}
+                  </div>
+                ) : null,
+                ...g.items.map(row => {
+                const p = row.target;
                 const count = assignments[p.id] ?? 0;
                 const cover = coverByTarget[p.id];
                 const coverColor = cover === 'total' ? '#f87171'
@@ -360,35 +390,17 @@ export default function MultiAttackPickerModal({
                 const coverLabel = cover === 'three_quarters' ? '¾' : cover;
                 const active = count > 0;
                 // v2.458.0 — Footprint-aware Chebyshev distance for inline
-                // display. Players using Scorching Ray (120ft) or EB (120ft)
-                // with multiple targets benefit from knowing each target's
-                // distance — informs which to target first if any are
-                // approaching range edge. Null when no map / no positions.
-                let distanceFt: number | null = null;
-                if (battleMap && casterParticipantId) {
-                  const casterLookup: ParticipantForTokenLookup = {
-                    id: casterParticipantId,
-                    name: character.name,
-                    participant_type: 'character',
-                    entity_id: character.id,
-                  };
-                  const targetLookup: ParticipantForTokenLookup = {
-                    id: p.id, name: p.name,
-                    participant_type: p.participant_type,
-                    entity_id: p.entity_id,
-                  };
-                  distanceFt = distanceBetweenParticipantsFtUsingMap(
-                    casterLookup, targetLookup, battleMap,
-                  );
-                }
+                // display (v2.746: computed by rankTargets' callback).
+                const distanceFt = row.distanceFt;
                 return (
-                  <div key={p.id} style={{
+                  <div key={p.id} data-target-group={row.group} style={{
                     display: 'flex', alignItems: 'center', gap: 8,
                     padding: '6px 8px', borderRadius: 5,
                     background: active ? 'rgba(251,191,36,0.15)' : 'transparent',
                     fontSize: 12,
+                    ...rowStyleFor(row.group),
                   }}>
-                    <span style={{ flex: 1 }}>
+                    <span style={{ flex: 1, textDecoration: row.group === 'dead' ? 'line-through' : undefined }}>
                       {p.name}
                       <span style={{ color: 'var(--t-3)', marginLeft: 6, fontSize: 10 }}>
                         · {p.participant_type}
@@ -399,6 +411,7 @@ export default function MultiAttackPickerModal({
                         )}
                       </span>
                     </span>
+                    <TargetGroupChip group={row.group} />
                     {cover && coverColor && (
                       <span title={`Cover (wall-derived): ${cover}`} style={{
                         fontSize: 9, fontWeight: 800,
@@ -450,7 +463,8 @@ export default function MultiAttackPickerModal({
                     </div>
                   </div>
                 );
-              })}
+                }),
+              ])}
             </div>
           )}
           {error && (

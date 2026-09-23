@@ -48,10 +48,34 @@ export type StartCombatFromMapResult =
 
 // Minimal token shape we need to build seeds. Both the store path
 // and the DB-fallback path normalize into this.
+//
+// v2.746.0 — one combat participant per TOKEN, not per definition. The
+// old Set-of-creatureIds collapsed three Goblin Scout tokens (one
+// homebrew_monsters row) into ONE participant, so two of the three
+// goblins could never be targeted, never got their own HP bar, and the
+// trigger's unordered LIMIT 1 could bind that one participant to a
+// goblin on a different scene. Each token now seeds its own participant
+// carrying its placement's combatantId (the combatants row the token
+// IS) and the token's on-map name (a DM rename flows into initiative).
+// Characters stay one per character regardless of token count.
 type TokenLite = {
+  id: string;
+  name: string;
   characterId: string | null;
   creatureId: string | null;
+  /** The placement's combatants.id (new path). Null on the legacy
+   *  scene_tokens path, which has no per-instance key — those tokens
+   *  keep the old one-per-definition dedupe. */
+  combatantId: string | null;
 };
+
+const toLite = (t: Token): TokenLite => ({
+  id: t.id,
+  name: t.name ?? '',
+  characterId: t.characterId ?? null,
+  creatureId: t.creatureId ?? null,
+  combatantId: t.combatantId ?? null,
+});
 
 async function loadTokensFromDb(campaignId: string): Promise<TokenLite[] | null> {
   // v2.389.0 — Pick the same scene BattleMapV2 will auto-load on
@@ -79,10 +103,7 @@ async function loadTokensFromDb(campaignId: string): Promise<TokenLite[] | null>
   // we need here.
   const tokens = await tokensApi.listTokens(sceneId, { campaignId });
 
-  return tokens.map(t => ({
-    characterId: t.characterId ?? null,
-    creatureId: t.creatureId ?? null,
-  }));
+  return tokens.map(toLite);
 }
 
 export async function startCombatFromMapTokens(
@@ -100,7 +121,7 @@ export async function startCombatFromMapTokens(
   if (sceneId) {
     tokens = map.tokens
       .filter(t => t.sceneId === sceneId)
-      .map(t => ({ characterId: t.characterId ?? null, creatureId: t.creatureId ?? null }));
+      .map(toLite);
   } else {
     const fromDb = await loadTokensFromDb(campaignId);
     if (fromDb === null) {
@@ -117,11 +138,14 @@ export async function startCombatFromMapTokens(
   // Split into character-linked vs creature-linked. A token that has
   // both (shouldn't happen post-v2.350 but defensively) routes to
   // character — that's the canonical link for player tokens.
+  // v2.746: creature TOKENS are kept (one seed each); the definition
+  // Set only drives the single batched homebrew_monsters fetch.
   const characterIds = new Set<string>();
+  const creatureTokens: TokenLite[] = [];
   const creatureIds = new Set<string>();
   for (const t of tokens) {
     if (t.characterId) characterIds.add(t.characterId);
-    else if (t.creatureId) creatureIds.add(t.creatureId);
+    else if (t.creatureId) { creatureTokens.push(t); creatureIds.add(t.creatureId); }
     // tokens with neither are skipped silently.
   }
 
@@ -161,26 +185,49 @@ export async function startCombatFromMapTokens(
 
   // Build seeds. Order matters for initiative tie-break consistency
   // between sessions, so we sort characters first (alphabetical), then
-  // creatures (alphabetical). Initiative roll randomization happens
-  // inside startEncounter regardless of seed order.
+  // creatures (alphabetical by name, then token id so two tokens with
+  // the same name still order deterministically). Initiative roll
+  // randomization happens inside startEncounter regardless of seed order.
   const seeds: SeedSource[] = [];
   for (const c of characters.sort((a, b) => a.name.localeCompare(b.name))) {
     seeds.push(characterToSeed(c));
   }
-  for (const cr of creatures.sort((a, b) => a.name.localeCompare(b.name))) {
-    seeds.push({
-      type: 'creature',
-      entityId: cr.id,
-      name: cr.name,
-      ac: cr.ac ?? null,
-      hp: cr.hp ?? cr.max_hp ?? null,
-      maxHp: cr.max_hp ?? cr.hp ?? null,
-      dexMod: abilityModifier(cr.dex ?? 10),
-      initiativeBonus: 0,
-      hiddenFromPlayers: !(cr.visible_to_players ?? true),
-      maxSpeedFt: cr.speed ?? 30,
-    });
+  const creatureSeed = (cr: CreatureLite): SeedSource => ({
+    type: 'creature',
+    entityId: cr.id,
+    name: cr.name,
+    ac: cr.ac ?? null,
+    hp: cr.hp ?? cr.max_hp ?? null,
+    maxHp: cr.max_hp ?? cr.hp ?? null,
+    dexMod: abilityModifier(cr.dex ?? 10),
+    initiativeBonus: 0,
+    hiddenFromPlayers: !(cr.visible_to_players ?? true),
+    maxSpeedFt: cr.speed ?? 30,
+  });
+  const byDef = new Map(creatures.map(cr => [cr.id, cr]));
+  // v2.746 — one seed per token that has a per-instance key. The seed
+  // carries the token's combatantId (bypasses the trigger's guess) and
+  // the token's own name, so "Goblin Scout (archer)" on the map reads
+  // the same in the initiative strip and every target picker.
+  const creatureSeeds: Array<{ seed: SeedSource; tokenId: string }> = [];
+  const legacyDefs = new Set<string>();
+  for (const t of creatureTokens) {
+    const cr = t.creatureId ? byDef.get(t.creatureId) : undefined;
+    if (!cr) continue; // definition missing (deleted creature) — token skipped
+    if (t.combatantId) {
+      creatureSeeds.push({
+        seed: { ...creatureSeed(cr), combatantId: t.combatantId, name: t.name.trim() || cr.name },
+        tokenId: t.id,
+      });
+    } else if (!legacyDefs.has(cr.id)) {
+      // Legacy scene_tokens path: no combatant instance to bind to, so
+      // the pre-v2.746 one-per-definition dedupe stays (nothing regresses).
+      legacyDefs.add(cr.id);
+      creatureSeeds.push({ seed: creatureSeed(cr), tokenId: t.id });
+    }
   }
+  creatureSeeds.sort((a, b) => a.seed.name.localeCompare(b.seed.name) || a.tokenId.localeCompare(b.tokenId));
+  for (const { seed } of creatureSeeds) seeds.push(seed);
 
   if (seeds.length === 0) {
     // Tokens existed but none had character/creature linkage — orphan

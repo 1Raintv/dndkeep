@@ -1125,21 +1125,24 @@ export async function offerOpportunityAttacks(
   // produces no offers) — this is the correct behavior for OA specifically
   // because movement without grid positions doesn't model reach at all;
   // compare to Counterspell/HR which fail OPEN for theater-of-the-mind play.
-  const { loadActiveBattleMap, findTokenForParticipant, tokenFootprintRange } =
+  const { loadActiveBattleMap, findTokenForParticipant, tokenFootprintRange, participantLookup } =
     await import('./battleMapGeometry');
   const bmap = await loadActiveBattleMap(input.campaignId);
   if (!bmap || bmap.tokens.length === 0) return 0;
 
   // All combat participants in this encounter (we only OA between combatants)
   if (!input.encounterId) return 0;
+  // v2.746 — combatant_id selected so the token lookup binds each
+  // reactor to ITS token (three goblins = three reactors) instead of
+  // the species match, which resolved to null once copies existed.
   const { data: pdataRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, entity_id, reaction_used, ' + JOINED_COMBATANT_FIELDS)
+    .select('id, name, participant_type, entity_id, combatant_id, reaction_used, ' + JOINED_COMBATANT_FIELDS)
     .eq('encounter_id', input.encounterId);
   const pdata = ((pdataRaw ?? []) as any[]).map(normalizeParticipantRow);
   const participants = (pdata ?? []) as Array<{
     id: string; name: string; participant_type: 'character' | 'monster' | 'npc';
-    entity_id: string; is_dead: boolean; reaction_used: boolean;
+    entity_id: string; combatant_id: string | null; is_dead: boolean; reaction_used: boolean;
   }>;
 
   // Eligibility checks per candidate reactor:
@@ -1164,15 +1167,8 @@ export async function offerOpportunityAttacks(
     if (!hostile) continue;
 
     // v2.129.0 — delegates token lookup to the library
-    const token = findTokenForParticipant(
-      {
-        id: reactor.id,
-        name: reactor.name,
-        participant_type: reactor.participant_type,
-        entity_id: reactor.entity_id,
-      },
-      bmap.tokens,
-    );
+    // v2.746 — via participantLookup so combatant_id can't be dropped.
+    const token = findTokenForParticipant(participantLookup(reactor), bmap.tokens);
     if (!token) continue;
 
     // v2.396.0 — Footprint-aware reach. Pre-v2.396 this was

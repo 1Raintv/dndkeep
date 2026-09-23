@@ -169,7 +169,8 @@ export async function findCleaveCandidates(input: {
 }): Promise<{ candidates: CleaveCandidate[]; positionsKnown: boolean }> {
   const { data: rowsRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, entity_id, ac, ' + JOINED_COMBATANT_FIELDS)
+    // v2.746 — combatant_id: per-instance token lookup (see participantLookup).
+    .select('id, name, participant_type, entity_id, combatant_id, ac, ' + JOINED_COMBATANT_FIELDS)
     .eq('encounter_id', input.encounterId);
   const rows = ((rowsRaw ?? []) as any[]).map(normalizeParticipantRow);
 
@@ -188,14 +189,11 @@ export async function findCleaveCandidates(input: {
     distance_from_first_ft: dist,
   });
 
-  const { loadActiveBattleMap, findTokenForParticipant, distanceBetweenTokensFt } =
+  const { loadActiveBattleMap, findTokenForParticipant, distanceBetweenTokensFt, participantLookup } =
     await import('./battleMapGeometry');
   const bmap = await loadActiveBattleMap(input.campaignId);
   const lookup = (r: any) =>
-    findTokenForParticipant(
-      { id: r.id, name: r.name, participant_type: r.participant_type, entity_id: r.entity_id },
-      bmap?.tokens ?? [],
-    );
+    findTokenForParticipant(participantLookup(r), bmap?.tokens ?? []);
 
   const attackerRow = rows.find((r: any) => r.id === input.attackerParticipantId);
   const firstRow = rows.find((r: any) => r.id === input.firstTargetParticipantId);

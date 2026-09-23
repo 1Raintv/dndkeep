@@ -18,8 +18,20 @@ import * as tokensApi from '../../../lib/api/tokensApiRouter';
 import * as assetsApi from '../../../lib/api/battleMapAssets';
 import { computeChebyshevFt, canMove, logMovement } from '../../../lib/movement';
 import { segmentBlockedByWall } from '../../../lib/wallCollision';
-import { snapToCellCenter, snapTokenAnchor } from '../../../lib/map/coords';
+import { snapTokenDrop } from '../../../lib/map/coords';
+import { findParticipantForToken } from '../../../lib/participantForToken';
+import { SAVE_TIMEOUT_MS, withTimeout } from './saveTimeout';
 import { COND_COLOR_HEX, COND_ICON, tokenFootprintCells, tokenInitials, tokenRadiusForSize, type ContextMenuState } from './shared';
+
+// v2.746 — Snap the drag ghost to its drop cell WHILE dragging, the way
+// TokenGroupDrag already does (and Foundry / Roll20 do). With the ghost
+// already on the cell that will be committed, animateSnap's <0.5 px
+// short-circuit fires at release and NOTHING moves after the pointer is
+// up — the user's report. Flip to false to get the pre-v2.746 raw ghost
+// with its 120 ms ease-out glide back; the broadcast and the commit keep
+// using the snapped target either way, so peers and the DB are fixed
+// regardless of this switch.
+const SNAP_GHOST_WHILE_DRAGGING = true;
 
 export function TokenLayer(props: {
   viewport: Viewport | null;
@@ -203,6 +215,10 @@ export function TokenLayer(props: {
     // activeTokenInfo.tokenId picked the wrong instance among
     // multiple same-creature tokens.
     participantEntityId: string | null;
+    // v2.746 — the active participant's combatant instance, so a drag of
+    // one of several same-definition tokens is enforced only when it IS
+    // the active instance (participants are per instance now).
+    participantCombatantId?: string | null;
   };
 }) {
   const {showToast}=useToast();
@@ -398,7 +414,11 @@ export function TokenLayer(props: {
   // movement against blocking walls (segment from origin → snapped
   // drop point shouldn't intersect any wall with blocksMovement=true).
   // Captured at drag start; never mutated during the drag.
-  const dragRef = useRef<{ id: string; pointerId: number; offsetX: number; offsetY: number; originX: number; originY: number } | null>(null);
+  // v2.746 — lastTarget is the snapped+clamped cell the preview last showed
+  // (snapTokenDrop); the commit lands there, not on a pointerup re-derive.
+  // broadcasted records whether peers ever heard a hop, so a no-op release
+  // only re-sends the origin when there is something to undo on their side.
+  const dragRef = useRef<{ id: string; pointerId: number; offsetX: number; offsetY: number; originX: number; originY: number; lastTarget: { x: number; y: number }; broadcasted: boolean } | null>(null);
 
   // v2.256.0 — Lock-ring pulse animation. A single rAF walks every
   // active TokenGfx and breathes the lockRing's alpha+scale. Cheaper
@@ -808,6 +828,10 @@ export function TokenLayer(props: {
             // wall-collision validation has both endpoints of the segment.
             originX: t.x,
             originY: t.y,
+            // v2.746 — starts on the origin cell so a jitter that never
+            // leaves it is neither written, previewed nor broadcast.
+            lastTarget: { x: t.x, y: t.y },
+            broadcasted: false,
           };
           // v2.226 — record click-probe state. If pointerup fires soon
           // after with negligible movement, the parent gets onTokenClick
@@ -1193,11 +1217,16 @@ export function TokenLayer(props: {
         if (token.characterId) {
           tokenState = tokenStateMapByDef.get(`character:${token.characterId}`) ?? null;
         }
-        if (!tokenState && token.npcId) {
+        // v2.746 — placements-path creature tokens carry creatureId only
+        // (npcId is set just for narrative_npc definitions), and the
+        // participant map now also publishes a `creature:` alias.
+        const defId = token.npcId ?? token.creatureId;
+        if (!tokenState && defId) {
           // npc roster combatants use definition_type='npc'; creature
           // template combatants use 'monster'. Try both.
-          tokenState = tokenStateMapByDef.get(`npc:${token.npcId}`)
-            ?? tokenStateMapByDef.get(`monster:${token.npcId}`)
+          tokenState = tokenStateMapByDef.get(`npc:${defId}`)
+            ?? tokenStateMapByDef.get(`monster:${defId}`)
+            ?? tokenStateMapByDef.get(`creature:${defId}`)
             ?? null;
         }
       }
@@ -2077,6 +2106,19 @@ export function TokenLayer(props: {
     // elapses. The final position is covered by onPointerUp below.
     let lastBroadcastMs = 0;
 
+    // v2.746 — Deterministic swallow of the synthetic 'click' the browser
+    // fires after a pointer drag. Pixi uses pointer events, so the browser's
+    // own drag→click suppression never applies, and BattleMapV2's 100 ms
+    // timer stamp (v2.441) could miss under load, letting click-to-move walk
+    // the token one more cell after a drop. A capture-phase listener on the
+    // canvas (mirrors TokenGroupDrag) stops that click before any bubbling
+    // handler sees it; onPointerUp (when the pointer moved) and cancelDrag
+    // arm it for 300 ms. Removed in the cleanup below.
+    let suppressClickUntil = 0;
+    const swallowClick = (e: MouseEvent) => {
+      if (performance.now() < suppressClickUntil) { e.preventDefault(); e.stopImmediatePropagation(); }
+    };
+
     // v2.637 perf (audit 6.2) — coalesce the LOCAL store write behind
     // requestAnimationFrame. pointermove fires at the mouse's polling
     // rate (240Hz+ on gaming mice), and every updatePos call shallow-
@@ -2155,7 +2197,8 @@ export function TokenLayer(props: {
     //
     // Roll20 keeps the path visible for the entire duration of the
     // drag regardless of cursor motion; we want the same.
-    let lastCursor: { originX: number; originY: number; cursorX: number; cursorY: number } | null = null;
+    // v2.746 — holds the snapped TARGET (not the raw cursor), see drawPreview.
+    let lastCursor: { originX: number; originY: number; tx: number; ty: number } | null = null;
     let previewIntervalId: ReturnType<typeof setInterval> | null = null;
     function startPreviewLoop() {
       if (previewIntervalId !== null) return;
@@ -2167,7 +2210,7 @@ export function TokenLayer(props: {
           return;
         }
         if (lastCursor) {
-          drawPreview(lastCursor.originX, lastCursor.originY, lastCursor.cursorX, lastCursor.cursorY);
+          drawPreview(lastCursor.originX, lastCursor.originY, lastCursor.tx, lastCursor.ty);
         }
       }, 33);
     }
@@ -2179,41 +2222,17 @@ export function TokenLayer(props: {
       lastCursor = null;
     }
 
-    function drawPreview(originX: number, originY: number, cursorX: number, cursorY: number) {
-      // v2.414.0 — Use the same size-aware snap helper that the
-      // pointerup commit uses (snapTokenAnchor). Pre-v2.414 the
-      // preview always called snapToCellCenter — which is correct
-      // only for odd-size tokens (1×1, 3×3). For even-size tokens
-      // (Large 2×2, Gargantuan 4×4) the commit snaps to grid
-      // INTERSECTIONS instead, so the preview marker pointed to one
-      // spot and the dropped token landed at a different one.
-      // Symptom: "the token shifts around when I drop it." Using
-      // snapTokenAnchor here keeps preview and final position in
-      // lockstep regardless of token size.
+    function drawPreview(originX: number, originY: number, tx: number, ty: number) {
+      // v2.414.0 — the marker used the same size-aware snap as the
+      // pointerup commit so the two agreed for even-size tokens (pre-
+      // v2.414 the preview called snapToCellCenter and a Large token
+      // "shifted around when dropped"). v2.432 added the footprint clamp.
+      // v2.746 — both moved into snapTokenDrop (lib/map/coords) and are
+      // computed ONCE per pointermove; the caller passes that target
+      // (drag.lastTarget) here, to the ghost, to peers and to the commit,
+      // so this marker cannot show a cell the drop will not land on.
       const drag = dragRef.current;
       const draggedToken = drag ? useBattleMapStore.getState().tokens[drag.id] : null;
-      const snapped = draggedToken
-        ? snapTokenAnchor(cursorX, cursorY, draggedToken.size, gridSizePx)
-        : snapToCellCenter(cursorX, cursorY, gridSizePx);
-      // v2.432.0 — Footprint-aware clamping. See note in pointerup
-      // commit below; same rules so the preview marker can't show
-      // a target the actual drop won't accept.
-      let tx: number, ty: number;
-      if (draggedToken) {
-        const footCellsP = tokenFootprintCells(draggedToken.size);
-        const evenP = footCellsP % 2 === 0;
-        const footPxP = footCellsP * gridSizePx;
-        const halfP = footPxP / 2;
-        const minXp = evenP ? 0 : halfP;
-        const maxXp = evenP ? worldWidth - footPxP : worldWidth - halfP;
-        const minYp = evenP ? 0 : halfP;
-        const maxYp = evenP ? worldHeight - footPxP : worldHeight - halfP;
-        tx = Math.max(minXp, Math.min(maxXp, snapped.x));
-        ty = Math.max(minYp, Math.min(maxYp, snapped.y));
-      } else {
-        tx = Math.max(0, Math.min(worldWidth, snapped.x));
-        ty = Math.max(0, Math.min(worldHeight, snapped.y));
-      }
 
       // Compute Chebyshev distance in feet using the canonical math
       // from lib/movement.ts. Convert from world pixels → cells via
@@ -2379,32 +2398,62 @@ export function TokenLayer(props: {
 
       const drag = dragRef.current;
       if (!drag || !viewport || !canvasEl) return;
+      // v2.746 — sub-threshold motion (a click with 2 px of jitter) is not a
+      // drag: leave lastTarget, the ghost and the peers untouched. Without
+      // this an OFF-GRID token (hex scene, changed grid, imported placement)
+      // snapped locally and on every peer on the first pointermove, then
+      // pointerup took the click branch and saved nothing, so the next
+      // refresh rewound it — a "shift" with no gesture behind it. On-grid
+      // tokens never noticed (the snapped target equalled the origin).
+      if (probe && !probe.didMove) return;
       const rect = canvasEl.getBoundingClientRect();
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
       const worldPoint = viewport.toWorld(screenX, screenY);
       const newX = worldPoint.x - drag.offsetX;
       const newY = worldPoint.y - drag.offsetY;
-      // rAF-coalesced store write (see flushDragPos above).
-      pendingDragPos = { id: drag.id, x: newX, y: newY };
-      if (!dragPosRaf) dragPosRaf = requestAnimationFrame(flushDragPos);
+      // v2.746 — ONE target for the ghost, the marker, the peers and the
+      // commit (snapTokenDrop). Pre-v2.746 the ghost and the peers received
+      // the RAW cursor position and only the commit snapped: the dragger
+      // saw a 120 ms glide after release and every peer saw a teleport of
+      // up to half a cell — both reported as "the icon shifts after I let
+      // go". The target only changes when the cursor crosses into another
+      // cell, so most pointermoves now touch nothing at all.
+      const t = useBattleMapStore.getState().tokens[drag.id];
+      if (!t) return;
+      const target = snapTokenDrop(newX, newY, t.size, gridSizePx, worldWidth, worldHeight);
+      const changed = drag.lastTarget.x !== target.x || drag.lastTarget.y !== target.y;
+      drag.lastTarget = target;
+      // rAF-coalesced store write (see flushDragPos above). With the ghost
+      // snapped there is nothing to write until the cell changes.
+      if (!SNAP_GHOST_WHILE_DRAGGING || changed) {
+        pendingDragPos = SNAP_GHOST_WHILE_DRAGGING
+          ? { id: drag.id, x: target.x, y: target.y }
+          : { id: drag.id, x: newX, y: newY };
+        if (!dragPosRaf) dragPosRaf = requestAnimationFrame(flushDragPos);
+      }
 
       // v2.340.0 — live drag preview. Only show after the user has
       // actually moved (probe.didMove guards against firing on a
       // pure-click landing on the token).
-      // v2.430.0 — Persistent: capture cursor and let the rAF loop
-      // keep redrawing on stationary holds. The loop kicks off on
+      // v2.430.0 — Persistent: capture the target and let the interval
+      // loop keep redrawing on stationary holds. The loop kicks off on
       // first move and runs until pointerup.
       if (probe?.didMove) {
-        lastCursor = { originX: drag.originX, originY: drag.originY, cursorX: newX, cursorY: newY };
-        drawPreview(drag.originX, drag.originY, newX, newY);
+        lastCursor = { originX: drag.originX, originY: drag.originY, tx: target.x, ty: target.y };
+        drawPreview(drag.originX, drag.originY, target.x, target.y);
         startPreviewLoop();
       }
 
-      // Throttled broadcast to peers.
+      // Throttled broadcast of the SNAPPED target to peers. Cell changes
+      // are rare next to pointermoves, so the v2.216 50 ms window is now a
+      // ceiling rather than the typical rate; the release path re-sends
+      // the final cell, so a hop dropped by the throttle is never the last
+      // word a peer hears.
       const now = performance.now();
-      if (now - lastBroadcastMs >= 50) {
-        onDragMove?.(drag.id, newX, newY);
+      if (changed && now - lastBroadcastMs >= 50) {
+        onDragMove?.(drag.id, target.x, target.y);
+        drag.broadcasted = true;
         lastBroadcastMs = now;
       }
     }
@@ -2433,6 +2482,8 @@ export function TokenLayer(props: {
       // the same tick as this pointerup.
       if (probe?.didMove) {
         onDragMotionEnded?.();
+        // v2.746 — arm the capture-phase click swallower (see swallowClick).
+        suppressClickUntil = performance.now() + 300;
       }
 
       if (!drag) {
@@ -2440,83 +2491,42 @@ export function TokenLayer(props: {
         return;
       }
       const t = useBattleMapStore.getState().tokens[drag.id];
-      if (t) {
-        // v2.400.0 — Compute final position from the pointerup event
-        // coordinates, not the last pointermove's stored t.x/y. Pre-
-        // v2.400 we snapped t.x/y, which lagged the cursor by however
-        // far it moved between the last 60Hz pointermove and the
-        // pointerup. For a cursor moving even modestly at release,
-        // that gap could be 5-10px — enough to push across a cell
-        // boundary and snap to the wrong cell. Reading clientX/Y
-        // from `e` (the pointerup event itself) gives the exact
-        // release position.
-        let finalX = t.x;
-        let finalY = t.y;
-        if (viewport && canvasEl && e.clientX !== undefined) {
-          const rect = canvasEl.getBoundingClientRect();
-          const screenX = e.clientX - rect.left;
-          const screenY = e.clientY - rect.top;
-          const worldPoint = viewport.toWorld(screenX, screenY);
-          finalX = worldPoint.x - drag.offsetX;
-          finalY = worldPoint.y - drag.offsetY;
-        }
-        // v2.401.0 — Size-aware snap. Even-size tokens (Large 2×2,
-        // Garg 4×4) anchor on grid intersections; odd-size tokens
-        // anchor on cell centers. snapTokenAnchor picks the right
-        // snap target. Pre-v2.401 always snapped to cell center,
-        // which made dropping a Large dragon "shift to a different
-        // spot" because the visual's natural center is a grid
-        // intersection but snap put the anchor at a cell center,
-        // re-centering the visual asymmetrically.
-        const snapped = snapTokenAnchor(finalX, finalY, t.size, gridSizePx);
-        // v2.432.0 — Footprint-aware clamping. Pre-v2.432 the clamp
-        // used `Math.max(0, Math.min(worldWidth, snapped.x))`, which
-        // bounded the ANCHOR to (0, worldWidth). For odd-size tokens
-        // (anchor on cell center) that's mostly fine — the visual
-        // extends ½ cell past the anchor in each direction, so a
-        // token anchored at the right edge has its right half
-        // hanging off the map. For even-size tokens (Large 2×2,
-        // Gargantuan 4×4) the anchor is the TOP-LEFT intersection
-        // of the footprint, so anchoring at (worldWidth, worldHeight)
-        // puts the ENTIRE 4×4 footprint off the map. User report:
-        // "you can throw the entire token off of the map" — the
-        // Ancient White Dragon was at (2100, 1400) on a
-        // 2100×1400 world, with all 4×4 cells off-map.
-        //
-        // Fix: clamp the anchor based on the footprint occupancy
-        // rules so the visual stays inside the map. For odd sizes
-        // (1×1, 3×3) the visual extends `cellSize * footCells / 2`
-        // in each direction from the anchor, so anchor must be in
-        // [halfFoot, worldWidth - halfFoot]. For even sizes the
-        // footprint extends `cellSize * footCells` to the bottom-
-        // right of the anchor, so anchor must be in
-        // [0, worldWidth - footCells*cellSize] (anchor top-left,
-        // bottom-right at anchor + footPx).
-        const footCellsForClamp = tokenFootprintCells(t.size);
-        const evenSizeForClamp = footCellsForClamp % 2 === 0;
-        const footPxForClamp = footCellsForClamp * gridSizePx;
-        const halfFootForClamp = footPxForClamp / 2;
-        const minX = evenSizeForClamp ? 0 : halfFootForClamp;
-        const maxX = evenSizeForClamp ? worldWidth - footPxForClamp : worldWidth - halfFootForClamp;
-        const minY = evenSizeForClamp ? 0 : halfFootForClamp;
-        const maxY = evenSizeForClamp ? worldHeight - footPxForClamp : worldHeight - halfFootForClamp;
-        const clampedX = Math.max(minX, Math.min(maxX, snapped.x));
-        const clampedY = Math.max(minY, Math.min(maxY, snapped.y));
+      // v2.746 — a pure click never enters the drop path: nothing to snap,
+      // reserve, badge or PATCH. Pre-v2.746 a click on an off-grid token
+      // snapped it locally and broadcast that, but never saved it, so the
+      // next refresh rewound it — a "shift" with no gesture behind it.
+      if (t && !wasClick) {
+        // v2.746 — Commit the cell the PREVIEW showed. v2.400 re-derived
+        // the cell from pointerup.clientX so a fast release would not lag
+        // the last 60 Hz pointermove; but the marker the user is looking
+        // at was drawn from that pointermove, so pointerup could land one
+        // cell past it — "the token shifts a little after I let go". The
+        // marker is the contract: drag.lastTarget is the snapTokenDrop
+        // result (snap + footprint clamp, history in lib/map/coords) that
+        // the ghost, the marker and the peers already use. A hold with no
+        // pointermove leaves it on the origin.
+        const clampedX = drag.lastTarget.x;
+        const clampedY = drag.lastTarget.y;
         // v2.268.0 — wall-blocked movement check. If the segment from
         // the drag origin to the (clamped, snapped) drop point crosses
         // any wall with blocksMovement=true (and not an open door), the
         // drop is rejected and the token snaps back to its origin.
-        // Click drops (wasClick === true) skip this check — clicks
-        // don't change position, so there's no segment to validate.
-        // The check is also skipped when the user didn't actually move
+        // The check is skipped when the user didn't actually move
         // (origin === drop) since that's a no-op drop.
         const movedAtAll = drag.originX !== clampedX || drag.originY !== clampedY;
-        const blocked = !wasClick && movedAtAll && segmentBlockedByWall(
+        const blocked = movedAtAll && segmentBlockedByWall(
           drag.originX, drag.originY,
           clampedX, clampedY,
           Object.values(useBattleMapStore.getState().walls),
         );
-        if (blocked) {
+        if (!movedAtAll) {
+          // v2.746 — back on the origin cell (or a >250 ms hold with <5 px
+          // of motion): restore the ghost and tell peers only if they ever
+          // heard a hop. Never reserve, badge or PATCH a no-op — that used
+          // to lock every peer for a save that changed nothing.
+          updatePos(drag.id, drag.originX, drag.originY);
+          if (drag.broadcasted) onDragMove?.(drag.id, drag.originX, drag.originY);
+        } else if (blocked) {
           // Snap back to origin. updatePos rewrites the local store;
           // peers see this position on the next broadcast/commit cycle.
           // No DB write — the token's row in scene_tokens already has
@@ -2559,24 +2569,34 @@ export function TokenLayer(props: {
           // them against currentActor.entity_id.
           let enforceMove = false;
           let activeMatch = false;
-          if (!wasClick && movedAtAll && ati && ati.participantId) {
+          if (ati && ati.participantId) {
             // Original check — fast path when activeTokenInfo correctly
             // identified the dragged token.
             if (ati.tokenId === drag.id) {
               activeMatch = true;
             } else {
               // Fallback: check the dragged token's identifiers.
+              // v2.746 — Placements-path creature tokens carry creatureId,
+              // not npcId (joinedRowToToken only sets npcId for
+              // narrative_npc definitions), so the pre-v2.746 `npcId ===
+              // entity_id` test never matched a monster and DM drags of
+              // the active monster were silently unenforced. Instance
+              // identity first: when both the token and the active
+              // participant know their combatant, only THAT copy is the
+              // active one (participants are per instance now). Otherwise
+              // fall back to the shared definition resolver.
               const draggedTok = useBattleMapStore.getState().tokens[drag.id];
               if (draggedTok) {
-                const activeEntity = ati.participantEntityId ?? '';
-                if (ati.participantType === 'character'
-                    && draggedTok.characterId
-                    && draggedTok.characterId === activeEntity) {
-                  activeMatch = true;
-                } else if (ati.participantType !== 'character'
-                    && draggedTok.npcId
-                    && draggedTok.npcId === activeEntity) {
-                  activeMatch = true;
+                const activeCombatant = ati.participantCombatantId ?? null;
+                if (activeCombatant && draggedTok.combatantId) {
+                  activeMatch = draggedTok.combatantId === activeCombatant;
+                } else {
+                  activeMatch = !!findParticipantForToken(draggedTok, [{
+                    id: ati.participantId,
+                    participant_type: ati.participantType ?? 'npc',
+                    entity_id: ati.participantEntityId,
+                    combatant_id: activeCombatant,
+                  }]);
                 }
               }
             }
@@ -2585,18 +2605,16 @@ export function TokenLayer(props: {
           // v2.403.0 — Diagnostic log so the DM can confirm enforcement
           // is firing on the right tokens. Remove or quiet once the
           // movement-enforcement bug class is closed.
-          if (movedAtAll && !wasClick) {
-            // eslint-disable-next-line no-console
-            console.log('[BattleMapV2] drop commit', {
-              tokenId: drag.id,
-              hasAti: !!ati,
-              atiTokenId: ati?.tokenId,
-              atiParticipantId: ati?.participantId,
-              atiEntityId: ati?.participantEntityId,
-              enforceMove,
-              activeMatch,
-            });
-          }
+          // eslint-disable-next-line no-console
+          console.log('[BattleMapV2] drop commit', {
+            tokenId: drag.id,
+            hasAti: !!ati,
+            atiTokenId: ati?.tokenId,
+            atiParticipantId: ati?.participantId,
+            atiEntityId: ati?.participantEntityId,
+            enforceMove,
+            activeMatch,
+          });
 
           // v2.357.0 — Math.floor (not Math.round). See drawPreview
           // comment for rationale. Tokens stored at center-of-cell
@@ -2726,7 +2744,6 @@ export function TokenLayer(props: {
                 return;
               }
             }
-            if (wasClick) return; // pure click — no commit needed
             // v2.213 commit (existing path) — wall-trigger rejection
             // handling is preserved verbatim from pre-v2.340.
             // v2.418.0 — Stamp the upcoming write so the realtime
@@ -2736,8 +2753,25 @@ export function TokenLayer(props: {
             // Implemented via the onCommitPos prop the parent wires
             // up; the actual markSelfWrite ref lives in BattleMapV2.
             onCommitPos?.(drag.id, clampedX, clampedY);
-            const result = await tokensApi.updateTokenPos(drag.id, clampedX, clampedY, { campaignId: props.campaignId });
+            // v2.746 — bound the save (saveTimeout.ts): the reservation now
+            // drives the peer lease, so a PATCH that never settles would
+            // lock every peer forever. On timeout the token returns home
+            // and the self-write stamp is moved to the ORIGIN, so if the
+            // PATCH lands late its destination echo mismatches the stamp
+            // and the ordinary refresh path applies DB truth.
+            type SaveResult = Awaited<ReturnType<typeof tokensApi.updateTokenPos>> | { ok: false; reason: 'timeout' };
+            const result = await withTimeout<SaveResult>(
+              tokensApi.updateTokenPos(drag.id, clampedX, clampedY, { campaignId: props.campaignId }),
+              SAVE_TIMEOUT_MS,
+              () => ({ ok: false, reason: 'timeout' }),
+            );
             if (!result.ok) {
+              if (result.reason === 'timeout') {
+                onCommitPos?.(drag.id, drag.originX, drag.originY);
+                restoreFailedDrop();
+                showToast('Move not confirmed — your token was returned.','error');
+                return;
+              }
               restoreFailedDrop();
               if (result.reason === 'wall_blocked') {
                 onMovementBlocked?.('wall');
@@ -2746,6 +2780,15 @@ export function TokenLayer(props: {
               }
               return;
             }
+            // v2.746 — The position is confirmed: release the reservation
+            // and the badge NOW, before movement logging and the
+            // opportunity-attack scan (1.8–3.6 s). The reservation is what
+            // keeps every peer locked (useTokenDragSharing renews the lease
+            // while it is pending); logging never moves the token back, and
+            // over-spend safety rests on recordMoved's predicted bump
+            // (v2.437), not on this lock. `finally` below is idempotent.
+            releasePendingMove();
+            if (!saving.destroyed) saving.destroy();
             // v2.340.0 — log the movement so movement_used_ft updates
             // server-side and the badge reflects the new remaining
             // budget on the next combat-state push. Also fires
@@ -2857,6 +2900,7 @@ export function TokenLayer(props: {
       onDragMove?.(drag.id, drag.originX, drag.originY);
       onDragEnd?.(drag.id);
       onDragMotionEnded?.();
+      suppressClickUntil = performance.now() + 300; // v2.746 — see swallowClick
       const entry = gfxMapRef.current.get(drag.id);
       if (entry) { entry.container.cursor = 'grab'; entry.container.alpha = 1; }
       dragRef.current = null;
@@ -2874,12 +2918,15 @@ export function TokenLayer(props: {
     window.addEventListener('keydown', onEscape, true);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
+    canvasEl.addEventListener('click', swallowClick, true); // v2.746
     return () => {
       window.removeEventListener('pointercancel', cancelDrag);
       window.removeEventListener('blur', onBlur);
       window.removeEventListener('keydown', onEscape, true);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
+      // v2.746 — a stale swallower would eat real clicks after a scene switch.
+      canvasEl.removeEventListener('click', swallowClick, true);
       // A scene/viewport teardown must not leave a pending-save badge behind.
       for(const child of [...viewport.children])if(child.label==='token-move-saving' && !child.destroyed)child.destroy();
       // v2.637 — drop any pending coalesced drag write; the store update

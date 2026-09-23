@@ -79,6 +79,123 @@ export interface SeedSource {
    *  so the DM popover can render them without re-querying the
    *  bestiary. Mirrors the MonsterData.legendary_actions shape. */
   legendaryActionsConfig?: import('../types').MonsterLegendaryAction[];
+  /** v2.399.0 — Extra Attack / Multiattack counter (characterToSeed,
+   *  monsterToSeed). Undefined → 1. */
+  attacksPerAction?: number;
+  /** v2.746.0 — the exact `combatants` row this participant IS. Combat
+   *  participants are per INSTANCE (one per battle-map token), so three
+   *  Goblin Scout tokens sharing one homebrew_monsters definition become
+   *  three participants, each bound to its own token's combatant. When
+   *  set, the BEFORE INSERT trigger cp_ensure_combatant_link leaves it
+   *  alone; when null/undefined the trigger keeps guessing with its
+   *  unordered LIMIT 1 over combatants by definition_id (which could bind
+   *  a participant to a token on ANOTHER scene). entity_id stays the
+   *  definition id — every stat lookup keys on it unchanged. */
+  combatantId?: string | null;
+}
+
+/** Everything a combat_participants INSERT row needs besides the seed. */
+export interface SeedRowContext {
+  encounterId: string;
+  campaignId: string;
+  initiativeMode: 'auto_all' | 'player_agency';
+  /** Hidden monsters: roll_at_reveal (default) leaves initiative null
+   *  until the DM reveals them; roll_at_start rolls immediately. */
+  hiddenMonsterRevealMode?: 'roll_at_reveal' | 'roll_at_start';
+  /** Placeholder turn_order — always recomputed by recomputeTurnOrder
+   *  after the insert (startEncounter uses 0, late adds 999 so the new
+   *  row never displaces the active turn before the recompute lands). */
+  turnOrder: number;
+}
+
+/** v2.746.0 — the ONE seed → combat_participants row builder. Before
+ *  this, startEncounter and addParticipantToEncounter each carried their
+ *  own copy of this 25-line object; they had already drifted
+ *  (attacks_per_action was only written by one of them) and neither
+ *  wrote combatant_id. Exported so the unit test can assert the row
+ *  shape without a database. */
+export function seedToRow(s: SeedSource, ctx: SeedRowContext) {
+  const shouldAutoRoll =
+    ctx.initiativeMode === 'auto_all' ||
+    s.type !== 'character'; // NPCs and monsters always auto-roll
+
+  // Hidden monsters: in roll_at_reveal mode, stay null; in roll_at_start, roll.
+  const shouldRollHidden = s.hiddenFromPlayers
+    ? (ctx.hiddenMonsterRevealMode ?? 'roll_at_reveal') === 'roll_at_start'
+    : true;
+
+  let initiative: number | null = null;
+  if (shouldAutoRoll && shouldRollHidden) {
+    initiative = rollInitiativeFor(s.dexMod, s.initiativeBonus).total;
+  }
+
+  return {
+    encounter_id: ctx.encounterId,
+    campaign_id: ctx.campaignId,
+    // v2.352.0 — normalize legacy 'monster'/'npc' to 'creature' to
+    // match the v2.350 CHECK constraint. Without this, any caller
+    // still passing legacy seed types would 500 the insert.
+    participant_type: s.type === 'character' ? 'character' : 'creature',
+    entity_id: s.entityId,
+    // v2.746.0 — explicit instance link; null keeps the trigger's guess
+    // (legacy callers / scene_tokens campaigns). See SeedSource.combatantId.
+    combatant_id: s.combatantId ?? null,
+    name: s.name,
+    initiative,
+    initiative_tiebreaker: s.dexMod,
+    turn_order: ctx.turnOrder,
+    ac: s.ac,
+    // v2.320: current_hp/max_hp removed from insert payload. The v2.319
+    // BEFORE INSERT trigger (cp_ensure_combatant_link) seeds the linked
+    // combatant's HP from authoritative tables (characters/monsters/npcs).
+    // Legacy current_hp/max_hp columns dropped in v2.321.
+    hidden_from_players: s.hiddenFromPlayers ?? false,
+    max_speed_ft: s.maxSpeedFt ?? 30,
+    // v2.138.0 — Phase M pt 1: seed LR from the monster stat block so
+    // v2.139's failed-save prompt and v2.140's initiative-strip badge
+    // have data to render. Characters/NPCs leave `legendaryResistance`
+    // undefined → both fields stay null.
+    legendary_resistance: s.legendaryResistance ?? null,
+    legendary_resistance_used:
+      (s.legendaryResistance ?? 0) > 0 ? 0 : null,
+    // v2.285.0 — auto-seed LA from the bestiary. monsterToSeed sets
+    // legendaryActionsTotal=3 + legendaryActionsConfig=<list> when
+    // the stat block has any legendary actions; non-LA seeds leave
+    // both undefined and we fall back to the DB defaults' shape
+    // (0, 0, []). Writing the defaults explicitly rather than
+    // conditional-spreading because TS narrows the union shape
+    // poorly across the insert overloads. The columns are NOT
+    // NULL with defaults, so explicit writes are safe.
+    legendary_actions_total: s.legendaryActionsTotal ?? 0,
+    legendary_actions_remaining: s.legendaryActionsTotal ?? 0,
+    // Cast required because MonsterLegendaryAction is a structural
+    // interface without an index signature, but Supabase's generated
+    // Json type insists on `{ [key: string]: Json | undefined }`. The
+    // runtime payload is plain JSON-serializable data (string fields
+    // + optional numeric `cost`), so the cast is sound.
+    legendary_actions_config: (s.legendaryActionsConfig ?? []) as unknown as import('../types/supabase').Json,
+    // v2.399.0 — Multiattack counter. v2.746: now written by late adds
+    // too (a reinforcement with Multiattack used to arrive with 1/1).
+    attacks_per_action: s.attacksPerAction ?? 1,
+    attacks_remaining: s.attacksPerAction ?? 1,
+  };
+}
+
+/** v2.746.0 — collapse per-instance seeds back to one per
+ *  (type, entityId), keeping the FIRST seed's combatantId. Used only
+ *  when the participants insert rejects with 23505 because the target
+ *  database still carries the pre-v2.746 UNIQUE(encounter_id,
+ *  participant_type, entity_id) — i.e. migration
+ *  20260922120000_combat_participants_per_instance_v2_746 has not been
+ *  applied there yet. Exported for the unit test. */
+export function firstPerDefinition(seeds: SeedSource[]): SeedSource[] {
+  const seen = new Set<string>();
+  return seeds.filter(s => {
+    const key = `${s.type === 'character' ? 'character' : 'creature'}:${s.entityId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function characterToSeed(c: Character): SeedSource {
@@ -145,50 +262,14 @@ export async function addParticipantToEncounter(
   seed: SeedSource,
   initiativeMode: 'auto_all' | 'player_agency' = 'auto_all',
 ): Promise<CombatParticipant | null> {
-  const shouldAutoRoll =
-    initiativeMode === 'auto_all' ||
-    seed.type !== 'character'; // NPCs and monsters always auto-roll
-
-  const shouldRollHidden = seed.hiddenFromPlayers ? false : true;
-
-  let initiative: number | null = null;
-  if (shouldAutoRoll && shouldRollHidden) {
-    initiative = rollInitiativeFor(seed.dexMod, seed.initiativeBonus).total;
-  }
-
-  const row = {
-    encounter_id: encounterId,
-    campaign_id: campaignId,
-    // v2.352.0 — normalize legacy 'monster'/'npc' to 'creature'.
-    participant_type: seed.type === 'character' ? 'character' : 'creature',
-    entity_id: seed.entityId,
-    name: seed.name,
-    initiative,
-    initiative_tiebreaker: seed.dexMod,
-    turn_order: 999, // placeholder — recomputed below
-    ac: seed.ac,
-    // v2.320: current_hp/max_hp removed from insert payload. The v2.319
-    // BEFORE INSERT trigger (cp_ensure_combatant_link) seeds the linked
-    // combatant's HP from authoritative tables (characters/monsters/npcs).
-    // Legacy current_hp/max_hp columns drop in v2.321.
-    hidden_from_players: seed.hiddenFromPlayers ?? false,
-    max_speed_ft: seed.maxSpeedFt ?? 30,
-    legendary_resistance: seed.legendaryResistance ?? null,
-    legendary_resistance_used: (seed.legendaryResistance ?? 0) > 0 ? 0 : null,
-    // v2.285.0 — same explicit-defaults LA seeding as startEncounter
-    // (see comment there for the rationale on writing zero/empty
-    // explicitly vs conditional spread). Non-LA seeds get 0/0/[]
-    // matching the DB defaults; LA seeds get 3/3/<list>.
-    legendary_actions_total: seed.legendaryActionsTotal ?? 0,
-    legendary_actions_remaining: seed.legendaryActionsTotal ?? 0,
-    // Cast required because MonsterLegendaryAction is a structural
-    // interface without an index signature, but Supabase's generated
-    // Json type insists on `{ [key: string]: Json | undefined }`. The
-    // runtime payload is plain JSON-serializable data (string fields
-    // + optional numeric `cost`), so the cast is sound. Same pattern
-    // mirrored in startEncounter at the equivalent insert.
-    legendary_actions_config: (seed.legendaryActionsConfig ?? []) as unknown as import('../types/supabase').Json,
-  };
+  // v2.746.0 — shared row builder (see seedToRow). Late adds keep the
+  // pre-v2.746 hidden-monster behaviour: a hidden reinforcement never
+  // rolls until revealed (= 'roll_at_reveal').
+  const row = seedToRow(seed, {
+    encounterId, campaignId, initiativeMode,
+    hiddenMonsterRevealMode: 'roll_at_reveal',
+    turnOrder: 999, // placeholder — recomputed below
+  });
 
   const { data, error } = await supabase
     .from('combat_participants')
@@ -197,8 +278,11 @@ export async function addParticipantToEncounter(
     .single();
 
   if (error || !data) {
+    // v2.746.0 — surface the SQLSTATE: 23505 means this combatant (or,
+    // pre-migration, this definition) is already in the encounter, which
+    // callers turn into a visible "already in combat?" message.
     // eslint-disable-next-line no-console
-    console.error('[addParticipantToEncounter] insert failed:', error?.message);
+    console.error('[addParticipantToEncounter] insert failed:', error?.code, error?.message);
     return null;
   }
 
@@ -425,69 +509,37 @@ export async function startEncounter(opts: StartEncounterOptions): Promise<Start
   // 2. Seed participants. Auto-roll initiative for all if auto_all; otherwise only
   //    NPCs/monsters get auto-rolled and player characters stay null until they
   //    explicitly roll (player_agency mode).
-  const rows = opts.seeds.map(s => {
-    const shouldAutoRoll =
-      opts.initiativeMode === 'auto_all' ||
-      s.type !== 'character';
+  const rowCtx: SeedRowContext = {
+    encounterId: encounter.id,
+    campaignId: opts.campaignId,
+    initiativeMode: opts.initiativeMode,
+    hiddenMonsterRevealMode: opts.hiddenMonsterRevealMode,
+    turnOrder: 0,  // computed after all rolls settle
+  };
+  const rows = opts.seeds.map(s => seedToRow(s, rowCtx));
 
-    // Hidden monsters: in roll_at_reveal mode, stay null; in roll_at_start, roll
-    const shouldRollHidden = s.hiddenFromPlayers
-      ? (opts.hiddenMonsterRevealMode ?? 'roll_at_reveal') === 'roll_at_start'
-      : true;
-
-    let initiative: number | null = null;
-    if (shouldAutoRoll && shouldRollHidden) {
-      initiative = rollInitiativeFor(s.dexMod, s.initiativeBonus).total;
-    }
-
-    return {
-      encounter_id: encounter.id,
-      campaign_id: opts.campaignId,
-      // v2.352.0 — normalize legacy 'monster'/'npc' to 'creature' to
-      // match the v2.350 CHECK constraint. Without this, any caller
-      // still passing legacy seed types would 500 the insert.
-      participant_type: s.type === 'character' ? 'character' : 'creature',
-      entity_id: s.entityId,
-      name: s.name,
-      initiative,
-      initiative_tiebreaker: s.dexMod,
-      turn_order: 0,  // computed after all rolls settle
-      ac: s.ac,
-      // v2.320: current_hp/max_hp removed; trigger seeds combatants
-      // from authoritative tables (see addParticipantToEncounter).
-      hidden_from_players: s.hiddenFromPlayers ?? false,
-      max_speed_ft: s.maxSpeedFt ?? 30,
-      // v2.138.0 — Phase M pt 1: seed LR from the monster stat block so
-      // v2.139's failed-save prompt and v2.140's initiative-strip badge
-      // have data to render. Characters/NPCs leave `legendaryResistance`
-      // undefined → both fields stay null.
-      legendary_resistance: s.legendaryResistance ?? null,
-      legendary_resistance_used:
-        (s.legendaryResistance ?? 0) > 0 ? 0 : null,
-      // v2.285.0 — auto-seed LA from the bestiary. monsterToSeed sets
-      // legendaryActionsTotal=3 + legendaryActionsConfig=<list> when
-      // the stat block has any legendary actions; non-LA seeds leave
-      // both undefined and we fall back to the DB defaults' shape
-      // (0, 0, []). Writing the defaults explicitly rather than
-      // conditional-spreading because TS narrows the union shape
-      // poorly across the insert overloads. The columns are NOT
-      // NULL with defaults, so explicit writes are safe.
-      legendary_actions_total: s.legendaryActionsTotal ?? 0,
-      legendary_actions_remaining: s.legendaryActionsTotal ?? 0,
-      // Cast: see addParticipantToEncounter for the rationale —
-      // MonsterLegendaryAction lacks the Json index signature.
-      legendary_actions_config: (s.legendaryActionsConfig ?? []) as unknown as import('../types/supabase').Json,
-      // v2.399.0 — Multiattack counter, mirrored from the per-row
-      // addParticipantToEncounter insert above.
-      attacks_per_action: s.attacksPerAction ?? 1,
-      attacks_remaining: s.attacksPerAction ?? 1,
-    };
-  });
-
-  const { data: partData, error: partErr } = await supabase
+  let { data: partData, error: partErr } = await supabase
     .from('combat_participants')
     .insert(rows)
     .select();
+
+  // v2.746.0 — graceful degradation while a database still carries the
+  // pre-v2.746 UNIQUE(encounter_id, participant_type, entity_id): the
+  // per-instance rows (three Goblin Scouts = three rows, one definition)
+  // reject with 23505 and, the batch insert being atomic, nothing was
+  // written. Retry ONCE with the old one-per-definition shape so combat
+  // still starts; the initiative strip then shows a single goblin, as
+  // before. Apply migration 20260922120000_combat_participants_per_
+  // instance_v2_746 to get per-token participants.
+  if (partErr?.code === '23505') {
+    // eslint-disable-next-line no-console
+    console.warn('[startEncounter] per-instance participants rejected by the legacy UNIQUE (23505) — retrying one-per-definition; apply migration 20260922120000_combat_participants_per_instance_v2_746');
+    const deduped = firstPerDefinition(opts.seeds).map(s => seedToRow(s, rowCtx));
+    ({ data: partData, error: partErr } = await supabase
+      .from('combat_participants')
+      .insert(deduped)
+      .select());
+  }
 
   if (partErr || !partData) {
     // eslint-disable-next-line no-console
@@ -1414,10 +1466,17 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
           if (!c) continue;
           const updates: Record<string, unknown> = { current_hp: c.current_hp };
           if (c.temp_hp != null) updates.temp_hp = c.temp_hp;
-          if (c.death_save_successes != null) updates.death_save_successes = c.death_save_successes;
-          if (c.death_save_failures != null) updates.death_save_failures = c.death_save_failures;
-          if (c.is_stable != null) updates.is_stable = c.is_stable;
-          if (c.is_dead != null) updates.is_dead = c.is_dead;
+          // v2.746.0 — the characters columns are death_saveS_* (plural,
+          // src/types/supabase.ts + local schema agree); combatants use
+          // the singular. Writing the singular here 400'd EVERY character
+          // carry-over since v2.477, so HP/conditions never reached the
+          // sheet after combat. Keys renamed; the read side is untouched.
+          if (c.death_save_successes != null) updates.death_saves_successes = c.death_save_successes;
+          if (c.death_save_failures != null) updates.death_saves_failures = c.death_save_failures;
+          // v2.746 — is_stable / is_dead are combatants columns only; the
+          // characters table has neither (src/types/supabase.ts), and sending
+          // them still 400d the whole update (PGRST204) after the key rename
+          // above. Verified live on the local stack. Death state stays in combat.
           // v2.477.0 — Carry conditions and buffs to the character.
           // User intent: "things that are applied to the character
           // should just stay on a character after a fight ... it

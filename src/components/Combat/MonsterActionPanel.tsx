@@ -91,7 +91,10 @@ import {
   type LineTarget,
 } from '../../lib/lineGeometry';
 import { useBattleMapStore } from '../../lib/stores/battleMapStore';
-import { findTokenForParticipant } from '../../lib/battleMapGeometry';
+import { findTokenForParticipant, participantLookup } from '../../lib/battleMapGeometry';
+// v2.746.0 — ranked target lists (rules/targetOrder) + group chips.
+import { rankTargets, groupRanked } from '../../rules/targetOrder';
+import { TargetGroupChip, rowStyleFor } from './TargetGroupChip';
 import { useToast } from '../shared/Toast';
 import type { CombatParticipant } from '../../types';
 
@@ -841,7 +844,8 @@ export default function MonsterActionPanel({ isDM }: Props) {
     const candidates: ConeTarget<CombatParticipant>[] = [];
     for (const p of participants) {
       if (p.id === currentActor.id) continue;
-      if (p.is_dead) continue;
+      // v2.746 — dead creatures stay candidates so a corpse inside the
+      // area highlights on the map; the save batch still skips them.
       const lookup: ParticipantForTokenLookup = {
         id: p.id,
         name: p.name,
@@ -956,7 +960,8 @@ export default function MonsterActionPanel({ isDM }: Props) {
     const candidates: LineTarget<CombatParticipant>[] = [];
     for (const p of participants) {
       if (p.id === currentActor.id) continue;
-      if (p.is_dead) continue;
+      // v2.746 — dead creatures stay candidates so a corpse inside the
+      // area highlights on the map; the save batch still skips them.
       const lookup: ParticipantForTokenLookup = {
         id: p.id,
         name: p.name,
@@ -1027,7 +1032,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
     type Candidate = { participant: CombatParticipant; tokenId: string;
       minX: number; minY: number; maxX: number; maxY: number };
     const candidates: Candidate[] = participants
-      .filter(p => p.id !== currentActor.id && !p.is_dead)
+      .filter(p => p.id !== currentActor.id) // v2.746 — corpses highlight too
       .map(p => {
         const lookup: ParticipantForTokenLookup = {
           id: p.id, name: p.name,
@@ -1625,6 +1630,14 @@ export default function MonsterActionPanel({ isDM }: Props) {
       //     via homebrew_monsters → monsters lookup chain)
       // Replaces 2N+N sequential client round-trips.
       const liveTargets = targets.filter(t => !t.is_dead);
+      // v2.746 — corpses in a cone/line now highlight and can be picked;
+      // the batch still skips them (a dead creature has no HP to lose),
+      // and the DM is told so instead of wondering where a target went.
+      const deadSkipped = targets.length - liveTargets.length;
+      if (deadSkipped > 0) {
+        showToast(`${liveTargets.length} target${liveTargets.length === 1 ? '' : 's'} · ${deadSkipped} dead skipped`, 'info');
+      }
+      if (liveTargets.length === 0) return;
       const batch = await declareSaveBatch({
         campaignId: encounter.campaign_id,
         encounterId: encounter.id,
@@ -3118,75 +3131,32 @@ interface PickerProps {
   liveBattleMap: ActiveBattleMap | null;
   onPick: (target: CombatParticipant) => void;
   onCancel: () => void;
+  /** v2.746.0 — list the attacker as a target (self-target riders).
+   *  Replaces the v2.385 ⊘ Lock/Unlock toggle: self is opt-in per
+   *  action by the caller, dead/0-HP targets are always listed (last). */
+  allowSelfTarget?: boolean;
 }
 
 function RangeAwareTargetPicker(props: PickerProps) {
   const movementBusy=useMapMovementBusy();
-  const { attackerParticipant, participants, action, attackRangeFt, liveBattleMap, onPick, onCancel } = props;
+  const { attackerParticipant, participants, action, attackRangeFt, liveBattleMap, onPick, onCancel, allowSelfTarget = false } = props;
 
-  // v2.385.0 — Lock state for excluded (self / dead) targets.
-  // Default: locked → excluded entries are dimmed and unclickable.
-  // Unlocked: DM has explicitly opted in (e.g. coup de grâce on a
-  // downed PC, self-target rider, weird narrative case). The toggle
-  // is in the modal header; opening the modal resets it to locked
-  // because the unlock is per-action, not per-session.
-  const [excludedUnlocked, setExcludedUnlocked] = useState(false);
-
-  // v2.384.0 — Surface why the picker may be empty. The valid-target
-  // filter is unchanged (alive non-self), but we now also collect the
-  // participants we filtered out and the reason, so the empty state
-  // can display a dimmed "excluded" list instead of just saying "no
-  // valid targets" with no context. Only consumed by the JSX below
-  // when targets.length === 0; the happy path is byte-identical.
-  const { targets, excluded } = useMemo(() => {
-    const attackerLookup: ParticipantForTokenLookup = {
-      id: attackerParticipant.id,
-      name: attackerParticipant.name,
-      participant_type: attackerParticipant.participant_type,
-      entity_id: attackerParticipant.entity_id, combatant_id: attackerParticipant.combatant_id,
-    };
-    const valid: Array<{ participant: CombatParticipant; distFt: number | null; inRange: boolean }> = [];
-    const excl: Array<{ participant: CombatParticipant; reason: 'self' | 'dead' }> = [];
-
-    for (const p of participants) {
-      if (p.id === attackerParticipant.id) {
-        excl.push({ participant: p, reason: 'self' });
-        continue;
-      }
-      if (p.is_dead) {
-        excl.push({ participant: p, reason: 'dead' });
-        continue;
-      }
-      const lookup: ParticipantForTokenLookup = {
-        id: p.id,
-        name: p.name,
-        participant_type: p.participant_type,
-        entity_id: p.entity_id, combatant_id: p.combatant_id,
-      };
-      const dist = liveBattleMap
-        ? distanceBetweenParticipantsFtUsingMap(attackerLookup, lookup, liveBattleMap)
-        : null;
-      // Fail open when distance unknown.
-      const inRange = dist === null ? true : dist <= attackRangeFt;
-      valid.push({ participant: p, distFt: dist, inRange });
-    }
-
-    valid.sort((a, b) => {
-      // PCs first, creatures second. Within each group sort by
-      // name for stable reading order.
-      const aIsPC = a.participant.participant_type === 'character' ? 0 : 1;
-      const bIsPC = b.participant.participant_type === 'character' ? 0 : 1;
-      if (aIsPC !== bIsPC) return aIsPC - bIsPC;
-      return a.participant.name.localeCompare(b.participant.name);
-    });
-    // Excluded: self first (it's about the attacker), then dead by name.
-    excl.sort((a, b) => {
-      if (a.reason !== b.reason) return a.reason === 'self' ? -1 : 1;
-      return a.participant.name.localeCompare(b.participant.name);
-    });
-
-    return { targets: valid, excluded: excl };
-  }, [attackerParticipant, participants, liveBattleMap, attackRangeFt]);
+  // v2.746.0 — rules/targetOrder ranks the list: enemies, allies, self
+  // (opt-in), at 0 HP, dead. The v2.384/385 "Excluded — self / dead"
+  // section and its lock toggle are gone: a downed or dead creature is
+  // simply listed at the bottom with a chip and stays clickable (SRD:
+  // damage at 0 HP is a Death Saving Throw failure; a coup de grâce is
+  // exactly that), so the two unlock use-cases need no toggle. Range
+  // still fails open when distance is unknown (no map / no token).
+  const ranked = useMemo(() => rankTargets(participants, {
+    self: attackerParticipant,
+    allowSelfTarget,
+    maxRangeFt: attackRangeFt,
+    distanceFt: p => liveBattleMap
+      ? distanceBetweenParticipantsFtUsingMap(participantLookup(attackerParticipant), participantLookup(p), liveBattleMap)
+      : null,
+  }), [attackerParticipant, participants, liveBattleMap, attackRangeFt, allowSelfTarget]);
+  const groups = useMemo(() => groupRanked(ranked), [ranked]);
 
   return (
     <div
@@ -3227,50 +3197,26 @@ function RangeAwareTargetPicker(props: PickerProps) {
                 {(action.attack_bonus ?? 0) >= 0 ? '+' : ''}{action.attack_bonus ?? 0} to hit · {action.damage_dice} {action.damage_type}
               </div>
             </div>
-            {/* v2.385.0 — Lock toggle for excluded (self / dead). Only
-                shown when there ARE excluded entries to act on. */}
-            {excluded.length > 0 && (
-              <button
-                onClick={() => setExcludedUnlocked(v => !v)}
-                title={excludedUnlocked
-                  ? 'Excluded targets unlocked — click to re-lock'
-                  : 'Allow targeting self / dead participants (coup de grâce, self-target riders, etc.)'}
-                style={{
-                  flexShrink: 0,
-                  fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800,
-                  letterSpacing: '0.08em', textTransform: 'uppercase',
-                  padding: '4px 8px', borderRadius: 4,
-                  background: excludedUnlocked ? 'rgba(239,68,68,0.15)' : 'var(--c-raised, rgba(255,255,255,0.04))',
-                  color: excludedUnlocked ? '#fca5a5' : 'var(--t-2)',
-                  border: `1px solid ${excludedUnlocked ? 'rgba(239,68,68,0.5)' : 'var(--c-border)'}`,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {excludedUnlocked ? '✓ Unlocked' : '⊘ Lock'}
-              </button>
-            )}
           </div>
         </div>
 
         <MovementPendingNotice busy={movementBusy}/>
         <div style={{ overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {targets.length === 0 && excluded.length === 0 && (
+          {ranked.length === 0 && (
             <div style={{ padding: 20, textAlign: 'center', color: 'var(--t-3)', fontSize: 13 }}>
-              No participants in this encounter.
+              No other participants in this encounter.
             </div>
           )}
-          {targets.length === 0 && excluded.length > 0 && (
-            <div style={{ padding: '12px 8px 4px 8px', textAlign: 'center', color: 'var(--t-3)', fontSize: 12 }}>
-              No valid targets in this encounter.
-              {!excludedUnlocked && (
-                <div style={{ marginTop: 4, fontSize: 11, opacity: 0.8 }}>
-                  Tap ⊘ above to allow excluded participants.
-                </div>
-              )}
-            </div>
-          )}
-          {targets.map(({ participant: p, distFt, inRange }) => {
+          {groups.map(g => [
+            groups.length > 1 ? (
+              <div key={`hdr-${g.group}`} data-target-group-header={g.group} style={{
+                fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
+                color: 'var(--t-3)', textAlign: 'center', padding: '8px 0 2px',
+              }}>
+                {g.label}
+              </div>
+            ) : null,
+            ...g.items.map(({ target: p, distanceFt: distFt, inRange, group }) => {
             const isPC = p.participant_type === 'character';
             const hpPct = p.max_hp && p.max_hp > 0 ? (p.current_hp ?? 0) / p.max_hp : 1;
             const hpColor = hpPct >= 0.66 ? '#34d399' : hpPct >= 0.33 ? '#fbbf24' : '#f87171';
@@ -3278,6 +3224,7 @@ function RangeAwareTargetPicker(props: PickerProps) {
             return (
               <button
                 key={p.id}
+                data-target-group={group}
                 onClick={() => inRange && !isMapMovementBusy() && onPick(p)}
                 disabled={!inRange || movementBusy}
                 title={inRange
@@ -3294,6 +3241,7 @@ function RangeAwareTargetPicker(props: PickerProps) {
                   opacity: inRange ? 1 : 0.45,
                   textAlign: 'left',
                   color: 'var(--t-1)',
+                  ...rowStyleFor(group),
                 }}
               >
                 <span
@@ -3306,13 +3254,14 @@ function RangeAwareTargetPicker(props: PickerProps) {
                   {isPC ? 'PC' : 'CRE'}
                 </span>
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  <span style={{ fontWeight: 700, fontSize: 13 }}>{p.name}</span>
+                  <span style={{ fontWeight: 700, fontSize: 13, textDecoration: group === 'dead' ? 'line-through' : undefined }}>{p.name}</span>
                   <span style={{ fontSize: 10, color: 'var(--t-3)', marginLeft: 8 }}>
                     {distLabel}{p.ac ? ` · AC ${p.ac}` : ''}
                   </span>
                 </span>
+                <TargetGroupChip group={group} />
                 {p.max_hp ? (
-                  <span style={{ fontSize: 10, color: hpColor, fontWeight: 700, minWidth: 64, textAlign: 'right' }}>
+                  <span style={{ fontSize: 10, color: group === 'down' ? '#f87171' : hpColor, fontWeight: 700, minWidth: 64, textAlign: 'right' }}>
                     {p.current_hp ?? 0}/{p.max_hp}
                   </span>
                 ) : null}
@@ -3323,73 +3272,8 @@ function RangeAwareTargetPicker(props: PickerProps) {
                 )}
               </button>
             );
-          })}
-
-          {/* v2.385.0 — Excluded section (self / dead). Always rendered
-              when there are any. Dimmed and unclickable by default;
-              the lock toggle in the header makes them selectable. The
-              empty-state header above already explains the lock when
-              targets is empty. */}
-          {excluded.length > 0 && (
-            <>
-              {targets.length > 0 && (
-                <div style={{
-                  fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
-                  color: 'var(--t-3)', textAlign: 'center', padding: '8px 0 2px',
-                }}>
-                  Excluded {excludedUnlocked && <span style={{ color: '#fca5a5' }}>· UNLOCKED</span>}
-                </div>
-              )}
-              {excluded.map(({ participant: p, reason }) => {
-                const isPC = p.participant_type === 'character';
-                const clickable = excludedUnlocked;
-                const reasonLabel = reason === 'self' ? 'self' : 'dead';
-                const reasonColor = reason === 'self' ? 'var(--c-gold-l)' : '#fca5a5';
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => clickable && !isMapMovementBusy() && onPick(p)}
-                    disabled={!clickable || movementBusy}
-                    title={clickable
-                      ? `${p.name} (${reasonLabel}) — click to target anyway`
-                      : reason === 'self'
-                        ? `${p.name} is the attacker. Unlock to self-target.`
-                        : `${p.name} is dead. Unlock to target anyway (e.g. coup de grâce).`}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 10,
-                      padding: '10px 12px', borderRadius: 6,
-                      background: clickable ? 'rgba(239,68,68,0.06)' : 'rgba(255,255,255,0.02)',
-                      border: `1px solid ${clickable ? 'rgba(239,68,68,0.3)' : 'rgba(255,255,255,0.05)'}`,
-                      cursor: clickable ? 'pointer' : 'not-allowed',
-                      opacity: clickable ? 0.85 : 0.5,
-                      textAlign: 'left',
-                      color: 'var(--t-1)',
-                    }}
-                  >
-                    <span style={{
-                      fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
-                      color: 'var(--t-3)', minWidth: 32,
-                    }}>
-                      {isPC ? 'PC' : 'CRE'}
-                    </span>
-                    <span style={{
-                      flex: 1, minWidth: 0, fontWeight: 700, fontSize: 13,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                      textDecoration: reason === 'dead' ? 'line-through' : 'none',
-                    }}>
-                      {p.name}
-                    </span>
-                    <span style={{
-                      fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
-                      color: reasonColor, fontStyle: 'italic',
-                    }}>
-                      {reasonLabel}
-                    </span>
-                  </button>
-                );
-              })}
-            </>
-          )}
+            }),
+          ])}
         </div>
 
         <div style={{ padding: '8px 14px', borderTop: '1px solid var(--c-border)', display: 'flex', justifyContent: 'flex-end' }}>

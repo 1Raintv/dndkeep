@@ -13,7 +13,7 @@
 //   3. If registry scope == 'on_caster_only', auto-apply and close
 //   4. Otherwise show target tiles; user picks up to MAX_TARGETS; Apply
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import { BUFF_SPELL_REGISTRY, applyBuffFromSpell } from '../../lib/buffs';
@@ -23,9 +23,13 @@ import { BUFF_SPELL_REGISTRY, applyBuffFromSpell } from '../../lib/buffs';
 import {
   loadActiveBattleMap,
   distanceBetweenParticipantsFtUsingMap,
+  participantLookup,
   type ActiveBattleMap,
-  type ParticipantForTokenLookup,
 } from '../../lib/battleMapGeometry';
+// v2.746.0 — ranked list (allies first for a buff caster's own side, then
+// enemies, 0-HP, dead — dead stay selectable; buffs.ts no-ops on is_dead).
+import { rankTargets, groupRanked } from '../../rules/targetOrder';
+import { TargetGroupChip, rowStyleFor } from './TargetGroupChip';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants via JOIN.
 import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from '../../lib/combatParticipantNormalize';
@@ -43,9 +47,11 @@ interface Props {
 interface MiniParticipant {
   id: string;
   name: string;
-  participant_type: 'character' | 'monster' | 'npc';
+  participant_type: string;
   // v2.480.0 — entity_id needed for footprint-aware distance lookup.
   entity_id: string | null;
+  /** v2.746.0 — per-instance token link (see participantLookup). */
+  combatant_id: string | null;
   current_hp: number;
   max_hp: number;
   is_dead: boolean;
@@ -63,8 +69,9 @@ export default function BuffTargetPickerModal({
   const [error, setError] = useState<string | null>(null);
   // v2.480.0 — Battle map for footprint-aware distance display.
   const [battleMap, setBattleMap] = useState<ActiveBattleMap | null>(null);
-  // v2.480.0 — Caster name needed to build a ParticipantForTokenLookup.
-  const [casterName, setCasterName] = useState<string>('');
+  // v2.480.0 — Caster row (name + v2.746 combatant_id) for the
+  // ParticipantForTokenLookup on the "from" side of distance.
+  const [casterRow, setCasterRow] = useState<{ id: string; name: string; combatant_id: string | null } | null>(null);
 
   const registryKey = spellName.trim().toLowerCase();
   const entry = BUFF_SPELL_REGISTRY[registryKey];
@@ -99,7 +106,7 @@ export default function BuffTargetPickerModal({
         // 2. Resolve caster's participant row
         const { data: casterRow } = await supabase
           .from('combat_participants')
-          .select('id, name')
+          .select('id, name, combatant_id')
           .eq('encounter_id', enc.id)
           .eq('participant_type', 'character')
           .eq('entity_id', casterCharacterId)
@@ -111,9 +118,13 @@ export default function BuffTargetPickerModal({
           return;
         }
         setCasterParticipantId(casterRow.id as string);
-        // v2.480.0 — Stash caster name so the distance lookup has a
-        // ParticipantForTokenLookup with all four fields filled in.
-        setCasterName((casterRow as { name?: string }).name ?? '');
+        // v2.480.0 — Stash the caster row so the distance lookup has a
+        // full ParticipantForTokenLookup (v2.746: incl. combatant_id).
+        setCasterRow({
+          id: casterRow.id as string,
+          name: (casterRow as { name?: string }).name ?? '',
+          combatant_id: (casterRow as { combatant_id?: string | null }).combatant_id ?? null,
+        });
 
         // 3. For caster-only buffs, auto-apply and close
         if (entry?.scope === 'on_caster_only') {
@@ -131,11 +142,14 @@ export default function BuffTargetPickerModal({
         }
 
         // 4. Load the rest of the participants (targets to pick from)
+        // v2.746.0 — the `.eq('is_dead', false)` filter is GONE: is_dead
+        // left combat_participants in v2.321 (it lives on combatants),
+        // so PostgREST rejected the whole query and Bless / Hex listed
+        // NO targets at all. Dead rows now come back and rank last.
         const { data: allRaw } = await (supabase as any)
           .from('combat_participants')
-          .select('id, name, participant_type, entity_id, ' + JOINED_COMBATANT_FIELDS)
+          .select('id, name, participant_type, entity_id, combatant_id, ' + JOINED_COMBATANT_FIELDS)
           .eq('encounter_id', enc.id)
-          .eq('is_dead', false)
           .order('initiative', { ascending: false });
   const all = ((allRaw ?? []) as any[]).map(normalizeParticipantRow);
         if (cancelled) return;
@@ -163,6 +177,21 @@ export default function BuffTargetPickerModal({
     load();
     return () => { cancelled = true; };
   }, [campaignId, casterCharacterId, spellName]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // v2.746.0 — ranked rows. The caster is a legal Bless target, so self
+  // is allowed (it lands in the 'self' group, after allies).
+  const groups = useMemo(() => groupRanked(rankTargets(participants, {
+    self: casterParticipantId ? { id: casterParticipantId, participant_type: 'character' } : null,
+    allowSelfTarget: true,
+    distanceFt: p => {
+      if (!battleMap || !casterRow) return null;
+      if (casterRow.id === p.id) return 0;
+      return distanceBetweenParticipantsFtUsingMap(
+        participantLookup({ ...casterRow, participant_type: 'character', entity_id: casterCharacterId }),
+        participantLookup(p), battleMap,
+      );
+    },
+  })), [participants, casterParticipantId, casterRow, casterCharacterId, battleMap]);
 
   function toggleTarget(id: string) {
     setSelected(prev => {
@@ -254,7 +283,18 @@ export default function BuffTargetPickerModal({
           padding: 10,
           display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6,
         }}>
-          {participants.map(p => {
+          {groups.map(g => [
+            groups.length > 1 ? (
+              <div key={`hdr-${g.group}`} data-target-group-header={g.group} style={{
+                gridColumn: '1 / -1',
+                fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
+                color: 'var(--t-3)', textAlign: 'center', padding: '6px 0 0',
+              }}>
+                {g.label}
+              </div>
+            ) : null,
+            ...g.items.map(row => {
+            const p = row.target;
             const isSelected = selected.has(p.id);
             // v2.350.0: 'monster'/'npc' merged into 'creature'.
             // Helper recognizes all three for in-flight data.
@@ -262,34 +302,13 @@ export default function BuffTargetPickerModal({
               p.participant_type === 'character' ? '#60a5fa'
               : isCreatureParticipantType(p.participant_type) ? '#f87171'
               : '#a78bfa';
-            // v2.480.0 — Footprint-aware distance from caster to target.
-            // null when battleMap hasn't resolved yet OR either side
-            // has no token on the active map.
-            let distanceFt: number | null = null;
-            if (battleMap && casterParticipantId) {
-              if (casterParticipantId === p.id) {
-                distanceFt = 0;
-              } else {
-                const fromLookup: ParticipantForTokenLookup = {
-                  id: casterParticipantId,
-                  name: casterName,
-                  participant_type: 'character',
-                  entity_id: casterCharacterId,
-                };
-                const toLookup: ParticipantForTokenLookup = {
-                  id: p.id,
-                  name: p.name,
-                  participant_type: p.participant_type,
-                  entity_id: p.entity_id,
-                };
-                distanceFt = distanceBetweenParticipantsFtUsingMap(
-                  fromLookup, toLookup, battleMap,
-                );
-              }
-            }
+            // v2.480.0 — Footprint-aware distance from caster to target
+            // (v2.746: computed by rankTargets' callback; 0 ft for self).
+            const distanceFt = row.distanceFt;
             return (
               <button
                 key={p.id}
+                data-target-group={row.group}
                 onClick={() => toggleTarget(p.id)}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
@@ -302,14 +321,19 @@ export default function BuffTargetPickerModal({
                     : '#0d1117',
                   cursor: 'pointer', minHeight: 0, textAlign: 'left',
                   gap: 2,
+                  ...rowStyleFor(row.group),
                 }}
               >
-                <span style={{
-                  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
-                  color: isSelected ? '#facc15' : typeColor,
-                  letterSpacing: '0.04em', textTransform: 'uppercase',
-                }}>
-                  {p.name}
+                <span style={{ display: 'flex', alignItems: 'center', gap: 6, maxWidth: '100%' }}>
+                  <span style={{
+                    fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
+                    color: isSelected ? '#facc15' : typeColor,
+                    letterSpacing: '0.04em', textTransform: 'uppercase',
+                    textDecoration: row.group === 'dead' ? 'line-through' : undefined,
+                  }}>
+                    {p.name}
+                  </span>
+                  <TargetGroupChip group={row.group} />
                 </span>
                 <span style={{ fontFamily: 'var(--ff-stat)', fontSize: 10, color: 'var(--t-3)' }}>
                   {p.current_hp}/{p.max_hp} HP · {p.participant_type}
@@ -320,7 +344,8 @@ export default function BuffTargetPickerModal({
                 </span>
               </button>
             );
-          })}
+            }),
+          ])}
         </div>
 
         {/* Buttons */}

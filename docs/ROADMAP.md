@@ -3,6 +3,71 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-09-22 — Tokens land where the preview shows; every token is a target, v2.746
+
+Reproduced the "token shifts a little after I let go" report on the local stack
+with two clients sampling positions every 40 ms. On the mover's own screen there
+was no race: the ghost followed the raw cursor and only glided to the cell after
+release. Other clients received raw cursor positions, then one jump to the cell at
+release, and their drag lock cleared at pointer-up while the save was still in
+flight, so a delayed or rejected save rewound the token seconds later. Now one pure
+`snapTokenDrop` helper (`lib/map/coords.ts`) drives the preview, the ghost, the
+broadcast, the commit and click-to-move; the ghost snaps cell to cell during the
+drag (behind `SNAP_GHOST_WHILE_DRAGGING` in TokenLayer, one line to revert); the
+drop commits the previewed cell; peers only ever see snapped cells; the drag lease
+outlives the save (the Codex v2.746 work-in-progress, ported with amendments) and a
+released or lost lease refetches the scene so click-to-move, nudges and undo reach
+peers; saves are bounded by a 15 s timeout; a pure click never writes; the legacy
+`scene_tokens` echo respects held tokens; click-to-move stamps its own write.
+
+Reproduced the "area doesn't register the tokens" report: combat participants were
+per creature definition (a real UNIQUE constraint), Start Combat collapsed three
+Goblin Scout tokens into one participant, the link trigger guessed an arbitrary
+copy (sometimes on another scene), and the v2.743 lookup then dropped that
+participant from every area, range and cover computation. Participants are now
+per token and carry their placement's combatant explicitly (seed `combatantId`,
+one seed per token, picker and NPC-manager placements pre-create the combatant);
+`findTokenForParticipant` falls back to an unambiguous same-definition token and
+resolves in two passes with a claimed set; the loader keeps identity for
+`narrative_npc` and `srd_monster` placements; token HP bars and the active-turn
+ring resolve combatant-first (creature tokens on the placements path had `npcId`
+null, so DM monster moves were silently unenforced). Migration
+`20260922120000_combat_participants_per_instance_v2_746.sql` replaces the
+per-definition UNIQUE with per-combatant uniqueness; until it is applied,
+`startEncounter` retries once per definition, so nothing regresses.
+
+Every target list now ranks through one pure helper (`rules/targetOrder.ts`):
+living enemies first, then allies, then creatures at 0 HP, then the dead — all
+still selectable, badged DOWNED / DEAD with SRD 5.2.1 wording, in-range before
+out-of-range, then closest. Area auto-select pre-checks living and downed tokens
+in the area and lists dead ones as IN AREA, unchecked. The MonsterActionPanel
+lock/unlock toggle is gone. Also fixed along the way: "Select within N ft" passed
+the pixel grid size as feet per square (selected nothing under 70 ft); the
+Actions-tab Cast button for area, multi-beam and heal spells never mounted its
+picker; the Bless/Hex picker filtered on a dropped column and rendered empty;
+legendary-action targets never joined combatants; end-of-combat character
+carry-over sent columns the characters table lacks (400 on every character since
+v2.477); a destroyed GridOverlay graphic threw on every map open.
+
+Validation: type-check 219 → 212 (CI ratcheted), 1045 unit tests, build and entry
+budget, RAW/coords/anchor checks, rules-of-hooks 0. Live on the local stack: five
+drop scenarios (medium, Large, player on turn with DM peer, click-to-move, 7 s
+delayed save) show no position change after release on either client; Start
+Combat from Ruined Keep yields 13 participants bound to their own placements; a
+20 ft sphere selects exactly the living goblin, the downed goblin and the ogre;
+both pickers order enemies → allies → down → dead. DB-backed specs run on one
+worker under `E2E_DB=1`.
+
+Pending decisions (Jared): (1) the migration ships to PROD when it reaches main —
+run the read-only duplicate pre-check first and say yes; the app degrades
+gracefully until then. (2) Keep the cell-to-cell drag ghost or revert the flag.
+(3) DM drags of the active monster are now movement-enforced, as the v2.414 gate
+intended. Known limits: with the DM viewing a scene other than the combat's,
+per-row distance lookups can map several participants onto one same-definition
+token (needs an encounter → scene link); hex-labelled scenes still snap square;
+"Duplicate token" copies never become participants; recruited-monster allies rank
+as enemies until a faction model exists.
+
 ### 2026-09-20 — Spell and multi-target movement safeguards, v2.745
 
 Spell targeting and DM multi-target save selection now wait for local movement

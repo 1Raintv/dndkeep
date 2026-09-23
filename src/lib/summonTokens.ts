@@ -259,7 +259,7 @@ export async function placeSummonToken(opts: {
       playerId: null,
     } as Token;
 
-    const { getUseCombatantsFlag, createPlacement } = await import('./api/scenePlacements');
+    const { getUseCombatantsFlag, createPlacement, createCombatantForDefinition } = await import('./api/scenePlacements');
     const useNewPath = await getUseCombatantsFlag(opts.campaignId);
     if (useNewPath) {
       // v2.615.0 — creature summons: create the combatant ourselves so
@@ -267,28 +267,22 @@ export async function placeSummonToken(opts: {
       // to createPlacement. owner_id = the casting player's session
       // (same convention createPlacement uses), which is what the B2
       // minion panel will key player control on.
+      // v2.746.0 — the inline insert moved to createCombatantForDefinition
+      // (shared with CreaturePickerModal / NPCManager); same fields.
       if (creatureRow) {
-        const { supabase } = await import('./supabase');
-        const { data: { session } } = await supabase.auth.getSession();
-        const ownerId = session?.user?.id ?? null;
-        const { data: cb, error: cbErr } = await (supabase as any)
-          .from('combatants')
-          .insert({
-            campaign_id: opts.campaignId,
-            owner_id: ownerId,
-            name: token.name,
-            definition_type: 'srd_monster',
-            definition_id: creatureRow.id,
-            current_hp: creatureRow.hp ?? 1,
-            max_hp: creatureRow.hp ?? 1,
-          })
-          .select('id')
-          .single();
-        if (cbErr || !cb) {
-          console.error('[summonTokens] creature combatant insert failed:', cbErr);
+        const combatantId = await createCombatantForDefinition({
+          campaignId: opts.campaignId,
+          name: token.name,
+          definitionType: 'srd_monster',
+          definitionId: creatureRow.id,
+          currentHp: creatureRow.hp ?? 1,
+          maxHp: creatureRow.hp ?? 1,
+        });
+        if (!combatantId) {
+          console.error('[summonTokens] creature combatant insert failed');
           return 'error';
         }
-        const placed = await createPlacement(token, { combatantId: cb.id as string, campaignId: opts.campaignId });
+        const placed = await createPlacement(token, { combatantId, campaignId: opts.campaignId });
         return placed ? 'placed' : 'error';
       }
       const placed = await createPlacement(token, { campaignId: opts.campaignId });

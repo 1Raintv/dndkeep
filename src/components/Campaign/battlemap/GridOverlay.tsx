@@ -24,9 +24,12 @@ export function GridOverlay(props: {
     return ()=>{if(!viewport.destroyed)viewport.removeChild(g);g.destroy();graphic.current=null;};
   },[viewport]);
   // v2.708 — retain the same layer while restyling; re-adding would put it above tokens.
-  useEffect(()=>{if(graphic.current)graphic.current.alpha=opacity;},[viewport,opacity]);
+  // v2.746 — both restyle effects can run after the mount effect's cleanup
+  // destroyed the Graphics (scene switch / viewport remount): g.clear() on a
+  // destroyed Graphics threw an uncaught TypeError every map session.
+  useEffect(()=>{const g=graphic.current;if(!g||g.destroyed)return;g.alpha=opacity;},[viewport,opacity]);
   useEffect(()=>{
-    const g=graphic.current;if(!g)return;g.clear();
+    const g=graphic.current;if(!g||g.destroyed)return;g.clear();
     const colors=gridColors(palette);
 
     const WW = widthCells * gridSizePx;

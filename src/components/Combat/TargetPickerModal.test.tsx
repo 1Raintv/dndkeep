@@ -45,3 +45,18 @@ it.each([false,true])('waits for the saved position before attacking (rollback=%
     fireEvent.click(button);expect(pick).toHaveBeenCalledTimes(rollback?0:1);
   } finally {act(release);}
 });
+it('v2.746 — lists a 0-HP creature under DOWNED and a dead one last under DEAD, both still clickable',async()=>{
+  const actor={id:'hero',name:'Hero',participant_type:'character',entity_id:'hero'} as CombatParticipant;
+  const live={id:'g1',name:'Goblin A',participant_type:'creature',entity_id:'goblin',current_hp:7,max_hp:7} as CombatParticipant;
+  const down={id:'g2',name:'Goblin B',participant_type:'creature',entity_id:'goblin',current_hp:0,max_hp:7,is_dead:false} as CombatParticipant;
+  const dead={id:'g3',name:'Goblin C',participant_type:'creature',entity_id:'goblin',current_hp:0,max_hp:7,is_dead:true} as CombatParticipant;
+  const pick=vi.fn();
+  render(<TargetPickerModal participants={[dead,down,live]} fromParticipant={actor} onPick={pick} onCancel={vi.fn()}/>);
+  const rows=Array.from(document.querySelectorAll('button[data-target-group]')) as HTMLButtonElement[];
+  expect(rows.map(r=>r.getAttribute('data-target-group'))).toEqual(['hostile','down','dead']);
+  expect(rows[1].textContent).toContain('DOWNED');
+  expect(rows[2].textContent).toContain('DEAD');
+  expect(rows.every(r=>!r.disabled)).toBe(true);
+  fireEvent.click(rows[2]);expect(pick).toHaveBeenCalledWith(dead);
+  fireEvent.click(rows[1]);expect(pick).toHaveBeenCalledWith(down);
+});

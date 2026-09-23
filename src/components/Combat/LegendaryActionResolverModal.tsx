@@ -46,9 +46,14 @@ import { rollDie, abilityModifier } from '../../lib/gameUtils';
 import {
   loadActiveBattleMap,
   distanceBetweenParticipantsFtUsingMap,
+  participantLookup,
   type ActiveBattleMap,
-  type ParticipantForTokenLookup,
 } from '../../lib/battleMapGeometry';
+// v2.746.0 — JOIN combatants for HP/is_dead (see the participants
+// effect) and rank the target lists via rules/targetOrder.
+import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from '../../lib/combatParticipantNormalize';
+import { rankTargets } from '../../rules/targetOrder';
+import { TargetGroupChip, rowStyleFor } from './TargetGroupChip';
 import { useToast } from '../shared/Toast';
 
 // Mirror of MonsterAction shape — kept local to avoid circular import
@@ -314,52 +319,39 @@ export default function LegendaryActionResolverModal({
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
+      // v2.746.0 — JOIN combatants. A bare select('*') has had no
+      // is_dead / current_hp since v2.321 dropped those columns, so the
+      // old dead filter was a no-op and HP could not render.
+      const { data } = await (supabase as any)
         .from('combat_participants')
-        .select('*')
+        .select('*, ' + JOINED_COMBATANT_FIELDS)
         .eq('encounter_id', encounterId);
-      if (!cancelled && data) setParticipants(data as unknown as CombatParticipant[]);
+      if (!cancelled && data) setParticipants((data as any[]).map(normalizeParticipantRow) as unknown as CombatParticipant[]);
     })();
     return () => { cancelled = true; };
   }, [encounterId]);
 
-  // Helpers for the save target list (within range).
-  const saveTargetsInRange = useMemo(() => {
-    if (!pattern.save || !battleMap) return [];
-    const apex: ParticipantForTokenLookup = {
-      id: participant.id,
-      name: participant.name,
-      participant_type: participant.participant_type,
-      entity_id: participant.entity_id,
-    };
-    return participants.filter(p => {
-      if (p.id === participant.id) return false;
-      if (p.is_dead) return false;
-      const lookup: ParticipantForTokenLookup = {
-        id: p.id, name: p.name, participant_type: p.participant_type, entity_id: p.entity_id,
-      };
-      const dist = distanceBetweenParticipantsFtUsingMap(apex, lookup, battleMap);
-      return dist == null || dist <= pattern.save!.rangeFt;
-    });
-  }, [pattern, battleMap, participants, participant]);
-
-  // Attack target candidates (within attack range).
-  const attackTargetsInRange = useMemo(() => {
-    if (!pattern.attack || !battleMap) return [];
-    const apex: ParticipantForTokenLookup = {
-      id: participant.id, name: participant.name,
-      participant_type: participant.participant_type, entity_id: participant.entity_id,
-    };
-    return participants.filter(p => {
-      if (p.id === participant.id) return false;
-      if (p.is_dead) return false;
-      const lookup: ParticipantForTokenLookup = {
-        id: p.id, name: p.name, participant_type: p.participant_type, entity_id: p.entity_id,
-      };
-      const dist = distanceBetweenParticipantsFtUsingMap(apex, lookup, battleMap);
-      return dist == null || dist <= pattern.attack!.rangeFt;
-    });
-  }, [pattern, battleMap, participants, participant]);
+  // v2.746.0 — one ranked list per pattern (rules/targetOrder): enemies
+  // first, then allies, 0-HP, dead. Out-of-range rows are DISABLED, not
+  // hidden (the DM sees who is just outside reach); no map → distances
+  // unknown → fail-open, like every other picker.
+  const rankFor = (rangeFt: number) => rankTargets(participants, {
+    self: participant,
+    maxRangeFt: rangeFt,
+    distanceFt: p => battleMap
+      ? distanceBetweenParticipantsFtUsingMap(participantLookup(participant), participantLookup(p), battleMap)
+      : null,
+  });
+  const saveTargets = useMemo(
+    () => pattern.save ? rankFor(pattern.save.rangeFt) : [],
+    [pattern, battleMap, participants, participant],   // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const attackTargets = useMemo(
+    () => pattern.attack ? rankFor(pattern.attack.rangeFt) : [],
+    [pattern, battleMap, participants, participant],   // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  // Bulk select: in range and not a corpse.
+  const saveBulkIds = saveTargets.filter(r => r.inRange && r.group !== 'dead').map(r => r.target.id);
 
   // ─── Resolvers ───────────────────────────────────────────────────
 
@@ -471,7 +463,7 @@ export default function LegendaryActionResolverModal({
   async function resolveSaveBatch() {
     if (!pattern.save) return;
     const sv = pattern.save;
-    const targets = saveTargetsInRange.filter(p => selectedSaveTargets.has(p.id));
+    const targets = saveTargets.map(r => r.target).filter(p => selectedSaveTargets.has(p.id));
     if (targets.length === 0) {
       showToast('Pick at least one target.', 'info');
       return;
@@ -653,22 +645,27 @@ export default function LegendaryActionResolverModal({
                 )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {attackTargetsInRange.length === 0 && (
+                {attackTargets.length === 0 && (
                   <div style={{ padding: 16, textAlign: 'center', color: 'var(--t-3)', fontSize: 12 }}>
-                    No valid targets in range ({pattern.attack.rangeFt}ft).
+                    No other participants in this encounter.
                   </div>
                 )}
-                {attackTargetsInRange.map(t => (
+                {attackTargets.map(({ target: t, group, inRange, distanceFt }) => (
                   <button
                     key={t.id}
-                    onClick={() => resolveAttack(t)}
-                    disabled={busy}
-                    style={btnTargetRow(attackTargetId === t.id, t.participant_type === 'character')}
+                    data-target-group={group}
+                    onClick={() => inRange && resolveAttack(t)}
+                    disabled={busy || !inRange}
+                    title={inRange ? undefined : `${t.name} is out of range (${distanceFt} ft; ${pattern.attack!.rangeFt} ft max)`}
+                    style={{ ...btnTargetRow(attackTargetId === t.id, t.participant_type === 'character'), ...rowStyleFor(group, { inRange }) }}
                   >
                     <span style={{ fontSize: 9, fontWeight: 800, color: t.participant_type === 'character' ? 'var(--c-gold-l)' : '#f87171', minWidth: 32 }}>
                       {t.participant_type === 'character' ? 'PC' : 'CRE'}
                     </span>
-                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>{t.name}</span>
+                    <span style={{ fontWeight: 700, fontSize: 13, flex: 1, textDecoration: group === 'dead' ? 'line-through' : undefined }}>{t.name}</span>
+                    <TargetGroupChip group={group} />
+                    {distanceFt !== null && <span style={{ fontSize: 10, color: inRange ? 'var(--t-3)' : '#fca5a5' }}>{distanceFt} ft{inRange ? '' : ' · OOR'}</span>}
+                    {t.max_hp != null && <span style={{ fontSize: 10, color: 'var(--t-3)' }}>{t.current_hp ?? 0}/{t.max_hp}</span>}
                     <span style={{ fontSize: 10, color: 'var(--t-3)' }}>AC {t.ac ?? '?'}</span>
                   </button>
                 ))}
@@ -690,11 +687,11 @@ export default function LegendaryActionResolverModal({
               </div>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button
-                  onClick={() => setSelectedSaveTargets(new Set(saveTargetsInRange.map(p => p.id)))}
-                  disabled={busy || saveTargetsInRange.length === 0}
+                  onClick={() => setSelectedSaveTargets(new Set(saveBulkIds))}
+                  disabled={busy || saveBulkIds.length === 0}
                   style={btnSecondary}
                 >
-                  Select all ({saveTargetsInRange.length})
+                  Select all ({saveBulkIds.length})
                 </button>
                 <button
                   onClick={() => setSelectedSaveTargets(new Set())}
@@ -705,17 +702,19 @@ export default function LegendaryActionResolverModal({
                 </button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 200, overflowY: 'auto' }}>
-                {saveTargetsInRange.length === 0 && (
+                {saveTargets.length === 0 && (
                   <div style={{ padding: 16, textAlign: 'center', color: 'var(--t-3)', fontSize: 12 }}>
-                    No targets within {pattern.save.rangeFt}ft.
+                    No other participants in this encounter.
                   </div>
                 )}
-                {saveTargetsInRange.map(t => {
+                {saveTargets.map(({ target: t, group, inRange, distanceFt }) => {
                   const sel = selectedSaveTargets.has(t.id);
                   return (
                     <button
                       key={t.id}
+                      data-target-group={group}
                       onClick={() => {
+                        if (!inRange && !sel) return;
                         setSelectedSaveTargets(prev => {
                           const next = new Set(prev);
                           if (next.has(t.id)) next.delete(t.id);
@@ -723,8 +722,9 @@ export default function LegendaryActionResolverModal({
                           return next;
                         });
                       }}
-                      disabled={busy}
-                      style={btnTargetRow(sel, t.participant_type === 'character')}
+                      disabled={busy || (!inRange && !sel)}
+                      title={inRange ? undefined : `${t.name} is out of range (${distanceFt} ft; ${pattern.save!.rangeFt} ft max)`}
+                      style={{ ...btnTargetRow(sel, t.participant_type === 'character'), ...rowStyleFor(group, { inRange }) }}
                     >
                       <span style={{
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
@@ -737,7 +737,10 @@ export default function LegendaryActionResolverModal({
                       <span style={{ fontSize: 9, fontWeight: 800, color: t.participant_type === 'character' ? 'var(--c-gold-l)' : '#f87171', minWidth: 32 }}>
                         {t.participant_type === 'character' ? 'PC' : 'CRE'}
                       </span>
-                      <span style={{ fontWeight: 700, fontSize: 13, flex: 1 }}>{t.name}</span>
+                      <span style={{ fontWeight: 700, fontSize: 13, flex: 1, textDecoration: group === 'dead' ? 'line-through' : undefined }}>{t.name}</span>
+                      <TargetGroupChip group={group} />
+                      {distanceFt !== null && <span style={{ fontSize: 10, color: inRange ? 'var(--t-3)' : '#fca5a5' }}>{distanceFt} ft{inRange ? '' : ' · OOR'}</span>}
+                      {t.max_hp != null && <span style={{ fontSize: 10, color: 'var(--t-3)' }}>{t.current_hp ?? 0}/{t.max_hp}</span>}
                     </button>
                   );
                 })}

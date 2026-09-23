@@ -256,13 +256,16 @@ export async function loadActiveBattleMap(
         row: Math.floor(((r.y as number) ?? 0) / gridSizePx),
         col: Math.floor(((r.x as number) ?? 0) / gridSizePx),
         name: c.name ?? undefined,
-        // Identity mapping mirrors findTokenForParticipant:
-        // characters match by character_id, creatures by creature_id
-        // (combatants.definition_type for monsters is
-        // 'homebrew_monster' — verified against prod information
-        // schema), everything else falls back to name matching.
+        // Identity mapping mirrors joinedRowToToken (scenePlacements):
+        // characters match by character_id, everything else by
+        // creature_id. v2.746 — was 'homebrew_monster' ONLY, which
+        // dropped identity from every picker / NPC-manager placement
+        // (createPlacement writes 'narrative_npc') and every summon
+        // ('srd_monster'), so those participants resolved to no token
+        // and vanished from AoE / range / cover. Any non-character
+        // definition_id points at homebrew_monsters.
         character_id: c.definition_type === 'character' ? (c.definition_id ?? undefined) : undefined,
-        creature_id: c.definition_type === 'homebrew_monster' ? (c.definition_id ?? undefined) : undefined,
+        creature_id: c.definition_type !== 'character' ? (c.definition_id ?? undefined) : undefined,
         size: SIZE_TO_CELLS[sizeLabel] ?? 1,
         size_label: sizeLabel,
       };
@@ -337,6 +340,9 @@ export async function loadActiveBattleMap(
 export function findTokenForParticipant(
   participant: ParticipantForTokenLookup,
   tokens: BattleMapToken[],
+  // v2.746 — token ids already bound to another participant by an exact
+  // (participant_id / combatant_id) hit. See resolveParticipantTokens.
+  opts?: { claimed?: ReadonlySet<string> },
 ): BattleMapToken | null {
   // v2.743 — a monster definition identifies a species, not an individual copy.
   const valid=tokens.filter(t=>t && Number.isFinite(t.row) && Number.isFinite(t.col));
@@ -347,13 +353,86 @@ export function findTokenForParticipant(
     const exact=valid.filter(t=>t.combatant_id===participant.combatant_id);
     if(exact.length)return unique(exact);
   }
-  const eligible=valid.filter(t=>!t.participant_id && (!participant.combatant_id || !t.combatant_id));
   const identity=participant.participant_type==='character'?'character_id':'creature_id';
+  const sameName=(t:BattleMapToken)=>(t.name??'').trim().toLowerCase()===participant.name.trim().toLowerCase();
+  // v2.746 — a participant whose combatant_id is NOT on this scene (the
+  // trigger's LIMIT 1 bound it to a copy on another scene, or the copy
+  // was deleted) used to fall through to `eligible`, which on the
+  // placements path is EMPTY (every token has a combatant_id) → the
+  // participant silently dropped out of every AoE / range / cover query.
+  // Degrade to the definition instead — but only when that cannot be
+  // wrong: exactly one unclaimed token of the same definition (a
+  // same-name tiebreak among several is still accepted, as before).
+  // Two anonymous candidates → null; we never guess between copies.
+  if(participant.combatant_id) {
+    const claimed=opts?.claimed;
+    const unclaimed=valid.filter(t=>!t.participant_id && !(claimed && t.id && claimed.has(t.id)) && participant.entity_id && t[identity]===participant.entity_id);
+    if(unclaimed.length===1)return unclaimed[0];
+    if(unclaimed.length)return unique(unclaimed.filter(sameName));
+  }
+  const eligible=valid.filter(t=>!t.participant_id && (!participant.combatant_id || !t.combatant_id));
   const candidates=eligible.filter(t=>participant.entity_id && t[identity]===participant.entity_id);
   if(candidates.length===1)return candidates[0];
-  const sameName=(t:BattleMapToken)=>(t.name??'').trim().toLowerCase()===participant.name.trim().toLowerCase();
   if(candidates.length)return unique(candidates.filter(sameName));
   return participant.participant_type==='character'?null:unique(eligible.filter(t=>!t[identity] && sameName(t)));
+}
+
+/**
+ * v2.746 — the minimal lookup shape, built from any participant row.
+ * Every caller that hand-built `{id, name, participant_type, entity_id}`
+ * forgot combatant_id sooner or later (pendingReaction, cleave, the
+ * legendary resolver, three pickers…) and silently fell back to the
+ * species match. Build the object here so it cannot be forgotten.
+ */
+export function participantLookup(p: {
+  id: string; name: string; participant_type: string;
+  entity_id?: string | null; combatant_id?: string | null;
+}): ParticipantForTokenLookup {
+  return {
+    id: p.id,
+    name: p.name,
+    participant_type: p.participant_type as ParticipantForTokenLookup['participant_type'],
+    entity_id: p.entity_id ?? null,
+    combatant_id: p.combatant_id ?? null,
+  };
+}
+
+/**
+ * v2.746 — resolve every participant to its token in TWO passes so the
+ * definition fallback in findTokenForParticipant can never steal a token
+ * that another participant owns outright:
+ *   pass 1: exact hits only (participant_id / combatant_id) → claimed;
+ *   pass 2: everyone unresolved, with the claimed set excluded.
+ * Both position/footprint builders go through here, so a list order
+ * change cannot flip which goblin is "the" goblin.
+ */
+export function resolveParticipantTokens(
+  participants: ParticipantForTokenLookup[],
+  tokens: BattleMapToken[],
+): Map<string, BattleMapToken> {
+  const out = new Map<string, BattleMapToken>();
+  const claimed = new Set<string>();
+  const pending: ParticipantForTokenLookup[] = [];
+  const valid = tokens.filter(t => t && Number.isFinite(t.row) && Number.isFinite(t.col));
+  for (const p of participants) {
+    const linked = valid.filter(t => t.participant_id === p.id);
+    const exactList = linked.length ? linked
+      : p.combatant_id ? valid.filter(t => t.combatant_id === p.combatant_id) : [];
+    if (exactList.length === 1) {
+      out.set(p.id, exactList[0]);
+      if (exactList[0].id) claimed.add(exactList[0].id);
+    } else {
+      pending.push(p);
+    }
+  }
+  for (const p of pending) {
+    const token = findTokenForParticipant(p, tokens, { claimed });
+    if (token) {
+      out.set(p.id, token);
+      if (token.id) claimed.add(token.id);
+    }
+  }
+  return out;
 }
 
 /**
@@ -511,10 +590,10 @@ export function buildParticipantFootprints(
   tokens: BattleMapToken[],
 ): Map<string, ParticipantFootprint> {
   const map = new Map<string, ParticipantFootprint>();
-  for (const p of participants) {
-    const token = findTokenForParticipant(p, tokens);
-    if (!token || typeof token.row !== 'number' || typeof token.col !== 'number') continue;
-    map.set(p.id, tokenFootprintRange(token));
+  // v2.746 — two-pass resolution; see resolveParticipantTokens.
+  for (const [pid, token] of resolveParticipantTokens(participants, tokens)) {
+    if (typeof token.row !== 'number' || typeof token.col !== 'number') continue;
+    map.set(pid, tokenFootprintRange(token));
   }
   return map;
 }
@@ -530,10 +609,10 @@ export function buildParticipantPositions(
   tokens: BattleMapToken[],
 ): Map<string, ParticipantPosition> {
   const map = new Map<string, ParticipantPosition>();
-  for (const p of participants) {
-    const token = findTokenForParticipant(p, tokens);
-    if (token && typeof token.row === 'number' && typeof token.col === 'number') {
-      map.set(p.id, { row: token.row, col: token.col });
+  // v2.746 — two-pass resolution; see resolveParticipantTokens.
+  for (const [pid, token] of resolveParticipantTokens(participants, tokens)) {
+    if (typeof token.row === 'number' && typeof token.col === 'number') {
+      map.set(pid, { row: token.row, col: token.col });
     }
   }
   return map;

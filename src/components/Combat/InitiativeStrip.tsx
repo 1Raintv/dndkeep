@@ -483,12 +483,23 @@ export default function InitiativeStrip({ isDM }: Props) {
             // (the dashboard will switch tabs and BattleMapV2 will
             // pull the request out of the store on mount).
             const isCreature = isCreatureParticipantType(p.participant_type);
-            const target = Object.values(tokens).find(t => {
-              if (sceneId && t.sceneId !== sceneId) return false;
-              if (p.participant_type === 'character') return t.characterId === p.entity_id;
-              if (isCreature) return t.creatureId === p.entity_id;
-              return false;
-            });
+            const onScene = Object.values(tokens).filter(t => !sceneId || t.sceneId === sceneId);
+            // v2.746 — participants are per INSTANCE: match the token whose
+            // combatantId IS this participant first (three goblins → three
+            // tiles → three tokens). The definition match below is the
+            // legacy fallback and is only trusted when it is unambiguous,
+            // mirroring lib/participantForToken — never pan to "the first
+            // goblin" for goblin #2.
+            const pCombatant = (p as { combatant_id?: string | null }).combatant_id;
+            let target = pCombatant ? onScene.find(t => t.combatantId === pCombatant) : undefined;
+            if (!target) {
+              const byDef = onScene.filter(t => {
+                if (p.participant_type === 'character') return t.characterId === p.entity_id;
+                if (isCreature) return (t.creatureId ?? t.npcId) === p.entity_id;
+                return false;
+              });
+              if (byDef.length === 1) target = byDef[0];
+            }
             if (!target) return;
             useBattleMapStore.getState().requestPan(target.x, target.y);
           }

@@ -16,7 +16,7 @@
 // Differs from v2.148 (save spell picker): no pending_attacks rows,
 // no DC, no save resolution. HP mutation is immediate.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import {
@@ -33,9 +33,17 @@ import type { SpellData, CombatParticipant, Character } from '../../types';
 import {
   loadActiveBattleMap,
   distanceBetweenParticipantsFtUsingMap,
+  participantLookup,
   type ActiveBattleMap,
-  type ParticipantForTokenLookup,
 } from '../../lib/battleMapGeometry';
+// v2.746.0 — heal ordering: creatures at 0 HP lead (they are what the
+// heal is for), then allies, self, enemies, and the dead last. Dead rows
+// are LISTED (SRD: a dead creature "can't regain [Hit Points] unless it
+// is first revived") but disabled — applyHealToParticipant no-ops on
+// is_dead and no heal in the registry revives yet (a `revives` flag on
+// HealSpellDef is the follow-up; healSpells.ts is not touched here).
+import { rankTargets, groupRanked, HEAL_GROUP_ORDER } from '../../rules/targetOrder';
+import { TargetGroupChip, rowStyleFor } from './TargetGroupChip';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants via JOIN.
 import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from '../../lib/combatParticipantNormalize';
@@ -71,11 +79,27 @@ export default function SpellHealPickerModal({
   const [error, setError] = useState<string | null>(null);
   // v2.480.0 — Battle map for footprint-aware distance display.
   const [battleMap, setBattleMap] = useState<ActiveBattleMap | null>(null);
-  // v2.480.0 — Caster's combat_participants.id, needed to compute the
-  // "from" side of distance. Resolved by matching entity_id == character.id
-  // against the participants list once it loads.
-  const [casterParticipantId, setCasterParticipantId] = useState<string | null>(null);
+  // v2.480.0 — Caster's participant row, needed to compute the "from"
+  // side of distance. Resolved by matching entity_id == character.id
+  // against the participants list once it loads. v2.746: the whole row
+  // (not just the id) so the lookup carries combatant_id.
+  const [casterParticipant, setCasterParticipant] = useState<CombatParticipant | null>(null);
   const { triggerRoll } = useDiceRoll();
+
+  // v2.746.0 — ranked + grouped rows (HEAL_GROUP_ORDER). Self allowed:
+  // Cure Wounds / Healing Word on yourself is legal.
+  const groups = useMemo(() => groupRanked(rankTargets(participants, {
+    self: casterParticipant ? { id: casterParticipant.id, participant_type: casterParticipant.participant_type } : null,
+    allowSelfTarget: true,
+    order: HEAL_GROUP_ORDER,
+    distanceFt: p => {
+      if (!battleMap || !casterParticipant) return null;
+      if (casterParticipant.id === p.id) return 0;
+      return distanceBetweenParticipantsFtUsingMap(
+        participantLookup(casterParticipant), participantLookup(p), battleMap,
+      );
+    },
+  }), HEAL_GROUP_ORDER), [participants, casterParticipant, battleMap]);
 
   useEffect(() => {
     if (!open) return;
@@ -100,8 +124,8 @@ export default function SpellHealPickerModal({
       setEncounterId(enc.id as string);
 
       // Include the caster themself — self-heal is legal (Cure Wounds on
-      // self, Healing Word on self). Dead participants excluded since
-      // standard heals don't revive (v2.150 scope).
+      // self, Healing Word on self). v2.746: dead participants are listed
+      // too (bottom, disabled) instead of silently vanishing.
       const { data: allRaw } = await (supabase as any)
         .from('combat_participants')
         .select('*, ' + JOINED_COMBATANT_FIELDS)
@@ -109,11 +133,12 @@ export default function SpellHealPickerModal({
         .order('turn_order', { ascending: true });
   const all = ((allRaw ?? []) as any[]).map(normalizeParticipantRow);
       if (cancelled) return;
-      const list = ((all ?? []) as CombatParticipant[]).filter(p => !p.is_dead);
+      const list = ((all ?? []) as CombatParticipant[]);
       setParticipants(list);
-      // v2.480.0 — Resolve caster's participant_id by matching entity_id.
-      const caster = list.find(p => p.entity_id === character.id);
-      setCasterParticipantId(caster?.id ?? null);
+      // v2.480.0 — Resolve caster's participant by matching entity_id
+      // (character rows only — a creature could share the uuid space).
+      const caster = list.find(p => p.participant_type === 'character' && p.entity_id === character.id);
+      setCasterParticipant(caster ?? null);
       // v2.480.0 — Load battle map for distance display. Fire-and-forget
       // on failure; rows render without distance.
       loadActiveBattleMap(campaignId).then(map => {
@@ -125,6 +150,8 @@ export default function SpellHealPickerModal({
   }, [open, campaignId]);
 
   function toggle(pid: string) {
+    // v2.746 — dead rows are informational until a revive spell lands.
+    if (participants.find(p => p.id === pid)?.is_dead) return;
     setPicked(prev => {
       const next = new Set(prev);
       if (next.has(pid)) {
@@ -258,46 +285,34 @@ export default function SpellHealPickerModal({
             <div style={{ fontSize: 12, color: 'var(--t-3)' }}>No valid targets in this encounter.</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {participants.map(p => {
+              {groups.map(g => [
+                groups.length > 1 ? (
+                  <div key={`hdr-${g.group}`} data-target-group-header={g.group} style={{
+                    fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
+                    color: 'var(--t-3)', textAlign: 'center', padding: '6px 0 2px',
+                  }}>
+                    {g.label}
+                  </div>
+                ) : null,
+                ...g.items.map(row => {
+                const p = row.target;
                 const checked = picked.has(p.id);
                 const hpPct = p.max_hp > 0 ? (p.current_hp / p.max_hp) : 0;
-                const atMax = p.current_hp >= p.max_hp;
-                const isUnconscious = p.current_hp === 0 && !p.is_dead;
-                const disabled = !checked && picked.size >= healDef.maxTargets;
+                const atMax = row.group !== 'dead' && (p.current_hp ?? 0) >= (p.max_hp ?? 0);
+                const isDead = row.group === 'dead';
+                const disabled = isDead || (!checked && picked.size >= healDef.maxTargets);
                 // v2.480.0 — Footprint-aware distance from caster to this
-                // target. Self-heal renders 0 ft. null when battleMap or
-                // casterParticipantId hasn't resolved yet (rows render
-                // without distance during the gap, ~50–150ms typical).
-                let distanceFt: number | null = null;
-                if (battleMap && casterParticipantId) {
-                  if (casterParticipantId === p.id) {
-                    distanceFt = 0;
-                  } else {
-                    const fromLookup: ParticipantForTokenLookup = {
-                      id: casterParticipantId,
-                      name: character.name,
-                      participant_type: 'character',
-                      entity_id: character.id,
-                    };
-                    const toLookup: ParticipantForTokenLookup = {
-                      id: p.id,
-                      name: p.name,
-                      participant_type: p.participant_type,
-                      entity_id: p.entity_id,
-                    };
-                    distanceFt = distanceBetweenParticipantsFtUsingMap(
-                      fromLookup, toLookup, battleMap,
-                    );
-                  }
-                }
+                // target (0 ft for self; null while the map loads).
+                const distanceFt = row.distanceFt;
                 return (
-                  <label key={p.id} style={{
+                  <label key={p.id} data-target-group={row.group} style={{
                     display: 'flex', alignItems: 'center', gap: 8,
                     padding: '6px 8px', borderRadius: 5,
                     background: checked ? `${green}22` : 'transparent',
                     cursor: disabled ? 'not-allowed' : 'pointer',
                     fontSize: 12,
                     opacity: disabled ? 0.5 : 1,
+                    ...rowStyleFor(row.group),
                   }}>
                     <input
                       type="checkbox"
@@ -306,9 +321,9 @@ export default function SpellHealPickerModal({
                       onChange={() => toggle(p.id)}
                       style={{ margin: 0 }}
                     />
-                    <span style={{ flex: 1 }}>
+                    <span style={{ flex: 1, textDecoration: isDead ? 'line-through' : undefined }}>
                       {p.name}
-                      {p.id === character.id || p.entity_id === character.id ? (
+                      {row.isSelf ? (
                         <span style={{ color: green, marginLeft: 6, fontSize: 10, fontWeight: 700 }}>
                           (self)
                         </span>
@@ -321,18 +336,9 @@ export default function SpellHealPickerModal({
                         )}
                       </span>
                     </span>
-                    {isUnconscious && (
-                      <span title="0 HP — heal will wake and clear death saves" style={{
-                        fontSize: 9, fontWeight: 800,
-                        padding: '1px 5px', borderRadius: 3,
-                        background: 'rgba(239,68,68,0.2)', color: '#f87171',
-                        border: '1px solid rgba(239,68,68,0.5)',
-                        textTransform: 'uppercase' as const, letterSpacing: '0.04em',
-                      }}>
-                        DYING
-                      </span>
-                    )}
-                    {atMax && (
+                    {/* v2.746 — DOWNED / DEAD chips replace the ad-hoc DYING badge. */}
+                    {row.group !== 'self' && <TargetGroupChip group={row.group} />}
+                    {atMax && !isDead && (
                       <span title="Already at full HP — heal will have no effect" style={{
                         fontSize: 9, fontWeight: 700,
                         color: 'var(--t-3)',
@@ -348,7 +354,8 @@ export default function SpellHealPickerModal({
                     </span>
                   </label>
                 );
-              })}
+                }),
+              ])}
             </div>
           )}
           {error && (

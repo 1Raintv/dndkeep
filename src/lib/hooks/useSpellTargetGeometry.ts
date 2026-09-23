@@ -33,6 +33,10 @@ export function useSpellTargetGeometry(open:boolean,campaignId:string,caster:Par
         battleMap.walls,battleMap.tokens,battleMap.grid_size).level;
       if(cover!=='none')coverByTarget[participant.id]=cover;
     }
+    // gridSize is PIXELS per cell (scenes.grid_size_px) — for rendering
+    // only. v2.746: SpellTargetPickerModal once passed it as the
+    // feetPerSquare argument of the AoE finders, turning a 20-ft radius
+    // into 0 cells; never feed it into distance math.
     return {battleMap,positions,footprints,coverByTarget,gridSize:battleMap?.grid_size??50,loading};
   },[battleMap,caster,participants,loading]);
 }

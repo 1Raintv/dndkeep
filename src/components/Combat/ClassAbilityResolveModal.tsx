@@ -47,6 +47,8 @@ import { resolveAutomation } from '../../lib/automations';
 import { logAction } from '../shared/ActionLog';
 import { rollDie } from '../../lib/gameUtils';
 import { getTargetSaveBonus } from '../../lib/pendingAttack';
+import { isHostileTo, rankTargets, targetGroup } from '../../rules/targetOrder';
+import { TargetGroupChip } from './TargetGroupChip';
 import type { Character, Campaign, CombatParticipant } from '../../types';
 import type { ClassAbility, SaveSpec } from '../../data/classAbilities';
 // v2.486.0 — In-app confirm replaces window.confirm() for the
@@ -91,13 +93,18 @@ function filterTargets(
   save: SaveSpec,
 ): CombatParticipant[] {
   const mode = save.targetMode ?? 'any';
-  return participants.filter(p => {
+  // v2.746.0 — dead participants are no longer dropped (they rank last
+  // with a DEAD chip instead); side checks go through rules/targetOrder
+  // so every picker agrees on who is an enemy. Then rankTargets orders
+  // the list: enemies, allies, at 0 HP, dead.
+  const caster = { id: casterParticipantId ?? '', participant_type: 'character' };
+  const filtered = participants.filter(p => {
     if (p.id === casterParticipantId) return false;
-    if (p.is_dead) return false;
-    if (mode === 'enemies') return p.participant_type !== 'character';
-    if (mode === 'allies') return p.participant_type === 'character';
+    if (mode === 'enemies') return isHostileTo(p, caster);
+    if (mode === 'allies') return !isHostileTo(p, caster);
     return true; // 'any'
   });
+  return rankTargets(filtered, { self: caster }).map(r => r.target);
 }
 
 export default function ClassAbilityResolveModal({
@@ -358,6 +365,8 @@ export default function ClassAbilityResolveModal({
                           · {p.participant_type}
                         </span>
                       </span>
+                      {/* v2.746 — DOWNED / DEAD chip (list is ranked by rules/targetOrder). */}
+                      <TargetGroupChip group={targetGroup(p, { id: casterParticipantId ?? '', participant_type: 'character' })} />
                       {/* v2.249.0 — d20 + bonus = total chip. Replaces the
                           v2.247 "d20: N" pill once the player has rolled. */}
                       {out?.d20 !== undefined && (

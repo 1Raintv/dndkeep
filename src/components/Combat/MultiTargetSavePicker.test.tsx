@@ -36,3 +36,24 @@ it.each([false,true])('keeps choices and revalidates range after a move (outOfRa
     }else{fireEvent.click(save);expect(confirm).toHaveBeenCalledWith([target]);}
   }finally{act(release);}
 });
+it('v2.746 — no Lock button; "Select all in range" skips the dead row, which is still tickable by hand',()=>{
+  const dead={id:'d',name:'Corpse',participant_type:'creature',entity_id:'goblin',combatant_id:'three',is_dead:true,current_hp:0,max_hp:7} as CombatParticipant;
+  useBattleMapStore.setState({currentSceneId:'s',loading:false,tokens:{
+    hero:{id:'hero',x:35,y:35,size:'medium',characterId:'hero'} as Token,
+    g:{id:'g',x:105,y:35,size:'medium',creatureId:'goblin',combatantId:'two'} as Token,
+    d:{id:'d',x:105,y:105,size:'medium',creatureId:'goblin',combatantId:'three'} as Token,
+  }});
+  const confirm=vi.fn();
+  function Fixture(){return <MultiTargetSavePicker attackerParticipant={actor} participants={[dead,target]} action={{name:'Fear'}} rangeFt={5} liveBattleMap={useLiveBattleMap(map)} onConfirm={confirm} onCancel={()=>{}}/>;}
+  render(<Fixture/>);
+  expect(screen.queryByRole('button',{name:/Lock/})).toBeNull();
+  const rows=Array.from(document.querySelectorAll('button[data-target-group]')) as HTMLButtonElement[];
+  expect(rows.map(r=>r.getAttribute('data-target-group'))).toEqual(['hostile','dead']);
+  fireEvent.click(screen.getByRole('button',{name:/Select all in range/}));
+  expect(screen.getByText('1 selected')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:/Corpse/}));
+  expect(screen.getByText('2 selected')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'Save 2 targets'}));
+  expect(confirm).toHaveBeenCalledTimes(1);
+  expect((confirm.mock.calls[0][0] as CombatParticipant[]).map(p=>p.id).sort()).toEqual(['d','g']);
+});

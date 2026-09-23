@@ -27,6 +27,9 @@ import {
   getActiveEncounter, addParticipantToEncounter,
 } from '../../lib/combatEncounter';
 import * as tokensApi from '../../lib/api/tokensApiRouter';
+// v2.746.0 — pre-create the combatant so token AND participant share one
+// instance id (see createCombatantForDefinition).
+import { getUseCombatantsFlag, createCombatantForDefinition } from '../../lib/api/scenePlacements';
 import { useBattleMapStore, type Token, type TokenSize } from '../../lib/stores/battleMapStore';
 import { snapTokenAnchor } from '../../lib/map/coords';
 import { abilityModifier } from '../../lib/gameUtils';
@@ -189,6 +192,28 @@ export default function CreaturePickerModal({ campaignId, onClose }: Props) {
         playerId: null,
       };
 
+      // v2.746.0 — On the placements path, create the combatant HERE
+      // (with the creature's HP) and put its id on the token, so
+      // createPlacement reuses it instead of inventing an HP-less one,
+      // and the participant seeded below carries the same id. Before,
+      // the participant insert omitted combatant_id and the DB trigger
+      // guessed (LIMIT 1 by definition) — a second copy of the same
+      // creature silently bound to the first token, or to one on another
+      // scene. 'narrative_npc' is exactly what createPlacement infers
+      // for npcId tokens today, so joinedRowToToken still derives npcId
+      // and the quick panel keeps working.
+      if (await getUseCombatantsFlag(campaignId)) {
+        const cid = await createCombatantForDefinition({
+          campaignId,
+          name: c.name,
+          definitionType: 'narrative_npc',
+          definitionId: c.id,
+          currentHp: c.hp ?? c.max_hp ?? null,
+          maxHp: c.max_hp ?? c.hp ?? null,
+        });
+        if (cid) token.combatantId = cid;
+      }
+
       useBattleMapStore.getState().addToken(token);
       const ok = await tokensApi.createToken(token, { campaignId });
       if (!ok) {
@@ -201,7 +226,7 @@ export default function CreaturePickerModal({ campaignId, onClose }: Props) {
       try {
         const enc = await getActiveEncounter(campaignId);
         if (enc) {
-          await addParticipantToEncounter(
+          const participant = await addParticipantToEncounter(
             enc.id, campaignId,
             {
               type: 'creature',
@@ -214,13 +239,23 @@ export default function CreaturePickerModal({ campaignId, onClose }: Props) {
               initiativeBonus: 0,
               hiddenFromPlayers: !(c.visible_to_players ?? true),
               maxSpeedFt: c.speed ?? 30,
+              // v2.746 — exact instance link (null on the legacy path →
+              // the trigger's guess, as before).
+              combatantId: token.combatantId ?? null,
             },
             enc.initiative_mode === 'player_agency' ? 'player_agency' : 'auto_all',
           );
+          if (!participant) {
+            // v2.746 — was a silent console.warn. The token IS on the map;
+            // tell the DM the initiative add failed (pre-migration
+            // databases reject a second copy of one definition with 23505).
+            setError(`Placed "${c.name}" but could not add it to initiative (already in combat?).`);
+          }
         }
       } catch (err) {
         // Token still placed; combat add is best-effort.
         console.warn('[CreaturePickerModal] combat add failed', err);
+        setError(`Placed "${c.name}" but could not add it to initiative.`);
       }
 
       setPlacedIds(prev => new Set(prev).add(c.id));

@@ -94,6 +94,17 @@ export function snapToCellCenter(worldX: number, worldY: number, cellSize = DEFA
   };
 }
 
+// v2.746.0 — Nudge the rounding quotient so an anchor sitting EXACTLY on
+// a cell boundary tie-breaks the same way on both axes. viewport.toWorld
+// returns float noise around a whole number (…279.99999997 vs
+// 280.00000003), so a corner drop at (420,280) could round x DOWN and y
+// UP → (385,315) instead of (455,315): the preview marker (computed from
+// the previous pointermove) and the committed cell disagreed by one cell
+// on one axis, which the user saw as a sideways hop after release.
+// 1e-6 cells (7e-5 px at 70px cells) is far below anything a pointer can
+// produce on purpose and far above float noise.
+const SNAP_EPSILON = 1e-6;
+
 /**
  * v2.401.0 — Size-aware snap. The token's anchor coordinate is the
  * geometric center of its footprint:
@@ -109,14 +120,56 @@ export function snapTokenAnchor(
 ): { x: number; y: number } {
   if (tokenSizeCells(size) % 2 === 1) {
     // Odd sizes: snap to cell centers. (Cell N center at (N+0.5)*cellSize.)
-    const col = Math.round((worldX - cellSize / 2) / cellSize);
-    const row = Math.round((worldY - cellSize / 2) / cellSize);
+    const col = Math.round((worldX - cellSize / 2) / cellSize + SNAP_EPSILON);
+    const row = Math.round((worldY - cellSize / 2) / cellSize + SNAP_EPSILON);
     return { x: col * cellSize + cellSize / 2, y: row * cellSize + cellSize / 2 };
   }
   // Even sizes: snap to grid intersections. (Intersection N at N*cellSize.)
-  const col = Math.round(worldX / cellSize);
-  const row = Math.round(worldY / cellSize);
+  const col = Math.round(worldX / cellSize + SNAP_EPSILON);
+  const row = Math.round(worldY / cellSize + SNAP_EPSILON);
   return { x: col * cellSize, y: row * cellSize };
+}
+
+/**
+ * v2.746.0 — The ONE drop target for a token: size-aware snap PLUS the
+ * footprint clamp that keeps the whole token on the map.
+ *
+ * Why one helper: the drag preview marker (TokenLayer.drawPreview), the
+ * pointerup commit, the peer broadcast and click-to-move each carried a
+ * verbatim copy of "snapTokenAnchor + clamp". Any drift between them —
+ * and there was some: the commit re-derived the cell from the pointerup
+ * event while the marker used the last rAF-coalesced pointermove — shows
+ * up to the user as "the token shifts a little after I let go". The
+ * invariant this module enforces is: what the preview shows is what
+ * lands, on every screen. Callers pass the raw anchor (cursor − grab
+ * offset) and get back the exact anchor to display, broadcast and save.
+ *
+ * Clamp rules (v2.432): odd footprints anchor at the centre cell so the
+ * visual extends footPx/2 each way → anchor ∈ [footPx/2, W − footPx/2];
+ * even footprints anchor at the top-left intersection so the visual
+ * extends footPx to the south-east → anchor ∈ [0, W − footPx]. (User
+ * report that motivated the clamp: a 4×4 dragon dropped at (2100,1400)
+ * on a 2100×1400 world had every cell off the map.)
+ */
+export function snapTokenDrop(
+  worldX: number,
+  worldY: number,
+  size: TokenSize,
+  cellSize: number,
+  worldWidth: number,
+  worldHeight: number,
+): { x: number; y: number } {
+  const snapped = snapTokenAnchor(worldX, worldY, size, cellSize);
+  const cells = tokenSizeCells(size);
+  const footPx = cells * cellSize;
+  const even = cells % 2 === 0;
+  const min = even ? 0 : footPx / 2;
+  const maxX = even ? worldWidth - footPx : worldWidth - footPx / 2;
+  const maxY = even ? worldHeight - footPx : worldHeight - footPx / 2;
+  return {
+    x: Math.max(min, Math.min(maxX, snapped.x)),
+    y: Math.max(min, Math.min(maxY, snapped.y)),
+  };
 }
 
 // ── World ↔ Screen ───────────────────────────────────────────────────

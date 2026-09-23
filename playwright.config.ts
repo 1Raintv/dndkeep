@@ -20,7 +20,11 @@ export default defineConfig({
   // CPU and flake (~1-2 per full run, different each time). Three workers
   // + one retry makes the combined 18-test run deterministic; the db tier
   // alone is stable at full speed.
-  workers: 3,
+  // v2.746 — DB-backed specs (E2E_DB=1) all drive the ONE seeded scene and
+  // its shared tokens/encounter on one dev server; three workers made them
+  // contend on Ilyana and on test-results/ (3 spurious failures per run,
+  // all green serially). One worker for that tier; smokes/visual keep three.
+  workers: process.env.E2E_DB === '1' ? 1 : 3,
   retries: 1,
   // Visual baselines live next to the specs, named per-platform so a
   // Windows-generated baseline doesn't fight the Linux CI render.

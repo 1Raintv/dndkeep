@@ -230,6 +230,9 @@ import { tokenReconnect } from './battlemap/tokenReconnect';
 import {refreshSceneTokens} from './battlemap/refreshSceneTokens';
 import { TokenGroupDrag } from './battlemap/TokenGroupDrag';
 import { useTokenDragSharing } from './battlemap/useTokenDragSharing';
+import { mergeTokenEcho } from './battlemap/legacyTokenEcho';
+import { findParticipantForToken } from '../../lib/participantForToken';
+import { buildTokenStateByTokenId } from '../../lib/map/tokenCombatState';
 import { useTokenNudge } from './battlemap/useTokenNudge';
 import { SelectionActionBar } from './battlemap/SelectionActionBar';
 import { WallTypePanel } from './battlemap/WallTypePanel';
@@ -363,7 +366,7 @@ export interface BattleMapV2Props {
 // DM pick these at create time.
 
 // existing import path keeps working.
-import { snapToCellCenter, snapTokenAnchor } from '../../lib/map/coords';
+import { snapToCellCenter, snapTokenAnchor, snapTokenDrop, tokenSizeCells } from '../../lib/map/coords';
 export { snapToCellCenter, snapTokenAnchor };
 
 
@@ -747,7 +750,10 @@ function BattleMapV2(props: BattleMapV2Props) {
               // single-row JOINed fetch by id for tighter cost.
               await refreshSceneTokens(sceneId,campaignId,()=>cancelled);
             } else {
-              store.addToken(dbRowToToken(newRow));
+              // v2.746 — keep the live x/y of a dragged / pending / remote-
+              // locked token (legacyTokenEcho.ts); this branch used to
+              // overwrite the position on every column change.
+              store.addToken(mergeTokenEcho(dbRowToToken(newRow), store));
             }
           } else if (payload.eventType === 'DELETE') {
             // For DELETE with REPLICA IDENTITY DEFAULT (Postgres default),
@@ -1062,6 +1068,11 @@ function BattleMapV2(props: BattleMapV2Props) {
   // than digital and abrupt. Tracking the active animation by token
   // id lets us cancel mid-flight if the same token gets dragged
   // again before the animation completes.
+  // v2.746 — with TokenLayer snapping the ghost during the drag
+  // (SNAP_GHOST_WHILE_DRAGGING) the drop delta is ~0 and the <0.5 px
+  // short-circuit below writes the target directly: nothing moves after
+  // the pointer is up. The glide only runs when the ghost was not already
+  // snapped (flag off) or when restoreFailedDrop returns a token home.
   const snapAnimRef = useRef<Map<string, number>>(new Map());
   const animateSnap = useCallback((tokenId: string, fromX: number, fromY: number, toX: number, toY: number) => {
     // Cancel any in-flight animation for this token.
@@ -1169,7 +1180,19 @@ function BattleMapV2(props: BattleMapV2Props) {
     recentSelfWritesRef.current.delete(row.id);
     return false;
   }
-  const {start:handleDragStart,move:handleDragMove,end:handleDragEnd}=useTokenDragSharing(currentScene?.id,userId);
+  // v2.746 — a peer's lease expired or its owner left presence while ids
+  // were still held (crash, navigation, network loss mid-save). Its
+  // drag_move positions may be phantoms; refetch and let DB truth win.
+  // Also fired for a NORMAL release: the peer's save has settled, and if it
+  // was a click-to-move / nudge / undo (no drag_move ever sent) the echo
+  // that arrived while we held the lock was discarded — this refetch is
+  // how the settled position reaches us (see useTokenDragSharing).
+  const onLeaseLost = useCallback((ids: string[]) => {
+    const sceneId = useBattleMapStore.getState().currentSceneId;
+    if (!sceneId || !ids.length) return;
+    void refreshSceneTokens(sceneId, campaignId);
+  }, [campaignId]);
+  const {start:handleDragStart,move:handleDragMove,end:handleDragEnd}=useTokenDragSharing(currentScene?.id,userId,onLeaseLost);
 
   // v2.268.0 — fired when a drag is rejected because it crosses a
   // movement-blocking wall. Surface a toast so the player knows the
@@ -1927,12 +1950,20 @@ function BattleMapV2(props: BattleMapV2Props) {
       // First wins per definition; subsequent participants for the
       // same entity (shouldn't happen in normal play) are ignored.
       if (map.has(key)) continue;
-      map.set(key, {
+      const state = {
         current_hp: p.current_hp ?? null,
         max_hp: p.max_hp ?? null,
         conditions: p.active_conditions ?? [],
         is_dead: !!p.is_dead,
-      });
+      };
+      map.set(key, state);
+      // v2.746 — placements-path creature tokens only know their
+      // creatureId; publish a `creature:` alias so TokenLayer's byDef
+      // fallback can find monsters whose participant_type is not 'npc'.
+      if (isCreatureParticipantType(p.participant_type)) {
+        const alias = `creature:${p.entity_id}`;
+        if (!map.has(alias)) map.set(alias, state);
+      }
     }
     return map;
   }, [participants]);
@@ -1944,6 +1975,9 @@ function BattleMapV2(props: BattleMapV2Props) {
   // renderer's useEffect already depends on `tokens`, so churn here
   // tracks the same trigger.
   const liveTokens = useBattleMapStore(s => s.tokens);
+  // v2.746 — per-TOKEN combat state (lib/map/tokenCombatState): each of
+  // several same-definition tokens draws ITS OWN participant's HP bar.
+  const liveTokenStateByTokenId = useMemo(() => buildTokenStateByTokenId(participants ?? [], props.tokenStateMap, liveTokens), [participants, props.tokenStateMap, liveTokens]);
   const tokenConditionsMap = useMemo(() => {
     const map = new Map<string, string[]>();
     const pcConds = new Map<string, string[]>();
@@ -2048,23 +2082,28 @@ function BattleMapV2(props: BattleMapV2Props) {
     bonusUsed: boolean;
     reactionUsed: boolean;
     participantEntityId: string | null;
+    participantCombatantId: string | null;
   }>(() => {
     const empty = {
       tokenId: null, used: 0, max: 0, dashed: false,
       participantId: null, participantName: null, participantType: null,
       encounterId: null, campaignId: null,
       actionUsed: false, bonusUsed: false, reactionUsed: false,
-      participantEntityId: null,
+      participantEntityId: null, participantCombatantId: null,
     };
     if (!currentActor) return empty;
+    // v2.746 — resolve the active token through the shared token →
+    // participant resolver (lib/participantForToken): combatant instance
+    // first, then a definition match only when it is unambiguous. The
+    // pre-v2.746 walk matched creatures on `t.npcId`, which placements-
+    // path monster tokens never carry (they have creatureId), so the
+    // active monster had no turn ring, no click-to-move and no movement
+    // enforcement for the DM; and with per-instance participants the
+    // first same-definition token no longer has to be the active one.
+    const pool = participants?.length ? participants : [currentActor];
     let tokenId: string | null = null;
     for (const t of Object.values(liveTokens)) {
-      if (currentActor.participant_type === 'character' && t.characterId === currentActor.entity_id) {
-        tokenId = t.id; break;
-      }
-      if (isCreatureParticipantType(currentActor.participant_type) && t.npcId === currentActor.entity_id) {
-        tokenId = t.id; break;
-      }
+      if (findParticipantForToken(t, pool)?.id === currentActor.id) { tokenId = t.id; break; }
     }
     let baseMax = currentActor.max_speed_ft ?? 30;
     // v2.631.0 — Weapon Mastery Slow preview: −10 ft while the
@@ -2095,8 +2134,9 @@ function BattleMapV2(props: BattleMapV2Props) {
       bonusUsed: currentActor.bonus_used === true,
       reactionUsed: currentActor.reaction_used === true,
       participantEntityId: (currentActor as any).entity_id ?? null,
+      participantCombatantId: (currentActor as any).combatant_id ?? null,
     };
-  }, [currentActor, liveTokens, encounter, props.campaignId]);
+  }, [currentActor, participants, liveTokens, encounter, props.campaignId]);
 
   const nudgeSelection = useTokenNudge({ blocked: !isDM || !!activeTokenInfo.participantId,
     selectedIds: selectedTokenIds, gridSize: gridSizePx, width: WORLD_WIDTH,
@@ -2183,7 +2223,9 @@ function BattleMapV2(props: BattleMapV2Props) {
       // token to the cursor's release cell — typically SE of the
       // intended drop target. 100ms covers the same-tick case (~0ms
       // between pointerup and click) plus jitter.
-      if (performance.now() - lastDragEndedAtRef.current < 100) return;
+      // v2.746 — widened to 300 ms as belt-and-braces behind TokenLayer's
+      // capture-phase click swallower, which is now the primary guard.
+      if (performance.now() - lastDragEndedAtRef.current < 300) return;
       const ati = activeTokenInfoForMoveRef.current;
       if (!ati || !ati.tokenId || !ati.participantId) return;
       // Block if any tool mode is on — they own canvas clicks.
@@ -2233,27 +2275,12 @@ function BattleMapV2(props: BattleMapV2Props) {
       // centered on the clicked cell area).
       const myTokenForSnap = liveTokens[ati.tokenId];
       const tokenSize = myTokenForSnap?.size ?? 'medium';
-      const snapped = snapTokenAnchor(worldPoint.x, worldPoint.y, tokenSize, gridSizePx);
-      // Footprint-aware clamping (same rules as drag commit) so
-      // click-to-move can't push even-size tokens off the map.
-      const footCellsCtm = (() => {
-        switch (tokenSize) {
-          case 'tiny': case 'small': case 'medium': return 1;
-          case 'large': return 2;
-          case 'huge': return 3;
-          case 'gargantuan': return 4;
-          default: return 1;
-        }
-      })();
-      const evenCtm = footCellsCtm % 2 === 0;
-      const footPxCtm = footCellsCtm * gridSizePx;
-      const halfCtm = footPxCtm / 2;
-      const minXCtm = evenCtm ? 0 : halfCtm;
-      const maxXCtm = evenCtm ? WORLD_WIDTH - footPxCtm : WORLD_WIDTH - halfCtm;
-      const minYCtm = evenCtm ? 0 : halfCtm;
-      const maxYCtm = evenCtm ? WORLD_HEIGHT - footPxCtm : WORLD_HEIGHT - halfCtm;
-      const targetX = Math.max(minXCtm, Math.min(maxXCtm, snapped.x));
-      const targetY = Math.max(minYCtm, Math.min(maxYCtm, snapped.y));
+      // v2.746 — the same snap + footprint clamp the drag path uses
+      // (snapTokenDrop), so a click and a drag onto one cell agree.
+      const snappedTarget = snapTokenDrop(worldPoint.x, worldPoint.y, tokenSize, gridSizePx, WORLD_WIDTH, WORLD_HEIGHT);
+      const evenCtm = tokenSizeCells(tokenSize) % 2 === 0; // waypoint anchor convention below
+      const targetX = snappedTarget.x;
+      const targetY = snappedTarget.y;
 
       // Block if the target cell is occupied by another token (would
       // collide with a creature). Cell-radius check: any token whose
@@ -2329,7 +2356,7 @@ function BattleMapV2(props: BattleMapV2Props) {
         return;
       }
 
-      void runClickTokenMove(ati.tokenId,async () => {
+      void runClickTokenMove(ati.tokenId,async (settle) => {
         // Authoritative server check as a backstop. The local pre-
         // check above passed, so this only fires when the local cache
         // was stale (rare). Failure path is the same as the local
@@ -2375,6 +2402,11 @@ function BattleMapV2(props: BattleMapV2Props) {
 
         // Fire server commit immediately (peers see the destination).
         // Animation is local-only.
+        // v2.746 — stamp our own write. The drag path has since v2.418;
+        // click-to-move never did, so every click-move triggered 1–3
+        // self-echo list fetches (and, on the legacy path, a teleport
+        // mid-animation when the echo overwrote the animated position).
+        markSelfWrite(ati.tokenId!, targetX, targetY);
         const commitPromise = tokensApi.updateTokenPos(ati.tokenId!, targetX, targetY, { campaignId })
           .catch(()=>({ok:false,reason:'other'} as const)); // Handle rejection before animation awaits.
 
@@ -2432,6 +2464,18 @@ function BattleMapV2(props: BattleMapV2Props) {
           }
           return;
         }
+        // v2.746 — position confirmed. Tell peers the confirmed cell BEFORE
+        // releasing: since the reservation is part of the lease, peers held
+        // the origin through the DB echo (refreshSceneTokens keeps a locked
+        // token at its live position) and click-to-move never sent a
+        // drag_move, so nothing moved the token on their screens until an
+        // unrelated refresh teleported it. The release-triggered refetch in
+        // useTokenDragSharing is the safety net; this makes it immediate.
+        handleDragMove(ati.tokenId!, targetX, targetY);
+        // Then free the reservation (and with it every peer's lock) before
+        // logging; same rationale as the drag path's early release in
+        // TokenLayer.
+        settle();
         if (distanceFt > 0) {
           // v2.447.0 — Bump the optimistic budget BEFORE awaiting
           // logMovement, mirroring the drag-drop pattern (v2.437).
@@ -2462,7 +2506,7 @@ function BattleMapV2(props: BattleMapV2Props) {
     return () => {
       canvasEl?.removeEventListener('click', onClick);
     };
-  }, [canvasEl, liveTokens, gridSizePx, WORLD_WIDTH, WORLD_HEIGHT, props.myCharacterId, props.isDM, showToast]);
+  }, [canvasEl, liveTokens, gridSizePx, WORLD_WIDTH, WORLD_HEIGHT, props.myCharacterId, props.isDM, showToast, handleDragMove]);
 
   // v2.349.0 — Animated hover path preview for click-to-move.
   //
@@ -3177,7 +3221,7 @@ function BattleMapV2(props: BattleMapV2Props) {
                     eraserActive={eraserActive}
                     characterHpMap={characterHpMap}
                     npcHpMap={npcHpMap}
-                    tokenStateMap={props.tokenStateMap}
+                    tokenStateMap={liveTokenStateByTokenId}
                     tokenStateMapByDef={liveTokenStateByDef}
                     tokenConditionsMap={tokenConditionsMap}
                     characterConcentrationMap={props.characterConcentrationMap}
@@ -3813,9 +3857,11 @@ function BattleMapV2(props: BattleMapV2Props) {
               if (t.characterId) {
                 setClickedNpcToken(null);
                 setClickedToken({ tokenId, x: contextMenu.clientX, y: contextMenu.clientY });
-              } else if (t.npcId) {
+              } else if (t.npcId ?? t.creatureId) {
+                // v2.746 — placements-path creatures carry creatureId only;
+                // the quick panel was unreachable for every monster token.
                 setClickedToken(null);
-                setClickedNpcToken({ npcId: t.npcId, tokenId, x: contextMenu.clientX, y: contextMenu.clientY });
+                setClickedNpcToken({ npcId: (t.npcId ?? t.creatureId)!, tokenId, x: contextMenu.clientX, y: contextMenu.clientY });
               }
             }}
           />

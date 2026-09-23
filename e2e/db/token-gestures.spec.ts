@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { gateDbSuite, signInAsSeedDm } from './helpers';
+import { SAVE_TIMEOUT_MS } from '../../src/components/Campaign/battlemap/saveTimeout';
 
 async function openMap(page: Page, email?: string) {
   await signInAsSeedDm(page, email);
@@ -26,6 +27,47 @@ async function state(page: Page) {
     return { tokens: s.tokens, locks: s.remoteDragLocks, dragging: s.dragging };
   });
 }
+
+// v2.746 — helpers shared by the drop-shift specs (pointer release ends
+// the gesture, not its save; what the preview shows is what lands).
+const ilyana=async(page:Page)=>Object.values((await state(page)).tokens).find((t:any)=>t.name==='Ilyana Vell') as any;
+async function tokenPoint(page:Page,id:string) {
+  return page.evaluate(id=>{
+    const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+    const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
+    const p=t.getGlobalPosition(),r=document.querySelector('canvas')!.getBoundingClientRect();
+    return {x:r.x+p.x,y:r.y+p.y,scale:vp.scale.x as number};
+  },id);
+}
+async function campaignIdOf(page:Page) {
+  return page.evaluate(async()=>{
+    const s='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ s);
+    const a='/src/lib/supabase.ts';const {supabase}=await import(/* @vite-ignore */ a);
+    const {data}=await supabase.from('scenes').select('campaign_id').eq('id',useBattleMapStore.getState().currentSceneId).single();
+    return data.campaign_id as string;
+  });
+}
+async function setTokenPos(page:Page,id:string,x:number,y:number,campaignId:string) {
+  await page.evaluate(async({id,x,y,campaignId})=>{const p='/src/lib/api/tokensApiRouter.ts';const api=await import(/* @vite-ignore */ p);await api.updateTokenPos(id,x,y,{campaignId});},{id,x,y,campaignId});
+}
+async function persistedToken(page:Page,id:string,campaignId:string) {
+  return page.evaluate(async({id,campaignId})=>{const p='/src/lib/api/tokensApiRouter.ts';const api=await import(/* @vite-ignore */ p);const s='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ s);return (await api.listTokens(useBattleMapStore.getState().currentSceneId,{campaignId})).find((t:any)=>t.id===id);},{id,campaignId});
+}
+/** Samples the store every `everyMs` (Pixi load stretches this to ~100 ms; assert invariants, not timestamps). */
+async function startSampler(page:Page,id:string,everyMs=20) {
+  await page.evaluate(async({id,everyMs})=>{
+    const s='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ s);
+    const b='/src/components/Campaign/battlemap/useMapMovementBusy.ts';const {isMapMovementBusy}=await import(/* @vite-ignore */ b);
+    const samples:any[]=[];(window as any).__samples=samples;
+    (window as any).__sampler=setInterval(()=>{const st=useBattleMapStore.getState();const t=st.tokens[id];if(!t)return;samples.push({x:t.x,y:t.y,lock:!!st.remoteDragLocks[id],busy:isMapMovementBusy(),at:performance.now()});},everyMs);
+  },{id,everyMs});
+}
+async function stopSampler(page:Page) {
+  return page.evaluate(()=>{clearInterval((window as any).__sampler);return (window as any).__samples as {x:number;y:number;lock:boolean;busy:boolean;at:number}[];});
+}
+const badgeVisible=(page:Page)=>page.evaluate(()=>{const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);return vp.children.some((c:any)=>c.label==='token-move-saving' && c.visible);});
+const pendingOn=(page:Page,id:string)=>page.evaluate(async id=>{const p='/src/components/Campaign/battlemap/pendingTokenMoves.ts';return (await import(/* @vite-ignore */ p)).isTokenMovePending(id) as boolean;},id);
+const busyOn=(page:Page)=>page.evaluate(async()=>{const b='/src/components/Campaign/battlemap/useMapMovementBusy.ts';return (await import(/* @vite-ignore */ b)).isMapMovementBusy() as boolean;});
 
 test.describe('token gestures (local stack)', () => {
   // Synthetic portrait responses must not be intercepted by the app's SW.
@@ -819,7 +861,9 @@ test.describe('token gestures (local stack)', () => {
       const box = (await page.locator('canvas').first().boundingBox())!;
       await page.mouse.move(box.x+token.sx, box.y+token.sy);
       await page.mouse.down();
-      await page.mouse.move(box.x+token.sx+30, box.y+token.sy+15, { steps: 5 });
+      // v2.746 — peers only hear cell hops now, so cross a cell boundary
+      // (40 screen px ≈ 80 world px at fit zoom) rather than nudging.
+      await page.mouse.move(box.x+token.sx+40, box.y+token.sy+15, { steps: 5 });
       await expect.poll(async () => (await state(peer)).tokens[token.id].x).not.toBe(origin.x);
       await expect.poll(async () => (await state(peer)).locks[token.id]).toBeTruthy();
       const held = (await state(page)).tokens[token.id];
@@ -837,7 +881,7 @@ test.describe('token gestures (local stack)', () => {
       // Cancellation also releases the token for the very next gesture.
       await page.mouse.move(box.x+token.sx, box.y+token.sy);
       await page.mouse.down();
-      await page.mouse.move(box.x+token.sx+20, box.y+token.sy+10, { steps: 4 });
+      await page.mouse.move(box.x+token.sx+40, box.y+token.sy+10, { steps: 4 });
       await expect.poll(async () => (await state(peer)).locks[token.id]).toBeTruthy();
       await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 })));
       await page.mouse.up();
@@ -866,6 +910,123 @@ test.describe('token gestures (local stack)', () => {
       expect(errors).toEqual([]);
       await page.screenshot({ path: info.outputPath('token-cancelled.png') });
     } finally { await peerContext.close(); }
+  });
+
+  // ── v2.746 — drop-shift track ─────────────────────────────────────────
+  test('a dragged token lands on the previewed cell and never moves after release',async({page})=>{
+    await openMap(page);
+    const token=await ilyana(page);const campaignId=await campaignIdOf(page);
+    const writes:any[]=[];page.on('request',r=>{if(r.method()==='PATCH' && /scene_tokens|scene_token_placements/.test(r.url())) writes.push(r.postDataJSON());});
+    const destination={x:token.x,y:token.y+70};
+    try {
+      const p=await tokenPoint(page,token.id);
+      await page.mouse.move(p.x,p.y);await page.mouse.down();
+      // +50 world px is not a cell multiple: the ghost must already sit on
+      // the snapped cell (SNAP_GHOST_WHILE_DRAGGING) before the release.
+      await page.mouse.move(p.x,p.y+50*p.scale,{steps:8});
+      await expect.poll(async()=>{const t=(await state(page)).tokens[token.id];return {x:t.x,y:t.y};}).toEqual(destination);
+      await expect.poll(()=>page.evaluate(()=>{const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);return vp.children.find((c:any)=>c.label==='token-drag-preview').visible;})).toBe(true);
+      await startSampler(page,token.id);
+      await page.mouse.up();
+      await page.waitForTimeout(400);
+      const samples=await stopSampler(page);
+      expect(samples.length).toBeGreaterThan(3);
+      for(const s of samples) expect({x:s.x,y:s.y}).toEqual(destination);
+      await expect.poll(()=>writes.length).toBe(1);
+      expect(writes[0]).toMatchObject(destination);
+      await expect.poll(()=>pendingOn(page,token.id)).toBe(false);
+      expect(await persistedToken(page,token.id,campaignId)).toMatchObject(destination);
+      expect((await state(page)).tokens[token.id]).toMatchObject(destination);
+    } finally { await setTokenPos(page,token.id,token.x,token.y,campaignId); }
+  });
+  test('a pure click never moves an off-grid token and never writes',async({page})=>{
+    await openMap(page);
+    const token=await ilyana(page);
+    let writes=0;page.on('request',r=>{if(r.method()==='PATCH' && r.url().includes('/rest/v1/')) writes++;});
+    // Local display fixture only: nudge the token 5 px off its cell centre in the store.
+    await page.evaluate(async({id,x,y})=>{const s='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ s);useBattleMapStore.getState().updateTokenPosition(id,x,y);},{id:token.id,x:token.x+5,y:token.y});
+    const p=await tokenPoint(page,token.id);
+    await page.mouse.click(p.x,p.y);
+    await page.waitForTimeout(500);
+    expect((await state(page)).tokens[token.id]).toMatchObject({x:token.x+5,y:token.y});
+    expect((await state(page)).dragging).toBeNull();
+    expect(await pendingOn(page,token.id)).toBe(false);
+    expect(writes).toBe(0);
+  });
+  test('a peer waits for a delayed movement save and only ever sees snapped cells',async({page,browser})=>{
+    test.setTimeout(90_000);
+    const peerContext=await browser.newContext();const peer=await peerContext.newPage();
+    let release!:()=>void;const held=new Promise<void>(r=>release=r);
+    await page.route('**/rest/v1/scene_token*',async route=>{if(route.request().method()==='PATCH') await held;await route.continue();});
+    let token:any=null,campaignId='';
+    try {
+      await openMap(page);await openMap(peer,'test-player@dndkeep.local');
+      token=await ilyana(page);campaignId=await campaignIdOf(page);
+      const destination={x:token.x,y:token.y+70};
+      await expect.poll(async()=>(await state(peer)).tokens[token.id]?.y).toBe(token.y);
+      await startSampler(peer,token.id,40);
+      const p=await tokenPoint(page,token.id);
+      await page.mouse.move(p.x,p.y);await page.mouse.down();
+      // Raw cursor ends at (+12,+80) world px; the peer must only ever see the snapped cell.
+      await page.mouse.move(p.x+12*p.scale,p.y+80*p.scale,{steps:12});
+      await expect.poll(async()=>{const t=(await state(peer)).tokens[token.id];return {x:t.x,y:t.y};}).toEqual(destination);
+      await expect.poll(async()=>(await state(peer)).locks[token.id]).toBeTruthy();
+      await peer.evaluate(()=>{(window as any).__upAt=performance.now();});
+      await page.mouse.up();
+      await expect.poll(()=>badgeVisible(page)).toBe(true);
+      // The lease must outlive its 6 s expiry while the PATCH is held.
+      await page.waitForTimeout(6500);
+      expect((await state(peer)).locks[token.id]).toBeTruthy();
+      expect(await busyOn(peer)).toBe(true);
+      // A peer-side refresh racing the held save must not rewind the hop.
+      await peer.evaluate(async cid=>{const p='/src/components/Campaign/battlemap/refreshSceneTokens.ts';const {refreshSceneTokens}=await import(/* @vite-ignore */ p);const s='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ s);await refreshSceneTokens(useBattleMapStore.getState().currentSceneId,cid);},campaignId);
+      expect((await state(peer)).tokens[token.id]).toMatchObject(destination);
+      release();
+      await expect.poll(async()=>(await state(peer)).locks[token.id],{timeout:3000}).toBeFalsy();
+      await expect.poll(()=>badgeVisible(page)).toBe(false);
+      expect(await busyOn(peer)).toBe(false);
+      expect((await state(peer)).tokens[token.id]).toMatchObject(destination);
+      expect(await persistedToken(page,token.id,campaignId)).toMatchObject(destination);
+      const samples=await stopSampler(peer);const upAt=await peer.evaluate(()=>(window as any).__upAt as number);
+      expect(samples.length).toBeGreaterThan(30);
+      for(const s of samples){expect((s.x-35)%70,'peer saw a raw position').toBe(0);expect((s.y-35)%70,'peer saw a raw position').toBe(0);}
+      const start=samples.findIndex(s=>s.y===destination.y && s.lock);expect(start).toBeGreaterThanOrEqual(0);
+      for(const s of samples.slice(start)) if(s.at<=upAt+6500){expect(s.lock,'lock lapsed before the save settled').toBe(true);expect(s.busy).toBe(true);}
+    } finally {
+      release();await page.unroute('**/rest/v1/scene_token*');
+      if(token) await setTokenPos(page,token.id,token.x,token.y,campaignId);
+      await peerContext.close();
+    }
+  });
+  test('a rejected save returns the peer to the origin and unlocks',async({page,browser})=>{
+    test.setTimeout(90_000);
+    const peerContext=await browser.newContext();const peer=await peerContext.newPage();
+    await page.route('**/rest/v1/scene_token*',async route=>{
+      if(route.request().method()!=='PATCH') return route.continue();
+      await new Promise(r=>setTimeout(r,2000));
+      await route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({code:'42501',message:'permission denied for table scene_token_placements'})});
+    });
+    let token:any=null,campaignId='';
+    try {
+      await openMap(page);await openMap(peer,'test-player@dndkeep.local');
+      token=await ilyana(page);campaignId=await campaignIdOf(page);
+      const destination={x:token.x,y:token.y+70};
+      await expect.poll(async()=>(await state(peer)).tokens[token.id]?.y).toBe(token.y);
+      const p=await tokenPoint(page,token.id);
+      await page.mouse.move(p.x,p.y);await page.mouse.down();await page.mouse.move(p.x,p.y+70*p.scale,{steps:6});
+      await expect.poll(async()=>(await state(peer)).tokens[token.id].y).toBe(destination.y);
+      await expect.poll(async()=>(await state(peer)).locks[token.id]).toBeTruthy();
+      await page.mouse.up();
+      // Still locked while the (slow) rejection is in flight.
+      await page.waitForTimeout(1000);expect((await state(peer)).locks[token.id]).toBeTruthy();
+      await expect(page.getByText(/Move could not be saved/).first()).toBeVisible({timeout:10_000});
+      for(const p2 of [page,peer]) {
+        await expect.poll(async()=>{const t=(await state(p2)).tokens[token.id];return {x:t.x,y:t.y};}).toEqual({x:token.x,y:token.y});
+        await expect.poll(async()=>(await state(p2)).locks[token.id]).toBeFalsy();
+      }
+      await expect.poll(()=>pendingOn(page,token.id)).toBe(false);
+      expect(await persistedToken(page,token.id,campaignId)).toMatchObject({x:token.x,y:token.y});
+    } finally { await page.unroute('**/rest/v1/scene_token*');await peerContext.close(); }
   });
 
   test('touch pan pinches without moving tokens and continues with one finger', async ({ page, context }, info) => {
@@ -946,5 +1107,44 @@ test.describe('token gestures (local stack)', () => {
     const after=(await state(page)).tokens;
     for(const id of Object.keys(before)) expect([after[id].x,after[id].y]).toEqual([before[id].x,before[id].y]);
     await cdp.detach();
+  });
+
+  // v2.746 — waits past SAVE_TIMEOUT_MS; kept last so it never gates the rest.
+  test('a hung save times out and both clients recover',async({page,browser})=>{
+    test.slow();test.setTimeout(120_000);
+    const peerContext=await browser.newContext();const peer=await peerContext.newPage();
+    let abortHung:()=>void=()=>{};const hung=new Promise<void>(r=>abortHung=r);
+    await page.route('**/rest/v1/scene_token*',async route=>{
+      if(route.request().method()!=='PATCH') return route.continue();
+      await hung;await route.abort();
+    });
+    let token:any=null,campaignId='';
+    try {
+      await openMap(page);await openMap(peer,'test-player@dndkeep.local');
+      token=await ilyana(page);campaignId=await campaignIdOf(page);
+      const destination={x:token.x,y:token.y+70};
+      await expect.poll(async()=>(await state(peer)).tokens[token.id]?.y).toBe(token.y);
+      const p=await tokenPoint(page,token.id);
+      await page.mouse.move(p.x,p.y);await page.mouse.down();await page.mouse.move(p.x,p.y+70*p.scale,{steps:6});
+      await expect.poll(async()=>(await state(peer)).tokens[token.id].y).toBe(destination.y);
+      await expect.poll(async()=>(await state(peer)).locks[token.id]).toBeTruthy();
+      await page.mouse.up();
+      await expect.poll(()=>badgeVisible(page)).toBe(true);
+      // Past the 6 s lease expiry the peer is still locked — the lease follows the save…
+      await page.waitForTimeout(8000);
+      expect((await state(peer)).locks[token.id]).toBeTruthy();
+      expect((await state(peer)).tokens[token.id]).toMatchObject(destination);
+      expect(await pendingOn(page,token.id)).toBe(true);
+      // …and past SAVE_TIMEOUT_MS the sender gives up and everyone goes home.
+      await expect(page.getByText('Move not confirmed — your token was returned.')).toBeVisible({timeout:SAVE_TIMEOUT_MS});
+      for(const p2 of [page,peer]) {
+        await expect.poll(async()=>{const t=(await state(p2)).tokens[token.id];return {x:t.x,y:t.y};}).toEqual({x:token.x,y:token.y});
+        await expect.poll(async()=>(await state(p2)).locks[token.id]).toBeFalsy();
+      }
+      await expect.poll(()=>badgeVisible(page)).toBe(false);
+      expect(await pendingOn(page,token.id)).toBe(false);
+      expect(await busyOn(peer)).toBe(false);
+      expect(await persistedToken(page,token.id,campaignId)).toMatchObject({x:token.x,y:token.y});
+    } finally { abortHung();await page.unroute('**/rest/v1/scene_token*');await peerContext.close(); }
   });
 });

@@ -58,7 +58,7 @@ import * as tokensApi from '../../lib/api/tokensApiRouter';
 //     so the strip re-sorts immediately.
 import { useCombat } from '../../context/CombatContext';
 import { npcToSeed, addParticipantToEncounter, recomputeTurnOrder } from '../../lib/combatEncounter';
-import { isCreatureParticipantType } from '../../lib/participantType';
+import { findParticipantForToken } from '../../lib/participantForToken';
 
 /**
  * v2.243.0 — Phase Q.1 pt 31: NPC quick panel.
@@ -182,13 +182,19 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
   // strip wouldn't render correctly).
   const { encounter, participants, refresh: refreshCombat } = useCombat();
   const [npc, setNpc] = useState<NpcRow | null>(null);
-  // v2.393.0 — Per-token combat state, sourced from combatants. The
-  // v2.389 sync trigger reuses scene_tokens.id as combatants.id, so we
-  // can fetch by tokenId. This is what HP/conditions writes target;
-  // homebrew_monsters is now ONLY used for template fields (AC, race,
-  // visibility, in_combat). Splits the read so the panel reflects the
-  // per-instance combat state of THIS specific token, not the shared
-  // creature template.
+  // v2.746.0 — THIS token's combatants.id. The v2.389 assumption
+  // "tokenId == combatants.id" only holds for rows the sync trigger
+  // created; placements made by the picker / NPC manager / seed fixtures
+  // carry a different combatant_id, so every read and HP/condition write
+  // keyed by tokenId silently hit nothing. The store token knows its
+  // combatantId (joinedRowToToken); fall back to tokenId for the sync
+  // rows and the legacy scene_tokens path.
+  const combatantId = useBattleMapStore(s => s.tokens[tokenId]?.combatantId) ?? tokenId;
+  // v2.393.0 — Per-token combat state, sourced from combatants. This is
+  // what HP/conditions writes target; homebrew_monsters is now ONLY used
+  // for template fields (AC, race, visibility, in_combat). Splits the
+  // read so the panel reflects the per-instance combat state of THIS
+  // specific token, not the shared creature template.
   const [combatant, setCombatant] = useState<{
     id: string;
     current_hp: number | null;
@@ -229,7 +235,8 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     (async () => {
       // Fetch template + combatant in parallel. Both keyed off the
       // panel's two ids: npcId (homebrew_monsters.id) for the template,
-      // tokenId (= combatants.id, v2.389 reuse) for the per-token state.
+      // combatantId (v2.746 — the token's own combatants row) for the
+      // per-token state.
       const [tplRes, combRes] = await Promise.all([
         supabase
           .from('homebrew_monsters')
@@ -239,7 +246,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
         supabase
           .from('combatants')
           .select('id, current_hp, max_hp, temp_hp, active_conditions, is_dead')
-          .eq('id', tokenId)
+          .eq('id', combatantId)
           .maybeSingle(),
       ]);
       if (cancelled) return;
@@ -283,7 +290,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
       }
     })();
     return () => { cancelled = true; };
-  }, [npcId, tokenId]);
+  }, [npcId, tokenId, combatantId]);
 
   // Realtime sync — listen for UPDATE events on this specific npc id.
   // The filter scoping reduces channel chatter when the campaign has
@@ -321,28 +328,28 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
   // condition changes, and death flips written to combatants by
   // pendingAttack / advanceTurn / etc. echo here so the panel reflects
   // the current state without forcing the user to close + reopen it.
-  // Scoped to this combatant's id (= tokenId) only.
+  // Scoped to this combatant's id (v2.746: the token's combatantId) only.
   useEffect(() => {
     const channel = supabase
-      .channel(`npc-combatant:${tokenId}`)
+      .channel(`npc-combatant:${combatantId}`)
       .on(
         'postgres_changes' as any,
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'combatants',
-          filter: `id=eq.${tokenId}`,
+          filter: `id=eq.${combatantId}`,
         },
         (payload: any) => {
           const next = payload.new;
-          if (next?.id === tokenId) {
+          if (next?.id === combatantId) {
             setCombatant(prev => prev ? { ...prev, ...next } : (next as any));
           }
         }
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [tokenId]);
+  }, [combatantId]);
 
   // Esc closes.
   useEffect(() => {
@@ -399,7 +406,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
           is_dead: isDead,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', tokenId);
+        .eq('id', combatantId);
       if (error) {
         console.error('[NpcTokenQuickPanel] HP update failed', error);
         showToast('Failed to update HP. Check console for details.', 'error');
@@ -409,7 +416,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     } finally {
       setApplying(false);
     }
-  }, [npc, combatant, hpInput, hpMode, tokenId, showToast]);
+  }, [npc, combatant, hpInput, hpMode, combatantId, showToast]);
 
   const addCondition = useCallback(async (cond: string) => {
     if (!npc || condBusy) return;
@@ -425,7 +432,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
       const { error } = await supabase
         .from('combatants')
         .update({ active_conditions: next, updated_at: new Date().toISOString() })
-        .eq('id', tokenId);
+        .eq('id', combatantId);
       if (error) {
         console.error('[NpcTokenQuickPanel] addCondition failed', error);
         showToast(`Failed to apply ${cond}.`, 'error');
@@ -433,7 +440,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     } finally {
       setCondBusy(false);
     }
-  }, [npc, combatant, condBusy, tokenId, showToast]);
+  }, [npc, combatant, condBusy, combatantId, showToast]);
 
   const removeCondition = useCallback(async (cond: string) => {
     if (!npc || condBusy) return;
@@ -445,7 +452,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
       const { error } = await supabase
         .from('combatants')
         .update({ active_conditions: next, updated_at: new Date().toISOString() })
-        .eq('id', tokenId);
+        .eq('id', combatantId);
       if (error) {
         console.error('[NpcTokenQuickPanel] removeCondition failed', error);
         showToast(`Failed to remove ${cond}.`, 'error');
@@ -453,7 +460,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     } finally {
       setCondBusy(false);
     }
-  }, [npc, combatant, condBusy, tokenId, showToast]);
+  }, [npc, combatant, condBusy, combatantId, showToast]);
 
   // v2.482.0 — Manual immunity revoke. Mirrors the character sheet's
   // ActiveImmunitiesPanel handler (v2.478) but writes against
@@ -581,14 +588,16 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
   }, [tokenId, tokenVisible, showToast, npc?.campaign_id]);
 
   // v2.293.0 — Initiative integration via modern combat schema.
-  // Match by entity_id (the foreign key combat_participants writes to
-  // when seeded from npcToSeed) AND participant_type='npc' so we
-  // don't cross-link with a character whose id happens to collide
-  // (UUIDs make collision astronomically unlikely, but the type
-  // guard is free and matches the legacy npc_id-only intent).
-  const myParticipant = participants.find(
-    p => isCreatureParticipantType(p.participant_type) && p.entity_id === npcId
-  );
+  // v2.746.0 — participants are per INSTANCE now, so entity_id alone is
+  // ambiguous (goblin #2's panel would edit goblin #1's initiative).
+  // findParticipantForToken: the participant whose combatant_id is this
+  // token's combatant first; the definition match only when it is the
+  // sole creature participant of that definition; otherwise null (the
+  // panel then offers "add to combat" rather than editing a stranger).
+  const myParticipant = findParticipantForToken(
+    { combatantId, characterId: null, creatureId: npcId, npcId },
+    participants,
+  ) ?? undefined;
   const inCombat = !!myParticipant;
   // The Initiative section additionally requires an active encounter
   // to function — adding-to-initiative without one has no target.
@@ -647,6 +656,10 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
         hp: combatant?.current_hp ?? npc.hp ?? undefined,
         max_hp: combatant?.max_hp ?? npc.max_hp ?? undefined,
       });
+      // v2.746 — bind the participant to THIS token's combatant so the
+      // trigger does not guess (and so the per-instance unique index
+      // cannot collide with a sibling token's participant).
+      seed.combatantId = combatantId;
       const created = await addParticipantToEncounter(
         encounter.id,
         encounter.campaign_id,
@@ -670,7 +683,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
       await refreshCombat();
     }
     showToast(`Rolled ${d20}`, 'info');
-  }, [npc, encounter, myParticipant, setInitiativeValue, showToast, refreshCombat]);
+  }, [npc, encounter, myParticipant, combatantId, setInitiativeValue, showToast, refreshCombat]);
 
   const removeFromCombat = useCallback(async () => {
     if (!myParticipant || !encounter) return;

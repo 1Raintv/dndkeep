@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   cellCenterWorld, intersectionWorld, screenToWorld, snapToCellCenter,
-  snapTokenAnchor, toTokenSize, tokenAnchorWorld, tokenSizeCells, worldToCell, worldToScreen,
+  snapTokenAnchor, snapTokenDrop, toTokenSize, tokenAnchorWorld, tokenSizeCells, worldToCell, worldToScreen,
 } from './coords';
 
 const CELL = 70;
@@ -65,6 +65,54 @@ describe('snapping', () => {
     // round(33/70)=0, round(38/70)=1 → intersection (0, 70)
     expect(snapTokenAnchor(33, 38, 'large', CELL)).toEqual({ x: 0, y: 70 });
     expect(snapTokenAnchor(100, 100, 'gargantuan', CELL)).toEqual({ x: 70, y: 70 });
+  });
+
+  // v2.746 — an anchor released EXACTLY on a cell corner must tie-break
+  // the same way on both axes, with or without viewport.toWorld float
+  // noise. Pre-fix (420,280) could round x down and y up → (385,315).
+  it('snapTokenAnchor tie-breaks boundary drops identically on both axes', () => {
+    expect(snapTokenAnchor(420, 280, 'medium', CELL)).toEqual({ x: 455, y: 315 });
+    for (const noise of [-1e-7, 1e-7]) {
+      expect(snapTokenAnchor(420 + noise, 280 + noise, 'medium', CELL)).toEqual({ x: 455, y: 315 });
+    }
+    // Even footprint at exactly half a cell: rounds up on both axes.
+    expect(snapTokenAnchor(35, 35, 'large', CELL)).toEqual({ x: 70, y: 70 });
+    expect(snapTokenAnchor(35 - 1e-7, 35 + 1e-7, 'large', CELL)).toEqual({ x: 70, y: 70 });
+    // Non-boundary results are untouched by the epsilon.
+    expect(snapTokenAnchor(295, 245, 'medium', CELL)).toEqual({ x: 315, y: 245 });
+  });
+});
+
+// v2.746 — one drop target for preview, ghost, broadcast, commit and
+// click-to-move: snap + footprint clamp.
+describe('snapTokenDrop', () => {
+  const W = 2100, H = 1400; // 30×20 cells at 70px
+
+  it('agrees with snapTokenAnchor away from the edges', () => {
+    expect(snapTokenDrop(295, 245, 'medium', CELL, W, H)).toEqual({ x: 315, y: 245 });
+    expect(snapTokenDrop(100, 100, 'gargantuan', CELL, W, H)).toEqual({ x: 70, y: 70 });
+  });
+
+  it('clamps odd footprints so the centre cell stays on the map', () => {
+    expect(snapTokenDrop(-100, -100, 'medium', CELL, W, H)).toEqual({ x: 35, y: 35 });
+    expect(snapTokenDrop(W + 100, H + 100, 'medium', CELL, W, H)).toEqual({ x: W - 35, y: H - 35 });
+    // Huge (3×3) needs 1.5 cells of clearance each way.
+    expect(snapTokenDrop(-100, -100, 'huge', CELL, W, H)).toEqual({ x: 105, y: 105 });
+    expect(snapTokenDrop(W + 100, H + 100, 'huge', CELL, W, H)).toEqual({ x: W - 105, y: H - 105 });
+  });
+
+  it('clamps even footprints so the whole footprint stays on the map', () => {
+    // The v2.432 report: a 4×4 dragon at (2100,1400) had every cell off-map.
+    expect(snapTokenDrop(W, H, 'gargantuan', CELL, W, H)).toEqual({ x: W - 280, y: H - 280 });
+    expect(snapTokenDrop(W, H, 'large', CELL, W, H)).toEqual({ x: W - 140, y: H - 140 });
+    expect(snapTokenDrop(-50, -50, 'large', CELL, W, H)).toEqual({ x: 0, y: 0 });
+  });
+
+  it('is idempotent: a drop target re-snaps to itself', () => {
+    for (const size of ['medium', 'large', 'huge', 'gargantuan'] as const) {
+      const once = snapTokenDrop(123, 456, size, CELL, W, H);
+      expect(snapTokenDrop(once.x, once.y, size, CELL, W, H)).toEqual(once);
+    }
   });
 });
 

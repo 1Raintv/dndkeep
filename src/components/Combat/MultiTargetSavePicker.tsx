@@ -1,11 +1,19 @@
 // v2.745 — extracted from MonsterActionPanel so movement/range guards can be tested directly.
 // Keep selected targets visible for correction when live movement invalidates their range.
+//
+// v2.746 — rules/targetOrder ranks the list (enemies, allies, at 0 HP,
+// dead) instead of the PC-first sort, and the "Excluded — self / dead"
+// section is gone: the attacker is simply not listed, and dead creatures
+// are listed last, individually tickable (a corpse can be a legal target
+// of some effects) but never bulk-selected by "Select all in range".
 import {useMemo,useState} from 'react';
 import type {CombatParticipant} from '../../types';
 import type {MonsterAction} from './MonsterActionPanel';
-import {distanceBetweenParticipantsFtUsingMap,type ActiveBattleMap,type ParticipantForTokenLookup} from '../../lib/battleMapGeometry';
+import {distanceBetweenParticipantsFtUsingMap,participantLookup,type ActiveBattleMap} from '../../lib/battleMapGeometry';
 import {useMapMovementBusy,isMapMovementBusy} from '../Campaign/battlemap/useMapMovementBusy';
 import {MovementPendingNotice} from './MovementPendingNotice';
+import {rankTargets,groupRanked} from '../../rules/targetOrder';
+import {TargetGroupChip,rowStyleFor} from './TargetGroupChip';
 
 interface MultiPickerProps {
   attackerParticipant: CombatParticipant;
@@ -22,51 +30,25 @@ export function MultiTargetSavePicker(props: MultiPickerProps) {
   const movementBusy=useMapMovementBusy();
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  const { targets, excluded } = useMemo(() => {
-    const attackerLookup: ParticipantForTokenLookup = {
-      id: attackerParticipant.id,
-      name: attackerParticipant.name,
-      participant_type: attackerParticipant.participant_type,
-      entity_id: attackerParticipant.entity_id, combatant_id: attackerParticipant.combatant_id,
-    };
-    const valid: Array<{ participant: CombatParticipant; distFt: number | null; inRange: boolean }> = [];
-    const excl: Array<{ participant: CombatParticipant; reason: 'self' | 'dead' }> = [];
-
-    for (const p of participants) {
-      if (p.id === attackerParticipant.id) {
-        excl.push({ participant: p, reason: 'self' });
-        continue;
-      }
-      if (p.is_dead) {
-        excl.push({ participant: p, reason: 'dead' });
-        continue;
-      }
-      const lookup: ParticipantForTokenLookup = {
-        id: p.id,
-        name: p.name,
-        participant_type: p.participant_type,
-        entity_id: p.entity_id, combatant_id: p.combatant_id,
-      };
-      const dist = liveBattleMap
-        ? distanceBetweenParticipantsFtUsingMap(attackerLookup, lookup, liveBattleMap)
-        : null;
-      const inRange = dist === null ? true : dist <= rangeFt;
-      valid.push({ participant: p, distFt: dist, inRange });
-    }
-
-    valid.sort((a, b) => {
-      const aIsPC = a.participant.participant_type === 'character' ? 0 : 1;
-      const bIsPC = b.participant.participant_type === 'character' ? 0 : 1;
-      if (aIsPC !== bIsPC) return aIsPC - bIsPC;
-      return a.participant.name.localeCompare(b.participant.name);
-    });
-
-    return { targets: valid, excluded: excl };
-  }, [attackerParticipant, participants, liveBattleMap, rangeFt]);
+  const ranked = useMemo(() => rankTargets(participants, {
+    self: attackerParticipant,
+    maxRangeFt: rangeFt,
+    // Fail-open: no map → null distance → inRange (theatre of the mind).
+    distanceFt: p => liveBattleMap
+      ? distanceBetweenParticipantsFtUsingMap(participantLookup(attackerParticipant), participantLookup(p), liveBattleMap)
+      : null,
+  }), [attackerParticipant, participants, liveBattleMap, rangeFt]);
+  const groups = useMemo(() => groupRanked(ranked), [ranked]);
 
   const inRangeIds = useMemo(
-    () => new Set(targets.filter(t => t.inRange).map(t => t.participant.id)),
-    [targets],
+    () => new Set(ranked.filter(r => r.inRange).map(r => r.target.id)),
+    [ranked],
+  );
+  // v2.746 — bulk select never picks a corpse; the DM ticks one by hand
+  // when an effect really wants it.
+  const bulkIds = useMemo(
+    () => new Set(ranked.filter(r => r.inRange && r.group !== 'dead').map(r => r.target.id)),
+    [ranked],
   );
 
   const invalidSelection=[...selected].some(id=>!inRangeIds.has(id));
@@ -84,7 +66,7 @@ export function MultiTargetSavePicker(props: MultiPickerProps) {
 
   function selectAllInRange() {
     if(isMapMovementBusy())return;
-    setSelected(new Set(inRangeIds));
+    setSelected(new Set(bulkIds));
   }
 
   function clearAll() {
@@ -153,18 +135,18 @@ export function MultiTargetSavePicker(props: MultiPickerProps) {
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
             <button
               onClick={selectAllInRange}
-              disabled={movementBusy || inRangeIds.size === 0}
+              disabled={movementBusy || bulkIds.size === 0}
               style={{
                 fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase',
                 padding: '4px 8px', borderRadius: 4,
                 background: 'rgba(167,139,250,0.12)',
                 border: '1px solid rgba(167,139,250,0.4)',
                 color: '#c4b5fd',
-                cursor: inRangeIds.size === 0 ? 'not-allowed' : 'pointer',
-                opacity: inRangeIds.size === 0 ? 0.4 : 1,
+                cursor: bulkIds.size === 0 ? 'not-allowed' : 'pointer',
+                opacity: bulkIds.size === 0 ? 0.4 : 1,
               }}
             >
-              Select all in range ({inRangeIds.size})
+              Select all in range ({bulkIds.size})
             </button>
             <button
               onClick={clearAll}
@@ -187,12 +169,21 @@ export function MultiTargetSavePicker(props: MultiPickerProps) {
         <MovementPendingNotice busy={movementBusy}/>
         {invalidSelection && !movementBusy && <div role="alert" style={{padding:'10px 14px',fontSize:13,color:'#f3d595'}}>A selected target is no longer available or in range. Deselect it or clear the selection before saving.</div>}
         <div style={{ overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {targets.length === 0 && (
+          {ranked.length === 0 && (
             <div style={{ padding: 20, textAlign: 'center', color: 'var(--t-3)', fontSize: 13 }}>
               No participants in this encounter.
             </div>
           )}
-          {targets.map(({ participant: p, distFt, inRange }) => {
+          {groups.map(g => [
+            groups.length > 1 ? (
+              <div key={`hdr-${g.group}`} data-target-group-header={g.group} style={{
+                fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
+                color: 'var(--t-3)', textAlign: 'center', padding: '8px 0 2px',
+              }}>
+                {g.label}
+              </div>
+            ) : null,
+            ...g.items.map(({ target: p, distanceFt: distFt, inRange, group }) => {
             const isPC = p.participant_type === 'character';
             const hpPct = p.max_hp && p.max_hp > 0 ? (p.current_hp ?? 0) / p.max_hp : 1;
             const hpColor = hpPct >= 0.66 ? '#34d399' : hpPct >= 0.33 ? '#fbbf24' : '#f87171';
@@ -201,6 +192,7 @@ export function MultiTargetSavePicker(props: MultiPickerProps) {
             return (
               <button
                 key={p.id}
+                data-target-group={group}
                 onClick={() => (inRange || isSelected) && toggle(p.id)}
                 disabled={movementBusy || (!inRange && !isSelected)}
                 title={inRange
@@ -225,6 +217,7 @@ export function MultiTargetSavePicker(props: MultiPickerProps) {
                   opacity: inRange ? 1 : 0.45,
                   textAlign: 'left',
                   color: 'var(--t-1)',
+                  ...rowStyleFor(group),
                 }}
               >
                 <span style={{
@@ -248,13 +241,14 @@ export function MultiTargetSavePicker(props: MultiPickerProps) {
                   {isPC ? 'PC' : 'CRE'}
                 </span>
                 <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  <span style={{ fontWeight: 700, fontSize: 13 }}>{p.name}</span>
+                  <span style={{ fontWeight: 700, fontSize: 13, textDecoration: group === 'dead' ? 'line-through' : undefined }}>{p.name}</span>
                   <span style={{ fontSize: 10, color: 'var(--t-3)', marginLeft: 8 }}>
                     {distLabel}{p.ac ? ` · AC ${p.ac}` : ''}
                   </span>
                 </span>
+                <TargetGroupChip group={group} />
                 {p.max_hp ? (
-                  <span style={{ fontSize: 10, color: hpColor, fontWeight: 700, minWidth: 64, textAlign: 'right' }}>
+                  <span style={{ fontSize: 10, color: group === 'down' ? '#f87171' : hpColor, fontWeight: 700, minWidth: 64, textAlign: 'right' }}>
                     {p.current_hp ?? 0}/{p.max_hp}
                   </span>
                 ) : null}
@@ -265,35 +259,8 @@ export function MultiTargetSavePicker(props: MultiPickerProps) {
                 )}
               </button>
             );
-          })}
-          {excluded.length > 0 && (
-            <div style={{
-              fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
-              color: 'var(--t-3)', textAlign: 'center', padding: '8px 0 2px',
-            }}>
-              Excluded — {excluded.length}
-            </div>
-          )}
-          {excluded.map(({ participant: p, reason }) => (
-            <div
-              key={p.id}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '8px 12px', borderRadius: 6,
-                background: 'rgba(255,255,255,0.02)',
-                border: '1px solid rgba(255,255,255,0.05)',
-                opacity: 0.5,
-                fontSize: 12,
-              }}
-            >
-              <span style={{ flex: 1, textDecoration: reason === 'dead' ? 'line-through' : 'none' }}>
-                {p.name}
-              </span>
-              <span style={{ fontSize: 9, color: 'var(--t-3)', fontStyle: 'italic', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                {reason}
-              </span>
-            </div>
-          ))}
+            }),
+          ])}
         </div>
 
         <div style={{

@@ -48,10 +48,16 @@ import {
   // findParticipantsInArea call below for the auto-target button so
   // Large+ creatures with bodies inside a Fireball aren't missed.
   findParticipantsInAreaFootprint,
+  participantLookup,
   type ParticipantForTokenLookup,
   type ParticipantPosition,
   type AoeShape,
 } from '../../lib/battleMapGeometry';
+// v2.746.0 — ranked rows (enemies, allies, 0-HP, dead — all listed) and
+// area auto-select that pre-checks living + downed creatures but leaves
+// a corpse in the area marked IN AREA and unchecked.
+import { rankTargets, groupRanked, autoSelectIds } from '../../rules/targetOrder';
+import { TargetGroupChip, InAreaMark, rowStyleFor } from './TargetGroupChip';
 // v2.344.0 — single-target range visualization + out-of-range flagging.
 import { parseSpellRange, resolveRangeFt } from '../../lib/spellRange';
 import { logAction } from '../shared/ActionLog';
@@ -107,6 +113,9 @@ export default function SpellTargetPickerModal({
   const [casterParticipantId, setCasterParticipantId] = useState<string | null>(null);
   const [participants, setParticipants] = useState<CombatParticipant[]>([]);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  // v2.746 — ids the last "Select within Nft" found inside the area,
+  // including dead ones that were deliberately NOT pre-checked.
+  const [inArea, setInArea] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,6 +125,8 @@ export default function SpellTargetPickerModal({
     id:casterParticipantId,combatant_id:casterCombatantId,name:character.name,
     participant_type:'character',entity_id:character.id,
   }:null,[casterParticipantId,casterCombatantId,character.name,character.id]);
+  // NOTE: `gridSize` is PIXELS per cell — fine for the map previews below,
+  // never for the AoE finders' feetPerSquare argument (v2.746 fix there).
   const {battleMap,positions,footprints,coverByTarget,gridSize,loading:mapLoading}=
     useSpellTargetGeometry(open,campaignId,casterLookup,participants);
   const movementBusy=useMapMovementBusy();
@@ -247,6 +258,20 @@ export default function SpellTargetPickerModal({
   const setRangePreview = useBattleMapStore(s => s.setRangePreview);
   const parsedRange = parseSpellRange(spell.range);
   const rangeFt = resolveRangeFt(parsedRange);
+
+  // v2.746 — ranked + grouped rows. Distance is the v2.458 footprint-aware
+  // measure; out-of-range only flags when a real distance exceeds a real
+  // range (v2.344 semantics), and rows stay tickable either way.
+  // `self` must carry participant_type: the caster is filtered out of
+  // `participants`, so an id alone cannot be resolved to a side and every
+  // living row (allies included) would be grouped and labelled "Enemies".
+  const groups = useMemo(() => groupRanked(rankTargets(participants, {
+    self: casterLookup,
+    maxRangeFt: rangeFt != null && rangeFt > 0 ? rangeFt : null,
+    distanceFt: p => battleMap && casterLookup
+      ? distanceBetweenParticipantsFtUsingMap(casterLookup, participantLookup(p), battleMap)
+      : null,
+  })), [participants, rangeFt, battleMap, casterLookup]);
   useEffect(() => {
     if (!open || !casterParticipantId || !positions || rangeFt == null) {
       setRangePreview(null);
@@ -315,8 +340,10 @@ export default function SpellTargetPickerModal({
         .order('turn_order', { ascending: true });
   const all = ((allRaw ?? []) as any[]).map(normalizeParticipantRow);
       if (cancelled) return;
+      // v2.746 — only the caster is dropped; dead creatures are listed
+      // (last, with a DEAD chip) so a Fireball's corpse is not invisible.
       const list = ((all ?? []) as CombatParticipant[])
-        .filter(p => p.id !== caster.id && !p.is_dead);
+        .filter(p => p.id !== caster.id);
       setParticipants(list);
 
       setLoading(false);
@@ -645,38 +672,40 @@ export default function SpellTargetPickerModal({
                         // anchor-centered (drawn the same way a DM
                         // would sketch the spell), and the inclusion
                         // check now matches RAW.
+                        // v2.746 — the 8th argument of both finders is
+                        // feetPerSquare (default 5). The scene's PIXEL
+                        // grid size (70) was being passed there, which
+                        // collapsed a 20-ft radius to 0 cells — "Select
+                        // within 20ft" selected nothing. Default restored.
+                        const lookups = participants.map(participantLookup);
                         const matches = footprints
                           ? findParticipantsInAreaFootprint(
-                              participants.map(p => ({
-                                id: p.id,
-                                name: p.name,
-                                participant_type: p.participant_type,
-                                entity_id: p.entity_id, combatant_id:p.combatant_id,
-                              })),
+                              lookups,
                               footprints,
                               aoeShape as AoeShape,
                               aoeSize,
                               origin,
                               toward,
                               null,
-                              gridSize,
                             )
                           : findParticipantsInArea(
-                              participants.map(p => ({
-                                id: p.id,
-                                name: p.name,
-                                participant_type: p.participant_type,
-                                entity_id: p.entity_id, combatant_id:p.combatant_id,
-                              })),
+                              lookups,
                               positions,
                               aoeShape as AoeShape,
                               aoeSize,
                               origin,
                               toward,
                               null,
-                              gridSize,
                             );
-                        setPicked(new Set(matches.map(m => m.participant.id)));
+                        // v2.746 — living + downed creatures in the area are
+                        // pre-checked (RAW: damage at 0 HP still matters);
+                        // dead ones are listed with an IN AREA mark, unchecked.
+                        const ids = new Set(matches.map(m => m.participant.id));
+                        setInArea(ids);
+                        setPicked(new Set(autoSelectIds(rankTargets(participants, {
+                          self: casterLookup, // side-aware (see `groups`)
+                          inRange: p => ids.has(p.id),
+                        }))));
                       }}
                       disabled={
                         movementBusy || mapLoading || !positions ||
@@ -698,7 +727,7 @@ export default function SpellTargetPickerModal({
                     </button>
                     {picked.size > 0 && (
                       <button
-                        onClick={() => setPicked(new Set())}
+                        onClick={() => { setPicked(new Set()); setInArea(new Set()); }}
                         style={{
                           fontSize: 10, fontWeight: 700, padding: '3px 8px',
                           borderRadius: 4,
@@ -718,8 +747,19 @@ export default function SpellTargetPickerModal({
                 </div>
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                {participants.map(p => {
+                {groups.map(g => [
+                groups.length > 1 ? (
+                  <div key={`hdr-${g.group}`} data-target-group-header={g.group} style={{
+                    fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
+                    color: 'var(--t-3)', textAlign: 'center', padding: '6px 0 2px',
+                  }}>
+                    {g.label}
+                  </div>
+                ) : null,
+                ...g.items.map(row => {
+                const p = row.target;
                 const checked = picked.has(p.id);
+                const inThisArea = inArea.has(p.id);
                 const cover = coverByTarget[p.id];
                 const coverColor = cover === 'total' ? '#f87171'
                                  : cover === 'three_quarters' ? '#a78bfa'
@@ -744,28 +784,17 @@ export default function SpellTargetPickerModal({
                 //      vs "I'm 4ft from the OOR threshold — tight". The OOR
                 //      badge keeps its loud red treatment; in-range gets a
                 //      quiet inline "20ft" next to the participant type.
-                let outOfRange = false;
-                let distanceFt: number | null = null;
-                if (battleMap && casterLookup) {
-                  const targetLookup: ParticipantForTokenLookup = {
-                    id: p.id, name: p.name,
-                    participant_type: p.participant_type,
-                    entity_id: p.entity_id, combatant_id:p.combatant_id,
-                  };
-                  distanceFt = distanceBetweenParticipantsFtUsingMap(
-                    casterLookup, targetLookup, battleMap,
-                  );
-                  if (distanceFt !== null && rangeFt != null && rangeFt > 0) {
-                    outOfRange = distanceFt > rangeFt;
-                  }
-                }
+                // v2.746 — both come from rankTargets (same math as before).
+                const distanceFt = row.distanceFt;
+                const outOfRange = !row.inRange;
                 return (
-                  <label key={p.id} style={{
+                  <label key={p.id} data-target-group={row.group} style={{
                     display: 'flex', alignItems: 'center', gap: 8,
                     padding: '6px 8px', borderRadius: 5,
                     background: checked ? 'rgba(167,139,250,0.15)' : 'transparent',
                     cursor: movementBusy || submitting ? 'default' : 'pointer', fontSize: 12, minHeight:44,
                     opacity: outOfRange ? 0.55 : 1,
+                    ...rowStyleFor(row.group),
                   }}>
                     <input
                       type="checkbox"
@@ -781,7 +810,7 @@ export default function SpellTargetPickerModal({
                       }}
                       style={{ margin:0,width:16,height:16,minWidth:16,minHeight:16,flex:'0 0 16px' }}
                     />
-                    <span style={{ flex: 1 }}>
+                    <span style={{ flex: 1, textDecoration: row.group === 'dead' ? 'line-through' : undefined }}>
                       {p.name}
                       <span style={{ color: 'var(--t-3)', marginLeft: 6, fontSize: 10 }}>
                         · {p.participant_type}
@@ -798,6 +827,8 @@ export default function SpellTargetPickerModal({
                         )}
                       </span>
                     </span>
+                    <TargetGroupChip group={row.group} />
+                    {inThisArea && !checked && <InAreaMark />}
                     {outOfRange && (
                       <span title={`${distanceFt} ft away — outside spell range (${rangeFt} ft)`} style={{
                         fontSize: 9, fontWeight: 800,
@@ -820,12 +851,13 @@ export default function SpellTargetPickerModal({
                         ▦ {coverLabel}
                       </span>
                     )}
-                    <span style={{ color: 'var(--t-3)', fontSize: 10 }}>
+                    <span style={{ color: row.group === 'down' ? '#f87171' : 'var(--t-3)', fontSize: 10 }}>
                       {p.current_hp}/{p.max_hp}
                     </span>
                   </label>
                 );
-              })}
+                }),
+              ])}
             </div>
             </>
           )}

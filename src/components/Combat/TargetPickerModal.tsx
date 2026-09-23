@@ -1,9 +1,9 @@
 // v2.100.0 — Phase F of the Combat Backbone
 //
 // Reusable target picker for player-initiated attacks. Opens inline (no portal
-// needed) or as a floating modal. Lists all non-dead participants in the
-// active encounter; the attacker is automatically excluded unless
-// allowSelfTarget is set (for self-buffs / self-healing).
+// needed) or as a floating modal. Lists every participant in the active
+// encounter; the attacker is automatically excluded unless allowSelfTarget
+// is set (for self-buffs / self-healing).
 //
 // The picker only shows participants the current user can see — RLS already
 // filters out hidden_from_players rows, so players don't accidentally learn
@@ -14,8 +14,15 @@
 // from the attacker to each target. Mirrors the v2.458 SpellTargetPickerModal
 // pattern. Both props are optional so existing callers that don't have the
 // data on hand keep working unchanged.
+//
+// v2.746.0 — Ordering + no more silent drops. Dead participants used to be
+// filtered out and the rest listed in encounter order. Now rules/targetOrder
+// ranks the list: living enemies first, allies, then creatures at 0 HP,
+// then the dead — all still clickable (SRD 5.2.1: damage at 0 HP is a Death
+// Saving Throw failure; a corpse is the target of Revivify). Out-of-range
+// rows stay disabled as before.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CombatParticipant } from '../../types';
 import {useLiveBattleMap} from '../../lib/hooks/useLiveBattleMap';
@@ -25,9 +32,11 @@ import {MovementPendingNotice} from './MovementPendingNotice';
 import {
   loadActiveBattleMap,
   distanceBetweenParticipantsFtUsingMap,
+  participantLookup,
   type ActiveBattleMap,
-  type ParticipantForTokenLookup,
 } from '../../lib/battleMapGeometry';
+import { rankTargets, groupRanked } from '../../rules/targetOrder';
+import { TargetGroupChip, rowStyleFor } from './TargetGroupChip';
 
 interface Props {
   participants: CombatParticipant[];
@@ -85,11 +94,27 @@ export default function TargetPickerModal({
     return () => { cancelled = true; };
   }, [campaignId, fromParticipant,sceneId]);
 
-  const selectable = participants.filter(p => {
-    if (p.is_dead) return false;
-    if (!allowSelfTarget && excludeParticipantId && p.id === excludeParticipantId) return false;
-    return true;
-  });
+  // v2.746.0 — rank instead of filter. The distance callback carries the
+  // v2.480 footprint-aware math (0 ft for self; null while the map loads
+  // or when either side has no token → fail-open, no gating).
+  const groups = useMemo(() => {
+    const self = fromParticipant
+      ?? (excludeParticipantId ? { id: excludeParticipantId } : null);
+    const ranked = rankTargets(participants, {
+      self,
+      allowSelfTarget,
+      maxRangeFt: maxRangeFt ?? null,
+      distanceFt: p => {
+        if (!battleMap || !fromParticipant) return null;
+        if (fromParticipant.id === p.id) return 0;
+        return distanceBetweenParticipantsFtUsingMap(
+          participantLookup(fromParticipant), participantLookup(p), battleMap,
+        );
+      },
+    });
+    return groupRanked(ranked);
+  }, [participants, fromParticipant, excludeParticipantId, allowSelfTarget, maxRangeFt, battleMap]);
+  const total = groups.reduce((n, g) => n + g.items.length, 0);
 
   return createPortal(
     <div
@@ -129,11 +154,22 @@ export default function TargetPickerModal({
 
         <MovementPendingNotice busy={movementBusy}/>
         <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {selectable.length === 0 ? (
+          {total === 0 ? (
             <div style={{ padding: 20, textAlign: 'center', color: 'var(--t-3)', fontSize: 13 }}>
               No valid targets in this encounter.
             </div>
-          ) : selectable.map(p => {
+          ) : groups.map(g => [
+            // v2.746 — group divider (omitted when the list has one group).
+            groups.length > 1 ? (
+              <div key={`hdr-${g.group}`} data-target-group-header={g.group} style={{
+                fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase',
+                color: 'var(--t-3)', textAlign: 'center', padding: '6px 0 2px',
+              }}>
+                {g.label}
+              </div>
+            ) : null,
+            ...g.items.map(row => {
+            const p = row.target;
             const hpPct = p.max_hp && p.max_hp > 0 ? (p.current_hp ?? 0) / p.max_hp : 1;
             const hpColor = hpPct >= 0.66 ? '#34d399' : hpPct >= 0.33 ? '#fbbf24' : '#f87171';
             const typeColor: Record<CombatParticipant['participant_type'], string> = {
@@ -142,66 +178,41 @@ export default function TargetPickerModal({
               monster: '#f87171',
               npc: '#60a5fa',
             };
-            // v2.480.0 — Compute footprint-aware Chebyshev distance from
-            // attacker to this target. Rendered inline next to AC/HP.
-            // null when the battle map hasn't loaded yet OR either side
-            // has no token on the active map (e.g. a participant who
-            // hasn't been placed). Self-targeting renders 0ft.
-            let distanceFt: number | null = null;
-            if (battleMap && fromParticipant) {
-              if (fromParticipant.id === p.id) {
-                distanceFt = 0;
-              } else {
-                const fromLookup: ParticipantForTokenLookup = {
-                  id: fromParticipant.id,
-                  name: fromParticipant.name,
-                  participant_type: fromParticipant.participant_type,
-                  entity_id: fromParticipant.entity_id, combatant_id: fromParticipant.combatant_id,
-                };
-                const toLookup: ParticipantForTokenLookup = {
-                  id: p.id,
-                  name: p.name,
-                  participant_type: p.participant_type,
-                  entity_id: p.entity_id, combatant_id: p.combatant_id,
-                };
-                distanceFt = distanceBetweenParticipantsFtUsingMap(
-                  fromLookup, toLookup, battleMap,
-                );
-              }
-            }
+            const distanceFt = row.distanceFt;
             // v2.618.0 — range gate (queued item): distance measured,
             // range provided, and target beyond it → unclickable.
-            const outOfRange = distanceFt !== null
-              && maxRangeFt != null
-              && distanceFt > maxRangeFt;
+            const outOfRange = !row.inRange;
             // v2.621.0 — long-range band: legal but Disadvantage
             // (SRD 5.2.1 "Range"). Reminder only — no roll automation.
             const inLongBand = !outOfRange
               && distanceFt !== null
               && normalRangeFt != null
               && distanceFt > normalRangeFt;
+            const blocked = outOfRange || movementBusy;
             return (
               <button
                 key={p.id}
+                data-target-group={row.group}
                 onClick={()=>{if(!outOfRange && !isMapMovementBusy(sceneId))onPick(p);}}
-                disabled={outOfRange || movementBusy}
+                disabled={blocked}
                 title={outOfRange ? `Out of range — ${distanceFt} ft (max ${maxRangeFt} ft)` : undefined}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 10,
                   padding: '10px 12px', borderRadius: 8,
                   border: '1px solid var(--c-border)',
                   background: '#080d14',
-                  cursor: outOfRange || movementBusy ? 'default' : 'pointer',
+                  cursor: blocked ? 'default' : 'pointer',
                   textAlign: 'left', minHeight: 0,
                   fontFamily: 'var(--ff-body)',
                   transition: 'all 0.12s',
-                  opacity: outOfRange || movementBusy ? 0.45 : 1,
+                  opacity: blocked ? 0.45 : 1,
+                  ...rowStyleFor(row.group),
                 }}
-                onMouseEnter={outOfRange || movementBusy ? undefined : e => {
+                onMouseEnter={blocked ? undefined : e => {
                   e.currentTarget.style.background = 'rgba(201,146,42,0.08)';
                   e.currentTarget.style.borderColor = 'var(--c-gold-bdr)';
                 }}
-                onMouseLeave={outOfRange || movementBusy ? undefined : e => {
+                onMouseLeave={blocked ? undefined : e => {
                   e.currentTarget.style.background = '#080d14';
                   e.currentTarget.style.borderColor = 'var(--c-border)';
                 }}
@@ -217,9 +228,13 @@ export default function TargetPickerModal({
                 }}>
                   {p.participant_type}
                 </span>
-                <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--t-1)', flex: 1 }}>
+                <span style={{
+                  fontWeight: 700, fontSize: 14, color: 'var(--t-1)', flex: 1,
+                  textDecoration: row.group === 'dead' ? 'line-through' : undefined,
+                }}>
                   {p.name}
                 </span>
+                <TargetGroupChip group={row.group} />
                 {/* v2.480.0 — Footprint-aware distance chip. Quiet style
                     (gray) so it sits informationally next to AC/HP. */}
                 {distanceFt !== null && (
@@ -249,13 +264,14 @@ export default function TargetPickerModal({
                   </span>
                 )}
                 {p.max_hp != null && (
-                  <span style={{ fontSize: 11, color: hpColor }}>
+                  <span style={{ fontSize: 11, color: row.group === 'down' ? '#f87171' : hpColor }}>
                     <strong>{p.current_hp ?? 0}</strong>/{p.max_hp}
                   </span>
                 )}
               </button>
             );
-          })}
+            }),
+          ])}
         </div>
       </div>
     </div>,

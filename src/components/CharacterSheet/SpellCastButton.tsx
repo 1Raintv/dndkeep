@@ -710,6 +710,74 @@ export default function SpellCastButton({
 
  // ──────────────────────────────────────────────────────────────────
  // COMPACT MODE (Actions tab)
+  // v2.746 — the in-campaign target pickers (AoE save, multi-beam attack,
+  // heal) were rendered ONLY by the full-mode (Spells tab) return below,
+  // but the compact Actions-tab buttons are the ones that call
+  // setAoePicker / setMultiAttackPicker / setHealPicker — so "Cast" on
+  // Fireball from the Actions tab was a silent no-op (verified live on the
+  // local stack: no encounter query, nothing mounted). One element, rendered
+  // by every compact return that can open a picker and by full mode.
+  const campaignPickerModals = (
+    <Suspense fallback={null}>
+      {aoePicker && campaignId && (
+       <SpellTargetPickerModal
+       open={true}
+       onClose={() => setAoePicker(null)}
+       spell={spell}
+       slotLevel={aoePicker.slotLevel}
+       effectiveDamageDice={aoePicker.damageDice}
+       saveDC={saveDC}
+       character={character}
+       campaignId={campaignId}
+       onDeclared={() => {
+       if (!isCantrip) spendSlot(aoePicker.slotLevel);
+       flashCast(aoePicker.slotLevel);
+       onLeveledSpellCast?.(isBonusActionCast);
+       if (spell.concentration) onConcentrationCast?.();
+       }}
+       />
+       )}
+      {multiAttackPicker && campaignId && (
+       <MultiAttackPickerModal
+       open={true}
+       onClose={() => setMultiAttackPicker(null)}
+       spell={spell}
+       slotLevel={multiAttackPicker.slotLevel}
+       defaultAttackCount={multiAttackPicker.attackCount}
+       perBeamDice={multiAttackPicker.damageDice}
+       attackBonus={spellAttack}
+       character={character}
+       campaignId={campaignId}
+       onDeclared={() => {
+       if (!isCantrip) spendSlot(multiAttackPicker.slotLevel);
+       flashCast(multiAttackPicker.slotLevel);
+       onLeveledSpellCast?.(isBonusActionCast);
+       if (spell.concentration) onConcentrationCast?.();
+       }}
+       />
+       )}
+      {healPicker && campaignId && (
+       <SpellHealPickerModal
+       open={true}
+       onClose={() => setHealPicker(null)}
+       spell={spell}
+       slotLevel={healPicker.slotLevel}
+       healDef={healPicker.def}
+       effectiveHealDice={healPicker.healDice}
+       spellMod={spellMod}
+       character={character}
+       campaignId={campaignId}
+       onDeclared={() => {
+       if (!isCantrip) spendSlot(healPicker.slotLevel);
+       flashCast(healPicker.slotLevel);
+       onLeveledSpellCast?.(isBonusActionCast);
+       if (spell.concentration) onConcentrationCast?.();
+       }}
+       />
+       )}
+    </Suspense>
+  );
+
  if (compact) {
  // If a leveled spell was already cast this turn, lock this spell out
  if (spellLockedOut) {
@@ -840,6 +908,7 @@ export default function SpellCastButton({
  if (multi) {
    const beamCount = computeDefaultAttackCount(multi, effSlot, character.level ?? 1);
    return (
+<>
      <button
        onClick={() => setMultiAttackPicker({
          slotLevel: effSlot,
@@ -856,6 +925,8 @@ export default function SpellCastButton({
      >
        ⚔ {beamCount} beam{beamCount === 1 ? '' : 's'} +{spellAttack}
      </button>
+{campaignPickerModals}
+</>
    );
  }
  // Single-target attack spell: existing PlayerAttackButton path.
@@ -904,6 +975,7 @@ export default function SpellCastButton({
  // setAoePicker just like the pre-v2.372 ⚔ AoE button did.
  if (inCampaign && isAoE) {
  return (
+<>
  <button
  onClick={() => setAoePicker({ slotLevel: effSlot, damageDice: dice })}
  title={`${spell.area_of_effect!.size}ft ${spell.area_of_effect!.type} · ${mechanics.saveType} DC ${saveDC} save · ${dice} ${mechanics.damageType ?? 'damage'} (half on save). Pick targets to cast.`}
@@ -921,6 +993,8 @@ export default function SpellCastButton({
      button was redundant. Full save info stays in the tooltip. */}
  {recentlyCast ?? 'Cast'}
  </button>
+{campaignPickerModals}
+</>
  );
  }
 
@@ -1208,6 +1282,7 @@ export default function SpellCastButton({
  </div>,
  document.body
  )}
+ {campaignPickerModals}
  </div>
  );
  }
@@ -1431,69 +1506,16 @@ export default function SpellCastButton({
  {/* v2.148.0 — Phase O pt 1: multi-target save spell picker. Opens when
      the AoE save button is clicked. onDeclared burns the slot + sets
      concentration; picker cancel leaves slot unspent. */}
- {aoePicker && campaignId && (
- <SpellTargetPickerModal
- open={true}
- onClose={() => setAoePicker(null)}
- spell={spell}
- slotLevel={aoePicker.slotLevel}
- effectiveDamageDice={aoePicker.damageDice}
- saveDC={saveDC}
- character={character}
- campaignId={campaignId}
- onDeclared={() => {
- if (!isCantrip) spendSlot(aoePicker.slotLevel);
- flashCast(aoePicker.slotLevel);
- onLeveledSpellCast?.(isBonusActionCast);
- if (spell.concentration) onConcentrationCast?.();
- }}
- />
- )}
+ {campaignPickerModals}
  {/* v2.149.0 — Phase O pt 2: multi-beam attack spell picker. Fires N
      independent declareAttack calls; each beam rolls its own d20 +
      damage per RAW 2024 "Make a ranged spell attack for each ray." */}
- {multiAttackPicker && campaignId && (
- <MultiAttackPickerModal
- open={true}
- onClose={() => setMultiAttackPicker(null)}
- spell={spell}
- slotLevel={multiAttackPicker.slotLevel}
- defaultAttackCount={multiAttackPicker.attackCount}
- perBeamDice={multiAttackPicker.damageDice}
- attackBonus={spellAttack}
- character={character}
- campaignId={campaignId}
- onDeclared={() => {
- if (!isCantrip) spendSlot(multiAttackPicker.slotLevel);
- flashCast(multiAttackPicker.slotLevel);
- onLeveledSpellCast?.(isBonusActionCast);
- if (spell.concentration) onConcentrationCast?.();
- }}
- />
- )}
+ 
  {/* v2.150.0 — Phase O pt 3: heal picker. Direct HP application via
      applyHealToParticipant — no pending_attacks rows since there's no
      hit/miss/save to resolve. Mass heals share one roll across targets
      per RAW 2024. */}
- {healPicker && campaignId && (
- <SpellHealPickerModal
- open={true}
- onClose={() => setHealPicker(null)}
- spell={spell}
- slotLevel={healPicker.slotLevel}
- healDef={healPicker.def}
- effectiveHealDice={healPicker.healDice}
- spellMod={spellMod}
- character={character}
- campaignId={campaignId}
- onDeclared={() => {
- if (!isCantrip) spendSlot(healPicker.slotLevel);
- flashCast(healPicker.slotLevel);
- onLeveledSpellCast?.(isBonusActionCast);
- if (spell.concentration) onConcentrationCast?.();
- }}
- />
- )}
+ 
  </Suspense>
  </>
  );

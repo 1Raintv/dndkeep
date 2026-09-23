@@ -417,3 +417,58 @@ export async function getUseCombatantsFlag(campaignId: string): Promise<boolean>
   }
   return data.use_combatants_for_battlemap === true;
 }
+
+/** v2.746.0 — create the `combatants` row a token / combat participant
+ *  IS, before the placement or participant insert that references it.
+ *
+ *  Why a dedicated helper: summonTokens carried an inline insert of this
+ *  exact shape (moved here), and CreaturePickerModal / NPCManager used
+ *  to let createPlacement invent an HP-less 'narrative_npc' combatant
+ *  and then let cp_ensure_combatant_link GUESS which combatant the new
+ *  participant meant (unordered LIMIT 1 by definition — wrong scene,
+ *  wrong copy). Now every caller pre-creates the combatant, puts its id
+ *  on the token (createPlacement honours token.combatantId) AND on the
+ *  seed (combatEncounter seedToRow → combat_participants.combatant_id),
+ *  so token ↔ participant is an exact instance link.
+ *
+ *  definitionType: pickers pass 'narrative_npc' on purpose — it is what
+ *  createPlacement infers for npcId tokens today, and joinedRowToToken
+ *  derives token.npcId (the quick-panel gate) from that exact string.
+ *  Summons pass 'srd_monster'. owner_id = the current session (same
+ *  convention as createPlacement). Returns the new id, or null on any
+ *  failure (logged). */
+export async function createCombatantForDefinition(input: {
+  campaignId: string;
+  name: string;
+  definitionType: 'homebrew_monster' | 'srd_monster' | 'narrative_npc' | 'custom';
+  definitionId: string | null;
+  currentHp?: number | null;
+  maxHp?: number | null;
+  portraitStoragePath?: string | null;
+}): Promise<string | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const ownerId = session?.user?.id ?? null;
+  if (!ownerId) {
+    console.error('[scenePlacements] createCombatantForDefinition: no auth user');
+    return null;
+  }
+  const { data: cb, error } = await db
+    .from('combatants')
+    .insert({
+      campaign_id: input.campaignId,
+      owner_id: ownerId,
+      name: input.name,
+      portrait_storage_path: input.portraitStoragePath ?? null,
+      definition_type: input.definitionType,
+      definition_id: input.definitionId,
+      current_hp: input.currentHp ?? input.maxHp ?? null,
+      max_hp: input.maxHp ?? input.currentHp ?? null,
+    })
+    .select('id')
+    .single();
+  if (error || !cb) {
+    console.error('[scenePlacements] createCombatantForDefinition: insert failed', error);
+    return null;
+  }
+  return cb.id;
+}
