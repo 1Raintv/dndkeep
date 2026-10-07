@@ -5,7 +5,7 @@ import {longRestHitDice} from '../../rules/restRecovery';
 import PsionicPaymentRecoveryPanel from './_shared/PsionicPaymentRecoveryPanel';
 import {usePsionicEnhancements} from '../../lib/hooks/usePsionicEnhancements';
 import {useOptimisticCharacterRef} from '../../lib/hooks/useOptimisticCharacterRef';
-import {preservePsionicResources,acceptSavedPsionicResources,reconcileCharacterUpdate,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
+import {isCombatHpCarryover,preservePsionicResources,acceptSavedPsionicResources,reconcileCharacterUpdate,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
 import { attacksPerAction } from '../../rules/extraAttack';
 import PsionCastingNote from './_shared/PsionCastingNote';
 import { useState, useCallback, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
@@ -481,7 +481,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // and the concentration save was silently skipped. Detect total damage
  // (current_hp delta + temp_hp delta) and fire the save here too.
  const currentConcSpell = (newConcSpell !== undefined ? newConcSpell : oldConcSpell) as string;
- if (currentConcSpell && currentConcSpell !== '') {
+ if (currentConcSpell && currentConcSpell !== '' && !isCombatHpCarryover(current, patch)) {
  const oldHP = (current['current_hp'] as number) ?? 0;
  const newHP = (patch['current_hp'] !== undefined ? (patch['current_hp'] as number) : oldHP);
  const oldTemp = (current['temp_hp'] as number) ?? 0;

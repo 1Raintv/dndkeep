@@ -43,11 +43,24 @@ scenarios pass, covering normal resolution, response loss with a later casting,
 and failed timeout/reload. Mobile screenshots and overflow were checked. Spell
 IDs are displayed as human-readable names.
 
-Remaining before release: exercise actual damage-to-offer flow and investigate
-whether sheet realtime HP monitoring duplicates the campaign pipeline's save;
-verify the broader concentration suite and database-first deployment. Active
-save bonuses, advantage/exhaustion parity, summon/aura cleanup and other effects
-still need audit. These migrations and frontend changes remain local.
+The real applyDamage pipeline now has a desktop/mobile integration test with an
+explicit character-linked combatant and HP assertions. It found a duplicate save
+at encounter end: combat HP is copied to characters only then, and the sheet
+mistook that transfer for new damage. Local migration 20261007160000 adds an
+atomic carry-over identity; the sheet ignores only updates with a new identity.
+The regression failed before the fix and now passes, including visible HP
+carry-over and a later genuine hit that must still prompt. This exercises the
+actual exported damage/endEncounter pipeline, not pointer-driven map attacks.
+All 48 concentration browser/database checks pass together (desktop/mobile).
+Full gate: 1,555 unit tests, TS 208/208, build/rules/coordinates/anchors/hooks
+and bundle budget green (253 KB entry).
+
+Remaining before release: database-first deployment. Active save bonuses,
+advantage/exhaustion parity, summon/aura cleanup and other effects still need
+audit. During-combat sheet HP still uses the character snapshot; map HP uses the
+combatant. A unified live HP model is separate follow-up work. Offer creation and
+parent damage application are not yet durable/idempotent like save settlement.
+These three migrations and frontend changes remain local.
 
 PR #112 (sheet concentration, v2.785) merged at 89350c6 after all PR checks passed.
 Production CI 37644873225 passed; the public service worker confirms v2.785.0.

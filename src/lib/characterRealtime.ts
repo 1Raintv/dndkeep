@@ -1,6 +1,6 @@
 import type {Character} from '../types';
 const fields = [
- 'current_hp','temp_hp','active_conditions','concentration_spell','concentration_rounds_remaining',
+ 'combat_hp_sync_id','current_hp','temp_hp','active_conditions','concentration_spell','concentration_rounds_remaining',
  'exhaustion_level','concentration_slot_level','spell_slots','death_saves_successes','death_saves_failures','inspiration',
  'hit_dice_spent','psionic_hit_dice_revision','psionic_energy_revision','class_resources','feature_uses','currency','inventory','experience_points',
 ] as const;
@@ -99,4 +99,11 @@ export function acceptSavedPsionicResources(ref:{current:Character},saved:Partia
  if(saved.id!==ref.current.id||ref.current.class_name!=='Psion'||saved.class_name!=='Psion'||!Number.isSafeInteger(saved.psionic_energy_revision))return {previous:ref.current,patch:{}};
  const resources=preservePsionicResources(saved,{class_resources:ref.current.class_resources,feature_uses:ref.current.feature_uses});
  return reconcileCharacterUpdate(ref,{...resources,psionic_energy_revision:saved.psionic_energy_revision},pending);
+}
+
+/** v2.786: only a NEW carry-over marker suppresses external damage checks.
+ * Later damage retains the marker and must still prompt normally. */
+export function isCombatHpCarryover(previous: Record<string, unknown>, patch: Record<string, unknown>): boolean {
+ return typeof patch.combat_hp_sync_id === 'string' && patch.combat_hp_sync_id.length > 0
+  && patch.combat_hp_sync_id !== previous.combat_hp_sync_id;
 }

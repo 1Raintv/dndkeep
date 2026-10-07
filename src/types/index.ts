@@ -269,6 +269,7 @@ export interface Character {
   heroic_inspiration?: boolean | null;
   wildshape_current_hp: number | null;
   wildshape_max_hp: number | null;
+  combat_hp_sync_id?: string | null;
   concentration_spell: string | null;
  // v2.38.0: Rounds remaining on current concentration. NULL = no timer (instantaneous
  // / until dispelled / missing duration info). 0 = expired. One combat round = 6 seconds.

@@ -69,4 +69,32 @@ test.describe('Campaign concentration recovery (local stack)', () => {
     await page.unroute(endpoint);await page.getByRole('button',{name:'Confirm saved save',exact:true}).click();
     await expect.poll(()=>sql(`select state from pending_concentration_saves where id='${pending}'`)).toBe('expired');
   });
+  test('one campaign damage event produces one concentration save on the open sheet',async({page})=>{
+    const attack=randomUUID();sql(`delete from pending_concentration_saves where id='${pending}';
+      update characters set current_hp=10,max_hp=10,temp_hp=0 where id='${charId}';
+      update combatants set definition_type='character',definition_id='${charId}',current_hp=10,max_hp=10,temp_hp=0
+       where id=(select combatant_id from combat_participants where id='${participant}');
+      insert into pending_attacks(id,campaign_id,encounter_id,attacker_name,attacker_type,target_participant_id,target_name,target_type,attack_name,attack_kind,damage_dice,damage_type,damage_raw,damage_final,state,chain_id)
+       values('${attack}','${campaign}','${encounter}','Fixture hit','system','${participant}','Save fixture','character','Fixture damage','auto_hit','1','Force',1,1,'damage_rolled','${chain}');`);
+    await page.addInitScript(()=>{Math.random=()=>0.99;});await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await expect(page.getByRole('button',{name:'Rest',exact:true}).locator('visible=true').first()).toBeVisible();
+    // Invoke the same damage pipeline used by the map; the live sheet and its
+    // realtime listeners stay mounted while the real database change arrives.
+    await page.evaluate(async id=>{const path='/src/lib/pendingAttack.ts';const module=await import(path);await module.applyDamage(id);},attack);
+    expect(sql(`select current_hp from combatants where id=(select combatant_id from combat_participants where id='${participant}')`)).toBe('9');
+    expect(sql(`select state from pending_attacks where id='${attack}'`)).toBe('applied');
+    const dialog=page.getByRole('dialog',{name:'Concentration save',exact:true});await expect(dialog).toBeVisible();
+    expect(sql(`select count(*) from pending_concentration_saves where chain_id='${chain}'`)).toBe('1');
+    await dialog.getByRole('button',{name:'Roll Save'}).click();
+    await expect(page.getByRole('status',{name:'Concentration recovery'})).toContainText('Concentration maintained');
+    await expect(page.getByText('Concentration Check Required',{exact:true})).toHaveCount(0);
+    expect(spell()).toBe('detect-magic');expect(sql(`select count(*) from combat_events where chain_id='${chain}' and event_type='save_rolled'`)).toBe('1');
+    await page.evaluate(async id=>{const path='/src/lib/combatEncounter.ts';const module=await import(path);const result=await module.endEncounter(id);if(!result.ok)throw new Error(result.reason);},encounter);
+    await expect.poll(()=>sql(`select current_hp from characters where id='${charId}'`)).toBe('9');
+    await expect(page.getByText('9',{exact:true}).locator('visible=true').first()).toBeVisible();
+    await expect(page.getByText('Concentration Check Required',{exact:true})).toHaveCount(0);
+    // The carry-over marker persists: a subsequent real HP change must still prompt.
+    sql(`update characters set current_hp=8 where id='${charId}'`);
+    await expect(page.getByText('Concentration Check Required',{exact:true})).toBeVisible();
+  });
 });

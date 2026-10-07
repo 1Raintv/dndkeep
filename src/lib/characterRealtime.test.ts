@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import type {Character} from '../types';
-import {preservePsionicResources,acceptSavedPsionicResources,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,reconcileCharacterUpdate} from './characterRealtime';
+import {isCombatHpCarryover,preservePsionicResources,acceptSavedPsionicResources,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,reconcileCharacterUpdate} from './characterRealtime';
 const character={id:'pc',current_hp:20,hit_dice_spent:2,feature_uses:{'Telepathic Connection':1},class_resources:{'psionic-energy-dice':2}} as unknown as Character;
 it('accepts consecutive echoes before a React render, including a return to the original value',()=>{
  const ref={current:character};
@@ -81,4 +81,12 @@ it('ordinary-save acknowledgements repair a stale tab while keeping its unrelate
  acceptSavedPsionicResources(ref,saved,{class_resources:{'psionic-energy-dice':2,Other:9}});
  expect(ref.current.class_resources).toEqual({'psionic-energy-dice':1,Other:9});expect(ref.current.feature_uses).toEqual({'Telepathic Connection':2});
  expect(acceptSavedPsionicResources(ref,{...saved,id:'different'}).patch).toEqual({});
+});
+
+it('identifies HP carry-over without suppressing later genuine damage',()=>{
+ expect(isCombatHpCarryover({}, {combat_hp_sync_id:'first',current_hp:9})).toBe(true);
+ expect(isCombatHpCarryover({combat_hp_sync_id:'first'}, {combat_hp_sync_id:'second',current_hp:8})).toBe(true);
+ expect(isCombatHpCarryover({combat_hp_sync_id:'first'}, {combat_hp_sync_id:'first',current_hp:8})).toBe(false);
+ expect(isCombatHpCarryover({combat_hp_sync_id:'first'}, {current_hp:8})).toBe(false);
+ expect(isCombatHpCarryover({}, {combat_hp_sync_id:null,current_hp:8})).toBe(false);
 });
