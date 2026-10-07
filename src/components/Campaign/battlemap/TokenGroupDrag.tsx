@@ -101,6 +101,10 @@ export function TokenGroupDrag(props: {
         busy.current=false;feedback.clear();
       }
     };
+    // v2.783 — capture can be revoked without pointerup/blur. Cancel the
+    // preview and peer locks; a later release must never become a saved drop.
+    const lostCapture=(event:PointerEvent)=>{if(drag?.pointer===event.pointerId)cancel();};
+    const hidden=()=>{if(document.visibilityState==='hidden')cancel();};
     const pointerCancel=(event:PointerEvent)=>{if(drag?.pointer===event.pointerId){swallow(event);cancel();}};
     const escape=(event:KeyboardEvent)=>{if(event.key==='Escape' && drag){swallow(event);cancel();}};
     const click=(event:MouseEvent)=>{if(Date.now()<suppressUntil) swallow(event);};
@@ -109,10 +113,12 @@ export function TokenGroupDrag(props: {
     const host=canvas.parentElement!;
     host.addEventListener('pointerdown',down,true);
     canvas.addEventListener('click',click,true);
+    canvas.addEventListener('lostpointercapture',lostCapture);document.addEventListener('visibilitychange',hidden);
     window.addEventListener('pointermove',preview,true);window.addEventListener('pointerup',up,true);
     window.addEventListener('pointercancel',pointerCancel,true);window.addEventListener('keydown',escape,true);window.addEventListener('blur',cancel);
     return ()=>{
       cancel();feedback.destroy();
+      canvas.removeEventListener('lostpointercapture',lostCapture);document.removeEventListener('visibilitychange',hidden);
       host.removeEventListener('pointerdown',down,true);canvas.removeEventListener('click',click,true);
       window.removeEventListener('pointermove',preview,true);window.removeEventListener('pointerup',up,true);
       window.removeEventListener('pointercancel',pointerCancel,true);window.removeEventListener('keydown',escape,true);window.removeEventListener('blur',cancel);

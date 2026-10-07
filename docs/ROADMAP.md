@@ -1,5 +1,14 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Cancel interrupted group drags, v2.783
+
+Losing pointer capture or hiding a tab now cancels group movement previews,
+restores token positions for peers and releases drag locks. A later pointer-up
+cannot save the abandoned move. Normal drops, other pointers, undo/redo and
+reconnected peers retain their existing behavior. Unit regressions reproduce
+the old failures; desktop/mobile tests revoke real browser capture and verify
+both accounts recover without a database write.
+
 ### 2026-10-07 — Persisted Enkindled and Surge costs, v2.782
 
 Enkindled now records its once-per-turn use, extra rolls, Hit Point Dice cost and
@@ -25,7 +34,8 @@ the next persistence work. Combat advancement itself remains multi-write.
 Validation includes real local transactions for authorization, malformed rolls,
 replays, competing tabs, last-die contention, history rollback and turn rewinds;
 desktop/mobile reload, shared-limit and complete roll-flow checks; plus the full
-project gate. Production migration/deployment verification is required on merge.
+project gate. The production migration applied successfully through CI after PR #108.
+Frontend deployment is checked separately.
 
 
 ### 2026-10-07 — Preserve sheet turn budgets on failed advance, v2.781
