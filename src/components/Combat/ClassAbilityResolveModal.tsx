@@ -1,3 +1,4 @@
+import { savingThrowPassed } from '../../rules/savingThrows';
 // v2.247.0 — Class-ability save resolver modal.
 //
 // Opens when a player clicks Use on a save-bearing class ability
@@ -11,7 +12,7 @@
 //        'allies'  → other PC participants (excludes caster)
 //        'any'     → everyone except the caster
 //   2. Per target, exposes:
-//        [Roll d20]              — rolls a raw d20, displays inline
+//        [Roll Save]             — rolls d20 + target bonus against DC
 //        [Mark Pass] / [Mark Fail] — manual outcome recorder
 //        [Auto-Fail (willing)]   — visible only for PC targets when
 //                                  `willing_ally_auto_fail` resolves
@@ -25,12 +26,8 @@
 //          and the outcome-aware action-log entry
 //        — closes
 //
-// Save-bonus computation is intentionally NOT done here. PCs and NPCs
-// would need different load paths (characters table for PCs has full
-// ability scores; npcs has only dex). The "Roll d20" button rolls the
-// raw die; the player applies their target's save bonus mentally and
-// hits Mark Pass / Mark Fail. v2.248+ can plumb in the per-target
-// bonus computation if it becomes a pain point at the table.
+// v2.752 — Load target bonuses and the existing character save house rule
+// before enabling Roll Save; manual outcomes remain available.
 //
 // Why a separate modal instead of routing through pendingAttacks: class
 // abilities like Telekinesis don't deal damage — they apply positional
@@ -45,7 +42,7 @@ import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import { resolveAutomation } from '../../lib/automations';
 import { logAction } from '../shared/ActionLog';
-import { rollDie } from '../../lib/gameUtils';
+import { rollDie } from '../../rules/dice';
 import { getTargetSaveBonus } from '../../lib/pendingAttack';
 import { isHostileTo, rankTargets, targetGroup } from '../../rules/targetOrder';
 import { TargetGroupChip } from './TargetGroupChip';
@@ -129,6 +126,7 @@ export default function ClassAbilityResolveModal({
     bonus: number;
     breakdown: string;
     confidence: 'high' | 'low';
+    naturalExtremes?: boolean;
   }>>({});
 
   const willingFailMode = resolveAutomation('willing_ally_auto_fail', character, campaign);
@@ -201,6 +199,7 @@ export default function ClassAbilityResolveModal({
               bonus: result.bonus,
               breakdown: result.breakdown,
               confidence: result.confidence ?? 'high',
+              naturalExtremes: result.naturalExtremes ?? false,
             },
           }));
         }));
@@ -232,6 +231,7 @@ export default function ClassAbilityResolveModal({
     setSaveBonuses(prev => ({
       ...prev,
       [participantId]: {
+        ...prev[participantId],
         bonus: value,
         breakdown: `${value >= 0 ? '+' : ''}${value} (manual override)`,
         confidence: prev[participantId]?.confidence ?? 'low',
@@ -239,20 +239,14 @@ export default function ClassAbilityResolveModal({
     }));
   }
 
-  // v2.249.0 — Roll Save: rolls d20, applies the per-target bonus, auto-
-  // resolves vs DC. Nat 1 is auto-fail and nat 20 is auto-pass per RAW
-  // — the d20 short-circuits the comparison rather than waiting for
-  // bonus + DC. Falls back gracefully when the bonus hasn't loaded yet
-  // (treats bonus as 0 with a low-confidence breakdown — same behavior
-  // the v2.247 Roll d20 button had, just labeled differently).
+  // v2.752 — Ordinary saves use total vs DC unless the target opted into
+  // natural extremes. Manual bonus edits must retain that preference.
   function rollForTarget(p: CombatParticipant) {
+    if (!saveBonuses[p.id]) return; // Do not silently roll against an unloaded bonus/rule.
     const d20 = rollDie(20);
     const bonus = saveBonuses[p.id]?.bonus ?? 0;
     const total = d20 + bonus;
-    let outcome: SaveOutcome;
-    if (d20 === 20) outcome = 'passed';
-    else if (d20 === 1) outcome = 'failed';
-    else outcome = total >= saveDC ? 'passed' : 'failed';
+    const outcome: SaveOutcome = savingThrowPassed(d20, total, saveDC, { naturalExtremes: saveBonuses[p.id]?.naturalExtremes }) ? 'passed' : 'failed';
     setOutcome(p.id, outcome, d20, total, bonus);
   }
 
@@ -472,7 +466,8 @@ export default function ClassAbilityResolveModal({
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <button
                         onClick={() => rollForTarget(p)}
-                        title="Roll d20 + the bonus shown. Auto-resolves vs DC. Nat 20 / nat 1 short-circuit."
+                        disabled={!saveBonuses[p.id]}
+                        title={saveBonuses[p.id]?.naturalExtremes ? 'Roll against DC using this target’s natural 1/20 house rule.' : 'Roll d20 + the bonus shown against DC. Natural 1 and 20 do not override the total.'}
                         style={btnStyle('#60a5fa')}
                       >
                         Roll Save

@@ -1,3 +1,4 @@
+import { savingThrowPassed } from '../rules/savingThrows';
 // v2.630.0 — Weapon Mastery riders, Ship B part 1 (SRD 5.2.1).
 //
 // Automates the on-hit mastery properties for PLAYER weapon attacks:
@@ -209,10 +210,10 @@ export async function applyOnHitMasteryRiders(input: {
       if (targetIsDead) return;
       const dc = 8 + ctx.abilityMod + ctx.profBonus;
       const { getTargetSaveBonus } = await import('./pendingAttack');
-      const { bonus, breakdown } = await getTargetSaveBonus(atk.target_participant_id, 'CON');
+      const { bonus, breakdown, naturalExtremes } = await getTargetSaveBonus(atk.target_participant_id, 'CON');
       const d20 = rollDie(20);
       const total = d20 + bonus;
-      const failed = total < dc;
+      const failed = !savingThrowPassed(d20, total, dc, { naturalExtremes });
       await emitCombatEvent({
         campaignId: atk.campaign_id,
         encounterId: atk.encounter_id,
