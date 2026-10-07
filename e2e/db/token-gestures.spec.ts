@@ -766,7 +766,7 @@ test.describe('token gestures (local stack)', () => {
         const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
         const p=t.getGlobalPosition();return {x:p.x,y:p.y,scale:vp.scale.x};
       },tokens[0].id);
-      for(const cancel of [true,false]) {
+      for(const cancel of ['escape','capture',false] as const) {
         await expect.poll(async()=>Object.keys((await state(page)).locks).length).toBe(0);
         await page.mouse.move(box.x+point.x,box.y+point.y);
         await page.mouse.down();
@@ -781,7 +781,12 @@ test.describe('token gestures (local stack)', () => {
           await expect.poll(async()=>(await state(peer)).tokens[token.id].y).toBeCloseTo(token.y+70,2);
           await expect.poll(async()=>{const s=await state(peer);return s.locks;}).toHaveProperty(token.id);
         }
-        if(cancel) await page.keyboard.press('Escape');
+        if(cancel==='escape') await page.keyboard.press('Escape');
+        if(cancel==='capture') {
+          // Revoke actual browser capture, not a synthetic cancellation event.
+          expect(await page.locator('canvas').first().evaluate(canvas=>canvas.hasPointerCapture(1))).toBe(true);
+          await page.locator('canvas').first().evaluate(canvas=>canvas.releasePointerCapture(1));
+        }
         await page.mouse.up();
         for(const token of tokens) await expect.poll(async()=>(await state(peer)).locks[token.id]).toBeFalsy();
         if(!cancel) {
