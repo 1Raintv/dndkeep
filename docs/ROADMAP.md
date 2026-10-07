@@ -1,5 +1,22 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Psionic Surge on conditional discipline rolls, v2.757
+
+The owner's UA update p.4 permits one Hit Point Die after rolling Energy Dice,
+treating 1–3 as 4. Inerrant Aim, Devilish Tongue, Expanded Awareness and Observant
+Mind now offer this when eligible. The Hit Point Die is spent immediately on
+acceptance, separately from the Energy Die's later changed-outcome decision.
+Declining preserves the original roll. No healing or extra Energy Die charge.
+Current class, selected discipline and resources are rechecked before spending;
+logs retain the original roll and the adjusted bonus. All four controls remain
+primary-Psion-only, matching their existing eligibility.
+
+Validation: pure multi-die/boundary/cost tests, component cancellation and stale
+resource cases, real desktop/mobile persistence checks, screenshots and layout
+probe, plus the full gate. Other Psion roll paths still need Surge integration;
+Enkindled Life Force and automatic discipline turn limits remain queued.
+
+
 ### 2026-10-07 — Conditional Psion discipline dice, v2.756
 
 Inerrant Aim, Devilish Tongue, Expanded Awareness and Observant Mind now have
