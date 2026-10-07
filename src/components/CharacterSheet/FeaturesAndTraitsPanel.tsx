@@ -2,7 +2,7 @@ import PsionicRestorationButton from './_shared/PsionicRestorationButton';
 import { abilityModifier } from '../../rules/abilities';
 import { useState, useMemo } from 'react';
 import type { Character } from '../../types';
-import { proficiencyBonus, classSaveDC } from '../../lib/gameUtils';
+import { characterProficiencyBonus, classSaveDC } from '../../lib/gameUtils';
 import { CLASS_FEATURES } from '../../data/classFeatures';
 import { CLASS_MAP } from '../../data/classes';
 import { CLASS_COMBAT_ABILITIES, PASSIVE_FEATURE_NAMES } from '../../data/classAbilities';
@@ -56,7 +56,7 @@ function getCalcNote(name: string, c: Character): string {
  // fallback was masking a runtime bug — every call landed on 2
  // regardless of the character's actual level. Compute from level
  // via the helper instead.
- const prof = proficiencyBonus(level);
+ const prof = characterProficiencyBonus(c);
  const cha = abilityModifier(c.charisma);
  const wis = abilityModifier(c.wisdom);
  const int_ = abilityModifier(c.intelligence);

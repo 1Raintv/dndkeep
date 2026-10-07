@@ -4,7 +4,7 @@ import { checkedWrite } from '../../lib/api/checked';
 import CombatEventLog from '../shared/CombatEventLog';
 import type { Campaign } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
-import { abilityModifier, proficiencyBonus } from '../../lib/gameUtils';
+import { abilityModifier, characterProficiencyBonus } from '../../lib/gameUtils';
 // v2.291.0 — Combat-system Phase 2a migration. DMScreen used to read
 // combat status from the legacy campaign_sessions columns
 // (combat_active, initiative_order, current_turn, round). Those four
@@ -34,6 +34,8 @@ interface PartyMember {
   name: string;
   class_name: string;
   level: number;
+  secondary_class?: string | null;
+  secondary_level?: number | null;
   current_hp: number;
   max_hp: number;
   temp_hp: number;
@@ -91,7 +93,7 @@ function hpColor(cur: number, max: number) {
 }
 
 function passivePerc(m: PartyMember) {
-  const pb = proficiencyBonus(m.level);
+  const pb = characterProficiencyBonus(m);
   const mod = abilityModifier(m.wisdom);
   const hasProf = (m.skill_proficiencies ?? []).includes('Perception');
   const hasExp = (m.skill_expertises ?? []).includes('Perception');

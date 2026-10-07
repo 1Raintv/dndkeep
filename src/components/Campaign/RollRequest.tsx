@@ -1,3 +1,4 @@
+import {characterProficiencyBonus} from '../../rules/proficiency';
 import { abilityModifier } from '../../rules/abilities';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
@@ -29,6 +30,8 @@ interface PlayerChar {
   skill_proficiencies: string[];
   saving_throw_proficiencies: string[];
   level: number;
+  secondary_class?: string | null;
+  secondary_level?: number | null;
 }
 
 const SKILLS = [
@@ -54,7 +57,6 @@ const SKILLS = [
 
 const ABILITY_LABELS = ['Strength','Dexterity','Constitution','Intelligence','Wisdom','Charisma'];
 const ABILITY_KEYS = ['strength','dexterity','constitution','intelligence','wisdom','charisma'] as const;
-const PROF_BONUS = (level: number) => Math.ceil(level / 4) + 1;
 const MOD = (s: number) => abilityModifier(s);
 
 function rollD20() { return Math.floor(Math.random() * 20) + 1; }
@@ -260,7 +262,7 @@ export function PlayerRollPrompt({ campaignId, characterId, character }: {
 
     const baseScore = character[abilityKey] ?? 10;
     const baseMod = MOD(baseScore);
-    const profBonus = PROF_BONUS(character.level);
+    const profBonus = characterProficiencyBonus(character);
 
     let totalMod = baseMod;
     if (req.roll_type === 'skill' && character.skill_proficiencies?.some(p => p.toLowerCase().includes(req.roll_name.toLowerCase()))) {
@@ -323,7 +325,7 @@ export function PlayerRollPrompt({ campaignId, characterId, character }: {
           : ABILITY_KEYS.find(k => req.roll_name.toLowerCase().includes(k.slice(0,3).toLowerCase())) ?? 'strength';
         const baseScore = character[abilityKey] ?? 10;
         const baseMod = MOD(baseScore);
-        const profBonus = PROF_BONUS(character.level);
+        const profBonus = characterProficiencyBonus(character);
         let totalMod = baseMod;
         if (req.roll_type === 'skill' && character.skill_proficiencies?.some(p => p.toLowerCase().includes(req.roll_name.toLowerCase()))) totalMod += profBonus;
         if (req.roll_type === 'save' && character.saving_throw_proficiencies?.some(p => req.roll_name.toLowerCase().includes(p.toLowerCase()))) totalMod += profBonus;

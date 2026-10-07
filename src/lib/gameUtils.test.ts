@@ -134,3 +134,20 @@ describe('concentrationDC re-export', () => {
     expect(concentrationDC(200)).toBe(30);
   });
 });
+
+// v2.775 — the same multiclass proficiency must reach all derived numbers.
+import type {Character} from '../types';
+import {computeStats,classSaveDC} from './gameUtils';
+import {checkModifier} from './abilityChecks';
+it('uses total character level for Psion spell DC, saves, skills and expertise',()=>{
+ const c={class_name:'Psion',level:3,secondary_class:'Fighter',secondary_level:2,
+ strength:10,dexterity:10,constitution:14,intelligence:18,wisdom:10,charisma:10,
+ inventory:[],saving_throw_proficiencies:['intelligence'],skill_proficiencies:['Arcana'],skill_expertises:['Investigation']
+ } as unknown as Character;
+ const stats=computeStats(c);
+ expect(stats.proficiency_bonus).toBe(3);expect(stats.spell_attack_bonus).toBe(7);expect(stats.spell_save_dc).toBe(15);
+ expect(classSaveDC(c,'INT')).toBe(15);
+ expect(stats.saving_throws.intelligence.total).toBe(7);expect(stats.skills.Arcana.total).toBe(7);expect(stats.skills.Investigation.total).toBe(10);
+ expect(checkModifier(c,{kind:'skill',name:'Investigation'}).mod).toBe(10);
+ expect(checkModifier(c,{kind:'save',ability:'intelligence'}).mod).toBe(7);
+});

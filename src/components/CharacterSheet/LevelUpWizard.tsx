@@ -1,3 +1,4 @@
+import {proficiencyBonus} from '../../rules/proficiency';
 import {getSpellSlotRow} from '../../data/spellSlots';
 import {levelUpSpellSlots} from '../../rules/levelUpSpellSlots';
 import ModalPortal from '../shared/ModalPortal';
@@ -188,12 +189,9 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  const avgHPGain = Math.floor(classHD / 2) + 1 + abilityModifier(character.constitution);
  const newMaxHP = character.max_hp + avgHPGain;
 
- function computeNewProfBonus(level: number) {
- return Math.ceil(level / 4) + 1;
- }
  // Prof bonus is from TOTAL character level across all classes (2024 PHB)
- const newProfBonus = computeNewProfBonus(totalNewLevel);
- const oldProfBonus = computeNewProfBonus(totalCurrentLevel);
+ const newProfBonus = proficiencyBonus(totalNewLevel);
+ const oldProfBonus = proficiencyBonus(totalCurrentLevel);
  const profBonusIncreased = newProfBonus > oldProfBonus;
 
  function buildUpdates(): Partial<Character> {
