@@ -9,13 +9,15 @@
  * so granted spells are excluded consistently and limits stay aligned.
  */
 
+import { maximumPsionSpellLevel } from '../rules/psionSpellChoices';
 import { abilityModifier } from '../rules/abilities';
 import type { Character } from '../types';
 import { SPELL_MAP } from '../data/spells';
 import { getGrantedSpellIds } from './grantedSpells';
 import { getPreparedTable } from '../data/spellPreparedTables';
 
-/** Classes that prepare spells from their list each long rest (vs. fixed "known" lists) */
+/** Classes using prepared-spell storage. Replacement timing is class-specific;
+ * Psion replaces one spell on gaining a Psion level, not each Long Rest. */
 export const PREPARER_CLASSES = ['Cleric', 'Druid', 'Paladin', 'Wizard', 'Artificer', 'Psion', 'Ranger'] as const;
 
 /** Classes that have a "spells known" list rather than preparing daily */
@@ -179,6 +181,12 @@ export function canAddKnownSpell(character: Character, spellId: string): AddChec
   if (character.known_spells.includes(spellId)) return { allowed: false, reason: 'Already known' };
   const sp = SPELL_MAP[spellId];
   if (!sp) return { allowed: false, reason: 'Unknown spell' };
+  // v2.774 — granted Psion spells are free choices even off the base list.
+  if(character.class_name==='Psion') {
+    if(!maximumPsionSpellLevel(character.level))return {allowed:false,reason:'Check your Psion level before choosing spells'};
+    if(getGrantedSpellIds(character).all.includes(spellId))return {allowed:true};
+    if(sp.level>maximumPsionSpellLevel(character.level))return {allowed:false,reason:`Requires a higher Psion level for level ${sp.level} spells`};
+  }
   if (!sp.classes.includes(character.class_name)) {
     return { allowed: false, reason: `Not on the ${character.class_name} spell list` };
   }
@@ -231,6 +239,15 @@ export function canPrepareSpell(character: Character, spellId: string): AddCheck
   if (sp.level === 0) return { allowed: false, reason: 'Cantrips do not need preparing' };
   if (!isPreparer(character.class_name)) {
     return { allowed: false, reason: `${character.class_name} does not prepare spells` };
+  }
+  // v2.774 — imported/stale selections must pass the same rules as adding.
+  // Always-prepared subclass grants remain free and need no manual known entry.
+  if(character.class_name==='Psion') {
+    if(!maximumPsionSpellLevel(character.level))return {allowed:false,reason:'Check your Psion level before choosing spells'};
+    if(getGrantedSpellIds(character).grantedPrepared.includes(spellId))return {allowed:true};
+    if(!sp.classes.includes('Psion'))return {allowed:false,reason:'Not on the Psion spell list'};
+    if(sp.level>maximumPsionSpellLevel(character.level))return {allowed:false,reason:`Requires a higher Psion level for level ${sp.level} spells`};
+    if(!character.known_spells.includes(spellId))return {allowed:false,reason:'Choose this spell before preparing it'};
   }
   const counts = getSpellCounts(character);
   const max = getMaxPrepared(character);

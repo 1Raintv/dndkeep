@@ -1,5 +1,17 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Psion spell-choice eligibility, v2.774
+
+Adding/preparing Psion spells now checks the Psion class level independently of
+edited or multiclass slot totals. Preparing also requires the base class list
+and an existing selected spell. Always-prepared subclass grants retain their
+exemption and do not consume the normal cap; the free Mage Hand does not consume
+a chosen cantrip slot. All twenty maximum spell levels are source-checked.
+
+This closes selection validation gaps, not the remaining once-per-level spell
+replacement workflow. Existing imported spells are retained for review; other
+classes' preparation behavior is unchanged.
+
 ### 2026-10-07 — Resolve Surge independently of history delivery, v2.773
 
 A confirmed Psionic Surge now returns its improved dice immediately after paying
