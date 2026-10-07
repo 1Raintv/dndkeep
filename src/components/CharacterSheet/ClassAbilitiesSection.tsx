@@ -1,3 +1,4 @@
+import ConditionalPsionicButton from './_shared/ConditionalPsionicButton';
 import { canUseClassAbility } from '../../rules/classAbilityEligibility';
 import { useState, useRef, Fragment, Suspense } from 'react';
 // Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
@@ -24,7 +25,7 @@ import PsionicPowerButton from './_shared/PsionicPowerButton';
 import ManualPropelResolution from './_shared/ManualPropelResolution';
 import {resolvePsionicPower,type PsionicPowerUse} from '../../rules/psionicPowers';
 import PsionicRestorationButton from './_shared/PsionicRestorationButton';
-import {psionicDieCount as getPsionicDieCount} from '../../rules/psionicRestoration';
+import {psionicDieCount as getPsionicDieCount,psionicDieSides} from '../../rules/psionicRestoration';
 
 interface Props {
  character: Character;
@@ -141,12 +142,7 @@ function getMaxUses(ability: ClassAbility, character: Character): number | undef
 }
 
 // Resolve dynamic values in descriptions
-function getPsionicDieSize(level: number): string {
- if (level >= 17) return 'd12';
- if (level >= 11) return 'd10';
- if (level >= 5) return 'd8';
- return 'd6';
-}
+function getPsionicDieSize(level: number): string { return `d${psionicDieSides(level)}`; }
 
 
 function resolveDesc(desc: string | ((c: Character) => string), character: Character): string {
@@ -514,6 +510,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  ? resolveDesc((ability as any).descriptionLong, character)
  : null;
  const isExpanded = expandedAbility === ability.name;
+ const conditionalDiscipline=disciplineNameSet.has(ability.name)?findDiscipline(ability.name):undefined;
  // v2.376.0 — inject a SPECIES sub-header right before the
  // first species-sourced row so they're visually separated from
  // class abilities. speciesAbilitySet is built earlier from the
@@ -810,7 +807,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  const target = e.target as HTMLElement;
  if (target.closest('button')) e.stopPropagation();
  }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'nowrap' as const, alignItems: 'center', width: '100%' }}>
- {(ability.name==='Telekinetic Propel'||ability.name==='Telepathic Connection') ? <PsionicPowerButton character={character} kind={ability.name==='Telekinetic Propel'?'propel':'connection'} onUse={async(use:PsionicPowerUse)=>{await handleUseAbility({...ability,psionicUse:use});}}/> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton character={character} onUpdate={onUpdate}/> : ability.actionType !== 'free' && (
+ {conditionalDiscipline?.conditionalOutcome ? <ConditionalPsionicButton character={character} discipline={conditionalDiscipline} onUpdate={onUpdate} campaignId={campaignId}/> : (ability.name==='Telekinetic Propel'||ability.name==='Telepathic Connection') ? <PsionicPowerButton character={character} kind={ability.name==='Telekinetic Propel'?'propel':'connection'} onUse={async(use:PsionicPowerUse)=>{await handleUseAbility({...ability,psionicUse:use});}}/> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton character={character} onUpdate={onUpdate}/> : ability.actionType !== 'free' && (
  <button
  onClick={() => handleUseAbility(ability, maxUses !== undefined ? 1 : undefined)}
  style={{

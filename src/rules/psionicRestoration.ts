@@ -1,3 +1,7 @@
+/** UA update p.2: Energy Dice column, shared by rolls and pool displays. */
+export function psionicDieSides(level:number):number {
+  return level>=17?12:level>=11?10:level>=5?8:6;
+}
 /** Psion UA v2, level 5: one-minute meditation, all dice, once per Long Rest. */
 export function psionicDieCount(level:number):number {
   return level>=17?12:level>=13?10:level>=9?8:level>=5?6:4;
