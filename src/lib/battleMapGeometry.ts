@@ -152,11 +152,9 @@ export interface WallSegment {
  * positions map and any visual anchored on those positions either
  * didn't render or rendered at (0,0).
  *
- * Active-scene selection: there's no `is_active` column on `scenes`,
- * so we use the most recently updated scene per campaign. This
- * matches the implicit single-scene-at-a-time convention all current
- * production campaigns follow. Multi-scene campaigns will eventually
- * need an explicit active flag; v2.356 leaves that for later.
+ * Use the viewed scene when it belongs to this campaign. Without one,
+ * use the first scene in the same stable order as the map and cold combat
+ * starter. An unrelated scene edit must not change combat geometry.
  */
 export async function loadActiveBattleMap(
   campaignId: string,
@@ -180,8 +178,9 @@ export async function loadActiveBattleMap(
   // All consumers of this loader are client-side, so the battle-map
   // store's currentSceneId (set when BattleMapV2 mounts a scene) is
   // the authoritative signal for which scene is on screen. Lazy import
-  // avoids a static cycle. Falls back to most-recently-updated only
-  // when no map is mounted (store empty).
+  // avoids a static cycle. v2.758: without a mounted scene, use the same
+  // created_at/id order as listScenes and cold startCombatFromMapTokens.
+  // updated_at picked a different scene merely because the DM edited it.
   let viewedSceneId: string | null = null;
   if (opts && 'viewedSceneId' in opts) {
     viewedSceneId = opts.viewedSceneId ?? null; // injected (v2.646) — store untouched
@@ -208,7 +207,8 @@ export async function loadActiveBattleMap(
       .from('scenes')
       .select('id, grid_size_px, width_cells, height_cells')
       .eq('campaign_id', campaignId)
-      .order('updated_at', { ascending: false })
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
       .limit(1)
       .maybeSingle();
     scene = (data as SceneRow | null) ?? null;
