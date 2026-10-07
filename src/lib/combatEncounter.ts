@@ -1,3 +1,4 @@
+import { recoverInitiativeResources } from './initiativeResources';
 // v2.96.0 — Phase D of the Combat Backbone
 //
 // Encounter lifecycle helpers:
@@ -302,6 +303,7 @@ export async function addParticipantToEncounter(
     },
   ]);
 
+  if (data.initiative !== null) await recoverInitiativeResources(data);
   return data as CombatParticipant;
 }
 
@@ -617,6 +619,7 @@ export async function startEncounter(opts: StartEncounterOptions): Promise<Start
   });
   for (const p of participants) {
     if (p.initiative !== null) {
+      await recoverInitiativeResources(p);
       events.push({
         campaignId: opts.campaignId,
         encounterId: encounter.id,
@@ -671,12 +674,13 @@ export async function rollInitiativeForParticipant(
     .from('combat_participants')
     .update({ initiative: total })
     .eq('id', participantId)
-    .select('encounter_id, campaign_id, name, participant_type, hidden_from_players')
+    .select('encounter_id, campaign_id, name, participant_type, entity_id, hidden_from_players')
     .single();
 
   if (!partData) return null;
 
   await recomputeTurnOrder(partData.encounter_id);
+  await recoverInitiativeResources(partData);
 
   await emitCombatEvent({
     campaignId: partData.campaign_id,

@@ -47,7 +47,9 @@ vi.mock('./combatEvents', () => ({
 }));
 vi.mock('./api/checked', () => ({ checkedWrite: vi.fn(async () => ({ error: null })) }));
 
-import { seedToRow, firstPerDefinition, startEncounter, endEncounter, type SeedSource } from './combatEncounter';
+import { recoverInitiativeResources } from './initiativeResources';
+vi.mock('./initiativeResources',()=>({recoverInitiativeResources:vi.fn(async()=>{})}));
+import { seedToRow, firstPerDefinition, startEncounter, endEncounter, addParticipantToEncounter, rollInitiativeForParticipant, type SeedSource } from './combatEncounter';
 
 const seed = (over: Partial<SeedSource>): SeedSource => ({
   type: 'creature', entityId: 'goblin-def', name: 'Goblin Scout',
@@ -57,6 +59,7 @@ const ctx = { encounterId: 'enc', campaignId: 'camp', initiativeMode: 'auto_all'
 const opOf = (c: Call, name: string) => c.ops.find(o => o.op === name);
 
 beforeEach(() => {
+  vi.mocked(recoverInitiativeResources).mockClear();
   h.state.calls.length = 0;
   h.state.respond = () => ({ data: [], error: null });
 });
@@ -172,4 +175,31 @@ describe('endEncounter character carry-over', () => {
     expect(payload.current_hp).toBe(4);
     expect(payload.active_conditions).toEqual(['Prone']);
   });
+});
+
+describe('initiative resource recovery entry points',()=>{
+ const part={id:'pc',entity_id:'hero',participant_type:'character',campaign_id:'camp',encounter_id:'enc',name:'Psion',initiative:12};
+ it.each(['auto_all','player_agency'] as const)('combat start only recovers rolled participants (%s)',async(mode)=>{
+  h.state.respond=c=>{
+   if(c.table==='combat_encounters')return {data:{id:'enc',campaign_id:'camp'}};
+   if(c.table==='combat_participants'&&opOf(c,'insert'))return {data:[{...part,initiative:mode==='auto_all'?12:null}]};
+   return {data:[]};
+  };
+  await startEncounter({campaignId:'camp',initiativeMode:mode,seeds:[seed({type:'character',entityId:'hero'})]});
+  expect(recoverInitiativeResources).toHaveBeenCalledTimes(mode==='auto_all'?1:0);
+ });
+ it.each(['auto_all','player_agency'] as const)('late participants recover only on actual rolls (%s)',async(mode)=>{
+  h.state.respond=c=>c.table==='combat_participants'&&opOf(c,'insert')?{data:{...part,initiative:mode==='auto_all'?12:null}}:{data:[]};
+  await addParticipantToEncounter('enc','camp',seed({type:'character',entityId:'hero'}),mode);
+  expect(recoverInitiativeResources).toHaveBeenCalledTimes(mode==='auto_all'?1:0);
+ });
+ it('explicit roll recovers only after successful participant update',async()=>{
+  h.state.respond=c=>c.table==='combat_participants'&&opOf(c,'update')?{data:part}:{data:[]};
+  await rollInitiativeForParticipant('pc',2);
+  expect(recoverInitiativeResources).toHaveBeenCalledWith(part);
+  vi.mocked(recoverInitiativeResources).mockClear();
+  h.state.respond=()=>({data:null});
+  expect(await rollInitiativeForParticipant('pc',2)).toBeNull();
+  expect(recoverInitiativeResources).not.toHaveBeenCalled();
+ });
 });
