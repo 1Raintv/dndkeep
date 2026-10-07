@@ -14,11 +14,19 @@ conditions/buffs are removed or a concentration-broken event is emitted. Success
 clears also reset concentration_slot_level, whose existing database column is now
 represented in the character types. Regression plus full gate pass: 1,538 unit
 tests, TS 208/208, all build/rules/coordinates/anchors/hooks/budget checks.
+Local casting-identity foundation: migration 20261007153000 adds a revision
+that advances on every explicit spell write, including same-spell recasts, but
+not on HP edits or duration ticks. Ordinary direct/RPC edits cannot spoof the
+revision. Existing pending prompts retain a NULL revision because their original
+casting cannot be reconstructed safely. Four real Docker tests pass, including
+concurrent casts and transaction rollback. No production migration is shipped.
+Next: capture this revision when damage occurs, settle each prompt once under
+row locks, and retire obsolete/legacy prompts without touching current effects.
 This does not yet solve concurrent prompts or saved-result replay; do not release
 this branch as complete campaign concentration automation.
 
 PR #112 (sheet concentration, v2.785) merged at 89350c6 after all PR checks passed.
-Production CI 37644873225 and the live deployment remain to be verified.
+Production CI 37644873225 passed; the public service worker confirms v2.785.0.
 
 ### In progress — Character-sheet concentration correctness, v2.785
 
