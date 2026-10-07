@@ -1,3 +1,4 @@
+import SpellSourceReview from './SpellSourceReview';
 import PsionCastingNote from './_shared/PsionCastingNote';
 import { SUBTLE_TELEKINESIS_TEXT } from '../../data/psionFeatureDescriptions';
 import { SpellDescription } from '../shared/SpellDescription';
@@ -25,6 +26,7 @@ interface SpellsTabProps {
  onAddSpell: (id: string) => void;
  onRemoveSpell: (id: string) => void;
  onTogglePrepared: (id: string) => void;
+ onReviewSpellSources: (patch: Partial<Character>) => void;
  onConcentrate: (id: string) => void;
  // v2.380.0 — Toggle a spell ID in/out of pinned_spells. Cap of 6
  // is enforced by the parent; this callback just handles the toggle.
@@ -83,7 +85,7 @@ function getEffectCategory(spell: SpellData): { label: string; color: string } {
 export default function SpellsTab({
  character, computed, knownSpellData, availableSpells, maxSpellLevel,
  concentrationSpellId, hasSpellSlots, onUpdateSlots, onAddSpell,
- onRemoveSpell, onTogglePrepared, onConcentrate, onTogglePinned, userId, campaignId,
+ onRemoveSpell, onTogglePrepared, onReviewSpellSources, onConcentrate, onTogglePinned, userId, campaignId,
  openBookRequest = null, onOpenBookHandled,
 }: SpellsTabProps) {
  const [activeLevel, setActiveLevel] = useState<number | 'all'>('all');
@@ -233,6 +235,7 @@ export default function SpellsTab({
  return (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
+ <SpellSourceReview character={character} spells={knownSpellData} onSave={onReviewSpellSources}/>
  {/* ── Top bar: prepared count + Add Spells button ── */}
  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
  {/* Known-casters: show spells known counter */}

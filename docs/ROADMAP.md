@@ -119,6 +119,20 @@ that review path for legal Charm Person while still proving illegal imported
 choices are rejected; its old toggle titles also need updating. Do not deploy
 until this path, automatic grants and a combined browser run pass.
 
+The ordinary spell sheet now has explicit source/readiness review for existing
+non-granted spells. A review cannot add a spell, remove automatic grants, claim an
+absent character class, prepare a cantrip, or bypass Psion level/list/prepared
+limits. Saving records the reviewed copies together; canceled drafts do not save.
+Six adapter regressions and the full gate pass (1,662 tests, TS 208/208, 253 KB).
+Eight desktop/mobile checks pass across legacy legal/illegal preparation,
+per-class counters/toggles and shared-spell learning/removal. The prior legal
+Charm Person test now reviews its legacy source before preparing it.
+
+Additional follow-up noticed during fixture verification: a Psion with an empty
+slot map is rendered as a noncaster. The new cancellation fixture initially
+omitted its level-one slots; fix the broader classification separately so damaged
+or imported slot data cannot hide spell recovery controls.
+
 Before release: source tracking for automatic grants and per-class prepared-state
 ownership. A spell learned through Psion and later removed must not accidentally
 prepare an originally unprepared copy retained by Wizard.

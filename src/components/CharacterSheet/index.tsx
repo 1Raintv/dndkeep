@@ -2728,6 +2728,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* ── SPELLS ── */}
  {activeTab === 'spells' && (
  <SpellsTab
+ onReviewSpellSources={patch=>applyUpdate(patch,true)}
  character={character}
  computed={computed}
  knownSpellData={knownSpellData}

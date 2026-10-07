@@ -30,19 +30,41 @@ test.describe('Psion spell choice eligibility', () => {
   });
 
 
+  test('source review is a cancelable draft with readable controls',async({page},info)=>{
+    sql(`update characters set level=1,subclass=null,known_spells=ARRAY['charm-person'],prepared_spells='{}',spell_slots='{"1":{"total":2,"used":0}}' where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+    await page.getByText('Review spell sources',{exact:true}).click();
+    await page.getByLabel('Spell to review',{exact:true}).selectOption('charm-person');
+    const review=page.getByRole('form',{name:'Spell source review'});
+    await review.getByRole('checkbox',{name:'Learned through Psion',exact:true}).check();
+    await review.getByRole('checkbox',{name:'Prepared through Psion',exact:true}).check();
+    await review.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('spell-source-review.png')});
+    expect(sql(`select spell_sources::text from characters where id='${charId}'`)).toBe('{}');
+    await review.getByRole('button',{name:'Cancel review',exact:true}).click();
+    await page.getByLabel('Spell to review',{exact:true}).selectOption('charm-person');
+    await expect(review.getByRole('checkbox',{name:'Learned through Psion',exact:true})).not.toBeChecked();
+    expect(sql(`select prepared_spells::text from characters where id='${charId}'`)).toBe('{}');
+  });
   test('preparation blocks imported illegal choices and keeps legal choices',async({page})=>{
     sql(`update characters set level=1,subclass=null,known_spells='{"charm-person","telekinesis","fireball"}',prepared_spells='{}',spell_slots='{"1":{"total":2,"used":0},"9":{"total":1,"used":0}}' where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     await page.locator('button.tab').filter({hasText:/^Spells/}).click();
     const row=(name:string)=>page.locator('.srow-grid').filter({has:page.getByText(name,{exact:true})}).first();
-    await row('Telekinesis').getByTitle('Not prepared — click to prepare',{exact:true}).click();
+    await row('Telekinesis').getByTitle('Not prepared through Psion — click to prepare',{exact:true}).click();
     await expect(page.getByText('Requires a higher Psion level for level 5 spells',{exact:true})).toBeVisible();
     expect(sql(`select prepared_spells::text from characters where id='${charId}'`)).toBe('{}');
-    await row('Fireball').getByTitle('Not prepared — click to prepare',{exact:true}).click();
+    await row('Fireball').getByTitle('Not prepared through Psion — click to prepare',{exact:true}).click();
     await expect(page.getByText('Not on the Psion spell list',{exact:true})).toBeVisible();
-    await row('Charm Person').getByTitle('Not prepared — click to prepare',{exact:true}).click();
+    await page.getByText('Review spell sources',{exact:true}).click();
+    await page.getByLabel('Spell to review',{exact:true}).selectOption('charm-person');
+    const review=page.getByRole('form',{name:'Spell source review'});
+    await review.getByRole('checkbox',{name:'Learned through Psion',exact:true}).check();
+    await review.getByRole('button',{name:'Save spell sources',exact:true}).click();
+    await expect.poll(()=>sql(`select (spell_sources->'charm-person')::text from characters where id='${charId}'`)).toBe('["class:Psion"]');
+    await row('Charm Person').getByTitle('Not prepared through Psion — click to prepare',{exact:true}).click();
     await expect.poll(()=>sql(`select prepared_spells::text from characters where id='${charId}'`)).toBe('{charm-person}');
     await page.reload();await page.locator('button.tab').filter({hasText:/^Spells/}).click();
-    await expect(row('Charm Person').getByTitle('Prepared — click to unprepare',{exact:true})).toBeVisible();
+    await expect(row('Charm Person').getByTitle('Prepared through Psion — click to unprepare',{exact:true})).toBeVisible();
   });
 });
