@@ -1,3 +1,5 @@
+import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
+import {acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
 import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharacterRef';
 import {useEffect,useRef,useState} from 'react';
 import type {Character} from '../../../types';
@@ -16,7 +18,7 @@ function capacity(c:Character){
  return biofeedbackCapacity(c.level,c.class_resources?.['psionic-energy-dice'],computeStats(c).modifiers.intelligence);
 }
 /** v2.770 — manual spell-trigger confirmation; the dice cost is paid before rolling. */
-export default function BiofeedbackButton({character,onUpdate}:{character:Character;onUpdate:(patch:Partial<Character>)=>void}){
+export default function BiofeedbackButton({persistence,character,onUpdate}:{persistence?:PsionicEnhancementPersistence;character:Character;onUpdate:(patch:Partial<Character>)=>void}){
  const latest=useOptimisticCharacterRef(character);
  const update=useRef(onUpdate);update.current=onUpdate;
  const mounted=useRef(true),busy=useRef(false);const [pending,setPending]=useState(false);
@@ -35,10 +37,11 @@ export default function BiofeedbackButton({character,onUpdate}:{character:Charac
    const intelligence=computeStats(current).modifiers.intelligence;
    const rolls=Array.from({length:count},()=>rollDie(now.sides));
    patch({class_resources:{...current.class_resources,'psionic-energy-dice':now.remaining-count}});
-   const surged=await offerPsionicRollEnhancements({roll:rolls[0],rolls,sides:now.sides,feature:'Biofeedback',campaignId:current.campaign_id,
-    current:()=>latest.current,active:()=>mounted.current,eligible:c=>!!capacity(c),update:patch,
+   const surged=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:rolls[0],rolls,sides:now.sides,feature:'Biofeedback',recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for temporary HP (minimum 1); keep higher existing temporary HP.`,campaignId:current.campaign_id,
+    current:()=>latest.current,active:()=>mounted.current,eligible:c=>!!capacity(c),
     prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
    // v2.779 — retain the paid roll in history if its sheet closes during Surge.
+   if(surged?.unconfirmed)return;
    const active=mounted.current&&latest.current.id===id;
    const result=biofeedbackResult(surged?.rolls??rolls,now.sides,intelligence,(active?latest.current:current).temp_hp??0);
    if(!result){showToast('Dice were spent. Check your temporary HP before applying Biofeedback.','warn');return;}

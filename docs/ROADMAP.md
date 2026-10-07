@@ -1,5 +1,33 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Persisted Enkindled and Surge costs, v2.782
+
+Enkindled now records its once-per-turn use, extra rolls, Hit Point Dice cost and
+recovery history in one transaction. Surge uses the same locked character row,
+so competing enhancements cannot overwrite each other's costs or spend the last
+Hit Point Die twice. Owner/DM authorization and immutable request IDs protect
+shared use and retries. Each combat advance gets a fresh turn token, including
+rewinds; independent level-20 Psions advance a saved tabletop turn with End Turn.
+
+The sheet accepts ordered server receipts without writing them back as optimistic
+absolute values. Newer costs and rest recovery survive delayed responses. Pending
+character edits must save first. Uncertain requests retain their original rolls
+and identifiers in browser storage; the Actions recovery notice confirms the
+same cost and shows the complete rolls for manual resolution. It deliberately
+does not replay a parent heal/damage effect that may already have resolved in
+another tab. Definite rejection does not discard the original-roll information.
+
+Enkindled's turn limit is enforced; other Discipline turn claims remain manual.
+Base Psionic Energy Die deductions still use optimistic character saves and can
+conflict across simultaneous tabs. Those costs and shared Discipline claims are
+the next persistence work. Combat advancement itself remains multi-write.
+
+Validation includes real local transactions for authorization, malformed rolls,
+replays, competing tabs, last-die contention, history rollback and turn rewinds;
+desktop/mobile reload, shared-limit and complete roll-flow checks; plus the full
+project gate. Production migration/deployment verification is required on merge.
+
+
 ### 2026-10-07 — Preserve sheet turn budgets on failed advance, v2.781
 
 End Turn now waits for a successful combat advance before resetting local action,

@@ -1,3 +1,4 @@
+import {getEnkindledTurn,advancePsionicSoloTurn,PsionicRequestError} from '../../lib/api/psionicTurns';
 import { useState, useEffect, useRef } from 'react';
 import { useToast } from '../shared/Toast';
 import { useCombatSelector, useCombatCurrentActor } from '../../context/CombatContext';
@@ -12,6 +13,7 @@ interface ActionState {
 }
 
 interface ActionEconomyProps {
+ trackPsionicTurns?:boolean;
  speedFeet: number;
  onActionUsed?: (action: string, used: boolean) => void;
  onNewTurn?: () => void;
@@ -36,7 +38,7 @@ const TOKEN = {
  reaction: { label: 'Reaction', key: 'reaction', icon: '', color: '#3b82f6' },
 };
 
-export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, actionUsedExternal, bonusActionUsedExternal, reactionUsedExternal, characterId }: ActionEconomyProps) {
+export default function ActionEconomy({ trackPsionicTurns=false, speedFeet, onActionUsed, onNewTurn, actionUsedExternal, bonusActionUsedExternal, reactionUsedExternal, characterId }: ActionEconomyProps) {
  const [state, setState] = useState<ActionState>({
  action: false, bonusAction: false, reaction: false, movedFeet: 0,
  });
@@ -47,6 +49,7 @@ export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, acti
  const [endingTurn, setEndingTurn] = useState(false);
  const {showToast}=useToast();
  const advancing=useRef(false),mounted=useRef(true);
+ const soloAdvance=useRef<{characterId:string;requestId:string;expected:number}|null>(null);
  const sheet=useRef({characterId,encounterId:encounter?.id});
  sheet.current={characterId,encounterId:encounter?.id};
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
@@ -58,16 +61,26 @@ export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, acti
  // A failed request must not silently refund actions or reset another sheet.
  async function handleEndTurn() {
  if(advancing.current)return;
- if(!isMyCombatTurn||!encounter){reset();return;}
+ if((!isMyCombatTurn||!encounter)&&(!trackPsionicTurns||!characterId)){reset();return;}
  advancing.current=true;setEndingTurn(true);
  const started=sheet.current;
  const stillHere=()=>mounted.current&&sheet.current.characterId===started.characterId&&sheet.current.encounterId===started.encounterId;
  try {
+ if(!isMyCombatTurn||!encounter){
+  const turn=await getEnkindledTurn(characterId!);if(!stillHere())return;
+  if('soloTurn' in turn.turn){
+   if(soloAdvance.current?.characterId!==characterId)soloAdvance.current={characterId:characterId!,requestId:crypto.randomUUID(),expected:turn.turn.soloTurn};
+   const request=soloAdvance.current!;
+   await advancePsionicSoloTurn(characterId!,request.requestId,request.expected);soloAdvance.current=null;
+  }
+  if(stillHere())reset();return;
+ }
  const result=await advanceTurn(encounter.id);
  if(!stillHere())return;
  if(result.ok)reset();
  else showToast(`Turn could not be completed: ${result.reason}. Your sheet trackers were kept. Check combat before trying again.`, 'error', {duration:0});
- } catch {
+ } catch(error) {
+ if(error instanceof PsionicRequestError&&error.definitelyNotPaid)soloAdvance.current=null;
  if(stillHere())showToast('Turn advancement could not be confirmed. Your sheet trackers were kept. Check combat before trying again.', 'error', {duration:0});
  } finally {
  advancing.current=false;
