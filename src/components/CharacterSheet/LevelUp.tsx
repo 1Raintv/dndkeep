@@ -1,7 +1,8 @@
+import {levelUpSpellSlots} from '../../rules/levelUpSpellSlots';
 import { useState, useMemo } from 'react';
 import type { Character } from '../../types';
 import { CLASS_MAP } from '../../data/classes';
-import { getSpellSlotRow, slotRowToSpellSlots } from '../../data/spellSlots';
+import { getSpellSlotRow } from '../../data/spellSlots';
 import { rollDie, hpPerLevel, abilityModifier } from '../../lib/gameUtils';
 import { FEATS, type FeatData } from '../../data/feats';
 import ModalPortal from '../shared/ModalPortal';
@@ -93,12 +94,7 @@ export default function LevelUp({ character, onConfirm, onCancel }: LevelUpProps
 
  function buildNewSlots(): Character['spell_slots'] {
  if (!cls?.is_spellcaster) return character.spell_slots;
- const newSlotDef = slotRowToSpellSlots(getSpellSlotRow(cls.name, newLevel));
- const merged: Character['spell_slots'] = {};
- for (const [lvl, def] of Object.entries(newSlotDef)) {
- merged[lvl] = { total: def.total, used: Math.min(character.spell_slots[lvl]?.used ?? 0, def.total) };
- }
- return merged;
+ return levelUpSpellSlots(character.spell_slots,getSpellSlotRow(cls.name,newLevel));
  }
 
  function confirm() {

@@ -31,7 +31,7 @@ test.describe('Psion Discipline level-up', () => {
 
   for(const level of [1,4,5]) test(`level ${level+1} choices and single replacement`,async({page},info)=>{
     const originals=level===1?[]:level===4?['Biofeedback','Psionic Guards']:['Biofeedback','Psionic Guards','Inerrant Aim'];
-    sql(`update characters set level=${level},pending_manual_level_grants=1,class_resources='${JSON.stringify({'psion-disciplines':originals,'psionic-energy-dice':2,other:9})}' where id='${charId}'`);
+    sql(`update characters set level=${level},pending_manual_level_grants=1,spell_slots='{"1":{"total":${level===1?2:4},"used":1}${level===1?'':',"2":{"total":3,"used":2}'}${level===5?',"3":{"total":2,"used":1}':''}}',class_resources='${JSON.stringify({'psion-disciplines':originals,'psionic-energy-dice':2,other:9})}' where id='${charId}'`);
     const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     await page.getByRole('button',{name:/Level up available/}).click();
@@ -56,6 +56,9 @@ test.describe('Psion Discipline level-up', () => {
     await page.screenshot({path:info.outputPath('discipline-level-up.png')});
     await next.click();await page.getByRole('button',{name:'Confirm Level Up',exact:true}).click();
     await expect.poll(()=>sql(`select level from characters where id='${charId}'`)).toBe(String(level+1));
+    const slots=JSON.parse(sql(`select spell_slots from characters where id='${charId}'`));
+    expect(slots['1']).toEqual({total:level===1?3:4,used:1});
+    if(level!==1){expect(slots['2']).toEqual({total:3,used:2});expect(slots['3']).toEqual({total:level===4?2:3,used:level===4?0:1});}
     const resources=JSON.parse(sql(`select class_resources from characters where id='${charId}'`));
     expect(resources.other).toBe(9);expect(resources['psionic-energy-dice']).toBe(2);
     expect(resources['psion-disciplines']).toHaveLength(level===1?2:3);

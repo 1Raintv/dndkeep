@@ -1,5 +1,19 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Unlock Psion spell slots on level-up, v2.769
+
+The banner level-up wizard now updates a single-class Psion's slot capacities
+from the class table. Previously it saved the new level and HP but retained old
+slots, hiding new spell levels from the picker. Existing expenditure is retained;
+new tiers start unused. The existing Settings level-up flow shares the pure
+capacity merge instead of maintaining a second implementation. No rest is granted.
+
+All 20 Psion slot rows are checked against the owner's Update PDF p.2. Unit checks
+cover new tiers and preserving expenditure; desktop/mobile local flows cover
+1→2, 4→5 and 5→6 with already-spent slots. Multiclass slot aggregation and other
+classes' banner-wizard progression remain separate audit work.
+
+
 ### 2026-10-07 — Discipline replacement at Psion level-up, v2.768
 
 Every Psion level from 2 onward offers a Discipline review, including levels
