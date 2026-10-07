@@ -1,5 +1,13 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Clear grid at every zoom, v2.766
+
+Map grid strokes now retain their screen thickness as the artwork zooms. Both
+toolbar and gesture zooms refresh the existing layer without moving it above
+tokens; ordinary panning does not rebuild the grid. Desktop/mobile canvas-pixel
+checks cover 50%, 100% and 400% zoom at the renderer's display density.
+
+
 ### 2026-10-07 — Psionic Surge on base powers, v2.765
 
 Powered Telekinetic Propel and Telepathic Connection now offer Surge after a low
