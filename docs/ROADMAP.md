@@ -14,11 +14,12 @@ cast spell; campaign save prompts use a separate resolver; active save bonuses,
 advantage and exhaustion need consistent handling across both paths. Do not
 claim concentration automation complete until these paths are reconciled.
 
-Release status: database PR #110 merged at 60499b3, but migration run 37642330605
-failed before any steps because GitHub could not acquire a runner. Reruns and
-pushes return HTTP 500. Client PR #111 remains draft until migration is confirmed.
+Release status: database PR #110 merged at 60499b3. Migration run 37642330605
+attempt 2 actually applied 20261007133000 to PROD after a GitHub runner outage.
+Client PR #111 merged at 2bf23f1 with all PR checks green; production CI and
+Vercel deployment are being verified. Concentration follow-up remains local.
 
-### In progress — Energy Dice persistence, planned v2.784
+### 2026-10-07 — Energy Dice persistence, v2.784 (deployment pending)
 
 A real two-tab browser regression reproduces the remaining base-pool race:
 two paid manual rolls from six dice leave five instead of four. The new local
@@ -28,7 +29,7 @@ resources, and returns ordered receipts. Fifteen real database scenarios cover
 concurrent requests, last-die contention, rollback, authorization, Restoration,
 malformed values and all 20 level boundaries. API/reconciliation tests pass.
 
-This remains local and unshipped. Manual rolls, Biofeedback, Destructive Thoughts,
+Merged in PR #111. Manual rolls, Biofeedback, Destructive Thoughts,
 conditional bonus costs, Propel/Connection settlement and Restoration (Actions and Features) now use the saved
 payment path. The original two-tab manual-roll regression passes on desktop and
 mobile, as does lost base-payment recovery across reload without a second cost or
@@ -79,7 +80,7 @@ Validation: all 134 selected Psion browser/database checks now pass across
 desktop/mobile (130 in the broad run, four legacy discipline checks rerun after
 replacing their capped shared-account fixture with disposable accounts).
 The full gate passes with 1,537 unit tests, TypeScript 208/208 and a 253 KB entry.
-Remaining release work: deploy the database endpoints before the updated app.
+Database endpoints are live; verify production app deployment at v2.784.
 Audit subclass spell-slot payments separately; do not invent an unsupported
 PED-to-slot feature. Ordinary saves now preserve transaction-owned keys;
 conditional spending, the free Connection extension and unrelated edits are tested.
