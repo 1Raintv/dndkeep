@@ -1,3 +1,4 @@
+import {learnClassSpell,forgetClassSpell} from '../../rules/spellSources';
 import {createPsionicRestRequest} from '../../lib/psionicRestRequest';
 import {pendingPsionicPayments} from '../../lib/psionicPaymentRecovery';
 import {savingThrowPassed} from '../../rules/savingThrows';
@@ -2745,7 +2746,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  toast.showToast(check.reason ?? 'Cannot add this spell', 'warn');
  return;
  }
- applyUpdate({ known_spells: [...character.known_spells, id] }, true);
+ const learned=learnClassSpell(character.known_spells,character.spell_sources??{},id,character.class_name);
+ if(!learned.ok){toast.showToast(learned.reason,'warn');return;}
+ applyUpdate({known_spells:learned.known,spell_sources:learned.sources,
+ ...(character.class_name==='Psion'&&(spellMap[id]?.level??0)>0?{prepared_spells:[...new Set([...character.prepared_spells,id])]}:{})},true);
  }}
  onRemoveSpell={id => {
  // v2.787 — normal Psion replacements belong to the level-up flow.
@@ -2753,8 +2757,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  if(character.class_name==='Psion'&&!character.advanced_spell_edits_unlocked){
  toast.showToast('Replace one cantrip and one prepared spell when gaining a Psion level. Advanced spell edits allow manual corrections.','warn');return;
  }
- if (concentrationSpellId === id) setConcentration(null);
- applyUpdate({ known_spells: character.known_spells.filter(x => x !== id), prepared_spells: character.prepared_spells.filter(x => x !== id) }, true);
+ const forgotten=forgetClassSpell(character.known_spells,character.spell_sources??{},id,character.class_name);
+ if(!forgotten.ok){toast.showToast(forgotten.reason,'warn');return;}
+ const removed=!forgotten.known.includes(id);
+ if(removed&&concentrationSpellId===id)setConcentration(null);
+ applyUpdate({known_spells:forgotten.known,spell_sources:forgotten.sources,prepared_spells:removed?character.prepared_spells.filter(x=>x!==id):character.prepared_spells},true);
  }}
  onTogglePrepared={id => {
  const is = character.prepared_spells.includes(id);

@@ -28,3 +28,27 @@ it('preserves off-list Psi Warper grants without using the prepared cap',()=>{
 it('does not consume a chosen cantrip slot for the granted Mage Hand',()=>{
  expect(canAddKnownSpell({...psion,known_spells:['mind-sliver','minor-illusion']},'mage-hand').allowed).toBe(true);
 });
+
+it('counts only this class’s explicit sources and counts shared spells once',()=>{
+ const c={...psion,level:5,known_spells:['mage-armor','mage-armor','hold-person','minor-illusion','mind-sliver'],prepared_spells:['mage-armor','mage-armor','hold-person'],
+  spell_sources:{'mage-armor':['class:Psion'],'hold-person':['class:Wizard'],'minor-illusion':['feat'],'mind-sliver':['class:Psion','class:Wizard']}} as Character;
+ expect(getSpellCounts(c)).toMatchObject({known:1,prepared:1,cantrips:1});
+ expect(getSpellCounts({...c,class_name:'Wizard'})).toMatchObject({known:1,prepared:1,cantrips:1});
+});
+it('retains conservative counts for unknown sources without changing the source map',()=>{
+ const sources={'mage-armor':[]} as Character['spell_sources'];
+ const c={...psion,known_spells:['mage-armor','charm-person'],prepared_spells:['mage-armor'],spell_sources:sources};
+ expect(getSpellCounts(c)).toMatchObject({known:2,prepared:1});
+ expect(sources).toEqual({'mage-armor':[]});
+});
+it('an unrelated class or feat does not fill the Psion cantrip allowance',()=>{
+ const c={...psion,known_spells:['mind-sliver','minor-illusion'],spell_sources:{'mind-sliver':['class:Wizard'],'minor-illusion':['feat']}} as Character;
+ expect(canAddKnownSpell(c,'telekinetic-fling').allowed).toBe(true);
+ expect(getSpellCounts(c).cantrips).toBe(0);
+});
+
+it('can learn an eligible spell already known through Wizard, but cannot learn it twice through Psion',()=>{
+ const c={...psion,known_spells:['mage-armor'],spell_sources:{'mage-armor':['class:Wizard']}} as Character;
+ expect(canAddKnownSpell(c,'mage-armor').allowed).toBe(true);
+ expect(canAddKnownSpell({...c,spell_sources:{'mage-armor':['class:Wizard','class:Psion']}},'mage-armor').allowed).toBe(false);
+});

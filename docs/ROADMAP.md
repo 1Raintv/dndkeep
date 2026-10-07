@@ -49,9 +49,22 @@ map untouched, and an open sheet observes the new lists and Wizard ownership.
 Full gate: 1,611 unit tests, TS 208/208, all required checks and 253 KB entry pass.
 Both spell-source migrations remain local only.
 
-Before release: apply source ownership consistently to counts, ordinary additions,
-removal and creation; verify source review across other-class targeting and
-automatic feature grants.
+Explicit ownership now drives class spell counts and the ordinary learning
+picker. Spells owned only by another class/feature no longer consume Psion
+choices; shared spells count once. Unknown legacy entries retain conservative
+counts without acquiring invented sources. Normal learning adds the chosen
+class source, deduplicates the shared list and prepares learned Psion leveled
+spells. Advanced removal drops only the selected class's source and preserves
+independent copies. Unit regressions and desktop/mobile Add/Remove/count checks
+pass; full gate passes with 1,622 unit tests, TS 208/208 and 253 KB entry.
+
+Before release: source tracking at character creation and automatic grants;
+resolve per-class prepared-state ownership. Newly confirmed creator bug: its
+Psion branch unconditionally appends four starter spells even after custom
+choices (and in Blank Slate mode), potentially exceeding the chosen-spell cap.
+Replace that special case with source-tagged, mode-aware initial selection and
+verify the real creation payload. Recommended defaults must not overwrite or
+expand deliberate custom selections.
 Legacy spell-source records must remain unknown until reviewed. The shared
 prepared list also lacks per-class prepared-state detail; preserve other sources'
 current state until that representation is addressed. This work remains local

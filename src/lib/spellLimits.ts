@@ -1,3 +1,4 @@
+import {isSpellSources,spellSourceIncludesClass} from '../rules/spellSources';
 /**
  * Single source of truth for spellcasting limits and counts.
  *
@@ -139,25 +140,37 @@ export interface SpellCounts {
   grantedIds: Set<string>;
 }
 
+/** Explicitly unrelated choices remain castable through their own source, but
+ * are not selected in this class's learning picker. */
+export function getClassKnownSpellIds(character:Character):string[]{
+ const sources=isSpellSources(character.spell_sources)?character.spell_sources:{};
+ return [...new Set(character.known_spells)].filter(id=>spellSourceIncludesClass(sources,id,character.class_name)!==false);
+}
+
 export function getSpellCounts(character: Character): SpellCounts {
   const granted = getGrantedSpellIds(character);
   const grantedIds = new Set([...granted.grantedCantrips, ...granted.grantedPrepared]);
 
+  // v2.787 — shared-list entries explicitly owned elsewhere do not consume
+  // this class's choices. Unknown legacy ownership remains conservatively
+  // counted until reviewed; counting must not fabricate saved source tags.
+  const sources=isSpellSources(character.spell_sources)?character.spell_sources:{};
+  const belongs=(id:string)=>spellSourceIncludesClass(sources,id,character.class_name)!==false;
   let cantrips = 0;
   let prepared = 0;
   let known = 0;
 
   // Cantrips live in known_spells; prepared spells live in prepared_spells.
   // For known casters all leveled spells are in known_spells.
-  for (const id of character.known_spells) {
-    if (grantedIds.has(id)) continue;
+  for (const id of new Set(character.known_spells)) {
+    if (!belongs(id)||grantedIds.has(id)) continue;
     const sp = SPELL_MAP[id];
     if (!sp) continue;
     if (sp.level === 0) cantrips++;
     else known++;
   }
-  for (const id of character.prepared_spells) {
-    if (grantedIds.has(id)) continue;
+  for (const id of new Set(character.prepared_spells)) {
+    if (!belongs(id)||grantedIds.has(id)) continue;
     const sp = SPELL_MAP[id];
     if (!sp || sp.level === 0) continue;
     prepared++;
@@ -178,7 +191,8 @@ export interface AddCheck {
 
 /** Should we allow adding this spell to known_spells? */
 export function canAddKnownSpell(character: Character, spellId: string): AddCheck {
-  if (character.known_spells.includes(spellId)) return { allowed: false, reason: 'Already known' };
+  if(!isSpellSources(character.spell_sources??{}))return {allowed:false,reason:'Check spell sources before adding a spell'};
+  if (getClassKnownSpellIds(character).includes(spellId)) return { allowed: false, reason: 'Already known' };
   const sp = SPELL_MAP[spellId];
   if (!sp) return { allowed: false, reason: 'Unknown spell' };
   // v2.774 — granted Psion spells are free choices even off the base list.

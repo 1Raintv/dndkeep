@@ -9,7 +9,7 @@ import { SPELLS } from '../../data/spells';
 import { getMaxSpellsKnown, isKnownCaster } from '../../data/spellSlots';
 import { parseSpellMechanics, canUpcastSpell } from '../../lib/spellParser';
 import { getGrantedSpellIds, type GrantedSpellEntry } from '../../lib/grantedSpells';
-import { getSpellCounts, getMaxPrepared, getMaxCantrips, getSpellAbilityMod } from '../../lib/spellLimits';
+import { getClassKnownSpellIds, getSpellCounts, getMaxPrepared, getMaxCantrips, getSpellAbilityMod } from '../../lib/spellLimits';
 import { shortCastingTime } from '../../lib/spellDisplay';
 import LevelTab from './_shared/LevelTab';
 
@@ -94,6 +94,7 @@ export default function SpellsTab({
  // upcast trigger button that opens the slot picker modal.
  const showUpcasts = false;
 
+ const classKnownSpellIds=getClassKnownSpellIds(character);
  const isPreparer = PREPARER_CLASSES.includes(character.class_name);
  const isKnown = isKnownCaster(character.class_name);
  const knownMax = getMaxSpellsKnown(character.class_name, character.level);
@@ -235,7 +236,7 @@ export default function SpellsTab({
  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
  {/* Known-casters: show spells known counter */}
  {isKnown && knownMax !== null && (() => {
- const knownCount = knownSpellData.filter(s => s.level > 0 && !grantedPrepared.includes(s.id)).length;
+ const knownCount = getSpellCounts(character).known;
  const atCap = knownCount >= knownMax;
  return (
  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'var(--c-card)', border: `1px solid ${atCap ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`, borderRadius: 999 }}>
@@ -287,9 +288,9 @@ export default function SpellsTab({
  isCantrip={false}
  className={character.class_name}
  maxLevel={maxSpellLevel}
- selected={character.known_spells}
+ selected={classKnownSpellIds}
  removalReason={character.class_name==='Psion'&&!character.advanced_spell_edits_unlocked?'Replace one cantrip and one prepared spell when gaining a Psion level.':undefined}
- onToggle={id => character.known_spells.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
+ onToggle={id => classKnownSpellIds.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
  cantripMax={cantripMax}
  prepareMax={isPreparer ? prepareMax : isKnown ? (knownMax ?? undefined) : undefined}
  // v2.366.0 — For non-Wizard preparers (Cleric/Druid/Paladin/
