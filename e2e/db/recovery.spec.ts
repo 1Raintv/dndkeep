@@ -30,8 +30,8 @@ test.describe('release recovery (local Docker only)', () => {
       await signInAsSeedDm(page);
       await page.goto(`/character/${characterId}`);
       let fail = true;
-      await page.route('**/rest/v1/characters?*', async route => {
-        if (route.request().method() === 'PATCH' && fail) {
+      await page.route('**/rest/v1/rpc/patch_character_preserving_psion', async route => {
+        if (route.request().method() === 'POST' && fail) {
           return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ message: 'Release test: temporarily unavailable' }) });
         }
         await route.continue();

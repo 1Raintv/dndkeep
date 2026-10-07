@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import type {Character} from '../types';
-import {acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,reconcileCharacterUpdate} from './characterRealtime';
+import {preservePsionicResources,acceptSavedPsionicResources,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,reconcileCharacterUpdate} from './characterRealtime';
 const character={id:'pc',current_hp:20,hit_dice_spent:2,feature_uses:{'Telepathic Connection':1},class_resources:{'psionic-energy-dice':2}} as unknown as Character;
 it('accepts consecutive echoes before a React render, including a return to the original value',()=>{
  const ref={current:character};
@@ -63,4 +63,22 @@ it('rest receipts restore unchanged captured fields, preserve pending edits and 
  const ref={current:{...character,psionic_energy_revision:5,psionic_hit_dice_revision:4}};
  acceptPsionicRestReceipt(ref,{character:{...character,current_hp:40,hit_dice_spent:0,psionic_energy_revision:4,psionic_hit_dice_revision:3,class_resources:{'psionic-energy-dice':6}},expected:{current_hp:20,hit_dice_spent:2,class_resources:character.class_resources}},{current_hp:17});
  expect(ref.current).toMatchObject({current_hp:17,hit_dice_spent:2,psionic_energy_revision:5,class_resources:{'psionic-energy-dice':2}});
+});
+
+it('ordinary edits preserve only protected Psion keys, including missing legacy counters',()=>{
+ const current={...character,class_name:'Psion'};
+ expect(preservePsionicResources(current,{class_resources:{'psionic-energy-dice':6,'psionic-restoration':1,Other:9},feature_uses:{'Telepathic Connection':0,Other:2}})).toEqual({class_resources:{'psionic-energy-dice':2,Other:9},feature_uses:{'Telepathic Connection':1,Other:2}});
+ const other={...current,class_name:'Fighter'},patch={class_resources:{Other:9}};expect(preservePsionicResources(other,patch)).toBe(patch);
+});
+it('queued whole-resource edits cannot replace a newer payment receipt',()=>{
+ const ref={current:{...character,class_name:'Psion',psionic_energy_revision:1}};
+ acceptPsionicEnergyReceipt(ref,{remaining:1,energyRevision:2,restorationResource:null,restorationUsed:null},{class_resources:{'psionic-energy-dice':2,Other:9}});
+ expect(ref.current.class_resources).toEqual({'psionic-energy-dice':1,Other:9});
+});
+it('ordinary-save acknowledgements repair a stale tab while keeping its unrelated pending fields',()=>{
+ const ref={current:{...character,class_name:'Psion',psionic_energy_revision:1}};
+ const saved={...ref.current,class_resources:{'psionic-energy-dice':1,Other:5},feature_uses:{'Telepathic Connection':2},psionic_energy_revision:2};
+ acceptSavedPsionicResources(ref,saved,{class_resources:{'psionic-energy-dice':2,Other:9}});
+ expect(ref.current.class_resources).toEqual({'psionic-energy-dice':1,Other:9});expect(ref.current.feature_uses).toEqual({'Telepathic Connection':2});
+ expect(acceptSavedPsionicResources(ref,{...saved,id:'different'}).patch).toEqual({});
 });

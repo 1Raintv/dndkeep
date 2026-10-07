@@ -71,3 +71,9 @@ describe('character patch queue', () => {
     expect(listener).not.toHaveBeenCalled();
   });
 });
+
+it('exposes the server acknowledgement without enqueueing its protected values again',async()=>{
+ const row={hp:4,notes:'Server result'},write=vi.fn().mockResolvedValueOnce({data:row,error:null}).mockResolvedValueOnce({data:{hp:0},error:{message:'Rejected'}});
+ const queue=createPatchQueue<Sheet>(write);queue.enqueue({hp:8});await queue.flush();expect(queue.getAcknowledged()).toBe(row);expect(queue.getPending()).toEqual({});
+ queue.enqueue({notes:'Later'});await queue.flush();expect(queue.getAcknowledged()).toBe(row);expect(queue.getPending()).toEqual({notes:'Later'});expect(write).toHaveBeenCalledTimes(2);
+});

@@ -21,11 +21,11 @@ export function reconcileCharacterUpdate(ref:{current:Character},incoming:Record
   if(staleHitDice&&(field==='hit_dice_spent'||field==='psionic_hit_dice_revision'))continue;
   if(staleEnergy&&field==='psionic_energy_revision')continue;
   let value=Object.prototype.hasOwnProperty.call(pending,field)?pending[field]:incoming[field];
-  // A stale Energy Dice event may still contain unrelated feature edits.
-  // Preserve only the revision-owned keys, rather than dropping the whole map.
-  if(staleEnergy&&value!==undefined&&(field==='class_resources'||field==='feature_uses')){
+  // Transaction-owned keys override pending whole-map edits. Older echoes
+  // retain the latest paid keys while unrelated local edits stay pending.
+  if(typeof energyRevision==='number'&&value!==undefined&&(field==='class_resources'||field==='feature_uses')&&(staleEnergy||incoming[field]!==undefined)){
    const restored={...(value as Record<string,unknown>|null)};
-   const prior=previous[field]??{};
+   const prior=(staleEnergy?previous[field]:incoming[field]) as Record<string,unknown>??{};
    for(const key of field==='class_resources'?['psionic-energy-dice','psionic-restoration']:['Psionic Restoration','Telepathic Connection','Free Misty Step (Teleportation)']){
     if(Object.prototype.hasOwnProperty.call(prior,key))restored[key]=prior[key];else delete restored[key];
    }
@@ -76,4 +76,27 @@ export function acceptPsionicRestReceipt(ref:{current:Character},receipt:{charac
   }else if(JSON.stringify(current[key]??null)===JSON.stringify(receipt.expected[key]))incoming[key]=saved[key];
  }
  return reconcileCharacterUpdate(ref,incoming,pending);
+}
+
+/** Ordinary optimistic edits own only unrelated keys. Resource payments and
+ * rests acknowledge these protected keys through their ordered receipts. */
+export function preservePsionicResources(current:Partial<Character>,partial:Partial<Character>):Partial<Character>{
+ if(current.class_name!=='Psion')return partial;
+ const patch={...partial};
+ for(const field of ['class_resources','feature_uses'] as const){
+  if(!Object.prototype.hasOwnProperty.call(partial,field))continue;
+  const values={...partial[field]} as Record<string,unknown>,source=current[field]??{};
+  for(const key of field==='class_resources'?['psionic-energy-dice','psionic-restoration']:['Psionic Restoration','Telepathic Connection','Free Misty Step (Teleportation)']){
+   if(Object.prototype.hasOwnProperty.call(source,key))values[key]=source[key];else delete values[key];
+  }
+  (patch as Record<string,unknown>)[field]=values;
+ }
+ return patch;
+}
+/** Ordinary-save receipts must repair an older tab even when its realtime
+ * echo arrived while the stale local patch was still marked pending. */
+export function acceptSavedPsionicResources(ref:{current:Character},saved:Partial<Character>,pending:Partial<Character>={}){
+ if(saved.id!==ref.current.id||ref.current.class_name!=='Psion'||saved.class_name!=='Psion'||!Number.isSafeInteger(saved.psionic_energy_revision))return {previous:ref.current,patch:{}};
+ const resources=preservePsionicResources(saved,{class_resources:ref.current.class_resources,feature_uses:ref.current.feature_uses});
+ return reconcileCharacterUpdate(ref,{...resources,psionic_energy_revision:saved.psionic_energy_revision},pending);
 }

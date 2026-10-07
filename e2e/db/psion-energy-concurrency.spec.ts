@@ -77,4 +77,29 @@ test.describe('Psion Energy Dice concurrency', () => {
     expect(writes).toEqual([]);await page.reload();await expect(page.getByTitle('4 of 6 Psionic Energy Dice remaining',{exact:true}).locator('visible=true').first()).toBeVisible();
   });
 
+  test('a delayed ordinary feature edit cannot refund dice spent in another tab',async({page,context})=>{
+    sql(`update characters set advanced_edits_unlocked=true,advanced_deep_edits_unlocked=true,level=5,secondary_class='Fighter',secondary_level=1,class_resources='{"psionic-energy-dice":6}' where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    const second=await context.newPage();let release!:()=>void;const barrier=new Promise<void>(resolve=>{release=resolve;});let held=false;
+    try{
+      await second.goto(`/character/${charId}`);const roll=second.getByRole('button',{name:'Spend Die (1d8)',exact:true}).locator('visible=true').first();await expect(roll).toBeEnabled();
+      await page.route('**/rest/v1/**',async route=>{
+        const request=route.request(),body=request.postData()?request.postDataJSON():null;
+        const patch=request.method()==='POST'&&request.url().endsWith('/rpc/patch_character_preserving_psion')?body?.p_updates:request.method()==='PATCH'?body:null;
+        if(patch?.class_resources?.fighting_style==='Defense'){held=true;await barrier;}
+        await route.continue();
+      });
+      await page.getByTitle('Level up available — open Settings',{exact:true}).locator('visible=true').first().click();
+      const settings=page.locator('.modal').filter({has:page.getByRole('heading',{name:'Character Settings',exact:true})});
+      await settings.locator('label').filter({hasText:/^Fighting Style$/}).locator('..').locator('select').selectOption('Defense');
+      await expect.poll(()=>held).toBe(true);await roll.click();
+      await expect.poll(()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('5');
+      release();await expect.poll(()=>sql(`select class_resources->>'fighting_style' from characters where id='${charId}'`)).toBe('Defense');
+      await settings.getByRole('button',{name:'Close',exact:true}).click();
+      await expect(page.getByTitle('5 of 6 Psionic Energy Dice remaining',{exact:true}).locator('visible=true').first()).toBeVisible();
+      expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('5');
+      await page.reload();await expect(page.getByTitle('5 of 6 Psionic Energy Dice remaining',{exact:true}).locator('visible=true').first()).toBeVisible();
+    }finally{release();await second.close();}
+  });
+
 });

@@ -6,7 +6,7 @@ A real two-tab browser regression reproduces the remaining base-pool race:
 two paid manual rolls from six dice leave five instead of four. The new local
 `settle_psionic_energy` transaction serializes costs and Psionic Restoration,
 records immutable request payloads and recovery history, preserves sibling
-resources, and returns ordered receipts. Fourteen real database scenarios cover
+resources, and returns ordered receipts. Fifteen real database scenarios cover
 concurrent requests, last-die contention, rollback, authorization, Restoration,
 malformed values and all 20 level boundaries. API/reconciliation tests pass.
 
@@ -18,7 +18,12 @@ automatic effect. Receipt acknowledgement is local only and rejects older revisi
 
 Connection claims its first free extension atomically; competing free requests
 reject rather than becoming silently paid. The protected ordinary-sheet-patch RPC
-also passes database checks, but is not connected to the save queue yet.
+now backs ordinary character saves. Ordered acknowledgements repair stale tabs,
+and pending whole-map edits preserve transaction-owned resource keys. A real
+delayed Settings save racing another tab's die spend keeps both the database and
+displayed balance correct on desktop/mobile. Existing failed-save navigation and
+retry tests also pass through the protected endpoint. Movement-trait auto-resets
+use it too, preventing stale daily-feature counters from being replayed.
 
 SRD 5.2.1 p.185 exposed a separate 2014-rule remnant: Long Rest recovered only
 half-level Hit Point Dice. The local sheet and DM party-rest path now restore all spent dice and log
@@ -49,7 +54,10 @@ another account's character, lost responses, reload and targeted rejected retrie
 Party-rest text now accurately describes all Hit Point Dice and one exhaustion
 level. The TypeScript baseline fell from 210 to 208.
 
-Remaining integration: level-change resource behavior, then protected ordinary saves. Audit subclass
+Level-up paths retain their existing available dice while updating choices and
+capacity; a Long Rest restores the new maximum. A database regression checks
+that leveling and movement-trait recovery do not refresh paid Psion resources.
+Remaining release work: broader regression checks and deployment. Audit subclass
 spell-slot payments separately; do not invent an unsupported PED-to-slot feature.
 Ordinary whole-resource sheet saves
 must not overwrite transaction-owned keys from a stale tab; adding one RPC

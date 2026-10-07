@@ -188,4 +188,12 @@ test.describe('Atomic Psion Energy Dice',()=>{
   }finally{sql(`drop trigger if exists ${trigger} on public.action_logs;drop function if exists public.${trigger}();`);}
  });
 
+ test('level-up choices and movement-trait resets cannot refresh paid Psion resources',()=>{
+  sql(`update characters set level=4,class_resources='{"psionic-energy-dice":4}',feature_uses='{"Free Misty Step (Teleportation)":1,"Feline Agility":1}' where id='${character}'`);
+  sql(authenticated(owner,spend()));
+  const upgraded=JSON.parse(sql(authenticated(owner,`select public.patch_character_preserving_psion('${character}','{"level":5,"class_resources":{"psionic-energy-dice":4,"psion-disciplines":["biofeedback"]},"feature_uses":{"Free Misty Step (Teleportation)":0,"Feline Agility":0}}')`)));
+  expect(upgraded).toMatchObject({level:5,class_resources:{'psionic-energy-dice':3,'psion-disciplines':['biofeedback']},feature_uses:{'Free Misty Step (Teleportation)':1,'Feline Agility':0}});
+  expect(JSON.parse(sql(authenticated(owner,rest('long')))).character.class_resources['psionic-energy-dice']).toBe(6);
+ });
+
 });

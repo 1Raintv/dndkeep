@@ -7,11 +7,12 @@ export interface PatchQueueState {
 }
 
 export function createPatchQueue<T extends object>(
-  write: (patch: Partial<T>) => Promise<{ error: { message: string } | null }>,
+  write: (patch: Partial<T>) => Promise<{ data?:Partial<T>|null;error: { message: string } | null }>,
 ) {
   let pending: Partial<T> = {};
   let inFlight: Partial<T> = {};
   let running: Promise<void> | null = null;
+  let acknowledged:Partial<T>|null=null;
   let state: PatchQueueState = { saving: false, pending: false, error: null };
   const listeners = new Set<() => void>();
   const publish = (saving: boolean, error: string | null) => {
@@ -28,6 +29,7 @@ export function createPatchQueue<T extends object>(
       try {
         const result = await write(inFlight);
         failure = result.error?.message ?? null;
+        if(failure===null&&result.data)acknowledged=result.data;
       } catch (error) {
         failure = error instanceof Error ? error.message : 'Save failed. Check your connection.';
       }
@@ -44,6 +46,7 @@ export function createPatchQueue<T extends object>(
 
   return {
     getSnapshot: () => state,
+    getAcknowledged:()=>acknowledged,
     getPending: (): Partial<T> => ({ ...inFlight, ...pending }),
     subscribe(listener: () => void) {
       listeners.add(listener);

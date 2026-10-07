@@ -5,7 +5,7 @@ import PsionicPaymentRecoveryPanel from './_shared/PsionicPaymentRecoveryPanel';
 import {usePsionicEnhancements} from '../../lib/hooks/usePsionicEnhancements';
 import {useOptimisticCharacterRef} from '../../lib/hooks/useOptimisticCharacterRef';
 import {characterProficiencyBonus} from '../../rules/proficiency';
-import {reconcileCharacterUpdate,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
+import {preservePsionicResources,acceptSavedPsionicResources,reconcileCharacterUpdate,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
 import { attacksPerAction } from '../../rules/extraAttack';
 import PsionCastingNote from './_shared/PsionCastingNote';
 import { useState, useCallback, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
@@ -163,8 +163,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // to console.warn only, leaving the user thinking the toggle was
  // broken).
  const toast = useToast();
- const { queue: saveQueue, saving, error: saveError } = useCharacterSaves(userId, initialCharacter.id);
- const [character, setCharacter] = useState<Character>(() => ({ ...initialCharacter, ...saveQueue.getPending() }));
+ const { queue: saveQueue, acknowledged, saving, error: saveError } = useCharacterSaves(userId, initialCharacter.id);
+ const [character, setCharacter] = useState<Character>(() => ({ ...initialCharacter, ...preservePsionicResources(initialCharacter,saveQueue.getPending()) }));
  const [activeTab, setActiveTab] = useState<Tab>('actions');
 
  // v2.518.0 — Frozen state: a character at level 10+ belonging to a
@@ -300,6 +300,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // ── Sync external HP/condition changes (e.g. from BattleMap) ──────
  // Uses a ref to avoid stale closure — always reads current character value
  const characterRef = useOptimisticCharacterRef(character);
+ const acceptedSave=useRef<typeof acknowledged>(null);
+ useEffect(()=>{
+  if(!acknowledged||acceptedSave.current===acknowledged)return;acceptedSave.current=acknowledged;
+  const {patch}=acceptSavedPsionicResources(characterRef,acknowledged,saveQueue.getPending());
+  if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
+ },[acknowledged,characterRef,saveQueue]);
  const psionicPersistence=usePsionicEnhancements(character.id,saveQueue,receipt=>{
   const {patch}='character' in receipt?acceptPsionicRestReceipt(characterRef,receipt,saveQueue.getPending()):'energyRevision' in receipt?acceptPsionicEnergyReceipt(characterRef,receipt,saveQueue.getPending()):acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
   if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
@@ -566,6 +572,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const debouncedFlush = useDebouncedCallback(flushToSupabase, 800);
 
  function applyUpdate(partial: Partial<Character>, immediate = false) {
+  partial=preservePsionicResources(characterRef.current,partial);
   // v2.518.0 — Frozen characters are view-only: drop all persisted
   // mutations. Deletion uses a different path (settings → delete), not
   // applyUpdate, so the owner can still free the slot. This makes rolls,
