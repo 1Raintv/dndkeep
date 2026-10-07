@@ -454,6 +454,7 @@ export type Database = {
           advanced_deep_edits_unlocked: boolean;
           concentration_rounds_remaining: number | null;
           concentration_slot_level: number | null;
+          concentration_revision: number;
           damage_resistances: string[];
           damage_immunities: string[];
           damage_vulnerabilities: string[];
@@ -540,6 +541,7 @@ export type Database = {
           advanced_deep_edits_unlocked?: boolean;
           concentration_rounds_remaining?: number | null;
           concentration_slot_level?: number | null;
+          concentration_revision?: number;
           damage_resistances?: string[];
           damage_immunities?: string[];
           damage_vulnerabilities?: string[];
@@ -626,6 +628,7 @@ export type Database = {
           advanced_deep_edits_unlocked?: boolean;
           concentration_rounds_remaining?: number | null;
           concentration_slot_level?: number | null;
+          concentration_revision?: number;
           damage_resistances?: string[];
           damage_immunities?: string[];
           damage_vulnerabilities?: string[];
@@ -1669,6 +1672,8 @@ export type Database = {
           participant_id: string;
           character_id: string;
           spell_name: string;
+          concentration_revision: number | null;
+          resolution_outcome: string | null;
           damage: number;
           dc: number;
           con_bonus: number;
@@ -1691,6 +1696,8 @@ export type Database = {
           participant_id: string;
           character_id: string;
           spell_name: string;
+          concentration_revision?: number | null;
+          resolution_outcome?: string | null;
           damage: number;
           dc: number;
           con_bonus: number;
@@ -1713,6 +1720,8 @@ export type Database = {
           participant_id?: string;
           character_id?: string;
           spell_name?: string;
+          concentration_revision?: number | null;
+          resolution_outcome?: string | null;
           damage?: number;
           dc?: number;
           con_bonus?: number;

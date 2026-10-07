@@ -28,18 +28,26 @@ saved roll; stale/legacy offers retire without touching current effects. Ten
 real database scenarios cover racing owner/DM clients, multiple offers, same-spell
 recasts, unrelated effects, natural-extreme preferences, authorization and full
 rollback when history fails. These migrations are local only.
-The local API recovery layer now saves a proposed d20 before network I/O,
-reuses it across failures/reloads, shares in-flight requests within a tab and
-accepts another client's authoritative receipt. Twelve isolated unit tests cover
-lost responses, malformed receipts/storage, denied access and storage failure.
-It is intentionally not wired yet: both prompt and automatic creation must
-capture casting revisions before replacing the existing resolver.
-Next: capture the revision when damage occurs; connect automatic/prompt paths to
-the transaction, preserve the proposed roll across unknown responses, and verify
-the real recovery UI before shipping. The current frontend still uses its old
-campaign resolver, so the new transaction is not yet active for user actions.
-This does not yet solve concurrent prompts or saved-result replay; do not release
-this branch as complete campaign concentration automation.
+The local API recovery layer saves a proposed d20 before network I/O, reuses
+it across failures/reloads, shares in-flight requests within a tab and accepts
+another client's authoritative receipt. Sixteen isolated API tests cover offer
+creation, lost responses, malformed receipts/storage, denied access and storage
+failure. Prompt and automatic campaign paths now create revision-bound offers
+and call the same transaction; the former client-side resolver/cleanup was removed.
+Path tests verify prompt/auto/off and failed offer creation.
+
+The modal retains uncertain rolls, stops repeated timeout submissions and offers
+manual confirmation after reload. Recovery is above the character header so fixed
+combat/mobile navigation cannot cover its button. Six desktop/mobile browser
+scenarios pass, covering normal resolution, response loss with a later casting,
+and failed timeout/reload. Mobile screenshots and overflow were checked. Spell
+IDs are displayed as human-readable names.
+
+Remaining before release: exercise actual damage-to-offer flow and investigate
+whether sheet realtime HP monitoring duplicates the campaign pipeline's save;
+verify the broader concentration suite and database-first deployment. Active
+save bonuses, advantage/exhaustion parity, summon/aura cleanup and other effects
+still need audit. These migrations and frontend changes remain local.
 
 PR #112 (sheet concentration, v2.785) merged at 89350c6 after all PR checks passed.
 Production CI 37644873225 passed; the public service worker confirms v2.785.0.

@@ -1227,6 +1227,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  return (
  <CombatProvider campaignId={character.campaign_id}>
  <div className="animate-fade-in cs-shell">
+ <Suspense fallback={null}><ConcentrationSavePromptModal characterId={character.id} /></Suspense>
 
  <CharacterHeader
  character={character}
@@ -4645,8 +4646,6 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
    {character.campaign_id && <ReactionPromptModal campaignId={character.campaign_id} />}
    {/* v2.633.0 — Weapon Mastery Cleave: second-target picker for this character */}
    {character.campaign_id && <CleaveOfferModal campaignId={character.campaign_id} />}
-   {/* v2.118.0 — Phase I pt 2: concentration save prompt when automation is 'prompt' */}
-   <ConcentrationSavePromptModal characterId={character.id} />
    {/* v2.144.0 — Phase N pt 2: death save prompt when the downed character
        starts their turn at 0 HP and automation resolves to 'prompt' */}
    {character.campaign_id && <DeathSavePromptModal characterId={character.id} campaignId={character.campaign_id} />}

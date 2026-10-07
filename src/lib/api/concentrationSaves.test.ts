@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import {beforeEach,afterEach,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({rpc:vi.fn(),die:vi.fn()}));
-vi.mock('../supabase',()=>({supabase:{rpc:m.rpc}}));
+const m=vi.hoisted(()=>({rpc:vi.fn(),die:vi.fn(),from:vi.fn()}));
+vi.mock('../supabase',()=>({supabase:{rpc:m.rpc,from:m.from}}));
 vi.mock('../../rules/dice',()=>({rollDie:m.die}));
-import {resolveConcentrationSave,savedConcentrationRolls} from './concentrationSaves';
+import {createConcentrationOffer,resolveConcentrationSave,savedConcentrationRolls} from './concentrationSaves';
 const receipt={pendingId:'offer',outcome:'failed',d20:3,total:5,replayed:false};
 beforeEach(()=>{localStorage.clear();vi.resetAllMocks();m.die.mockReturnValue(3);m.rpc.mockResolvedValue({data:receipt,error:null});});
 afterEach(()=>vi.restoreAllMocks());
@@ -44,4 +44,18 @@ it('storage failure prevents network mutation',async()=>{
 it('definite rejection does not loop or discard the proposed roll',async()=>{
  m.rpc.mockResolvedValue({data:null,error:{code:'42501',message:'Not allowed'}});
  await expect(resolveConcentrationSave('hero','offer','player')).rejects.toThrow('Not allowed');expect(m.rpc).toHaveBeenCalledTimes(1);expect(savedConcentrationRolls('hero')).toHaveLength(1);
+});
+
+const offer={characterId:'hero',campaignId:'campaign',encounterId:'encounter',chainId:'chain',participantId:'participant',spell:'detect-magic',revision:4,damage:5,dc:10,bonus:2,proficient:false,automatic:false};
+it.each([false,true])('creates a casting-bound offer for automatic=%s',async automatic=>{
+ const insert=vi.fn().mockResolvedValue({error:null});m.from.mockReturnValue({insert});const before=Date.now();
+ const id=await createConcentrationOffer({...offer,automatic});expect(insert).toHaveBeenCalledWith(expect.objectContaining({id,character_id:'hero',concentration_revision:4,spell_name:'detect-magic'}));
+ const stored=insert.mock.calls[0][0];expect(Date.parse(stored.expires_at)-Date.parse(stored.offered_at)).toBe(automatic?0:120_000);expect(Date.parse(stored.offered_at)).toBeGreaterThanOrEqual(before);
+});
+it('cannot create an offer without a valid casting revision',async()=>{
+ await expect(createConcentrationOffer({...offer,revision:NaN})).rejects.toThrow('casting could not be verified');expect(m.from).not.toHaveBeenCalled();
+});
+it('surfaces failed offer creation without attempting a roll',async()=>{
+ m.from.mockReturnValue({insert:vi.fn().mockResolvedValue({error:{message:'Rejected'}})});
+ await expect(createConcentrationOffer(offer)).rejects.toThrow('Rejected');expect(m.rpc).not.toHaveBeenCalled();expect(m.die).not.toHaveBeenCalled();
 });

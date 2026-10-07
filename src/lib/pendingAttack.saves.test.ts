@@ -1,5 +1,6 @@
 import {beforeEach,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({die:vi.fn(),query:vi.fn(),event:vi.fn(),clearConditions:vi.fn(),clearBuffs:vi.fn(),preference:vi.fn(),writes:[] as Array<{table:string;patch:Record<string,unknown>}>,writeError:null as {message:string}|null,character:false,conditions:[] as string[]}));
+const m=vi.hoisted(()=>({createOffer:vi.fn(),resolve:vi.fn(),saveCharacter:null as Record<string,unknown>|null,die:vi.fn(),query:vi.fn(),event:vi.fn(),clearConditions:vi.fn(),clearBuffs:vi.fn(),preference:vi.fn(),writes:[] as Array<{table:string;patch:Record<string,unknown>}>,writeError:null as {message:string}|null,character:false,conditions:[] as string[]}));
+vi.mock('./api/concentrationSaves',()=>({createConcentrationOffer:m.createOffer,resolveConcentrationSave:m.resolve}));
 vi.mock('./supabase',()=>({supabase:{from:m.query}}));
 vi.mock('../rules/dice',async importOriginal=>({...await importOriginal<typeof import('../rules/dice')>(),rollDie:m.die}));
 vi.mock('./combatEvents',()=>({emitCombatEvent:m.event,newChainId:()=> 'chain'}));
@@ -7,12 +8,12 @@ vi.mock('./api/characterSaveRules',()=>({getCharacterSaveNaturalExtremes:m.prefe
 vi.mock('./conditions',()=>({conditionsAutoFailSave:(c:string[])=>c.includes('Paralyzed'),conditionsDisadvantageSave:()=>false,clearConditionsFromConcentration:m.clearConditions}));
 vi.mock('./buffs',()=>({getSaveBonuses:()=>[],clearBuffsFromConcentration:m.clearBuffs}));
 vi.mock('./combatParticipantNormalize',()=>({JOINED_COMBATANT_FIELDS:'combatant',normalizeParticipantRow:(r:unknown)=>r}));
-import {rollSave,performConcentrationSave} from './pendingAttack';
+import {rollSave,runConcentrationSave} from './pendingAttack';
 beforeEach(()=>{
- vi.clearAllMocks();m.writes=[];m.writeError=null;m.character=false;m.conditions=[];m.die.mockReturnValue(1);m.preference.mockResolvedValue(false);
+ vi.clearAllMocks();m.saveCharacter=null;m.createOffer.mockResolvedValue('offer');m.resolve.mockResolvedValue({outcome:'passed'});m.writes=[];m.writeError=null;m.character=false;m.conditions=[];m.die.mockReturnValue(1);m.preference.mockResolvedValue(false);
  m.query.mockImplementation((table:string)=>{
   let patch:Record<string,unknown>|undefined;
-  const result=()=>({error:table==='characters'?m.writeError:null,data:table==='pending_attacks'?{id:'attack',attack_kind:'save',save_ability:'STR',save_dc:13,target_participant_id:'target',target_type:m.character?'character':'creature',...patch}:table==='combat_participants'?{participant_type:m.character?'character':'creature',entity_id:'hero',active_conditions:m.conditions}:null});
+  const result=()=>({error:table==='characters'?m.writeError:null,data:table==='pending_attacks'?{id:'attack',attack_kind:'save',save_ability:'STR',save_dc:13,target_participant_id:'target',target_type:m.character?'character':'creature',...patch}:table==='combat_participants'?{participant_type:m.character?'character':'creature',entity_id:'hero',active_conditions:m.conditions}:table==='characters'?m.saveCharacter:null});
   const q={select:()=>q,eq:()=>q,update:(p:Record<string,unknown>)=>{patch=p;m.writes.push({table,patch:p});return q;},single:async()=>result(),maybeSingle:async()=>result(),then:(resolve:(v:unknown)=>unknown)=>Promise.resolve(result()).then(resolve)};
   return q;
  });
@@ -35,27 +36,17 @@ it('conditions force failure even when the numerical total succeeds',async()=>{
  expect((await rollSave('attack',30))?.save_result).toBe('failed');
  expect(m.die).not.toHaveBeenCalled();
 });
-const concentration={ctx:{campaignId:'campaign',encounterId:'enc',chainId:'chain',participantId:'target',targetName:'Psion',damage:20},charId:'hero',concentrationSpell:'Hold Person',dc:13,bonus:12,resolutionSource:'timeout' as const,automationSetting:'prompt'};
-it('successful RAW concentration on natural 1 retains spell and effects',async()=>{
- expect((await performConcentrationSave(concentration)).saved).toBe(true);
- expect(m.preference).toHaveBeenCalledWith('hero');
- expect(m.writes).toEqual([]);expect(m.clearConditions).not.toHaveBeenCalled();
-});
-it('house-rule concentration failure clears spell and dependent effects',async()=>{
- expect((await performConcentrationSave({...concentration,naturalExtremes:true})).saved).toBe(false);
- expect(m.preference).not.toHaveBeenCalled();
- expect(m.writes).toContainEqual({table:'characters',patch:{concentration_spell:'',concentration_rounds_remaining:null,concentration_slot_level:null}});
- expect(m.clearConditions).toHaveBeenCalled();expect(m.clearBuffs).toHaveBeenCalled();
-});
-it('failed preference read leaves concentration intact',async()=>{
- m.preference.mockRejectedValue(new Error('offline'));
- await expect(performConcentrationSave(concentration)).rejects.toThrow('offline');
- expect(m.writes).toEqual([]);expect(m.event).not.toHaveBeenCalled();
-});
 
-it('failed concentration persistence keeps dependent effects and does not claim a completed drop',async()=>{
- m.writeError={message:'Save rejected'};
- await expect(performConcentrationSave({...concentration,naturalExtremes:true})).rejects.toThrow('Save rejected');
- expect(m.clearConditions).not.toHaveBeenCalled();expect(m.clearBuffs).not.toHaveBeenCalled();
- expect(m.event.mock.calls.map(([event])=>event.eventType)).toEqual(['save_rolled']);
+const context={campaignId:'campaign',encounterId:'encounter',chainId:'chain',participantId:'target',targetName:'Psion',damage:5};
+it.each(['prompt','auto','off'])('campaign concentration mode %s uses the shared transaction boundary',async mode=>{
+ m.character=true;m.saveCharacter={id:'hero',concentration_spell:'detect-magic',concentration_revision:7,constitution:14,level:5,secondary_class:null,secondary_level:0,saving_throw_proficiencies:['constitution'],advanced_automations_unlocked:true,automation_overrides:{concentration_on_damage:mode}};
+ await runConcentrationSave(context);
+ if(mode==='off'){expect(m.createOffer).not.toHaveBeenCalled();expect(m.resolve).not.toHaveBeenCalled();return;}
+ expect(m.createOffer).toHaveBeenCalledWith(expect.objectContaining({characterId:'hero',revision:7,spell:'detect-magic',bonus:5,dc:10,automatic:mode==='auto'}));
+ if(mode==='auto')expect(m.resolve).toHaveBeenCalledWith('hero','offer','player');else expect(m.resolve).not.toHaveBeenCalled();
+ expect(m.writes).toEqual([]);expect(m.clearConditions).not.toHaveBeenCalled();expect(m.clearBuffs).not.toHaveBeenCalled();
+});
+it('failed offer creation prevents automatic settlement',async()=>{
+ m.character=true;m.saveCharacter={id:'hero',concentration_spell:'detect-magic',concentration_revision:7,constitution:14,level:5,saving_throw_proficiencies:[],advanced_automations_unlocked:true,automation_overrides:{concentration_on_damage:'auto'}};
+ m.createOffer.mockRejectedValueOnce(new Error('Offer not saved'));await expect(runConcentrationSave(context)).rejects.toThrow('Offer not saved');expect(m.resolve).not.toHaveBeenCalled();
 });

@@ -65,3 +65,19 @@ export function resolveConcentrationSave(characterId:string,pendingId:string,sou
  const key=prefix(characterId)+pendingId,existing=active.get(key);if(existing)return existing;
  const pending=settle(characterId,pendingId,source).finally(()=>{active.delete(key);});active.set(key,pending);return pending;
 }
+
+export interface ConcentrationOfferInput {
+ characterId:string;campaignId:string;encounterId:string|null;chainId:string;participantId:string;
+ spell:string;revision:number;damage:number;dc:number;bonus:number;proficient:boolean;automatic:boolean;
+}
+export async function createConcentrationOffer(input:ConcentrationOfferInput):Promise<string>{
+ if(!Number.isSafeInteger(input.revision)||input.revision<0)throw new Error('The concentration casting could not be verified. Reload the sheet.');
+ const id=crypto.randomUUID(),now=Date.now();
+ const {error}=await supabase.from('pending_concentration_saves').insert({
+  id,campaign_id:input.campaignId,encounter_id:input.encounterId,chain_id:input.chainId,participant_id:input.participantId,
+  character_id:input.characterId,spell_name:input.spell,concentration_revision:input.revision,damage:input.damage,dc:input.dc,
+  con_bonus:input.bonus,has_con_prof:input.proficient,state:'offered',offered_at:new Date(now).toISOString(),
+  expires_at:new Date(now+(input.automatic?0:120_000)).toISOString(),
+ });
+ if(error)throw new Error(error.message);return id;
+}
