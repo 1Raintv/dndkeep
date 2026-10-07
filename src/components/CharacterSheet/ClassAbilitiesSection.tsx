@@ -1,3 +1,4 @@
+import { psionicPoolRemaining } from '../../rules/psionicRestoration';
 import ConditionalPsionicButton from './_shared/ConditionalPsionicButton';
 import { canUseClassAbility } from '../../rules/classAbilityEligibility';
 import { useState, useRef, Fragment, Suspense } from 'react';
@@ -25,7 +26,7 @@ import PsionicPowerButton from './_shared/PsionicPowerButton';
 import ManualPropelResolution from './_shared/ManualPropelResolution';
 import {resolvePsionicPower,type PsionicPowerUse} from '../../rules/psionicPowers';
 import PsionicRestorationButton from './_shared/PsionicRestorationButton';
-import {psionicDieCount as getPsionicDieCount,psionicDieSides} from '../../rules/psionicRestoration';
+import {psionicDieSides} from '../../rules/psionicRestoration';
 
 interface Props {
  character: Character;
@@ -185,8 +186,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // showed full from getPsionicDieCount fallback. User-reported bug:
  // "Free Misty Step doesn't refund like it should." Fix: fall back to
  // getPsionicDieCount(level), matching the chiclet display source.
- const fallbackDice = getPsionicDieCount(character.level);
- const currentDice = (resources['psionic-energy-dice'] as number | undefined) ?? fallbackDice;
+ const currentDice = psionicPoolRemaining(character.level,resources['psionic-energy-dice']) ?? 0;
  if (currentDice < restoreCost) {
  showToast(`Not enough Psionic Energy Dice. Need ${restoreCost}, have ${currentDice}.`, 'warn');
  return;
@@ -279,6 +279,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // rather than silently deducting and going negative. Pool deduction
  // happens here in one shot rather than in the legacy isPool branch
  // below (which always deducted exactly 1, regardless of cost).
+ let remainingPsionicDice=psionicPoolRemaining(character.level,character.class_resources?.['psionic-energy-dice']);
  const pedCost = (ability as any).pedCost as number | undefined;
  if (typeof pedCost === 'number' && pedCost > 0) {
  const resources = (character.class_resources as Record<string, number> | null) ?? {};
@@ -288,14 +289,14 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // a fresh Psion clicking Cast on Warp Space / Mass Teleport /
  // Duplicitous Target hit "Need N, have 0" toast because the
  // resource key was undefined.
- const fallbackDice = getPsionicDieCount(character.level);
- const currentDice = (resources['psionic-energy-dice'] as number | undefined) ?? fallbackDice;
+ const currentDice = psionicPoolRemaining(character.level,resources['psionic-energy-dice']) ?? 0;
  if (currentDice < pedCost) {
  // Insufficient pool — bail before logging or flashing.
  showToast(`Not enough Psionic Energy Dice. Need ${pedCost}, have ${currentDice}.`, 'warn');
  return;
  }
- const nextResources = { ...resources, 'psionic-energy-dice': currentDice - pedCost };
+ remainingPsionicDice=currentDice-pedCost;
+ const nextResources = { ...resources, 'psionic-energy-dice': remainingPsionicDice };
  onUpdate({ class_resources: nextResources });
  }
 
@@ -330,9 +331,10 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // first Spend correctly drops the pool from full → full-1.
  if (typeof pedCost !== 'number' && (ability.id === 'psionic-energy-dice' || (ability as any).isPool)) {
   const resources = { ...(character.class_resources as Record<string, number> ?? {}) };
-  const fallbackMax = getMaxUses(ability, character) ?? 0;
-  const current = (resources['psionic-energy-dice'] as number | undefined) ?? fallbackMax;
-  resources['psionic-energy-dice'] = Math.max(0, current - 1);
+  const current = psionicPoolRemaining(character.level,resources['psionic-energy-dice']);
+  if(current===null || current<1) {showToast('Check your Psionic Energy Dice before spending.','warn');return;}
+  remainingPsionicDice=current-1;
+  resources['psionic-energy-dice'] = remainingPsionicDice;
   onUpdate({ class_resources: resources });
  }
  // For psionic energy dice — roll the die and show in action log
@@ -368,7 +370,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  individualResults: rollResult?.rolls,
  total: rollResult?.total ?? 0,
  notes: (ability as any).psionicDie
- ? `Rolled 1${getPsionicDieSize(character.level)} = ${rollResult?.total} · ${getPsionicDieCount(character.level) - 1} dice remaining`
+ ? `Rolled 1${getPsionicDieSize(character.level)} = ${rollResult?.total} · ${remainingPsionicDice} dice remaining`
  : outcomeNote ?? (desc.slice(0, 100) + (desc.length > 100 ? '…' : '')),
  });
  // Store psionic roll for inline display
@@ -810,6 +812,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  {conditionalDiscipline?.conditionalOutcome ? <ConditionalPsionicButton character={character} discipline={conditionalDiscipline} onUpdate={onUpdate} campaignId={campaignId}/> : (ability.name==='Telekinetic Propel'||ability.name==='Telepathic Connection') ? <PsionicPowerButton character={character} kind={ability.name==='Telekinetic Propel'?'propel':'connection'} onUse={async(use:PsionicPowerUse)=>{await handleUseAbility({...ability,psionicUse:use});}}/> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton character={character} onUpdate={onUpdate}/> : ability.actionType !== 'free' && (
  <button
  onClick={() => handleUseAbility(ability, maxUses !== undefined ? 1 : undefined)}
+ disabled={isPedPoolRow && (psionicPoolRemaining(character.level,character.class_resources?.['psionic-energy-dice'])??0)<1}
  style={{
  padding: '4px 12px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  background: isFlashing ? '#34d399' : acColor + '20',
@@ -837,8 +840,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // is uninitialized; this disable check has to use the same
  // fallback or it leaves the button disabled with full chiclets,
  // which is what the user reported as "doesn't refund."
- const fallbackDice = getPsionicDieCount(character.level);
- const currentDice = (resources['psionic-energy-dice'] as number | undefined) ?? fallbackDice;
+ const currentDice = psionicPoolRemaining(character.level,resources['psionic-energy-dice']) ?? 0;
  const insufficient = currentDice < restoreCost;
  const flashKey = `restore:${ability.name}`;
  const restoreFlashing = justUsed === flashKey;

@@ -1,4 +1,4 @@
-import {psionicDieCount,psionicDieSides} from './psionicRestoration';
+import {psionicPoolRemaining,psionicDieSides} from './psionicRestoration';
 export interface PsionicPowerCharacter {
   class_name:string; level:number; subclass?:string|null;
   class_resources?:Record<string,unknown>|null; feature_uses?:Record<string,number>|null;
@@ -7,7 +7,8 @@ export type PsionicPowerUse = {kind:'propel';mode:'free'|'powered'|'technique';r
 export const CONNECTION_USE='Telepathic Connection';
 export function psionicPowerState(c:PsionicPowerCharacter) {
   const raw=c.class_resources?.['psionic-energy-dice'];
-  return {dice:typeof raw==='number'?Math.max(0,raw):psionicDieCount(c.level),
+  const remaining=psionicPoolRemaining(c.level,raw);
+  return {valid:c.class_name==='Psion'&&remaining!==null,dice:remaining??0,
     sides:psionicDieSides(c.level),
     connectionFree:!(c.feature_uses?.[CONNECTION_USE]),
     telepathyRange:c.subclass==='Telepath'&&c.level>=6?60:30,
@@ -17,6 +18,7 @@ export function psionicPowerState(c:PsionicPowerCharacter) {
 export function resolvePsionicPower(c:PsionicPowerCharacter,use:PsionicPowerUse,failedSave?:boolean) {
   if(c.class_name!=='Psion'||c.level<1)return null;
   const state=psionicPowerState(c);
+  if(!state.valid)return null;
   const isTechnique=use.kind==='propel'&&use.mode==='technique';
   const rolls=use.kind==='connection'||use.mode!=='free';
   if(rolls&&(!Number.isInteger(use.roll)||use.roll<1||use.roll>(isTechnique?4:state.sides)))return null;

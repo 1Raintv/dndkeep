@@ -47,3 +47,14 @@ describe('Psion UA v2 power costs',()=>{
  });
 });
 
+
+it.each([NaN,Infinity,-1,1.5,'2',null,7])('refuses to settle or rewrite malformed pool %s',pool=>{
+ const invalid={...c,class_resources:{'psionic-energy-dice':pool}};
+ expect(psionicPowerState(invalid)).toMatchObject({valid:false,dice:0});
+ expect(resolvePsionicPower(invalid,{kind:'propel',mode:'powered',roll:2},true)).toBeNull();
+ expect(resolvePsionicPower(invalid,{kind:'propel',mode:'free',roll:0},true)).toBeNull();
+ expect(resolvePsionicPower(invalid,{kind:'connection',roll:2,free:true})).toBeNull();
+});
+it.each([NaN,Infinity,0,-1,5.5,21])('refuses invalid level %s for powers',level=>{
+ expect(resolvePsionicPower({...c,level},{kind:'connection',roll:2,free:true})).toBeNull();
+});

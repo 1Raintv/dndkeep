@@ -1,5 +1,22 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Consistent Psion resource validation, v2.764
+
+Restoration, base powers, direct spending and conditional Discipline bonuses share a pool
+validator. Missing legacy values still initialize to the class-table maximum;
+explicit null, fractional, negative, non-finite or overfull values cannot be spent
+or silently rewritten by those actions. Invalid class levels cannot unlock them.
+Restoration displays a resource-check message. A normal Long Rest restores a valid
+pool through the existing recovery path. The direct Spend Die button also refuses
+an empty pool instead of rolling for free. PED-cost and feature-refresh handlers
+use the same validation; manual pool editing remains available. Spend logs now
+report the actual remaining pool instead of always reporting maximum minus one.
+
+Validation includes every one of the 20 Energy Dice table rows, invalid-state
+boundaries, normal conditional costs, and desktop/mobile local-database checks
+that preserve a malformed value until a deliberate Long Rest repairs it.
+
+
 ### 2026-10-07 — Recoverable map-image fitting, v2.763
 
 Scene settings now shows when the map image is loading, blocks conflicting edits,
