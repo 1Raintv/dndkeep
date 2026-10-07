@@ -146,6 +146,28 @@ pruning there, derive both classes and species at total level, and correct initi
 Mage Hand tagging before release. Unknown old grants must remain reviewable rather
 than being silently deleted from a list that lacks provenance.
 
+The sheet and both level-up flows now use one automatic-grant adapter, replacing
+ID-based pruning in the root component. It derives grants for each class at its
+own level and species at total level, tracks grants on the same level-up save,
+and emits no patch when already reconciled. Creator Mage Hand is tagged as an
+automatic Psion grant rather than a chosen spell. Four adapter tests and the full
+gate pass (1,676 tests, TS 208/208, 253 KB entry). Combined browser verification
+is in progress; its cancellation test's empty-map expectation must be updated
+because automatic Mage Hand now correctly has a saved grant tag. A new real
+species-expiry test checks independent Psion ownership and Paladin grants.
+
+Combined run evidence: 31 browser cases passed; three failed (the cancellation
+assertion on both viewports and a real mobile draft-reset race). Cancellation now
+checks that Charm Person's sources remain unsaved, allowing the unrelated Mage
+Hand grant tag. A canonical spell-state key now ignores list/key/source ordering
+and duplicate values when deciding whether saved state changed; JSONB ordering
+or cloned arrays no longer clear a level-up draft. A real-hook test proves an
+equivalent echo preserves choices while a changed known list resets them.
+All six focused follow-up browser checks pass: cancellation, shared-spell level-up
+and species-grant expiry on desktop/mobile. Grant expiry keeps a separately
+learned Psion Darkness copy unprepared and preserves Paladin Divine Smite.
+Full gate passes again. A final combined green run is still required before release.
+
 Before release: source tracking for automatic grants and per-class prepared-state
 ownership. A spell learned through Psion and later removed must not accidentally
 prepare an originally unprepared copy retained by Wizard.

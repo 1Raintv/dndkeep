@@ -67,7 +67,7 @@ describe('Psion creation payload', () => {
       known_spells: ['shield', 'minor-illusion', 'mage-hand'],
       prepared_spells: setupMode === 'recommended' ? ['shield'] : [],
       spell_preparation_sources: { shield: setupMode === 'recommended' ? ['class:Psion'] : [], 'minor-illusion': [], 'mage-hand': [] },
-      spell_sources: { shield: ['class:Psion'], 'minor-illusion': ['class:Psion'], 'mage-hand': ['class:Psion'] },
+      spell_sources: { shield: ['class:Psion'], 'minor-illusion': ['class:Psion'], 'mage-hand': ['grant:class:Psion'] },
     });
   });
 });

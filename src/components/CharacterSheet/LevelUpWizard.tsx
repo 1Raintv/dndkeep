@@ -1,3 +1,4 @@
+import {automaticSpellGrantPatch} from '../../lib/automaticSpellGrants';
 import PsionLevelUpSpellChoices from './PsionLevelUpSpellChoices';
 import {usePsionLevelUpSpells} from '../../lib/hooks/usePsionLevelUpSpells';
 import {proficiencyBonus} from '../../rules/proficiency';
@@ -7,7 +8,7 @@ import ModalPortal from '../shared/ModalPortal';
 import {validDisciplineLevelUp} from '../../rules/psionDisciplineChoices';
 import { useState, useEffect } from 'react';
 import type { Character } from '../../types';
-import { CLASSES, getSubclassSpellIds } from '../../data/classes';
+import { CLASSES } from '../../data/classes';
 import { FEATS } from '../../data/feats';
 import { SKILLS } from '../../data/skills';
 import { computeFeatRiders } from '../../lib/featRiders';
@@ -237,12 +238,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  // secondary or new — both write to secondary_subclass
  updates.secondary_subclass = selectedSubclass;
  }
- // Auto-add subclass always-prepared spells — filter by level being assigned
- const subSpellIds = getSubclassSpellIds(selectedSubclass, effectiveClassName, newLevel);
- if (subSpellIds.length > 0) {
- const existing = [...new Set([...(updates.known_spells??character.known_spells), ...subSpellIds])];
- updates.known_spells = existing;
- }
+
  }
 
  // Save selected disciplines (only relevant when Psion is the target class)
@@ -322,6 +318,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  updates.features_and_traits = existing + featNote;
  }
  }
+ Object.assign(updates,automaticSpellGrantPatch({...character,...updates}));
  return updates;
  }
 

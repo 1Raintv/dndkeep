@@ -40,7 +40,7 @@ test.describe('Psion spell choice eligibility', () => {
     await review.getByRole('checkbox',{name:'Learned through Psion',exact:true}).check();
     await review.getByRole('checkbox',{name:'Prepared through Psion',exact:true}).check();
     await review.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('spell-source-review.png')});
-    expect(sql(`select spell_sources::text from characters where id='${charId}'`)).toBe('{}');
+    expect(sql(`select (spell_sources ? 'charm-person')::text from characters where id='${charId}'`)).toBe('false');
     await review.getByRole('button',{name:'Cancel review',exact:true}).click();
     await page.getByLabel('Spell to review',{exact:true}).selectOption('charm-person');
     await expect(review.getByRole('checkbox',{name:'Learned through Psion',exact:true})).not.toBeChecked();

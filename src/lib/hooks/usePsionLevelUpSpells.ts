@@ -1,3 +1,4 @@
+import {spellStateKey} from '../../rules/spellStateKey';
 import {reviewSpellPreparation,type SpellPreparationSources} from '../../rules/spellPreparation';
 import {isSpellSources} from '../../rules/spellSources';
 import {useEffect,useState} from 'react';
@@ -15,7 +16,8 @@ export function usePsionLevelUpSpells(character:Character,newLevel:number,target
  const [prepared,setPrepared]=useState(character.prepared_spells);
  const {selected,granted}=psionSpellReplacementContext(character,newLevel,target);
  const enabled=selected.className==='Psion'&&selected.level>=1;
- useEffect(()=>{setSwaps({});setPrepared(character.prepared_spells);setPreparationSources(isSpellSources(character.spell_preparation_sources??{})?character.spell_preparation_sources??{}:{});setSources(isSpellSources(character.spell_sources??{})?character.spell_sources??{}:{});},[character.id,character.spell_sources,character.spell_preparation_sources,character.prepared_spells,character.known_spells,selected.kind,selected.className,selected.level,selected.subclass,newLevel]);
+ const savedSpellKey=spellStateKey({known:character.known_spells,prepared:character.prepared_spells,sources:character.spell_sources??{},preparationSources:character.spell_preparation_sources??{}});
+ useEffect(()=>{setSwaps({});setPrepared(character.prepared_spells);setPreparationSources(isSpellSources(character.spell_preparation_sources??{})?character.spell_preparation_sources??{}:{});setSources(isSpellSources(character.spell_sources??{})?character.spell_sources??{}:{});},[character.id,savedSpellKey,selected.kind,selected.className,selected.level,selected.subclass,newLevel]);
  const result=enabled&&sourceDataValid?replaceOwnedPsionLevelUpSpells({currentLevel:selected.level,newLevel,
   known:character.known_spells,prepared,preparationSources,granted,catalog:SPELLS,swaps,sources}):null;
  const outgoing=SPELLS.filter(s=>character.known_spells.includes(s.id)&&s.classes.includes('Psion')&&!granted.includes(s.id)&&(!sources[s.id]?.length||sources[s.id].includes('class:Psion')||s.id===swaps.cantrip?.from||s.id===swaps.spell?.from));

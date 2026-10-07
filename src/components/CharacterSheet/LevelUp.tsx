@@ -1,3 +1,4 @@
+import {automaticSpellGrantPatch} from '../../lib/automaticSpellGrants';
 import PsionLevelUpSpellChoices from './PsionLevelUpSpellChoices';
 import {usePsionLevelUpSpells} from '../../lib/hooks/usePsionLevelUpSpells';
 import {levelUpSpellSlots} from '../../rules/levelUpSpellSlots';
@@ -124,6 +125,7 @@ export default function LevelUp({ character, onConfirm, onCancel }: LevelUpProps
  updates.features_and_traits = existing ? existing + `\n\n[Feat — Level ${newLevel}]\n${selectedFeat}` : `[Feat — Level ${newLevel}]\n${selectedFeat}`;
  }
  Object.assign(updates,spellChoices.patch);
+ Object.assign(updates,automaticSpellGrantPatch({...character,...updates}));
  onConfirm(updates);
  }
 

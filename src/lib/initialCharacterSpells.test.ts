@@ -8,7 +8,7 @@ describe('initial character spell selection', () => {
     expect(result.known_spells).toEqual(['minor-illusion', 'telekinetic-fling', 'charm-person', 'command', 'dissonant-whispers', 'mage-armor', 'mage-hand']);
     expect(result.prepared_spells).toEqual(['charm-person', 'command', 'dissonant-whispers', 'mage-armor']);
     expect(result.pinned_spells).toEqual(result.prepared_spells);
-    expect(Object.values(result.spell_sources)).toEqual(result.known_spells.map(() => ['class:Psion']));
+    expect(Object.values(result.spell_sources)).toEqual(result.known_spells.map(id => [id==='mage-hand'?'grant:class:Psion':'class:Psion']));
   });
   it.each(['recommended', 'blank'] as const)('respects custom and duplicate selections in %s mode', mode => {
     const result = buildInitialCharacterSpells('Psion', ['shield', 'minor-illusion', 'shield'], mode);
@@ -21,7 +21,7 @@ describe('initial character spell selection', () => {
   it('keeps an empty blank build empty except the automatic class grant', () => {
     expect(buildInitialCharacterSpells('Psion', [], 'blank')).toEqual({
       spell_preparation_sources: { 'mage-hand': [] },
-      known_spells: ['mage-hand'], prepared_spells: [], pinned_spells: [], spell_sources: { 'mage-hand': ['class:Psion'] },
+      known_spells: ['mage-hand'], prepared_spells: [], pinned_spells: [], spell_sources: { 'mage-hand': ['grant:class:Psion'] },
     });
   });
   it('does not fill a deliberately partial selection', () => {

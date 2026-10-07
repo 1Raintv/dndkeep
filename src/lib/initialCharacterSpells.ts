@@ -13,6 +13,7 @@ export function buildInitialCharacterSpells(className: string, selected: readonl
   // known. Legacy character spell lists deliberately receive no such inference.
   const owner: SpellSource = `class:${className}`;
   const sources: SpellSources = Object.fromEntries(known.map(id => [id, [owner]]));
+  if(className==='Psion')sources['mage-hand']=['grant:class:Psion'];
   const preparationSources: SpellSources = Object.fromEntries(known.map(id => [id, setup.prepared.includes(id) ? [owner] : []]));
   return { spell_preparation_sources: preparationSources, known_spells: known, prepared_spells: setup.prepared, pinned_spells: setup.pinned, spell_sources: sources };
 }
