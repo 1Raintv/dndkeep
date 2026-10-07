@@ -38,3 +38,8 @@ it('removes the final source and permits explicit legacy removal',()=>{
 it('cannot remove an explicitly unrelated spell',()=>{
  expect(forgetClassSpell(['old'],{old:['feat']},'old','Psion').ok).toBe(false);
 });
+
+it('accepts automatic grant tags but rejects incomplete grant sources',()=>{
+ expect(isSpellSources({hand:['grant:class:Psion'],darkness:['grant:species']})).toBe(true);
+ for(const tag of ['grant:','grant:class:','grant:class: Psion','grant:feat','grant:other'])expect(isSpellSources({spell:[tag]})).toBe(false);
+});

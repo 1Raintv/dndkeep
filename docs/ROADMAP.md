@@ -133,6 +133,19 @@ slot map is rendered as a noncaster. The new cancellation fixture initially
 omitted its level-one slots; fix the broader classification separately so damaged
 or imported slot data cannot hide spell recovery controls.
 
+Automatic-grant foundation now distinguishes grant:class:<name> and grant:species
+from deliberately learned class/species copies. Pure reconciliation removes only
+expired tracked grants, preserves independent ownership/readiness, and never
+reclassifies unknown legacy membership as grant-only. It separately expires
+known granted readiness even when learned ownership remains unknown. Nine
+regressions cover these cases plus malformed maps; tag-shape coverage is extended.
+Local migration 20261007191500 updates the shared validator used by both source
+columns. Docker apply, ledger and valid/invalid tag probes pass. This reconciliation
+is not yet connected to the automatic-grant effect: replace the old ID-based
+pruning there, derive both classes and species at total level, and correct initial
+Mage Hand tagging before release. Unknown old grants must remain reviewable rather
+than being silently deleted from a list that lacks provenance.
+
 Before release: source tracking for automatic grants and per-class prepared-state
 ownership. A spell learned through Psion and later removed must not accidentally
 prepare an originally unprepared copy retained by Wizard.
