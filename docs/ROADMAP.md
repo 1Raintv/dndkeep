@@ -1,5 +1,23 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Discipline replacement at Psion level-up, v2.768
+
+Every Psion level from 2 onward offers a Discipline review, including levels
+without an additional choice. Players can keep their choices or replace one
+existing Discipline, as specified on page 3 of the owner's Update PDF. Initial
+choices and increases at 5/10/13/17 use the same pure count/selection rules.
+The wizard validates exact totals and at most one replacement before proceeding
+and saving; legacy display names resolve to unique IDs. Confirmation lists the
+final choices, and changing the target class resets draft choices. Other class
+levels do not offer or save a Psion replacement. The wizard now uses the shared
+body portal so animated sheet containers cannot clip its header or footer.
+No database migration.
+
+Validation covers all 20 counts and invalid inputs, plus desktop/mobile local
+level-ups 1→2, 4→5 and 5→6, rejecting a second replacement and retaining other
+resources. This does not yet automate the separate spell/cantrip replacement.
+
+
 ### 2026-10-07 — Psion casting-stat header, v2.767
 
 The Spells tab now displays Psion's casting modifier, spell attack and save DC.

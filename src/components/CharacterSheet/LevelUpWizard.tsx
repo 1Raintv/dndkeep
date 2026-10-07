@@ -1,3 +1,5 @@
+import ModalPortal from '../shared/ModalPortal';
+import {validDisciplineLevelUp} from '../../rules/psionDisciplineChoices';
 import { useState, useEffect } from 'react';
 import type { Character } from '../../types';
 import { CLASSES, getSubclassSpellIds } from '../../data/classes';
@@ -113,12 +115,12 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  const needsASI = ASI_LEVELS.has(newLevel);
 
  // Psion discipline needs
- const DISCIPLINE_LEVELS = new Set([2, 5, 10, 13, 17]);
  // Psion discipline step only triggers if the TARGETED class is Psion
- const needsDiscipline = effectiveClassName === 'Psion' && DISCIPLINE_LEVELS.has(newLevel);
- const currentDisciplines: string[] = Array.isArray(character.class_resources?.['psion-disciplines'])
- ? character.class_resources['psion-disciplines'] as string[]
- : [];
+ const needsDiscipline = effectiveClassName === 'Psion' && getDisciplineCount(newLevel)>0;
+ // v2.768 — compare canonical choices so old display-name saves count once.
+ const storedDisciplines=character.class_resources?.['psion-disciplines'];
+ const currentDisciplines=[...new Set((Array.isArray(storedDisciplines)?storedDisciplines:[])
+  .flatMap(key=>typeof key==='string'&&findDiscipline(key)?[findDiscipline(key)!.id]:[]))];
 
  const [step, setStep] = useState<'classpick' | 'overview' | 'subclass' | 'discipline' | 'asi' | 'confirm'>(
    totalCurrentLevel >= 1 ? 'classpick' : 'overview',
@@ -172,6 +174,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  // so a subclass chosen for the primary doesn't bleed over into the secondary, etc.
  useEffect(() => {
    setSelectedSubclass(existingSubclassForTarget ?? '');
+   setSelectedDisciplines([...currentDisciplines]);
    setAbiBoosts({});
    setSelectedFeat('');
    setAsiChoice('asi');
@@ -232,7 +235,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  }
 
  // Save selected disciplines (only relevant when Psion is the target class)
- if (needsDiscipline && selectedDisciplines.length > currentDisciplines.length) {
+ if (needsDiscipline && validDisciplineLevelUp(newLevel,currentDisciplines,selectedDisciplines)) {
  updates.class_resources = {
  ...(character.class_resources as Record<string, unknown> ?? {}),
  'psion-disciplines': selectedDisciplines,
@@ -314,7 +317,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  function handleConfirm() {
  // v2.518.0 — safety net: never commit a level-up past the free cap
  // without an active subscription, even if the UI is bypassed.
- if (blockedByLevelCap) return;
+ if (blockedByLevelCap || (needsDiscipline && !validDisciplineLevelUp(newLevel,currentDisciplines,selectedDisciplines))) return;
  onLevelUp(buildUpdates());
  onClose();
  }
@@ -330,7 +333,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
 
  const currentIdx = steps.indexOf(step);
  const expectedDisciplinesAtLevel = getDisciplineCount(newLevel);
- const newDisciplinesNeeded = expectedDisciplinesAtLevel - currentDisciplines.length;
+ const newDisciplinesNeeded = Math.max(0,expectedDisciplinesAtLevel - currentDisciplines.length);
 
  // classpick valid when: primary/secondary selected OR 'new' with a class chosen that meets prereqs
  const classPickValid = targetKind === 'primary'
@@ -341,16 +344,17 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  const canNext = (step === 'classpick' && classPickValid) ||
  step === 'overview' ||
  (step === 'subclass' && selectedSubclass) ||
- (step === 'discipline' && selectedDisciplines.length >= expectedDisciplinesAtLevel) ||
+ (step === 'discipline' && validDisciplineLevelUp(newLevel,currentDisciplines,selectedDisciplines)) ||
  (step === 'asi' && (asiChoice === 'feat' ? (selectedFeat && (!needsAsiChoice || featAsiChoice) && (!needsSkillChoice || featSkillChoices.length === featSkillCount)) : totalBoosts === 2)) ||
  step === 'confirm';
 
  return (
+ <ModalPortal>
  <div style={{
  position: 'fixed', inset: 0, zIndex: 10000, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(6px)',
  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--sp-4)',
  }}>
- <div style={{
+ <div role="dialog" aria-modal="true" aria-label="Level up" style={{
  background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)',
  borderRadius: 'var(--r-xl)', boxShadow: 'var(--shadow-gold)',
  width: '100%', maxWidth: 760, maxHeight: '90vh',
@@ -421,6 +425,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  currentDisciplines={selectedDisciplines}
  needed={newDisciplinesNeeded}
  expectedTotal={expectedDisciplinesAtLevel}
+ valid={validDisciplineLevelUp(newLevel,currentDisciplines,selectedDisciplines)}
  search={disciplineSearch}
  onSearch={setDisciplineSearch}
  // v2.674.0 — persist the id, not the display name: the sheet's Actions
@@ -456,6 +461,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  )}
 
  {step === 'confirm' && (
+ <>
  <ConfirmStep
  character={character}
  newLevel={newLevel}
@@ -466,6 +472,8 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  abiBoosts={needsASI && asiChoice === 'asi' ? abiBoosts : undefined}
  selectedFeat={needsASI && asiChoice === 'feat' ? selectedFeat : undefined}
  />
+ {needsDiscipline && <p style={{fontSize:12,color:'var(--t-2)'}}>Disciplines: {selectedDisciplines.map(id=>findDiscipline(id)?.name??id).join(', ')}</p>}
+ </>
  )}
  </div>
 
@@ -509,6 +517,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  </div>
  </div>
  </div>
+ </ModalPortal>
  );
 }
 
@@ -594,7 +603,7 @@ function OverviewStep({ newLevel, character, effectiveClassName, classData, avgH
  );
 }
 
-function DisciplineStep({ currentDisciplines, needed, expectedTotal, search, onSearch, onToggle }: any) {
+function DisciplineStep({ currentDisciplines, needed, expectedTotal, valid, search, onSearch, onToggle }: any) {
  // v2.670 — no expand/collapse state here. This is a comparison list: you
  // read every discipline before picking one, and the old single-expanded-id
  // toggle collapsed the description you were comparing against.
@@ -609,13 +618,15 @@ function DisciplineStep({ currentDisciplines, needed, expectedTotal, search, onS
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
  <div>
  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--t-1)', marginBottom: 4 }}>
- Choose {needed} Psionic Discipline{needed > 1 ? 's' : ''}
+ {needed>0?`Choose ${needed} additional Psionic Discipline${needed>1?'s':''}`:'Review Psionic Disciplines'}
  </div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-3)' }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>
  {currentDisciplines.length}/{expectedTotal} chosen
- {' '}— each discipline is permanent and grants passive or active psionic benefits.
+ {' '}— you may replace one existing Discipline when gaining a Psion level. Keep your choices to skip replacement.
  </div>
  </div>
+
+ {!valid && <p role="status" style={{fontSize:12,color:'var(--t-2)'}}>Choose exactly {expectedTotal} Disciplines and replace no more than one existing choice.</p>}
 
  {/* Current selections */}
  {currentDisciplines.length > 0 && (
