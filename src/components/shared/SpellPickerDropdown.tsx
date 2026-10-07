@@ -1,3 +1,4 @@
+import {spellPickerPosition} from '../../lib/spellPickerPosition';
 import { SpellDescription } from './SpellDescription';
 import { shortCastingTime } from '../../lib/spellDisplay';
 import { useState, useRef, useEffect, useMemo } from 'react';
@@ -14,6 +15,7 @@ interface SpellPickerDropdownProps {
  maxLevel: number;
  selected: string[];
  onToggle: (id: string) => void;
+ removalReason?: string;
  // Limits — when provided, enforce caps and gray out options at the limit
  cantripMax?: number; // max cantrips for this class/level
  prepareMax?: number; // max total prepared/known spells (non-cantrips)
@@ -41,7 +43,7 @@ const LEVEL_LABELS = ['Cantrips', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th
 export default function SpellPickerDropdown({
  label, isCantrip, className, maxLevel, selected, onToggle,
  cantripMax, prepareMax, prepareCount, slotsPerLevel, grantedSpellIds = [], isKnownCaster = false,
- openRequest = null, onOpenRequestHandled,
+ openRequest = null, onOpenRequestHandled, removalReason,
 }: SpellPickerDropdownProps) {
  // v2.22.0: spells now come from useSpells() — DB-backed with static fallback
  // for any IDs not yet seeded into public.spells.
@@ -54,7 +56,7 @@ export default function SpellPickerDropdown({
  // v2.671 — no expanded state. Choosing spells means comparing them, so every
  // row carries its full description and stat line (see ROADMAP, "Choice
  // pickers: show the full text, always").
- const [dropPos, setDropPos] = useState<{ top: number; left: number; width: number } | null>(null);
+ const [dropPos, setDropPos] = useState<ReturnType<typeof spellPickerPosition> | null>(null);
  const triggerRef = useRef<HTMLButtonElement>(null);
  const dropRef = useRef<HTMLDivElement>(null);
  const searchRef = useRef<HTMLInputElement>(null);
@@ -64,14 +66,7 @@ export default function SpellPickerDropdown({
  function computePos() {
  if (!triggerRef.current) return null;
  const rect = triggerRef.current.getBoundingClientRect();
- const viewportW = window.innerWidth;
- const margin = 12;
- const desiredWidth = Math.min(480, viewportW - 2 * margin);
- let left = rect.left;
- const maxLeft = viewportW - desiredWidth - margin;
- if (left > maxLeft) left = maxLeft;
- if (left < margin) left = margin;
- return { top: rect.bottom + 4, left, width: desiredWidth };
+ return spellPickerPosition(rect,{width:window.innerWidth,height:window.innerHeight});
  }
 
  function openDropdown() {
@@ -219,7 +214,7 @@ export default function SpellPickerDropdown({
  position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width,
  background: 'var(--c-card)', border: '1px solid var(--c-border-m)',
  borderRadius: 14, boxShadow: '0 12px 48px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.05)',
- zIndex: 9999, overflow: 'hidden', maxHeight: 500, display: 'flex', flexDirection: 'column',
+ zIndex: 9999, overflow: 'hidden', maxHeight: dropPos.maxHeight, display: 'flex', flexDirection: 'column',
  }}
  >
  {/* Search bar */}
@@ -396,9 +391,9 @@ export default function SpellPickerDropdown({
  </span>
  ) : (
  <button
- onClick={e => { e.stopPropagation(); if (!blocked) onToggle(spell.id); }}
- disabled={blocked}
- title={blocked ? `${activeLevel === 0 ? 'Cantrip' : 'Spell'} limit reached — remove one first` : undefined}
+ onClick={e => { e.stopPropagation(); if (!blocked&&!(sel&&removalReason)) onToggle(spell.id); }}
+ disabled={blocked||!!(sel&&removalReason)}
+ title={removalReason&&(sel||blocked)?removalReason:blocked ? `${activeLevel === 0 ? 'Cantrip' : 'Spell'} limit reached — remove one first` : undefined}
  style={{
  fontSize: 12, fontWeight: 700, padding: '5px 14px', borderRadius: 8,
  cursor: blocked ? 'not-allowed' : 'pointer',
@@ -417,7 +412,7 @@ export default function SpellPickerDropdown({
  transition: 'all 0.15s',
  }}
  >
- {sel ? '− Remove' : blocked ? '⊘ Full' : '+ Add'}
+ {sel&&removalReason?'Replace at level-up':sel ? '− Remove' : blocked ? '⊘ Full' : '+ Add'}
  </button>
  )}
 

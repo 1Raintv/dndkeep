@@ -1,3 +1,5 @@
+import PsionLevelUpSpellChoices from './PsionLevelUpSpellChoices';
+import {usePsionLevelUpSpells} from '../../lib/hooks/usePsionLevelUpSpells';
 import {levelUpSpellSlots} from '../../rules/levelUpSpellSlots';
 import { useState, useMemo } from 'react';
 import type { Character } from '../../types';
@@ -69,6 +71,7 @@ export default function LevelUp({ character, onConfirm, onCancel }: LevelUpProps
  const [hpChoice, setHpChoice] = useState<'average'|'roll'>('average');
  const [rolledHP, setRolledHP] = useState<number|null>(null);
  const [subclass, setSubclass] = useState(character.subclass ?? '');
+ const spellChoices=usePsionLevelUpSpells({...character,subclass},newLevel);
  const asiLevels = ASI_LEVELS[character.class_name] ?? [4,8,12,16,19];
  const hasASI = asiLevels.includes(newLevel);
  const [asiChoice, setAsiChoice] = useState<'asi'|'feat'>('asi');
@@ -98,6 +101,7 @@ export default function LevelUp({ character, onConfirm, onCancel }: LevelUpProps
  }
 
  function confirm() {
+ if(!spellChoices.valid)return;
  const updates: Partial<Character> = {
  level: newLevel,
  max_hp: character.max_hp + hpGain,
@@ -119,10 +123,11 @@ export default function LevelUp({ character, onConfirm, onCancel }: LevelUpProps
  const existing = character.features_and_traits ?? '';
  updates.features_and_traits = existing ? existing + `\n\n[Feat — Level ${newLevel}]\n${selectedFeat}` : `[Feat — Level ${newLevel}]\n${selectedFeat}`;
  }
+ Object.assign(updates,spellChoices.patch);
  onConfirm(updates);
  }
 
- const canConfirm =
+ const canConfirm = spellChoices.valid &&
  (!needsSubclassChoice || !!subclass) &&
  (hpChoice === 'average' || rolledHP !== null) &&
  (!hasASI || asiChoice === 'asi' || (asiChoice === 'feat' && !!selectedFeat));
@@ -137,6 +142,7 @@ export default function LevelUp({ character, onConfirm, onCancel }: LevelUpProps
  </p>
 
  <div style={{ overflowY:'auto', flex:1, paddingRight:'var(--sp-1)' }}>
+ <PsionLevelUpSpellChoices choices={spellChoices}/>
  {/* HP */}
  <div className="section-header">Hit Points</div>
  <div style={{ display:'flex', gap:'var(--sp-3)', marginBottom:'var(--sp-3)' }}>

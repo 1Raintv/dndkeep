@@ -2748,6 +2748,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  applyUpdate({ known_spells: [...character.known_spells, id] }, true);
  }}
  onRemoveSpell={id => {
+ // v2.787 — normal Psion replacements belong to the level-up flow.
+ // Advanced spell edits remain the explicit manual correction escape hatch.
+ if(character.class_name==='Psion'&&!character.advanced_spell_edits_unlocked){
+ toast.showToast('Replace one cantrip and one prepared spell when gaining a Psion level. Advanced spell edits allow manual corrections.','warn');return;
+ }
  if (concentrationSpellId === id) setConcentration(null);
  applyUpdate({ known_spells: character.known_spells.filter(x => x !== id), prepared_spells: character.prepared_spells.filter(x => x !== id) }, true);
  }}

@@ -9,12 +9,24 @@ The shared pure validator now checks one optional swap per category, class-list
 eligibility, the new Psion-level spell ceiling, duplicate ownership, and protected
 grants. It preserves unrelated choices and prepares the replacement leveled spell.
 Its 42-test module passes (16 new replacement cases plus existing level checks).
-Still required: wire both level-up flows, prevent the ordinary picker from
-bypassing replacement timing, preserve incomplete-list filling, validate granted
-spell/class targeting (including multiclass), and verify browser behavior. This
-foundation is not a finished or deployed feature.
+Both level-up flows now share the replacement selector and commit validated
+choices with the level increase. Ordinary picker removal is disabled for Psions;
+missing selections can still be filled, and Advanced Spell Edits remains an
+explicit manual-correction escape hatch. New subclass grant merging preserves
+the selected replacement rather than rebuilding from the old known list.
+Browser testing exposed an existing popup placement failure on phones: the Add
+button could open below the viewport. A tested placement helper now keeps the
+whole scrollable picker inside the screen. Desktop/mobile screenshots checked.
+All 12 replacement/picker/discipline level-up browser cases passed together. Full
+gate: 1,575 unit tests, TS 208/208, all required checks and 253 KB entry budget pass.
 
-### Release pending — Campaign concentration persistence, v2.786
+Before release: verify new-subclass acquisition, cancel/skip and target-switch
+behavior, and audit multiclass spell ownership. The shared known_spells list
+currently lacks per-class provenance; an overlapping Wizard/Psion spell must not
+silently be treated as a Psion-owned replacement. This work remains local and
+is not yet a finished or deployed feature.
+
+### Released — Campaign concentration persistence, v2.786
 
 Confirmed: pending saves read `state=offered`, roll and clear concentration,
 then update the prompt. Two clients can both resolve the same offer; timeout
@@ -69,7 +81,7 @@ All 48 concentration browser/database checks pass together (desktop/mobile).
 Full gate: 1,555 unit tests, TS 208/208, build/rules/coordinates/anchors/hooks
 and bundle budget green (253 KB entry).
 
-Remaining release verification: confirm production frontend v2.786. Active save bonuses,
+Active save bonuses,
 advantage/exhaustion parity, summon/aura cleanup and other effects still need
 audit. During-combat sheet HP still uses the character snapshot; map HP uses the
 combatant. A unified live HP model is separate follow-up work. Offer creation and
@@ -77,7 +89,7 @@ parent damage application are not yet durable/idempotent like save settlement.
 All three migrations shipped through schema PR #113 (merge 48b5fd5). Production
 workflow 37652706065 succeeded; its apply log confirms each migration applied.
 Frontend PR #114 merged at 461e5be after all checks passed. Main CI
-37654111665 and production deployment are pending; last public check is v2.785.
+37654111665 passed; the public service worker confirms v2.786.0.
 
 PR #112 (sheet concentration, v2.785) merged at 89350c6 after all PR checks passed.
 Production CI 37644873225 passed; the public service worker confirms v2.785.0.

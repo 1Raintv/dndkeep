@@ -279,6 +279,7 @@ export default function SpellsTab({
  );
  })()}
 
+ {character.class_name==='Psion'&&<p style={{fontSize:12,color:'var(--t-2)'}}>Choose missing spells here. Replace one cantrip and one prepared spell when gaining a Psion level.</p>}
  {/* Spell Book button — opens picker with all levels including cantrips (Level 0 tab) */}
  <div style={{ marginLeft: 'auto' }}>
  <SpellPickerDropdown
@@ -287,6 +288,7 @@ export default function SpellsTab({
  className={character.class_name}
  maxLevel={maxSpellLevel}
  selected={character.known_spells}
+ removalReason={character.class_name==='Psion'&&!character.advanced_spell_edits_unlocked?'Replace one cantrip and one prepared spell when gaining a Psion level.':undefined}
  onToggle={id => character.known_spells.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
  cantripMax={cantripMax}
  prepareMax={isPreparer ? prepareMax : isKnown ? (knownMax ?? undefined) : undefined}
