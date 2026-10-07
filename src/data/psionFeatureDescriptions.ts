@@ -9,3 +9,7 @@ export const TELEKINETIC_PROPEL_SUMMARY = 'Bonus Action: one Large or smaller cr
 export const WARP_PROPEL_TEXT = 'When a target fails its saving throw against your Telekinetic Propel, instead of pushing it, you can teleport the target to an unoccupied space you can see within 30 feet of you that is horizontal to you.';
 
 export const WARP_PROPEL_SUMMARY = 'On a failed Telekinetic Propel save, you can teleport the target instead of pushing it: choose an unoccupied space you can see within 30 ft of you, horizontal to you.';
+
+// v2.751 — Owner's UA2025-Psion+Update.pdf p.3. Invisibility is optional;
+// the Somatic exception applies when casting, not a new rule for controlling it.
+export const SUBTLE_TELEKINESIS_TEXT = 'You know the Mage Hand cantrip. You can cast it without Somatic components and choose to make the spectral hand Invisible when you cast it.';
