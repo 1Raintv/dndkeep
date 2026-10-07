@@ -7,7 +7,7 @@ import type {Scene} from '../../src/lib/api/scenes';
 import '../../src/styles/globals.css';
 
 const scene:Scene={id:'scene-fixture',campaignId:'campaign-fixture',ownerId:'owner-fixture',name:'Ruined watchtower',
-  gridType:'square',gridSizePx:70,widthCells:20,heightCells:15,backgroundStoragePath:null,dmNotes:null,
+  gridType:'square',gridSizePx:70,widthCells:20,heightCells:15,backgroundStoragePath:new URLSearchParams(location.search).has('image') ? 'fixtures/map.svg' : null,dmNotes:null,
   isPublished:true,ambientLight:'dark',fogMode:'dynamic',revealedCells:[],exploredCells:[],createdAt:'',updatedAt:''};
 function Fixture(){
   const [open,setOpen]=useState(false);

@@ -42,6 +42,11 @@ export function SceneSettingsModal(props: {
 }) {
   const { scene, onScenePatched, onSceneDeleted } = props;
   const pendingSave=useRef(false);
+  const fitRequest=useRef(0);
+  const fitBusy=useRef(false);
+  const [fitting,setFitting]=useState(false);
+  // v2.763 — cancel late image results when the dialog closes or scene changes.
+  useEffect(()=>()=>{fitRequest.current++;fitBusy.current=false;},[]);
   const onClose=()=>{if(!pendingSave.current)props.onClose();};
 
   const { confirm: confirmModal } = useModal();
@@ -65,6 +70,7 @@ export function SceneSettingsModal(props: {
   // update arrived from another client while modal was open). Happens
   // rarely but prevents "save stomps remote update" silently.
   useEffect(() => {
+    fitRequest.current++;fitBusy.current=false;setFitting(false);
     setName(scene.name);
     setGridSizePx(String(scene.gridSizePx));
     setWidthCells(String(scene.widthCells));
@@ -99,28 +105,35 @@ export function SceneSettingsModal(props: {
   // aspect at current gridSizePx. Only offered when a background path
   // exists; the button is disabled otherwise.
   const fitToImage = useCallback(async () => {
-    if (!scene.backgroundStoragePath) return;
+    if (!scene.backgroundStoragePath || fitBusy.current || pendingSave.current) return;
+    const invalid=validateSceneDimensions(Number(gridSizePx),1,1);
+    if(invalid) {setOperationError(invalid);return;}
     const url = assetsApi.getSceneBackgroundUrl(scene.backgroundStoragePath);
-    if (!url) return;
+    if (!url) {setOperationError('The map image could not be loaded. Try again or enter the dimensions manually.');return;}
+    const request=++fitRequest.current;
+    fitBusy.current=true;setFitting(true);setOperationError(null);
     try {
-      // Assets.get returns the cached texture if already loaded; .load
-      // fetches it otherwise. Either way, we get dimensions.
       let texture = Assets.get<Texture>(url);
-      if (!texture) {
-        texture = await Assets.load<Texture>(url);
-      }
-      if (!texture?.width || !texture?.height) return;
+      if (!texture) texture = await Assets.load<Texture>(url);
+      if(request!==fitRequest.current)return;
+      if (!texture?.width || !texture?.height) throw new Error('Image dimensions unavailable');
       const nextW = Math.max(1, Math.round(texture.width / Number(gridSizePx)));
       const nextH = Math.max(1, Math.round(texture.height / Number(gridSizePx)));
-      setWidthCells(String(nextW));
-      setHeightCells(String(nextH));
-    } catch (err) {
-      console.error('[SceneSettings] fit-to-image failed', err);
+      const dimensionError=validateSceneDimensions(Number(gridSizePx),nextW,nextH);
+      if(dimensionError) {
+        setOperationError(`This image needs ${nextW} × ${nextH} cells at this grid size. Each side supports up to 200 cells. Increase Grid (px) or enter dimensions manually.`);
+        return;
+      }
+      setWidthCells(String(nextW));setHeightCells(String(nextH));
+    } catch {
+      if(request===fitRequest.current)setOperationError('The map image could not be loaded. Try again or enter the dimensions manually.');
+    } finally {
+      if(request===fitRequest.current) {fitBusy.current=false;setFitting(false);}
     }
   }, [scene.backgroundStoragePath, gridSizePx]);
 
   async function save() {
-    if(pendingSave.current)return;
+    if(pendingSave.current || fitBusy.current)return;
     // Keep the typed draft intact (including fractions) and explain invalid values.
     const invalid=validateSceneDimensions(Number(gridSizePx),Number(widthCells),Number(heightCells));
     if(invalid) {setOperationError(invalid);return;}
@@ -150,7 +163,7 @@ export function SceneSettingsModal(props: {
   }
 
   async function doDelete() {
-    if(pendingSave.current)return;
+    if(pendingSave.current || fitBusy.current)return;
     // v2.732 — reserve through confirmation and deletion so saves cannot race it.
     pendingSave.current=true;setOperationError(null);
     // v2.241 — was window.confirm.
@@ -243,7 +256,7 @@ export function SceneSettingsModal(props: {
         </div>
 
         {/* v2.733 — scroll fields independently so actions stay reachable. */}
-        <div className="scene-settings-fields" style={{overflowY: 'auto',minHeight:0,padding:'0 20px 16px'}}>
+        <fieldset disabled={fitting} className="scene-settings-fields" style={{border:0,margin:0,minWidth:0,overflowY: 'auto',minHeight:0,padding:'0 20px 16px'}}>
         <div style={{ marginBottom: 12 }}>
           <label style={labelStyle}>Name</label>
           <input
@@ -312,7 +325,7 @@ export function SceneSettingsModal(props: {
               marginBottom: 12,
             }}
           >
-            Fit to map image
+            {fitting ? 'Loading image…' : 'Fit to map image'}
           </button>
         )}
 
@@ -399,7 +412,7 @@ export function SceneSettingsModal(props: {
           </label>
         </div>
 
-        </div>
+        </fieldset>
         <div className="scene-settings-actions" style={{flexShrink:0,padding:'12px 20px 16px',borderTop:'1px solid var(--c-border)'}}>
         {/* v2.732 — errors belong inside settings; a toast is obscured by its backdrop. */}
         {operationError && <div ref={errorRef} role="alert" tabIndex={-1} style={{marginBottom:12,padding:10,border:'1px solid #f87171',borderRadius:6,color:'#fca5a5',fontSize:12,lineHeight:1.5}}>{operationError}</div>}
@@ -409,7 +422,7 @@ export function SceneSettingsModal(props: {
         }}>
           <button
             onClick={doDelete}
-            disabled={deleting}
+            disabled={deleting || fitting}
             style={{
               padding: '6px 12px', minHeight: 44,
               background: 'rgba(248,113,113,0.15)',
@@ -440,7 +453,7 @@ export function SceneSettingsModal(props: {
             </button>
             <button
               onClick={save}
-              disabled={saving}
+              disabled={saving || fitting}
               style={{
                 padding: '6px 12px', minHeight: 44,
                 background: 'rgba(167,139,250,0.22)',
