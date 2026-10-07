@@ -28,13 +28,24 @@ context builder protects species grants at total character level and both
 classes' automatic grants without projecting away the other class. Three
 context regressions plus the full gate pass (1,578 unit tests; TS 208/208).
 
-Before release: finish multiclass spell ownership. The shared known_spells list
-has no per-class provenance, so an overlapping Wizard/Psion spell cannot safely
-be classified from its class-list tags. Add explicit ownership for ambiguous
-legacy choices, preserve another class's copy when Psion replaces its copy,
-and apply ownership to eligibility/counts. Also audit feat-granted spell sources.
-Do not infer ownership or present the existing shared-list behavior as complete
-multiclass support. This work remains local and is not yet deployed.
+Local migration 20261007190000 adds spell_sources (spell ID → source tags),
+leaving legacy ownership unknown. The level-up review now records explicit
+class/feat/species/other sources rather than guessing from class-list tags.
+Replacement removes only the Psion source: another class/feature keeps its copy;
+a spell already known through Wizard can acquire a Psion source without a
+duplicate known entry. Unreviewed outgoing spells cannot be replaced. Fourteen
+new domain tests cover ownership; all 12 browser cases pass, including shared
+Wizard/Psion persistence through reload. Four updated layout/shared-spell checks
+also pass with valid Wizard level 3 eligibility. Mobile source controls inspected.
+Full gate passes: 1,592 unit tests, TS 208/208, entry 253 KB. Migration is local only.
+
+Before release: apply source ownership consistently to counts, ordinary additions,
+removal and creation; add source-shape validation and realtime synchronization;
+verify source review across other-class targeting and automatic feature grants.
+Legacy spell-source records must remain unknown until reviewed. The shared
+prepared list also lacks per-class prepared-state detail; preserve other sources'
+current state until that representation is addressed. This work remains local
+and is not yet deployed.
 
 ### Released — Campaign concentration persistence, v2.786
 

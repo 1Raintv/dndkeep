@@ -36,3 +36,38 @@ export function replacePsionLevelUpSpells(input:{
  }
  return {ok:true,known:[...known],prepared:[...prepared]};
 }
+
+
+export type SpellSource = `class:${string}` | 'species' | 'feat' | 'other';
+export type SpellSources = Record<string,readonly SpellSource[]>;
+type PsionSwapInput = Parameters<typeof replacePsionLevelUpSpells>[0];
+
+/** A spell can be learned independently through multiple classes/features.
+ * Missing entries are unknown, not evidence that a spell belongs to Psion.
+ * The existing rule still owns level/category/list/grant validation. */
+export function replaceOwnedPsionLevelUpSpells(input:PsionSwapInput & {sources:SpellSources}):
+ | {ok:true;known:string[];prepared:string[];sources:SpellSources}
+ | {ok:false;reason:string} {
+ const owner:SpellSource='class:Psion';
+ for(const swap of [input.swaps.cantrip,input.swaps.spell]){
+  if(!swap)continue;
+  if(!input.sources[swap.from]?.includes(owner))
+   return {ok:false,reason:'Confirm that the spell you are replacing was learned through Psion.'};
+  if(input.known.includes(swap.to)&&!input.sources[swap.to]?.length)
+   return {ok:false,reason:'Review the existing spell’s sources before choosing it for Psion.'};
+ }
+ const owned=input.known.filter(id=>input.sources[id]?.includes(owner));
+ const result=replacePsionLevelUpSpells({...input,known:owned,prepared:input.prepared.filter(id=>owned.includes(id))});
+ if(!result.ok)return result;
+ const sources:SpellSources=Object.fromEntries(Object.entries(input.sources).map(([id,owners])=>[id,[...owners]]));
+ const known=new Set(input.known),prepared=new Set(input.prepared);
+ for(const kind of ['cantrip','spell'] as const){
+  const swap=input.swaps[kind];if(!swap)continue;
+  const remaining=[...new Set(sources[swap.from].filter(source=>source!==owner))];
+  if(remaining.length)sources[swap.from]=remaining;
+  else {delete sources[swap.from];known.delete(swap.from);prepared.delete(swap.from);}
+  sources[swap.to]=[...new Set([...(sources[swap.to]??[]),owner])];
+  known.add(swap.to);if(kind==='spell')prepared.add(swap.to);
+ }
+ return {ok:true,known:[...known],prepared:[...prepared],sources};
+}

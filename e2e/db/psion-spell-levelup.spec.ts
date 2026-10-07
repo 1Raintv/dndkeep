@@ -45,9 +45,11 @@ test.describe('Psion spell replacement level-up', () => {
     await expect(section).toBeVisible();
     const confirm=page.getByRole('button',{name:flow==='banner'?'Confirm Level Up':'Advance to Level 6',exact:true});
     await section.getByLabel('Replace cantrip',{exact:true}).selectOption('minor-illusion');
+    await section.getByRole('checkbox',{name:'Minor Illusion: Psion',exact:true}).check();
     await expect(confirm).toBeDisabled();
     await section.getByLabel('New cantrip',{exact:true}).selectOption('telekinetic-fling');
     await section.getByLabel('Replace prepared spell',{exact:true}).selectOption('mage-armor');
+    await section.getByRole('checkbox',{name:'Mage Armor: Psion',exact:true}).check();
     await section.getByLabel('New prepared spell',{exact:true}).selectOption('hold-person');
     expect(await section.getByLabel('Replace cantrip',{exact:true}).locator('option[value="mage-hand"]').count()).toBe(0);
     await section.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath(`psion-spell-${flow}.png`)});
@@ -86,6 +88,7 @@ test.describe('Psion spell replacement level-up', () => {
     await reachConfirm();
     const section=page.getByRole('region',{name:'Psion spell replacements'});
     await section.getByLabel('Replace prepared spell',{exact:true}).selectOption('mage-armor');
+    await section.getByRole('checkbox',{name:'Mage Armor: Psion',exact:true}).check();
     await section.getByLabel('New prepared spell',{exact:true}).selectOption('hold-person');
     const back=page.getByRole('button',{name:'← Back',exact:true});
     for(let i=0;i<4;i++)await back.click();
@@ -93,6 +96,7 @@ test.describe('Psion spell replacement level-up', () => {
     expect(sql(`select level||':'||subclass||':'||('mage-armor'=any(known_spells))::text from characters where id='${charId}'`)).toBe('2::true');
     await reachConfirm();await expect(section.getByLabel('Replace prepared spell',{exact:true})).toHaveValue('');
     await section.getByLabel('Replace prepared spell',{exact:true}).selectOption('mage-armor');
+    await section.getByRole('checkbox',{name:'Mage Armor: Psion',exact:true}).check();
     await section.getByLabel('New prepared spell',{exact:true}).selectOption('hold-person');
     expect(await section.getByLabel('New prepared spell',{exact:true}).locator('option[value="misty-step"]').count()).toBe(0);
     await page.getByRole('button',{name:'Confirm Level Up',exact:true}).click();
@@ -107,6 +111,7 @@ test.describe('Psion spell replacement level-up', () => {
     await next.click();await next.click();await next.click();
     const section=page.getByRole('region',{name:'Psion spell replacements'});
     await section.getByLabel('Replace prepared spell',{exact:true}).selectOption('mage-armor');
+    await section.getByRole('checkbox',{name:'Mage Armor: Psion',exact:true}).check();
     await section.getByLabel('New prepared spell',{exact:true}).selectOption('hold-person');
     const back=page.getByRole('button',{name:'← Back',exact:true});
     await back.click();await back.click();await back.click();
@@ -115,5 +120,22 @@ test.describe('Psion spell replacement level-up', () => {
     await page.getByRole('button',{name:'Confirm Level Up',exact:true}).click();
     await expect.poll(()=>sql(`select level||':'||secondary_level from characters where id='${charId}'`)).toBe('5:2');
     expect(sql(`select ('mage-armor'=any(known_spells) and not('hold-person'=any(known_spells)))::text from characters where id='${charId}'`)).toBe('true');
+  });
+  test('replacing a shared Psion spell preserves Wizard ownership and can learn a Wizard-known spell',async({page})=>{
+    sql(`update characters set level=5,secondary_class='Wizard',secondary_level=3,pending_manual_level_grants=1,known_spells=ARRAY['mage-armor','hold-person'],prepared_spells=ARRAY['mage-armor'],spell_sources='{"mage-armor":["class:Psion","class:Wizard"],"hold-person":["class:Wizard"]}',spell_slots='{"1":{"total":4,"used":0},"2":{"total":3,"used":0},"3":{"total":2,"used":0}}' where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await page.getByRole('button',{name:/Level up available/}).click();
+    const next=page.getByRole('button',{name:'Next →',exact:true});await next.click();await next.click();await next.click();
+    const section=page.getByRole('region',{name:'Psion spell replacements'});
+    await section.getByLabel('Replace prepared spell',{exact:true}).selectOption('mage-armor');
+    await expect(section.getByRole('checkbox',{name:'Mage Armor: Wizard',exact:true})).toBeChecked();
+    await section.getByLabel('New prepared spell',{exact:true}).selectOption('hold-person');
+    await page.getByRole('button',{name:'Confirm Level Up',exact:true}).click();
+    await expect.poll(()=>sql(`select level from characters where id='${charId}'`)).toBe('6');
+    const sources=JSON.parse(sql(`select spell_sources from characters where id='${charId}'`));
+    expect(sources['mage-armor']).toEqual(['class:Wizard']);expect(sources['hold-person']).toEqual(['class:Wizard','class:Psion']);
+    const known=JSON.parse(sql(`select to_json(known_spells) from characters where id='${charId}'`));
+    expect(known).toContain('mage-armor');expect(known.filter((id:string)=>id==='hold-person')).toHaveLength(1);
+    await page.reload();expect(JSON.parse(sql(`select spell_sources from characters where id='${charId}'`))).toEqual(sources);
   });
 });
