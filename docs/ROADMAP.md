@@ -1,5 +1,21 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Psion spell-card casting reminders, v2.759
+
+Mage Hand's spell-list badge incorrectly claimed compulsory invisibility after
+the main feature text had been corrected. It now says Subtle, with the shared
+full rule: no Somatic components and optional invisibility when casting.
+Expanded Actions and Spells cards share Psionic Spellcasting reminders for base
+Psion and class-granted spells, retaining normal spell components alongside the
+exception. Consumed materials and any specified cost remain required; Somatic
+components still apply when listed, except Subtle Telekinesis. Other classes do
+not receive these reminders. This changes references, not the casting pipeline.
+
+Validation: full gate, desktop/mobile Actions and Spells rendering, Identify's
+100 gp pearl retained, Wizard exclusion, screenshots and shared overflow probe;
+removing the shared reminder fails the browser check. No new clipping found.
+
+
 ### 2026-10-07 — Consistent default map geometry, v2.758
 
 With no viewed map, attack geometry picked the most recently edited scene,

@@ -1,3 +1,5 @@
+import PsionCastingNote from './_shared/PsionCastingNote';
+import { SUBTLE_TELEKINESIS_TEXT } from '../../data/psionFeatureDescriptions';
 import { SpellDescription } from '../shared/SpellDescription';
 import { abilityModifier } from '../../rules/abilities';
 import { useState, useMemo, type ReactNode } from 'react';
@@ -490,7 +492,8 @@ export default function SpellsTab({
  grantedReason={grantedReasonMap[spell.id]}
  spellAttack={computed.spell_attack_bonus ?? undefined}
  saveDC={computed.spell_save_dc ?? undefined}
- showInvisibleBadge={character.class_name === 'Psion' && spell.id === 'mage-hand'}
+ subtleTelekinesis={character.class_name === 'Psion' && spell.id === 'mage-hand'}
+ psionicCasting={character.class_name === 'Psion' && (spell.classes.includes('Psion') || !!grantedReasonMap[spell.id])}
  castButton={
  <SpellCastButton
  spell={spell}
@@ -536,20 +539,16 @@ export default function SpellsTab({
 
 // ── Level tab button ─────────────────────────────────────────────────
 // ── Spell card ───────────────────────────────────────────────────────
-function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC, showInvisibleBadge, pinnedSpells, onTogglePinned }: {
+function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC, subtleTelekinesis, psionicCasting, pinnedSpells, onTogglePinned }: {
  spell: SpellData; effectiveLevel?: number; isUpcast?: boolean;
  isExpanded: boolean; isPrepared: boolean; isConcentrating: boolean;
  isPreparer: boolean; castButton: ReactNode; upcastButton?: ReactNode; grantedReason?: string;
  spellAttack?: number; saveDC?: number;
  onExpand: () => void; onTogglePrepared: () => void;
  onConcentrate: () => void; onRemove?: () => void;
- // v2.197.0 — Phase Q.0 pt 38: Subtle Telekinesis modifier badge.
- // When true (passed only for Psion's auto-granted Mage Hand), an
- // INVISIBLE chip renders next to the spell name reminding the
- // player that their version of the hand is not visible to onlookers.
- // The cast pipeline doesn't change — this is a RAW reminder, not a
- // mechanical modifier (no spell-data fork).
- showInvisibleBadge?: boolean;
+ // v2.759 — casting reminders apply only to this character's Psion spells.
+ subtleTelekinesis?: boolean;
+ psionicCasting?: boolean;
  // v2.380.0 — Quick-cast pin star. pinnedSpells is the live array
  // from character.pinned_spells; onTogglePinned toggles this row's
  // spell ID in/out. Cap of 6 is enforced in the parent's handler;
@@ -711,14 +710,10 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  </button>
  );
  })()}
- {/* v2.197.0 — Phase Q.0 pt 38: Subtle Telekinesis (Psion class
-     feature) makes Mage Hand invisible. Surface as a small chip
-     next to the name so the player remembers the modifier when
-     deciding to cast (and when narrating to the DM). Only renders
-     for Psions on Mage Hand specifically. */}
- {showInvisibleBadge && (
+ {/* Subtle Telekinesis offers invisibility when cast; it is not compulsory. */}
+ {subtleTelekinesis && (
  <span
- title="Subtle Telekinesis (Psion): your Mage Hand is invisible to onlookers"
+ title={SUBTLE_TELEKINESIS_TEXT}
  style={{
  fontSize: 8, fontWeight: 800, letterSpacing: '0.06em',
  color: '#a78bfa',
@@ -728,7 +723,7 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  textTransform: 'uppercase' as const, flexShrink: 0,
  }}
  >
- Invisible
+ Subtle
  </span>
  )}
  {/* v2.373.0 — ● CONC inline tag removed; concentration now lives
@@ -838,7 +833,7 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  <div style={{ borderTop: `1px solid ${schoolColor}20`, padding: '12px 14px', background: 'rgba(255,255,255,0.015)' }}>
  {/* Stats row */}
  <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 10 }}>
- {[['Casting Time', spell.casting_time], ['Range', spell.range], ['Duration', spell.duration], ['Components', spell.components]].map(([k, v]) => v ? (
+ {[['Casting Time', spell.casting_time], ['Range', spell.range], ['Duration', spell.duration], [psionicCasting ? 'Base components' : 'Components', spell.components]].map(([k, v]) => v ? (
  <div key={k}>
  <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 2 }}>{k}</div>
  <div style={{ fontSize: 12, color: 'var(--t-2)', fontWeight: 500 }}>{v}</div>
@@ -846,6 +841,7 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  ) : null)}
  </div>
 
+ {psionicCasting && <PsionCastingNote subtle={subtleTelekinesis}/>}
  {/* Description */}
  <SpellDescription spell={spell} />
 

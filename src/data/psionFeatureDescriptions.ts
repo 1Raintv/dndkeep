@@ -13,3 +13,6 @@ export const WARP_PROPEL_SUMMARY = 'On a failed Telekinetic Propel save, you can
 // v2.751 — Owner's UA2025-Psion+Update.pdf p.3. Invisibility is optional;
 // the Somatic exception applies when casting, not a new rule for controlling it.
 export const SUBTLE_TELEKINESIS_TEXT = 'You know the Mage Hand cantrip. You can cast it without Somatic components and choose to make the spectral hand Invisible when you cast it.';
+
+// v2.759 — Owner UA update p.3: only Psion spells receive these exceptions.
+export const PSIONIC_SPELLCASTING_TEXT = 'When casting a Psion spell, you can ignore Verbal components and ordinary Material components. Materials that the spell consumes or that have a specified cost are still required. Somatic components still apply when listed.';

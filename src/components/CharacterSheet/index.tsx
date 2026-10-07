@@ -1,3 +1,4 @@
+import PsionCastingNote from './_shared/PsionCastingNote';
 import { useState, useCallback, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
 // Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
 import { lazyWithRetry as lazy } from '../../lib/lazyWithRetry';
@@ -4193,6 +4194,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }}>{effectLabel}</span>
  </div>
  </div>
+ {character.class_name === 'Psion' && (spell.classes.includes('Psion') || getSpellCounts(character).grantedIds.has(spell.id)) && <PsionCastingNote subtle={spell.id === 'mage-hand'}/>}
  <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: 0 }}>{spell.description}</p>
 
  {/* v2.49.0: Upcast trigger button — appears for spells that support
