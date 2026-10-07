@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useToast } from '../shared/Toast';
 import { useCombatSelector, useCombatCurrentActor } from '../../context/CombatContext';
 import { advanceTurn } from '../../lib/combatEncounter';
 
-// Per 2024 rules: Action, Bonus Action, Reaction reset each round; Movement tracked separately
+// Action, Bonus Action, Reaction and Movement refresh for a new turn.
 interface ActionState {
  action: boolean;
  bonusAction: boolean;
@@ -44,21 +45,33 @@ export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, acti
  const encounter = useCombatSelector(s => s.encounter); // v2.645 slice 2
  const currentActor = useCombatCurrentActor();
  const [endingTurn, setEndingTurn] = useState(false);
+ const {showToast}=useToast();
+ const advancing=useRef(false),mounted=useRef(true);
+ const sheet=useRef({characterId,encounterId:encounter?.id});
+ sheet.current={characterId,encounterId:encounter?.id};
+ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  const isMyCombatTurn = !!characterId && !!encounter && encounter.status === 'active'
  && !!currentActor
  && currentActor.participant_type === 'character'
  && currentActor.entity_id === characterId;
+ // v2.781 — only a confirmed advance may clear the local turn budget.
+ // A failed request must not silently refund actions or reset another sheet.
  async function handleEndTurn() {
- reset();
- if (isMyCombatTurn && encounter && !endingTurn) {
- setEndingTurn(true);
+ if(advancing.current)return;
+ if(!isMyCombatTurn||!encounter){reset();return;}
+ advancing.current=true;setEndingTurn(true);
+ const started=sheet.current;
+ const stillHere=()=>mounted.current&&sheet.current.characterId===started.characterId&&sheet.current.encounterId===started.encounterId;
  try {
- await advanceTurn(encounter.id);
- } catch (e) {
- console.error('[ActionEconomy] advanceTurn failed:', e);
+ const result=await advanceTurn(encounter.id);
+ if(!stillHere())return;
+ if(result.ok)reset();
+ else showToast(`Turn could not be completed: ${result.reason}. Your sheet trackers were kept. Check combat before trying again.`, 'error', {duration:0});
+ } catch {
+ if(stillHere())showToast('Turn advancement could not be confirmed. Your sheet trackers were kept. Check combat before trying again.', 'error', {duration:0});
  } finally {
- setEndingTurn(false);
- }
+ advancing.current=false;
+ if(mounted.current)setEndingTurn(false);
  }
  }
 
@@ -129,6 +142,7 @@ export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, acti
  return (
  <button
  key={t.key}
+ disabled={endingTurn}
  onClick={() => toggle(t.key as keyof Omit<ActionState,'movedFeet'>)}
  title={used ? `${fullLabel} used — click to undo` : `Mark ${fullLabel} used`}
  style={{
@@ -168,11 +182,11 @@ export default function ActionEconomy({ speedFeet, onActionUsed, onNewTurn, acti
  Movement
  </span>
  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
- <button onClick={() => addMove(-5)} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: 'var(--t-2)', fontSize: 11, width: 18, height: 18, cursor: 'pointer', lineHeight: 1, display:'flex', alignItems:'center', justifyContent:'center' }}>−</button>
+ <button disabled={endingTurn} onClick={() => addMove(-5)} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: 'var(--t-2)', fontSize: 11, width: 18, height: 18, cursor: 'pointer', lineHeight: 1, display:'flex', alignItems:'center', justifyContent:'center' }}>−</button>
  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11, color: movingColor, minWidth: 56, textAlign: 'center' }}>
  {state.movedFeet}/{speedFeet}ft
  </span>
- <button onClick={() => addMove(5)} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: 'var(--t-2)', fontSize: 11, width: 18, height: 18, cursor: 'pointer', lineHeight: 1, display:'flex', alignItems:'center', justifyContent:'center' }}>+</button>
+ <button disabled={endingTurn} onClick={() => addMove(5)} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: 'var(--t-2)', fontSize: 11, width: 18, height: 18, cursor: 'pointer', lineHeight: 1, display:'flex', alignItems:'center', justifyContent:'center' }}>+</button>
  </div>
  </div>
  <div style={{ height: 4, background: 'var(--c-border)', borderRadius: 2, overflow: 'hidden' }}>
