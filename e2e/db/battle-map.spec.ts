@@ -239,6 +239,24 @@ test.describe('battle map (local stack)', () => {
     await navigation.getByRole('button', { name: 'Fit map', exact: true }).click();
     expect(errors, 'navigation creates no browser exceptions').toEqual([]);
 
+    // v2.776 — ruler labels remain legible inside the actual map, too.
+    await page.getByRole('button',{name:'Ruler',exact:true}).click();
+    const rulerBox=(await canvas.boundingBox())!;
+    await page.mouse.click(rulerBox.x+rulerBox.width*0.45,rulerBox.y+rulerBox.height*0.45);
+    await page.mouse.click(rulerBox.x+rulerBox.width*0.65,rulerBox.y+rulerBox.height*0.45);
+    const rulerText=()=>page.evaluate(()=>(window as any).__NAV_TEST_VP.children.find((c:any)=>c.label==='map-ruler')?.children.find((c:any)=>c.label==='map-ruler-label')?.text);
+    const committedDistance=await rulerText();
+    const rulerHeight=()=>page.evaluate(()=>{
+      const label=(window as any).__NAV_TEST_VP.children.find((c:any)=>c.label==='map-ruler')?.children.find((c:any)=>c.label==='map-ruler-label');
+      return label?.getBounds().height??0;
+    });
+    await expect.poll(rulerHeight).toBeGreaterThan(12);
+    await navigation.getByRole('button',{name:'Zoom in',exact:true}).click();
+    await expect.poll(rulerHeight).toBeLessThan(30);
+    await expect.poll(rulerText).toBe(committedDistance);
+    await page.screenshot({path:testInfo.outputPath('map-ruler.png')});
+    await page.getByRole('button',{name:'Ruler',exact:true}).click();
+
     // Artifact for human eyes — the rendered map goes into the report.
     // testInfo.outputPath: parallel projects (desktop/mobile) must not
     // overwrite each other's artifact.

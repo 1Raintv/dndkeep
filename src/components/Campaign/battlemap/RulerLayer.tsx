@@ -9,9 +9,8 @@ import { snapToCellCenter } from '../../../lib/map/coords';
 /**
  * v2.218 — RulerLayer.
  *
- * When rulerActive is true, a left-click-drag on the canvas draws a
- * measurement line from the start cell to the current cursor cell.
- * A label follows the end point showing "<feet> ft / <cells> cells".
+ * Click to commit vertices while ruler mode is active; the cursor previews
+ * the next leg. A label shows the total feet and cells along the path.
  *
  * Distance model: 2014 D&D 5e PHB uses Chebyshev distance on a square
  * grid (diagonal moves cost the same as orthogonal). That is:
@@ -70,10 +69,12 @@ export function RulerLayer(props: {
     }
 
     const container = new Container();
+    container.label = 'map-ruler';
     container.visible = false; // hidden until first click
     const gfx = new Graphics();
     const label = new Text({
       text: '',
+      resolution: Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
       style: new TextStyle({
         fontFamily: 'sans-serif',
         fontWeight: '700',
@@ -83,6 +84,7 @@ export function RulerLayer(props: {
         stroke: { color: 0x0f1012, width: 3 },
       }),
     });
+    label.label = 'map-ruler-label';
     label.anchor.set(0.5, 0);
     container.addChild(gfx);
     container.addChild(label);
@@ -124,7 +126,9 @@ export function RulerLayer(props: {
      * L-shaped path reads as the total movement, not just the
      * end-to-end straight line.
      */
+    let lastZoom = viewport.scale.x;
     function redraw() {
+      lastZoom = viewport!.scale.x;
       const pts = pointsRef.current;
       const pending = pendingPosRef.current;
       const gfx = graphicsRef.current;
@@ -143,11 +147,14 @@ export function RulerLayer(props: {
         ? snapToCellCenter(pending.x, pending.y, gridSizePx)
         : null;
 
+      // v2.776 — measure world distance, but keep visual weight in CSS pixels.
+      const zoom = Math.max(0.01, Math.abs(viewport!.scale.x));
+      label.scale.set(1 / zoom);
       gfx.clear();
 
       // Solid line for committed segments.
       if (snapped.length >= 2) {
-        gfx.setStrokeStyle({ color: 0xfbbf24, width: 3, alpha: 0.9 });
+        gfx.setStrokeStyle({ color: 0xfbbf24, width: 3 / zoom, alpha: 0.9 });
         gfx.moveTo(snapped[0].x, snapped[0].y);
         for (let i = 1; i < snapped.length; i++) {
           gfx.lineTo(snapped[i].x, snapped[i].y);
@@ -159,7 +166,7 @@ export function RulerLayer(props: {
       // a setLineDash; lower alpha + slimmer width reads as "tentative").
       if (previewSnapped) {
         const last = snapped[snapped.length - 1];
-        gfx.setStrokeStyle({ color: 0xfbbf24, width: 2, alpha: 0.5 });
+        gfx.setStrokeStyle({ color: 0xfbbf24, width: 2 / zoom, alpha: 0.5 });
         gfx.moveTo(last.x, last.y);
         gfx.lineTo(previewSnapped.x, previewSnapped.y);
         gfx.stroke();
@@ -168,11 +175,11 @@ export function RulerLayer(props: {
       // Vertex dots — committed in solid yellow, preview tip slightly
       // smaller and dimmer.
       gfx.setFillStyle({ color: 0xfbbf24, alpha: 0.95 });
-      for (const p of snapped) gfx.circle(p.x, p.y, 4);
+      for (const p of snapped) gfx.circle(p.x, p.y, 4 / zoom);
       gfx.fill();
       if (previewSnapped) {
         gfx.setFillStyle({ color: 0xfbbf24, alpha: 0.6 });
-        gfx.circle(previewSnapped.x, previewSnapped.y, 3);
+        gfx.circle(previewSnapped.x, previewSnapped.y, 3 / zoom);
         gfx.fill();
       }
 
@@ -191,7 +198,7 @@ export function RulerLayer(props: {
 
       label.text = `${feet} ft · ${totalCells} ${totalCells === 1 ? 'cell' : 'cells'}`;
       const tip = previewSnapped ?? snapped[snapped.length - 1];
-      label.position.set(tip.x, tip.y + gridSizePx * 0.5);
+      label.position.set(tip.x, tip.y + 14 / zoom);
 
       container.visible = true;
     }
@@ -225,9 +232,18 @@ export function RulerLayer(props: {
       }
     }
 
+    function clearPreview() {
+      if (!pendingPosRef.current) return;
+      pendingPosRef.current = null;
+      redraw();
+    }
+
     function onMove(e: PointerEvent) {
       // Only show preview once at least one vertex is committed.
       if (pointsRef.current.length === 0) return;
+      // v2.776 — controls are not ruler destinations. Keep committed distance
+      // when the pointer leaves the canvas or moves over an overlay.
+      if (e.target !== canvasEl) { clearPreview(); return; }
       const wp = worldPointFromEvent(e);
       if (!wp) return;
       pendingPosRef.current = wp;
@@ -242,23 +258,26 @@ export function RulerLayer(props: {
     }
 
     function onKey(e: KeyboardEvent) {
-      // Esc cancels an in-progress ruler. Enter also finishes it (just
-      // clears the preview tip; committed vertices stay visible until
-      // the user starts a new ruler with the next click).
+      // Esc cancels an in-progress ruler.
       if (e.key === 'Escape' && pointsRef.current.length > 0) {
         e.preventDefault();
         reset();
       }
     }
 
+    const refreshZoom = () => { if(viewport.scale.x !== lastZoom)redraw(); };
+    viewport.on('frame-end', refreshZoom);
     canvasEl.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
     canvasEl.addEventListener('contextmenu', onContextMenu);
+    canvasEl.addEventListener('pointerleave', clearPreview);
     window.addEventListener('keydown', onKey);
     return () => {
+      viewport.off('frame-end', refreshZoom);
       canvasEl.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointermove', onMove);
       canvasEl.removeEventListener('contextmenu', onContextMenu);
+      canvasEl.removeEventListener('pointerleave', clearPreview);
       window.removeEventListener('keydown', onKey);
       reset();
     };
