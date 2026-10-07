@@ -1,5 +1,16 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Ruler readability across zoom, v2.776
+
+Ruler labels keep a 14-pixel screen size with capped high-density text rendering.
+Measurement strokes and point markers also retain their screen weight while
+zooming; the label sits a consistent distance below the tip. Toolbar and gesture
+zoom redraw through the viewport frame event without rebuilding the layer.
+Moving onto toolbar controls or outside the canvas clears only the live preview,
+retaining committed waypoints and distance instead of measuring to the controls.
+World-space points and the summed grid distance are unchanged. Rendered-canvas
+checks cover 25%, 100%, 400%, repeated zoom and tool teardown on desktop/mobile.
+
 ### 2026-10-07 — Multiclass proficiency and casting consistency, v2.775
 
 Shared character statistics now derive proficiency from total character level,
