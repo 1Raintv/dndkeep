@@ -47,4 +47,24 @@ test.describe('Revised Psion subclass references', () => {
     }
     expect(errors).toEqual([]);
   });
+  test('weapon header follows class levels and Metamorph eligibility',async({page},info)=>{
+    await signInAsSeedDm(page,email);
+    for(const [className,level,subclass,count] of [
+      ['Psion',5,'Metamorph',1],
+      ['Psion',6,'Metamorph',2],
+      ['Psion',20,'Telepath',1],
+      ['Fighter',11,'Champion',3],
+      ['Fighter',20,'Champion',4],
+    ] as const) {
+      sql(`update characters set class_name='${className}',level=${level},subclass='${subclass}' where id='${charId}'`);
+      await page.goto(`/character/${charId}`);await page.reload();
+      const countLabel=page.getByText(`Attacks per Action: ${count}`,{exact:true});
+      await expect(countLabel).toBeVisible({timeout:20_000});
+      if(className==='Psion' && level===6) {
+        await countLabel.evaluate(el=>el.scrollIntoView({block:"center",behavior:"instant"}));
+        await page.screenshot({path:info.outputPath('metamorph-attacks.png')});
+      }
+    }
+  });
+
 });

@@ -1,3 +1,4 @@
+import { attacksPerAction } from '../../rules/extraAttack';
 import PsionCastingNote from './_shared/PsionCastingNote';
 import { useState, useCallback, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
 // Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
@@ -3124,6 +3125,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* Weapons — merged from weapons list + equipped inventory */}
  {combatFilter === 'all' && (contentFilters.size === 0 || contentFilters.has('weapon')) && (
  <WeaponsTracker
+ attacksPerAction={attacksPerAction(character)}
  weapons={allWeapons}
  onUpdate={weapons => applyUpdate({ weapons: weapons.filter((w: any) => !String(w.id).startsWith('inv_')) })}
  characterId={userId}
