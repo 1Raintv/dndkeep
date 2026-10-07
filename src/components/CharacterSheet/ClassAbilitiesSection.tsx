@@ -1,3 +1,4 @@
+import { canUseClassAbility } from '../../rules/classAbilityEligibility';
 import { useState, useRef, Fragment, Suspense } from 'react';
 // Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
 import { lazyWithRetry as lazy } from '../../lib/lazyWithRetry';
@@ -178,6 +179,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // the deduction and the feature_uses decrement in one update, then
  // logs to the action log so the DM + party see it.
  async function restoreUseFromPed(ability: ClassAbility) {
+ if (!canUseClassAbility(ability, character)) return;
  const restoreCost = (ability as any).pedRestoreCost as number | undefined;
  if (typeof restoreCost !== 'number' || restoreCost <= 0) return;
  const resources = (character.class_resources as Record<string, number> | null) ?? {};
@@ -222,6 +224,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // Non-save abilities (and abilities without an encounter context)
  // skip the modal and run finalizeAbilityUse directly.
  async function handleUseAbility(ability: ClassAbility, cost?: number) {
+ if (!canUseClassAbility(ability, character)) return;
  if (ability.save && campaignId) {
  const dc = resolveSaveDC(ability.save, character);
  if (dc != null) {
@@ -255,6 +258,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  cost?: number,
  outcomes: TargetOutcome[] = [],
  ) {
+ if (!canUseClassAbility(ability, character)) return;
  // v2.748: one resource patch after a resolved save; free powers never hit generic PED deduction.
  if(ability.psionicUse){
    if(settlingPower.current)return;
@@ -449,7 +453,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
 
  // Filter by level and action type
  const filtered = allAbilitiesWithSpecies.filter(a => {
- if (a.minLevel > character.level) return false;
+ if (!canUseClassAbility(a, character)) return false;
  if (combatFilter === 'limited') return a.maxUsesFn !== undefined || typeof a.maxUses === 'number' || (a as any).isPool === true || (a as any).psionicDie === true;
  if (combatFilter === 'all') return true;
  if (combatFilter === 'action') return a.actionType === 'action';

@@ -1,4 +1,4 @@
-import { TELEKINETIC_PROPEL_TEXT, TELEKINETIC_PROPEL_SUMMARY, WARP_PROPEL_TEXT, WARP_PROPEL_SUMMARY } from './psionFeatureDescriptions';
+import { SUBTLE_TELEKINESIS_TEXT, TELEKINETIC_PROPEL_TEXT, TELEKINETIC_PROPEL_SUMMARY, WARP_PROPEL_TEXT, WARP_PROPEL_SUMMARY } from './psionFeatureDescriptions';
 import type {PsionicPowerUse} from '../rules/psionicPowers';
 import { abilityModifier } from '../rules/abilities';
 import type { Character } from '../types';
@@ -37,6 +37,8 @@ export interface SaveSpec {
 }
 
 export interface ClassAbility {
+  /** v2.751 — absent for base-class/species abilities. */
+  requiredSubclass?: string;
   psionicUse?: PsionicPowerUse;
   name: string;
   actionType: ActionType;
@@ -1356,8 +1358,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Subtle Telekinesis',
       actionType: 'action',
-      description: 'Cast Mage Hand at will. The hand is invisible.',
-      descriptionLong: 'You can cast Mage Hand without expending a spell slot or material components, and the spectral hand is invisible. The hand can interact with objects, push or pull, and carry items as normal — but onlookers see only the items moving on their own. Useful for stealth, infiltration, or unsettling NPCs.',
+      description: SUBTLE_TELEKINESIS_TEXT,
       minLevel: 1,
       range: '30 ft',
     },
@@ -1373,22 +1374,11 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       description: 'Passive telepathy: 30 ft (Telepath 6+: 60 ft). Bonus Action: extend by PED roll × 10 ft for 1 hour. First extension per Long Rest is free.',
       descriptionLong: 'Your base telepathy is always available. Roll one Psionic Energy Die as a Bonus Action to increase its range by ten times the roll for one hour. The first extension after each Long Rest does not expend the die; later extensions spend one die. Short Rests do not reset the free extension. Extensions do not stack.',
     },
-    // ─── Psi Warper subclass features (v2.187.0) ───────────────────────
-    // All 5 active/usable Psi Warper features inserted here so they render
-    // under PSION ABILITIES on the Actions tab. We do NOT subclass-gate
-    // these because (a) Psion currently has only one subclass in published
-    // material (Psi Warper, UA), and (b) ClassAbilitiesSection has no
-    // subclass filter — adding one would touch the renderer for one class.
-    // If/when other subclasses ship (Metamorph, Psykinetic, Telepath),
-    // we'll need to add a `subclass?: string` field to ClassAbility and
-    // gate at filter time. For now: the user's character ghj is Psi
-    // Warper, so this is correct in practice.
-    //
-    // Free Misty Step + PED-restoration mechanic isn't auto-tracked yet
-    // (no schema for "feature uses remaining"). That's v2.188 work.
-    // Today the player tracks it manually via Use button → action log.
+    // v2.751 — All six Psi Warper actions require that subclass. Earlier
+    // versions assumed it was the only Psion subclass and exposed these to all.
     {
       name: 'Free Misty Step (Teleportation)',
+      requiredSubclass: 'Psi Warper',
       actionType: 'bonus',
       description: 'Cast Misty Step without a spell slot. Once per Long Rest. Restore by spending 1 Psionic Energy Die.',
       descriptionLong: 'Cast Misty Step without expending a spell slot. Once you use this feature, you can\'t do so again until you finish a Long Rest, OR until you spend 1 Psionic Energy Die (no action required) to restore the use.\n\nAt level 6+ this combines with Teleporter Combat: after the Misty Step bonus action, you may immediately cast a Psion cantrip with an Action casting time as part of the same Bonus Action.',
@@ -1404,6 +1394,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     },
     {
       name: 'Warp Propel',
+      requiredSubclass: 'Psi Warper',
       actionType: 'special',
       description: WARP_PROPEL_SUMMARY,
       descriptionLong: `${WARP_PROPEL_TEXT}\n\nTelekinetic Propel\n${TELEKINETIC_PROPEL_TEXT}`,
@@ -1412,6 +1403,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     },
     {
       name: 'Warp Space',
+      requiredSubclass: 'Psi Warper',
       actionType: 'action',
       description: 'Cast Shatter, spend 1 PED to expand radius to 20 ft and pull failing creatures toward the center.',
       descriptionLong: 'When you cast Shatter, you can spend 1 Psionic Energy Die. The spell\'s radius expands from 10 ft to 20 ft, and creatures that fail the Constitution saving throw are pulled up to 10 ft toward the spell\'s point of origin in addition to taking damage.\n\nThis is an alternate cast of Shatter (which remains separately available in your spell list); Warp Space costs both a 2nd-level spell slot AND 1 Psionic Energy Die.',
@@ -1427,6 +1419,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     },
     {
       name: 'Teleporter Combat',
+      requiredSubclass: 'Psi Warper',
       actionType: 'bonus',
       description: 'After casting Misty Step, immediately cast a Psion cantrip (action casting time) as part of the same Bonus Action.',
       descriptionLong: 'When you cast Misty Step (whether via spell slot or via your Free Misty Step feature), you may immediately cast one Psion cantrip with an Action casting time as part of the same Bonus Action — without taking a separate Action.\n\nThis effectively lets you teleport and attack in the same turn while keeping your Action free for Dash, Dodge, or another use.',
@@ -1435,6 +1428,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     },
     {
       name: 'Duplicitous Target',
+      requiredSubclass: 'Psi Warper',
       actionType: 'reaction',
       description: 'Reaction: when attacked, spend 1 PED to swap places with a willing ally within 30 ft. Attack hits them instead.',
       descriptionLong: 'When a creature you can see attacks you, you can use your Reaction and spend 1 Psionic Energy Die to swap places with a willing ally within 30 ft. The ally takes the attack instead of you.\n\nThe ally must be willing — you can\'t involuntarily swap with an unwilling target. Both you and the ally must have line of sight to each other and there must be no full cover between you.',
@@ -1444,6 +1438,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     },
     {
       name: 'Mass Teleportation',
+      requiredSubclass: 'Psi Warper',
       actionType: 'action',
       description: 'Magic action: spend 4 PED. Teleport up to INT mod creatures within 30 ft to spaces within 150 ft. Unwilling targets WIS save.',
       descriptionLong: 'Take a Magic action and spend 4 Psionic Energy Dice. Choose up to a number of creatures equal to your Intelligence modifier (minimum 1) within 30 ft of you. You teleport each chosen creature to an unoccupied space you can see within 150 ft.\n\nWilling targets are simply moved. Unwilling targets must succeed on a Wisdom saving throw against your spell save DC or be teleported anyway.\n\nYou may include yourself among the chosen targets.',

@@ -1,6 +1,20 @@
 # DNDKeep — Two-Track Roadmap
 
 
+### 2026-10-06 — Psion subclass action eligibility, v2.751
+
+All six Psi Warper action rows now require Psi Warper and their existing
+minimum level. Base Psion powers and disciplines remain available to the
+other subclasses. The same eligibility rule guards use and resource restore.
+Subtle Telekinesis now consistently states that Somatic components are waived
+and invisibility is optional when casting, per the owner's UA update p.3.
+Private access is unchanged. Original v1 PDF is not currently available in
+the known Downloads location: other Psi Warper descriptions remain unaudited.
+Next: original-source audit, Warp Propel teleport resolution/placement,
+Psionic Reserves and remaining subclass automation.
+
+
+
 ### 2026-10-06 — Psion Propel reference correction, v2.750
 
 Owner-supplied Warp Propel text fixes the destination origin (within 30 ft of

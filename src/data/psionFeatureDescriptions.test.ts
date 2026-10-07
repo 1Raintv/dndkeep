@@ -1,3 +1,4 @@
+import { canUseClassAbility } from '../rules/classAbilityEligibility';
 import { describe, expect, it, vi } from 'vitest';
 // classAbilities -> gameUtils -> attunement reaches the DB client. These tests
 // inspect reference data only and must never initialize a real client.
@@ -39,4 +40,30 @@ describe('Psion Propel reference consistency', () => {
     expect(CLASS_FEATURES.Psion.find(f => f.name === 'Psionic Power')!.description).toContain(TELEKINETIC_PROPEL_TEXT);
     expect(CLASS_LEVEL_PROGRESSION.Psion[0].features).toContain(`Telekinetic Propel: ${TELEKINETIC_PROPEL_SUMMARY}`);
   });
+});
+
+it('restricts every Psi Warper action and keeps base powers unrestricted', () => {
+  const restricted = CLASS_COMBAT_ABILITIES.Psion.filter(a => a.requiredSubclass);
+  expect(restricted.map(a => a.name)).toEqual([
+    'Free Misty Step (Teleportation)', 'Warp Propel', 'Warp Space',
+    'Teleporter Combat', 'Duplicitous Target', 'Mass Teleportation',
+  ]);
+  expect(restricted.every(a => a.requiredSubclass === 'Psi Warper')).toBe(true);
+  for (const ability of restricted) {
+    expect(canUseClassAbility(ability, { level: ability.minLevel - 1, subclass: 'Psi Warper' })).toBe(false);
+    expect(canUseClassAbility(ability, { level: ability.minLevel, subclass: 'Psi Warper' })).toBe(true);
+    for (const subclass of ['Metamorph', 'Psykinetic', 'Telepath', null]) {
+      expect(canUseClassAbility(ability, { level: 20, subclass })).toBe(false);
+    }
+  }
+  expect(CLASS_COMBAT_ABILITIES.Psion.find(a => a.name === 'Telekinetic Propel')!.requiredSubclass).toBeUndefined();
+});
+it('preserves the optional invisibility and Somatic exception in every Subtle Telekinesis description', () => {
+  const action = CLASS_COMBAT_ABILITIES.Psion.find(a => a.name === 'Subtle Telekinesis')!;
+  const feature = CLASS_FEATURES.Psion.find(a => a.name === 'Subtle Telekinesis')!;
+  expect(action.description).toBe(feature.description);
+  expect(feature.description).toContain('without Somatic components');
+  expect(feature.description).toContain('choose to make');
+  expect(feature.description).not.toContain('control');
+  expect(CLASS_LEVEL_PROGRESSION.Psion[0].features).toContain(`Subtle Telekinesis: ${feature.description}`);
 });
