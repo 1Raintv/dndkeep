@@ -1,5 +1,26 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Conditional Psion discipline dice, v2.756
+
+Inerrant Aim, Devilish Tongue, Expanded Awareness and Observant Mind now have
+Roll bonus controls. Previously these free-action rows had no usable button;
+the general pool button charged a die immediately. The new flow rolls without
+charging, explains the discipline's trigger, then spends one die only when the
+player confirms that the bonus changed the outcome (UA update pp.4–5).
+Cancel/Keep die does not spend. Resolution checks current pool/character and
+chosen discipline; malformed/depleted pools cannot roll. Other resources remain
+intact. Canonical die sizes now serve the base powers and these controls.
+
+The general Discipline reference now includes the once-per-turn restriction and
+level-up replacement rule. This remains tabletop outcome confirmation: it does
+not rewrite a previous attack/check or automatically enforce turn limits.
+Those integrations and the other Discipline effects remain queued.
+
+Validation: full gate, pure cost/die boundary tests, component stale-state and
+cancel tests, desktop/mobile real resource checks, screenshots and shared
+overflow probe. Removing the controls fails the browser regression.
+
+
 ### 2026-10-07 — Readable map party cards, v2.755
 
 Reproduced the mobile party panel clipping: its fixed 240px reserve plus an

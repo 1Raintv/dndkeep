@@ -26,6 +26,8 @@ export interface PsionDiscipline {
   description: string;
   /** Cost in Psionic Energy Dice (if active) */
   dieCost?: string;
+  /** v2.756 — These rolls spend only when the bonus changes the outcome. */
+  conditionalOutcome?: 'hit' | 'success';
   /** Action type (if active) */
   actionType?: 'action' | 'bonus' | 'reaction' | 'free';
 }
@@ -57,6 +59,7 @@ export const PSION_DISCIPLINES: PsionDiscipline[] = [
   },
   {
     id: 'devilish-tongue',
+    conditionalOutcome: 'success',
     name: 'Devilish Tongue',
     type: 'active',
     actionType: 'free',
@@ -65,6 +68,7 @@ export const PSION_DISCIPLINES: PsionDiscipline[] = [
   },
   {
     id: 'expanded-awareness',
+    conditionalOutcome: 'success',
     name: 'Expanded Awareness',
     type: 'active',
     actionType: 'free',
@@ -81,6 +85,7 @@ export const PSION_DISCIPLINES: PsionDiscipline[] = [
   },
   {
     id: 'inerrant-aim',
+    conditionalOutcome: 'hit',
     name: 'Inerrant Aim',
     type: 'active',
     actionType: 'free',
@@ -89,6 +94,7 @@ export const PSION_DISCIPLINES: PsionDiscipline[] = [
   },
   {
     id: 'observant-mind',
+    conditionalOutcome: 'success',
     name: 'Observant Mind',
     type: 'active',
     actionType: 'free',

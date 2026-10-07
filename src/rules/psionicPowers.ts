@@ -1,4 +1,4 @@
-import {psionicDieCount} from './psionicRestoration';
+import {psionicDieCount,psionicDieSides} from './psionicRestoration';
 export interface PsionicPowerCharacter {
   class_name:string; level:number; subclass?:string|null;
   class_resources?:Record<string,unknown>|null; feature_uses?:Record<string,number>|null;
@@ -8,7 +8,7 @@ export const CONNECTION_USE='Telepathic Connection';
 export function psionicPowerState(c:PsionicPowerCharacter) {
   const raw=c.class_resources?.['psionic-energy-dice'];
   return {dice:typeof raw==='number'?Math.max(0,raw):psionicDieCount(c.level),
-    sides:c.level>=17?12:c.level>=11?10:c.level>=5?8:6,
+    sides:psionicDieSides(c.level),
     connectionFree:!(c.feature_uses?.[CONNECTION_USE]),
     telepathyRange:c.subclass==='Telepath'&&c.level>=6?60:30,
     technique:c.subclass==='Psykinetic'&&c.level>=3};
