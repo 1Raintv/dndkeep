@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+// classAbilities -> gameUtils -> attunement reaches the DB client. These tests
+// inspect reference data only and must never initialize a real client.
+vi.mock('../lib/supabase', () => ({ supabase: {} }));
 import { CLASS_COMBAT_ABILITIES } from './classAbilities';
 import { CLASS_MAP } from './classes';
 import { CLASS_FEATURES } from './classFeatures';
