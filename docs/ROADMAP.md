@@ -1,5 +1,17 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Biofeedback history and paid-roll recovery, v2.779
+
+Biofeedback releases its control after applying temporary HP without waiting for
+history delivery. Rejected or error-result history writes show a warning while
+preserving the paid effect. If its sheet closes during the Surge decision, the
+original paid roll is logged with instructions to apply temporary HP manually
+without spending again; it never writes HP onto another character's sheet.
+This recovery depends on the app remaining open long enough to deliver history.
+Focused regressions failed against the previous behavior, and local browser
+checks hold the actual history request while verifying HP and the usable control.
+
+
 ### 2026-10-07 — Keep ruler labels inside the canvas, v2.778
 
 Ruler labels move above the endpoint near the bottom and shift inward at the
