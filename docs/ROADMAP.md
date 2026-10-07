@@ -1,5 +1,25 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Revised Psion subclass reference audit, v2.760
+
+Audited 18 feature entries for Metamorph, Psykinetic and Telepath against the
+owner's UA update pp.7–10. Each now has a concise summary and expanded mechanics. Expanded detail text
+uses the normal readable body size and contrast rather than muted metadata.
+Restored costs, action timing, durations, visibility and target restrictions:
+Flesh Weaver's separately paid healing; Rebounding Field's half damage on a
+successful save and temporary HP equal to actual damage; Mind Infiltrator's
+unchanged spell cost; Organic Weapon properties and riders; Mutable Form Touch
+casting-time limit; armor restriction on Superior Stride; Incapacitated limit
+on Bulwark Mind; optional no-Concentration Telekinesis and Gargantuan objects;
+Confusion's automatic successful save rather than an invented blanket exemption.
+Life-Bending Weapons retains the source's start-of-next-turn restriction without
+introducing a new automated interpretation. Private UA/source gates stay intact.
+
+This is reference accuracy, not automation of these effects. Psi Warper remains
+unchanged pending the original v1 source. Validation: full gate, desktop/mobile
+expanded Features checks for all three subclasses, screenshots and layout probe.
+
+
 ### 2026-10-07 — Psion spell-card casting reminders, v2.759
 
 Mage Hand's spell-list badge incorrectly claimed compulsory invisibility after

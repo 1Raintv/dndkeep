@@ -600,7 +600,7 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
  <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6 }}>{resolveSubclassDesc(sf.description, character)}</div>
  {/* v2.533.0 — expanded mechanics, when provided */}
  {(sf as any).descriptionLong && (
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.6, marginTop: 6, whiteSpace: 'pre-line' }}>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)', lineHeight: 1.6, marginTop: 6, whiteSpace: 'pre-line' }}>
  {resolveSubclassDesc((sf as any).descriptionLong, character)}
  </div>
  )}
