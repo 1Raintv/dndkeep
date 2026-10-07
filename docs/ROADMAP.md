@@ -20,8 +20,18 @@ not on HP edits or duration ticks. Ordinary direct/RPC edits cannot spoof the
 revision. Existing pending prompts retain a NULL revision because their original
 casting cannot be reconstructed safely. Four real Docker tests pass, including
 concurrent casts and transaction rollback. No production migration is shipped.
-Next: capture this revision when damage occurs, settle each prompt once under
-row locks, and retire obsolete/legacy prompts without touching current effects.
+Local migration 20261007154500 adds `settle_pending_concentration_save`: the
+owner/DM-authorized character and prompt locks record one outcome, clear the
+original spell and slot metadata, remove only that caster's effects (including
+condition cascades), and write history in one transaction. Replays return the
+saved roll; stale/legacy offers retire without touching current effects. Ten
+real database scenarios cover racing owner/DM clients, multiple offers, same-spell
+recasts, unrelated effects, natural-extreme preferences, authorization and full
+rollback when history fails. These migrations are local only.
+Next: capture the revision when damage occurs; connect automatic/prompt paths to
+the transaction, preserve the proposed roll across unknown responses, and verify
+the real recovery UI before shipping. The current frontend still uses its old
+campaign resolver, so the new transaction is not yet active for user actions.
 This does not yet solve concurrent prompts or saved-result replay; do not release
 this branch as complete campaign concentration automation.
 
