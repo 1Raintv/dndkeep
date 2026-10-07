@@ -95,4 +95,33 @@ test.describe('Psion spell stat display', () => {
     expect(errors).toEqual([]);
   });
 
+  test('Metamorph healing rolls MOD, spends the chosen slot and persists character history',async({page},info)=>{
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+    const failed:string[]=[];page.on('response',r=>{if(r.status()>=400)failed.push(`${r.status()} ${r.url()}`);});
+    sql(`update characters set level=3,subclass='Metamorph',intelligence=18,known_spells='{"cure-wounds","mage-hand"}',spell_slots='{"1":{"total":4,"used":0},"2":{"total":2,"used":0}}' where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+    const row=page.locator('.srow-grid').filter({has:page.getByText('Cure Wounds',{exact:true})}).first();
+    await row.getByRole('button',{name:/^2d8\s*\+\s*MOD$/}).click();
+    await page.getByRole('button',{name:'Cancel',exact:true}).click();
+    expect(sql(`select spell_slots->'1'->>'used' from characters where id='${charId}'`)).toBe('0');
+    await row.getByRole('button',{name:/^2d8\s*\+\s*MOD$/}).click();
+    await page.getByRole('button',{name:/Level 2/}).click();
+    await expect(page.getByText('Healing: 4d8+4',{exact:true})).toBeVisible();
+    const confirm=page.getByRole('button',{name:/Upcast at Level 2.*Roll Healing/});
+    await confirm.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('metamorph-heal-slot.png')});
+    await confirm.click();
+    await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and action_type='heal'`)).toBe('1');
+    const logged=JSON.parse(sql(`select json_build_object('dice',dice_expression,'rolls',individual_results,'total',total)::text from action_logs where character_id='${charId}' and action_type='heal' order by created_at desc limit 1`));
+    expect(logged.dice.replace(/\s/g,'')).toBe('4d8+MOD');expect(logged.rolls).toHaveLength(4);
+    expect(logged.total).toBe(logged.rolls.reduce((sum:number,n:number)=>sum+n,4));
+    expect(sql(`select spell_slots->'1'->>'used' from characters where id='${charId}'`)).toBe('0');
+    await expect.poll(()=>sql(`select spell_slots->'2'->>'used' from characters where id='${charId}'`)).toBe('1');
+    await page.reload();await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+    const hand=page.locator('.srow-grid').filter({has:page.getByText('Mage Hand',{exact:true})}).first();
+    await hand.getByRole('button',{name:'Cast',exact:true}).click();
+    await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and action_type='spell' and action_name='Mage Hand'`)).toBe('1');
+    expect(errors).toEqual([]);expect(failed).toEqual([]);
+  });
+
 });
