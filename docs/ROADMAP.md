@@ -39,9 +39,19 @@ Wizard/Psion persistence through reload. Four updated layout/shared-spell checks
 also pass with valid Wizard level 3 eligibility. Mobile source controls inspected.
 Full gate passes: 1,592 unit tests, TS 208/208, entry 253 KB. Migration is local only.
 
+Local migration 20261007190500 validates source maps at the database boundary;
+the domain validator matches its accepted source tags and the level-up UI blocks
+unreadable source data without rewriting it. Eighteen shape tests pass. Realtime
+now accepts known/prepared lists and source metadata together; a mounted level-up
+view discards stale choices when another update changes their sources. Four real
+DB/browser checks pass across desktop/mobile: malformed writes leave the prior
+map untouched, and an open sheet observes the new lists and Wizard ownership.
+Full gate: 1,611 unit tests, TS 208/208, all required checks and 253 KB entry pass.
+Both spell-source migrations remain local only.
+
 Before release: apply source ownership consistently to counts, ordinary additions,
-removal and creation; add source-shape validation and realtime synchronization;
-verify source review across other-class targeting and automatic feature grants.
+removal and creation; verify source review across other-class targeting and
+automatic feature grants.
 Legacy spell-source records must remain unknown until reviewed. The shared
 prepared list also lacks per-class prepared-state detail; preserve other sources'
 current state until that representation is addressed. This work remains local

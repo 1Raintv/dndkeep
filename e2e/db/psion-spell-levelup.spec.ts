@@ -138,4 +138,28 @@ test.describe('Psion spell replacement level-up', () => {
     expect(known).toContain('mage-armor');expect(known.filter((id:string)=>id==='hold-person')).toHaveLength(1);
     await page.reload();expect(JSON.parse(sql(`select spell_sources from characters where id='${charId}'`))).toEqual(sources);
   });
+  test('database rejects malformed spell sources without changing the saved map',()=>{
+    const invalid=[null,[],true,1,'bad',{'':[]},{spell:null},{spell:'class:Psion'},{spell:[1]},{spell:[{}]},{spell:['class:']},{spell:['class: Wizard']},{spell:['class:Wizard ']},{spell:['unknown']}];
+    for(const value of invalid){
+      const encoded=JSON.stringify(value).replaceAll("'","''");
+      expect(()=>sql(`update characters set spell_sources='${encoded}'::jsonb where id='${charId}'`)).toThrow(/characters_spell_sources_valid/);
+    }
+    expect(sql(`select spell_sources from characters where id='${charId}'`)).toBe('{}');
+    sql(`update characters set spell_sources='{"mage-armor":["class:Psion","class:Wizard","feat"],"hold-person":[]}' where id='${charId}'`);
+    expect(JSON.parse(sql(`select spell_sources from characters where id='${charId}'`))).toEqual({'mage-armor':['class:Psion','class:Wizard','feat'],'hold-person':[]});
+  });
+  test('an open sheet receives source and spell-list changes together',async({page})=>{
+    sql(`update characters set level=5,secondary_class='Wizard',secondary_level=3,pending_manual_level_grants=1,known_spells=ARRAY['mage-armor'],prepared_spells=ARRAY['mage-armor'],spell_sources='{"mage-armor":["class:Psion"]}',spell_slots='{"1":{"total":4,"used":0},"2":{"total":3,"used":0},"3":{"total":2,"used":0}}' where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await page.getByRole('button',{name:/Level up available/}).click();
+    const next=page.getByRole('button',{name:'Next →',exact:true});await next.click();await next.click();await next.click();
+    const section=page.getByRole('region',{name:'Psion spell replacements'});
+    await section.getByLabel('Replace prepared spell',{exact:true}).selectOption('mage-armor');
+    await expect(section.getByRole('checkbox',{name:'Mage Armor: Psion',exact:true})).toBeChecked();
+    sql(`update characters set known_spells=ARRAY['hold-person'],prepared_spells=ARRAY['hold-person'],spell_sources='{"hold-person":["class:Wizard"]}' where id='${charId}'`);
+    await expect(section.getByLabel('Replace prepared spell',{exact:true})).toHaveValue('');
+    await expect(section.getByLabel('Replace prepared spell',{exact:true}).locator('option[value="mage-armor"]')).toHaveCount(0);
+    await section.getByText('Review existing spell sources',{exact:true}).click();
+    await expect(section.getByRole('checkbox',{name:'Hold Person: Wizard',exact:true})).toBeChecked();
+  });
 });

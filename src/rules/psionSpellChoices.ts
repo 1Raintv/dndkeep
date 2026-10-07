@@ -1,3 +1,5 @@
+import {isSpellSources,type SpellSource,type SpellSources} from './spellSources';
+export type {SpellSource,SpellSources} from './spellSources';
 /** UA Psion Update pp.2–3: spell choices use Psion progression, not
  * multiclass slot totals or manually edited slot counters. */
 export function maximumPsionSpellLevel(level:number):number {
@@ -38,8 +40,6 @@ export function replacePsionLevelUpSpells(input:{
 }
 
 
-export type SpellSource = `class:${string}` | 'species' | 'feat' | 'other';
-export type SpellSources = Record<string,readonly SpellSource[]>;
 type PsionSwapInput = Parameters<typeof replacePsionLevelUpSpells>[0];
 
 /** A spell can be learned independently through multiple classes/features.
@@ -48,6 +48,7 @@ type PsionSwapInput = Parameters<typeof replacePsionLevelUpSpells>[0];
 export function replaceOwnedPsionLevelUpSpells(input:PsionSwapInput & {sources:SpellSources}):
  | {ok:true;known:string[];prepared:string[];sources:SpellSources}
  | {ok:false;reason:string} {
+ if(!isSpellSources(input.sources))return {ok:false,reason:'Spell sources could not be read. Correct the saved source data before replacing spells.'};
  const owner:SpellSource='class:Psion';
  for(const swap of [input.swaps.cantrip,input.swaps.spell]){
   if(!swap)continue;
