@@ -70,4 +70,29 @@ test.describe('Psion spell stat display', () => {
     await expect(page.getByText('WIS Save — DC 11',{exact:true})).toBeVisible();
   });
 
+  test('Telepath cantrip damage scales and includes only its own Intelligence bonus',async({page},info)=>{
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+    sql(`update characters set level=6,subclass='Telepath',intelligence=18,known_spells='{"mind-sliver"}',spell_sources='{"mind-sliver":["class:Psion"]}',spell_slots='{}' where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+    const row=page.locator('.srow-grid').filter({has:page.getByText('Mind Sliver',{exact:true})}).first();
+    const roll=row.getByRole('button').filter({hasText:'2d6+4'});
+    await expect(roll).toBeVisible();
+    await row.getByText('Mind Sliver',{exact:true}).click();
+    await expect(page.getByText('Potent Thoughts: +4 Intelligence damage included.',{exact:true})).toBeVisible();
+    await roll.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('telepath-cantrip.png')});
+    await roll.click();
+    await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and action_type='damage' and dice_expression='2d6+4'`)).toBe('1');
+    const logged=JSON.parse(sql(`select json_build_object('rolls',individual_results,'total',total)::text from action_logs where character_id='${charId}' and action_type='damage' order by created_at desc limit 1`));
+    expect(logged.rolls).toHaveLength(2);expect(logged.total).toBe(logged.rolls.reduce((sum:number,n:number)=>sum+n,4));
+    sql(`update characters set level=11,spell_sources='{"mind-sliver":["class:Wizard"]}' where id='${charId}'`);
+    await page.reload();await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+    await expect(row.getByRole('button').filter({hasText:/^3d6$/})).toBeVisible();
+    sql(`update characters set spell_sources='{}' where id='${charId}'`);
+    await page.reload();await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+    await row.getByText('Mind Sliver',{exact:true}).click();
+    await expect(page.getByText('Review this spell’s sources to apply Potent Thoughts if it is a Psion cantrip.',{exact:true})).toBeVisible();
+    expect(errors).toEqual([]);
+  });
+
 });

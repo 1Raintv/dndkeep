@@ -1,12 +1,43 @@
 # DNDKeep — Two-Track Roadmap
 
-### Verified locally — spell grant level validation, v2.788
+### In progress — cantrip damage and Potent Thoughts, planned v2.789
+
+Verified against owner-provided Psion Update p.10: level-6 Telepath adds INT
+to damage from Psion cantrips. The casting paths were missing this modifier
+and ignored the catalog character-level scaling tables. A shared pure helper
+now scales from actual total class levels, requires explicit Psion ownership
+for the bonus and requests review for legacy unknown sources. It does not
+guess conditional d8/d12 choices. Mind Sliver lacked a separate base-damage
+field; its scaling table now also supplies the damage dice.
+
+The Spells tab now exposes the same cantrip cast/roll/target controls as Actions.
+Manual damage uses the canonical dice module, retains flat modifiers and mixed
+dice in animations/history, and writes the actual character ID to action history.
+Eight combined desktop/mobile local browser cases pass. The new pair verifies
+2d6+4, persisted rolls/totals,
+level-11 scaling, foreign ownership exclusion and the source-review note.
+Screenshots inspected. Four component regressions verify combat damage payloads
+and no damage on successful cantrip saves in both sheet tabs. Full gate passes:
+1,721 unit tests, TS 208/208, entry 254 KB. The shared layout probe finds no
+horizontal page overflow or off-screen controls; existing sidebar/header and
+movement-button clipping remain outside this change. The spell-row chevron
+has a minimum width so its glyph is not clipped on phones.
+
+True Strike weapon selection/damage and Toll the Dead conditional damage remain
+separate follow-ups. The base table is not treated as a full True Strike weapon
+attack. Remaining casting audit: primary-class casting-stat selection for
+multiclass spells, legacy cast/heal log identity, and leveled save-outcome rules.
+Production release pending.
+
+
+### Released — spell grant level validation, v2.788
 
 Automatic grants ignore orphaned secondary levels and invalid fractional,
 negative, missing or non-finite secondary levels. Species unlocks now use the
 same validated class levels as class grants. Nine regression cases cover the
 stale-data failure; full gate passes (1,695 unit tests, TS 208/208, entry 253 KB).
-No schema changes. Production release pending.
+No schema changes. PR #117 merged as `f5d90691`; main CI 37677762394 passed
+and the public service worker confirms 2.788.0.
 
 ### Released — Psion spell replacements, v2.787
 

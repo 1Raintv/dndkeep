@@ -58,3 +58,34 @@ export function doubleDice(expr: string): string {
   const mod = m[3] ? m[3].replace(/\s+/g, '') : '';
   return `${count}d${sides}${mod}`;
 }
+
+/** v2.789 — retain each die's size and every flat modifier for spell animations.
+ * Reject the entire expression before rolling when any component is invalid. */
+export function rollDiceGroups(expression:string):{dice:{die:number;value:number}[];modifier:number;total:number}|null {
+ const text=expression.replace(/\s+/g,'');
+ if(!/^(?:\d+d\d+|\d+)(?:[+](?:\d+d\d+|\d+)|-\d+)*$/i.test(text))return null;
+ const parts=text.match(/[+-]?[^+-]+/g)!;
+ const dice:{die:number;value:number}[]=[];
+ let modifier=0;
+ for(const part of parts){
+  const m=/^\+?(\d+)d(\d+)$/i.exec(part);
+  if(m){
+   const count=Number(m[1]),sides=Number(m[2]);
+   if(count<1||count>100||sides<1||sides>1000)return null;
+  }else if(!Number.isSafeInteger(Number(part)))return null;
+ }
+ for(const part of parts){
+  const m=/^\+?(\d+)d(\d+)$/i.exec(part);
+  if(m){for(let i=0;i<Number(m[1]);i++)dice.push({die:Number(m[2]),value:rollDie(Number(m[2]))});}
+  else modifier+=Number(part);
+ }
+ return {dice,modifier,total:dice.reduce((sum,d)=>sum+d.value,modifier)};
+}
+/** Fold the bonus into an existing flat modifier so combat's NdX parser agrees. */
+export function addDiceModifier(expression:string,bonus:number):string {
+ if(!bonus)return expression;
+ const m=/^(\d+d\d+)([+-]\d+)?$/i.exec(expression.replace(/\s+/g,''));
+ if(!m)return expression;
+ const total=Number(m[2]??0)+bonus;
+ return m[1]+(total>0?'+'+total:total<0?String(total):'');
+}

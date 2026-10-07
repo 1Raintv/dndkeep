@@ -1,3 +1,5 @@
+import {cantripDamage} from '../../rules/cantripDamage';
+import {addDiceModifier} from '../../rules/dice';
 import {hasCharacterSpellWorkspace} from '../../lib/characterSpellWorkspace';
 import SpellSourceReview from './SpellSourceReview';
 import PsionCastingNote from './_shared/PsionCastingNote';
@@ -489,6 +491,8 @@ export default function SpellsTab({
  <SpellCard
  key={`${spell.id}-${spell.effectiveLevel}`}
  spell={spell}
+ damageCharacter={character}
+ intelligenceModifier={computed.modifiers.intelligence}
  effectiveLevel={spell.effectiveLevel}
  isUpcast={spell.isUpcast}
  isExpanded={expandedSpell === `${spell.id}-${spell.effectiveLevel}`}
@@ -547,8 +551,8 @@ export default function SpellsTab({
 
 // ── Level tab button ─────────────────────────────────────────────────
 // ── Spell card ───────────────────────────────────────────────────────
-function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, isAvailable, preparationClass, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC, subtleTelekinesis, psionicCasting, pinnedSpells, onTogglePinned }: {
- spell: SpellData; effectiveLevel?: number; isUpcast?: boolean;
+function SpellCard({ spell, damageCharacter, intelligenceModifier, effectiveLevel, isUpcast, isExpanded, isPrepared, isAvailable, preparationClass, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC, subtleTelekinesis, psionicCasting, pinnedSpells, onTogglePinned }: {
+ spell: SpellData; damageCharacter:Character; intelligenceModifier:number; effectiveLevel?: number; isUpcast?: boolean;
  isAvailable: boolean; preparationClass: string;
  isExpanded: boolean; isPrepared: boolean; isConcentrating: boolean;
  isPreparer: boolean; castButton: ReactNode; upcastButton?: ReactNode; grantedReason?: string;
@@ -576,6 +580,8 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  damage_type: (spell as any).damage_type,
  heal_dice: (spell as any).heal_dice,
  });
+ const damageProfile=cantripDamage(damageCharacter,spell,mechanics.damageDice,intelligenceModifier);
+ mechanics.damageDice=damageProfile.dice?addDiceModifier(damageProfile.dice,damageProfile.bonus):null;
  // Abbreviate casting time for table display.
  // v2.591.0 — shortCastingTime first: reaction spells carry their
  // full trigger in casting_time ("1 reaction, which you take
@@ -819,7 +825,7 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  <div className="srow-charges" />
 
  {/* Col 10: Quick remove + expand chevron */}
- <div className="srow-chev" style={{ display: 'flex', alignItems: 'center', gap: 4 }} onClick={e => e.stopPropagation()}>
+ <div className="srow-chev" style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, minWidth: 12 }} onClick={e => e.stopPropagation()}>
  {!grantedReason && onRemove && (
  <button
  onClick={onRemove}
@@ -851,6 +857,8 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  </div>
 
  {psionicCasting && <PsionCastingNote subtle={subtleTelekinesis}/>}
+ {damageProfile.bonus!==0&&<p>Potent Thoughts: {damageProfile.bonus>0?'+':''}{damageProfile.bonus} Intelligence damage included.</p>}
+ {damageProfile.needsSourceReview&&<p>Review this spell’s sources to apply Potent Thoughts if it is a Psion cantrip.</p>}
  {/* Description */}
  <SpellDescription spell={spell} />
 

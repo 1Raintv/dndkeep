@@ -394,7 +394,8 @@ export default function SpellTargetPickerModal({
         // different riders (e.g. Sleet Storm — no damage, other rider)
         // shouldn't route through this modal at all; the caller gate
         // checks damage_dice presence.
-        saveSuccessEffect: 'half',
+        // v2.789 — damaging cantrips do not inherit leveled spells' half-on-save default.
+        saveSuccessEffect: spell.level===0?'none':'half',
         damageDice: effectiveDamageDice || spell.damage_dice || null,
         damageType: spell.damage_type ?? null,
         coverLevel: 'none',   // batch fallback; per-target overrides above
