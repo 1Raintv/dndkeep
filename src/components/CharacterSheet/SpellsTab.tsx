@@ -1,3 +1,4 @@
+import { SpellDescription } from '../shared/SpellDescription';
 import { abilityModifier } from '../../rules/abilities';
 import { useState, useMemo, type ReactNode } from 'react';
 import type { Character, ComputedStats, SpellData } from '../../types';
@@ -846,7 +847,7 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  </div>
 
  {/* Description */}
- <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: '0 0 12px' }}>{spell.description}</p>
+ <SpellDescription spell={spell} />
 
  {/* v2.58.0: Upcast trigger button — pinned right after description so users
      can deliberately pick a higher slot. The button only renders when the spell

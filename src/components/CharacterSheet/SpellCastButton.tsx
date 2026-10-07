@@ -1,3 +1,4 @@
+import { SpellDescription } from '../shared/SpellDescription';
 import { abilityModifier } from '../../rules/abilities';
 import { useState, Suspense } from 'react';
 // Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
@@ -536,34 +537,7 @@ export default function SpellCastButton({
  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' as const, marginRight: -8, paddingRight: 8 }}>
  {/* v2.63.0: full spell description (one big block) so player has full
      context on what the spell does without closing the modal. */}
- {spell.description && (
- <div style={{
- padding: '10px 12px', borderRadius: 'var(--r-md)',
- background: 'rgba(255,255,255,0.025)', border: '1px solid var(--c-border)',
- marginBottom: 12,
- }}>
- <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'var(--t-3)', marginBottom: 4 }}>
- Description
- </div>
- <div style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.55 }}>
- {spell.description}
- </div>
- </div>
- )}
- {(spell as any).higher_levels && (
- <div style={{
- padding: '10px 12px', borderRadius: 'var(--r-md)',
- background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.25)',
- marginBottom: 12,
- }}>
- <div style={{ fontSize: 9, fontWeight: 800, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: '#c4b5fd', marginBottom: 4 }}>
- At Higher Levels
- </div>
- <div style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.5 }}>
- {(spell as any).higher_levels}
- </div>
- </div>
- )}
+ <SpellDescription spell={spell} />
  {/* v2.64.0: Unified slot picker. When the spell has per-tier damage/healing
      data, show a rich grid where each tile = one slot tier with the rolled
      dice for that tier. Tiles are clickable picker buttons. Tiles without an
@@ -1382,7 +1356,7 @@ export default function SpellCastButton({
  </div>
  <div style={{ padding: 8, background: '#080d14', borderRadius: 'var(--r-md)',
  marginBottom: 12, fontSize: 10, color: 'var(--t-2)', lineHeight: 1.4,
- maxHeight: 60, overflowY: 'auto' }}>{spell.description}</div>
+ maxHeight: 240, overflowY: 'auto' }}><SpellDescription spell={spell} /></div>
  <div style={{ display: 'flex', gap: 8 }}>
  <button className="btn-secondary" onClick={() => setShowModal(false)}
  style={{ flex: 1, justifyContent: 'center' }}>Cancel</button>

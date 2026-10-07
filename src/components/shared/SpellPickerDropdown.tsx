@@ -1,3 +1,4 @@
+import { SpellDescription } from './SpellDescription';
 import { shortCastingTime } from '../../lib/spellDisplay';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
@@ -424,9 +425,7 @@ export default function SpellPickerDropdown({
 
  {/* Description — always shown (v2.671) */}
  <div style={{ padding: '0 14px 12px 27px' }}>
- <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: '2px 0 8px' }}>
- {spell.description}
- </p>
+ <SpellDescription spell={spell} />
  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginTop: 4 }}>
  <div style={{ display: 'flex', gap: 12, fontSize: 11, color: 'var(--t-3)', flexWrap: 'wrap', flex: 1 }}>
  <span><strong style={{ color: 'var(--t-2)' }}>Casting Time:</strong> {spell.casting_time}</span>

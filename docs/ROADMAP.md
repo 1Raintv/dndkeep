@@ -1,5 +1,33 @@
 # DNDKeep — Two-Track Roadmap
 
+
+### 2026-10-06 — Audited spell details, v2.749
+
+Fifteen complete SRD 5.2.1 entries now override stale canonical database text
+and the static fallback through `src/data/srdSpellDetails.ts`: Aid, Bless,
+Counterspell, Dispel Magic, False Life, Guidance, Haste, Hold Person,
+Invisibility, Jump, Mage Hand, Polymorph, Shield, Sleep, Suggestion.
+Includes casting triggers, material costs, duration, all body paragraphs and
+higher-level effects; each entry links its official PDF page and attribution.
+Shared description renderer preserves paragraphs/scaling in browser, sheet,
+preparation picker and cast dialogs. Owned/homebrew and gated-source records
+are excluded from the canonical correction. No database writes or migration.
+
+Corrected conflicting 2014 metadata: Sleep is a 60-foot-range, 5-foot-radius
+Wisdom-save concentration spell, not a 5d8 HP pool; Jump is a Bonus Action;
+False Life grants 2d4+4 temporary HP (+5 per additional slot); Counterspell
+uses a Constitution save. This is reference/cast-metadata work, not full
+end-to-end automation of every exception (Sleep's follow-up save, Polymorph,
+Counterspell refunds and other table adjudication still need separate work).
+
+Remaining: audit the other 320 of the 335 SRD-matched catalog entries,
+including tables and summoned stat blocks, before giving them provenance.
+The runtime correction does not update direct SQL/export consumers. Future
+DB reconciliation must reuse these reviewed values, not bulk-copy the older
+static table. Non-SRD content requires a separate rights/source review;
+paraphrasing or restricting access is not itself a license.
+
+
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 

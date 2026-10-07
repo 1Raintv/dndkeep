@@ -1,3 +1,4 @@
+import { SpellDescription } from '../shared/SpellDescription';
 import { useState, useMemo, useEffect } from 'react';
 import type { SpellData, SpellLevel, Character } from '../../types';
 // v2.152.0 — Phase O pt 5: read from useSpells hook so SpellsPage sees
@@ -94,7 +95,7 @@ export default function SpellsPage() {
         </span>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 'var(--sp-6)' }}>
+      <div className="spell-browser-layout">
         {/* Sidebar */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
           {/* Filters */}
@@ -245,18 +246,9 @@ function SpellDetail({
         ))}
       </div>
 
-      {/* Description */}
       <div style={{ borderTop: '1px solid var(--c-border)', paddingTop: 'var(--sp-4)', marginBottom: 'var(--sp-4)' }}>
-        <p style={{ fontSize: 'var(--fs-sm)', lineHeight: 1.7 }}>{spell.description}</p>
+        <SpellDescription spell={spell} />
       </div>
-
-      {/* Higher levels */}
-      {spell.higher_levels && (
-        <div style={{ background: '#080d14', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', borderLeft: '2px solid var(--c-gold)', marginBottom: 'var(--sp-4)' }}>
-          <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--c-gold-l)' }}>At Higher Levels. </span>
-          <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)' }}>{spell.higher_levels}</span>
-        </div>
-      )}
 
       {/* Classes — v2.688.0: gated. A spell's classes array still carries
           Artificer/Psion so the tag survives for whenever they're switched
