@@ -58,6 +58,8 @@ export function BackgroundLayer(props: {
     // If path matches what we already have loaded and world dims
     // changed, just resize in place — avoid a reload.
     if (backgroundPath === currentPathRef.current && spriteRef.current && !spriteRef.current.destroyed) {
+      // v2.772 — a replacement viewport must own the retained sprite.
+      if(spriteRef.current.parent!==viewport)viewport.addChildAt(spriteRef.current,0);
       spriteRef.current.width = worldWidth;
       spriteRef.current.height = worldHeight;
       return;
@@ -82,34 +84,27 @@ export function BackgroundLayer(props: {
     const url = assetsApi.getSceneBackgroundUrl(backgroundPath);
     if (!url) return;
 
-    Assets.load<Texture>(url).then(texture => {
-      if (loadGenRef.current !== thisGen) {
-        // A newer load superseded this one — release the stale texture
-        // unless the newer generation wants the SAME url. v2.648 fix:
-        // comparing against loadedUrlRef alone was not enough. On a
-        // scene switch the effect can run twice back-to-back (path and
-        // world dims land in separate renders), issuing two loads for
-        // the same url. Load #1 resolved stale BEFORE load #2 recorded
-        // loadedUrlRef, unloaded the shared cache entry, and load #2
-        // then received an already-destroyed texture — Pixi's batcher
-        // crashed on source=null every frame and the map went
-        // permanently black until a reload.
-        const currentUrl = currentPathRef.current
-          ? assetsApi.getSceneBackgroundUrl(currentPathRef.current)
-          : null;
-        if (url !== currentUrl && loadedUrlRef.current !== url) {
-          Assets.unload(url).catch(() => {});
-        }
-        return;
+    // v2.772 — initial loads and retries share the same ownership check.
+    // A newer request for this URL owns the cache entry even before it resolves.
+    const discardStaleLoad = () => {
+      if (loadGenRef.current === thisGen && !viewport.destroyed) return false;
+      const currentUrl = currentPathRef.current
+        ? assetsApi.getSceneBackgroundUrl(currentPathRef.current)
+        : null;
+      if ((loadGenRef.current === thisGen || url !== currentUrl) && loadedUrlRef.current !== url) {
+        Assets.unload(url).catch(() => {});
       }
-      if (!viewport || viewport.destroyed) return;
+      return true;
+    }
+
+    Assets.load<Texture>(url).then(texture => {
+      if (discardStaleLoad()) return;
       // Defense-in-depth for any remaining unload/load interleaving:
       // never mount a dead texture (it poisons the render loop — see
       // above). Reload once; Assets re-fetches through the HTTP cache.
       if (texture.destroyed || !texture.source) {
         Assets.load<Texture>(url).then(fresh => {
-          if (loadGenRef.current !== thisGen || fresh.destroyed || !fresh.source) return;
-          if (!viewport || viewport.destroyed) return;
+          if (discardStaleLoad() || fresh.destroyed || !fresh.source) return;
           loadedUrlRef.current = url;
           const s = new Sprite(fresh);
           s.width = worldWidth;
@@ -136,9 +131,13 @@ export function BackgroundLayer(props: {
     });
   }, [viewport, backgroundPath, worldWidth, worldHeight]);
 
-  // Cleanup on unmount or viewport change.
+  // Cleanup on unmount (viewport replacement reuses a live sprite above).
   useEffect(() => {
     return () => {
+      // v2.772 — invalidate pending loads too, not only an already-mounted
+      // sprite. A late resolution must take the stale-load release path.
+      loadGenRef.current += 1;
+      currentPathRef.current = null;
       if (spriteRef.current && !spriteRef.current.destroyed) {
         spriteRef.current.destroy();
         spriteRef.current = null;
