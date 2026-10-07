@@ -1,3 +1,4 @@
+import { PSION_SUBCLASS_DETAILS } from './psionSubclassDetails';
 import { WARP_PROPEL_TEXT } from './psionFeatureDescriptions';
 import type { ClassData } from '../types';
 import { SPELL_MAP } from './spells';
@@ -777,12 +778,12 @@ export const CLASSES: ClassData[] = [
         spell_list: ['Alter Self', 'Cure Wounds', 'Inflict Wounds', 'Lesser Restoration', 'Aura of Vitality', 'Haste', 'Polymorph', 'Stoneskin', 'Contagion', 'Mass Cure Wounds'],
         features: [
           { level: 3, name: 'Metamorph Spells', description: "Always have Alter Self, Cure Wounds, Inflict Wounds, Lesser Restoration prepared. More spells unlock at 5, 7, 9.", isChoice: false },
-          { level: 3, name: 'Mutable Form', description: "Bonus Action: expend 1 Psionic Energy Die — gain Temp HP equal to roll + INT mod, +5 ft reach, +5 ft speed, and Touch spells gain 10 ft range. Lasts 1 minute.", isChoice: false },
-          { level: 3, name: 'Organic Weapons', description: "Magic action to form Bone Blade (1d8 piercing, finesse), Flesh Maul (1d10 bludgeoning, Disadvantage on target's next STR/CON save), or Viscera Launcher (1d6 acid, 30/90 ft, extra 1d6 on hit once/turn). Use INT for attacks.", isChoice: true, choiceType: 'other' },
-          { level: 6, name: 'Extra Attack', description: "Attack twice when you take the Attack action. You can replace one attack with a Psion cantrip.", isChoice: false },
-          { level: 6, name: 'Flesh Weaver', description: "When you use Mutable Form, spend an extra Psionic Energy Die to also gain +2 AC and boost spell healing by rolling a Psionic Energy Die.", isChoice: false },
-          { level: 10, name: 'Improved Mutable Form', description: "Mutable Form extends to 10 minutes. Choose one bonus: Stony Epidermis (Advantage on Concentration saves + resistance), Superior Stride (Dash as BA + Climb/Swim Speed), or Unnatural Flexibility (+1 AC + squeeze through 1 inch gaps).", isChoice: true, choiceType: 'other' },
-          { level: 14, name: 'Life-Bending Weapons', description: "Organic Weapon hits roll a free Psionic Energy Die for extra Necrotic damage (die not expended). OR expend a die to also heal nearby allies by that amount + INT mod.", isChoice: false },
+          { level: 3, name: 'Mutable Form', ...PSION_SUBCLASS_DETAILS["Mutable Form"], isChoice: false },
+          { level: 3, name: 'Organic Weapons', ...PSION_SUBCLASS_DETAILS["Organic Weapons"], isChoice: true, choiceType: 'other' },
+          { level: 6, name: 'Extra Attack', ...PSION_SUBCLASS_DETAILS["Extra Attack"], isChoice: false },
+          { level: 6, name: 'Flesh Weaver', ...PSION_SUBCLASS_DETAILS["Flesh Weaver"], isChoice: false },
+          { level: 10, name: 'Improved Mutable Form', ...PSION_SUBCLASS_DETAILS["Improved Mutable Form"], isChoice: true, choiceType: 'other' },
+          { level: 14, name: 'Life-Bending Weapons', ...PSION_SUBCLASS_DETAILS["Life-Bending Weapons"], isChoice: false },
         ],
       },
       {
@@ -809,12 +810,12 @@ export const CLASSES: ClassData[] = [
         spell_list: ['Cloud of Daggers', 'Levitate', 'Shield', 'Thunderwave', 'Slow', 'Telekinetic Crush', "Otiluke's Resilient Sphere", 'Stone Shape', 'Telekinesis', 'Wall of Force'],
         features: [
           { level: 3, name: 'Psykinetic Spells', description: "Always have Cloud of Daggers, Levitate, Shield, Thunderwave prepared. More spells at 5, 7, 9.", isChoice: false },
-          { level: 3, name: 'Stronger Telekinesis', description: "Mage Hand range increases by 30 ft when you cast it, and it can carry up to 20 pounds.", isChoice: false },
-          { level: 3, name: 'Telekinetic Techniques', description: "Telekinetic Propel: roll a free d4 instead of spending a Psionic Energy Die. On a failed save, also apply: Boost (+10 ft Speed), Disorient (no Opportunity Attacks), or Telekinetic Bolt (Force damage = die roll).", isChoice: true, choiceType: 'other' },
-          { level: 6, name: 'Destructive Trance', description: "Start of turn: spend 1 Psionic Energy Die to gain Fly Speed 20 ft (hover) for 10 minutes. While active, when you cast a spell with a spell slot, roll a free Psionic Energy Die and add it to one damage roll.", isChoice: false },
-          { level: 6, name: 'Rebounding Field', description: "Cast Shield to block an attack, then spend 1 Psionic Energy Die: attacker makes DEX save. Roll 1 die — on fail, attacker takes that Force damage + INT mod. You gain Temp HP equal to damage dealt (hit or miss).", isChoice: false },
-          { level: 10, name: 'Enhanced Telekinetic Crush', description: "When casting Telekinetic Crush, spend 1 Psionic Energy Die to also halve all targets' Speed (hit or miss). Add the die roll to spell damage.", isChoice: false },
-          { level: 14, name: 'Heightened Telekinesis', description: "Cast Telekinesis without a spell slot by spending 4 Psionic Energy Dice. Optionally remove Concentration — it lasts 1 minute and can target Gargantuan creatures.", isChoice: false },
+          { level: 3, name: 'Stronger Telekinesis', ...PSION_SUBCLASS_DETAILS["Stronger Telekinesis"], isChoice: false },
+          { level: 3, name: 'Telekinetic Techniques', ...PSION_SUBCLASS_DETAILS["Telekinetic Techniques"], isChoice: true, choiceType: 'other' },
+          { level: 6, name: 'Destructive Trance', ...PSION_SUBCLASS_DETAILS["Destructive Trance"], isChoice: false },
+          { level: 6, name: 'Rebounding Field', ...PSION_SUBCLASS_DETAILS["Rebounding Field"], isChoice: false },
+          { level: 10, name: 'Enhanced Telekinetic Crush', ...PSION_SUBCLASS_DETAILS["Enhanced Telekinetic Crush"], isChoice: false },
+          { level: 14, name: 'Heightened Telekinesis', ...PSION_SUBCLASS_DETAILS["Heightened Telekinesis"], isChoice: false },
         ],
       },
       {
@@ -828,12 +829,12 @@ export const CLASSES: ClassData[] = [
         spell_list: ['Bane', 'Command', 'Detect Thoughts', 'Mind Spike', 'Counterspell', 'Slow', 'Compulsion', 'Confusion', "Yolande's Regal Presence", 'Modify Memory'],
         features: [
           { level: 3, name: 'Telepath Spells', description: "Always have Bane, Command, Detect Thoughts, Mind Spike prepared. More spells at 5, 7, 9.", isChoice: false },
-          { level: 3, name: 'Mind Infiltrator', description: "Cast Detect Thoughts spending only 1 Psionic Energy Die: no components, no Concentration. Target doesn't know you're probing if it fails its Wisdom save.", isChoice: false },
-          { level: 3, name: 'Telepathic Distraction', description: "Reaction: when a creature within your telepathy range hits with an attack, roll 1 Psionic Energy Die and subtract it from the attack roll (possibly turning it into a miss). Die only expended if the attack misses.", isChoice: false },
-          { level: 6, name: 'Bulwark Mind', description: "Start of turn: spend 1 Psionic Energy Die to enter a fortified state for 10 minutes. Gain Resistance to Psychic damage; add a free Psionic Energy Die roll to INT/WIS/CHA saves (die not expended).", isChoice: false },
-          { level: 6, name: 'Potent Thoughts', description: "Telepathy range increases to 60 ft. Add your Intelligence modifier to damage dealt by any Psion cantrip.", isChoice: false },
-          { level: 10, name: 'Telepathic Bolstering', description: "Reaction: when you or a creature within your telepathy range fails a check or misses an attack, spend 1 Psionic Energy Die — add the roll to the d20, potentially turning failure into success (die only expended on success).", isChoice: false },
-          { level: 14, name: 'Scramble Minds', description: "Cast Confusion without a spell slot by spending 4 Psionic Energy Dice. Expanded radius to 30 ft, exempt one creature you choose, and you choose each affected target's behavior from the table instead of rolling.", isChoice: false },
+          { level: 3, name: 'Mind Infiltrator', ...PSION_SUBCLASS_DETAILS["Mind Infiltrator"], isChoice: false },
+          { level: 3, name: 'Telepathic Distraction', ...PSION_SUBCLASS_DETAILS["Telepathic Distraction"], isChoice: false },
+          { level: 6, name: 'Bulwark Mind', ...PSION_SUBCLASS_DETAILS["Bulwark Mind"], isChoice: false },
+          { level: 6, name: 'Potent Thoughts', ...PSION_SUBCLASS_DETAILS["Potent Thoughts"], isChoice: false },
+          { level: 10, name: 'Telepathic Bolstering', ...PSION_SUBCLASS_DETAILS["Telepathic Bolstering"], isChoice: false },
+          { level: 14, name: 'Scramble Minds', ...PSION_SUBCLASS_DETAILS["Scramble Minds"], isChoice: false },
         ],
       },
     ],
