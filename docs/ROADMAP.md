@@ -1,5 +1,19 @@
 # DNDKeep — Two-Track Roadmap
 
+### In progress — Psion spell replacements, planned v2.787
+
+UA Psion Update p.3 (local supplied PDF) allows one cantrip and one prepared
+spell replacement when gaining a Psion level. Current Spell Book removal/addition
+bypasses that timing, and neither level-up flow offers the replacements.
+The shared pure validator now checks one optional swap per category, class-list
+eligibility, the new Psion-level spell ceiling, duplicate ownership, and protected
+grants. It preserves unrelated choices and prepares the replacement leveled spell.
+Its 42-test module passes (16 new replacement cases plus existing level checks).
+Still required: wire both level-up flows, prevent the ordinary picker from
+bypassing replacement timing, preserve incomplete-list filling, validate granted
+spell/class targeting (including multiclass), and verify browser behavior. This
+foundation is not a finished or deployed feature.
+
 ### Release pending — Campaign concentration persistence, v2.786
 
 Confirmed: pending saves read `state=offered`, roll and clear concentration,
@@ -55,14 +69,15 @@ All 48 concentration browser/database checks pass together (desktop/mobile).
 Full gate: 1,555 unit tests, TS 208/208, build/rules/coordinates/anchors/hooks
 and bundle budget green (253 KB entry).
 
-Remaining before release: merge/deploy the frontend after its checks pass. Active save bonuses,
+Remaining release verification: confirm production frontend v2.786. Active save bonuses,
 advantage/exhaustion parity, summon/aura cleanup and other effects still need
 audit. During-combat sheet HP still uses the character snapshot; map HP uses the
 combatant. A unified live HP model is separate follow-up work. Offer creation and
 parent damage application are not yet durable/idempotent like save settlement.
 All three migrations shipped through schema PR #113 (merge 48b5fd5). Production
 workflow 37652706065 succeeded; its apply log confirms each migration applied.
-Frontend PR #114 is pending; production frontend remains v2.785.
+Frontend PR #114 merged at 461e5be after all checks passed. Main CI
+37654111665 and production deployment are pending; last public check is v2.785.
 
 PR #112 (sheet concentration, v2.785) merged at 89350c6 after all PR checks passed.
 Production CI 37644873225 passed; the public service worker confirms v2.785.0.
