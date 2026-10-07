@@ -49,3 +49,24 @@ describe('creator recovery in the real wizard', () => {
     await waitFor(() => expect(readCreatorDraft(localStorage, 'creator-test')).toBeNull());
   });
 });
+
+
+describe('Psion creation payload', () => {
+  it.each(['recommended', 'blank'] as const)('saves custom choices without unwanted starter spells in %s mode', async setupMode => {
+    const draft = emptyCreatorDraft();
+    writeCreatorDraft(localStorage, 'creator-test', {
+      ...draft, name: 'Mira', species: 'Elf', className: 'Psion', background: 'Soldier', step: 5, setupMode,
+      buildChoices: { ...draft.buildChoices, spells: ['shield'], cantrips: ['minor-illusion'] },
+    });
+    vi.mocked(createCharacter).mockResolvedValueOnce({ data: { id: 'created' }, error: null } as Awaited<ReturnType<typeof createCharacter>>);
+    renderCreator();
+    fireEvent.click(screen.getByRole('button', { name: 'Resume character' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create Character' }));
+    await screen.findByText('Character created successfully');
+    expect(vi.mocked(createCharacter).mock.calls[0][0]).toMatchObject({
+      known_spells: ['shield', 'minor-illusion', 'mage-hand'],
+      prepared_spells: setupMode === 'recommended' ? ['shield'] : [],
+      spell_sources: { shield: ['class:Psion'], 'minor-illusion': ['class:Psion'], 'mage-hand': ['class:Psion'] },
+    });
+  });
+});
