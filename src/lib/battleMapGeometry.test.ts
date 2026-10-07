@@ -5,11 +5,12 @@ import {distanceBetweenParticipantsFtUsingMap,findTokenForParticipant,buildParti
 // v2.746 — the loader test needs a fluent client; everything else runs on
 // the pure helpers. Recording proxy: any chain resolves to `respond(table)`.
 const h=vi.hoisted(()=>{
-  const state={respond:((_t:string)=>({data:null,error:null})) as (t:string)=>{data:unknown;error:unknown}};
+  const state={queries:[] as {table:string;steps:{method:string;args:unknown[]}[]}[],respond:((_t:string)=>({data:null,error:null})) as (t:string)=>{data:unknown;error:unknown}};
   function builder(table:string):unknown{
+    const query={table,steps:[] as {method:string;args:unknown[]}[]};state.queries.push(query);
     const b:unknown=new Proxy({},{get(_t,prop){
       if(prop==='then')return (res:(v:unknown)=>unknown,rej:(e:unknown)=>unknown)=>Promise.resolve().then(()=>state.respond(table)).then(res,rej);
-      return ()=>b;
+      return (...args:unknown[])=>{query.steps.push({method:String(prop),args});return b;};
     }});
     return b;
   }
@@ -90,4 +91,30 @@ describe('v2.746 per-instance fallback',()=>{
     expect(byId.pl3.creature_id).toBeUndefined();
     expect(byId.pl1.col).toBe(1);
   });
+});
+
+describe('v2.758 consistent default scene',()=>{
+ it('uses the map list order, not last edited, when there is no viewed scene',async()=>{
+  h.state.queries=[];h.state.respond=table=>({data:table==='scenes'?{id:'first',grid_size_px:70,width_cells:10,height_cells:10}:[],error:null});
+  expect((await loadActiveBattleMap('campaign',{viewedSceneId:null}))?.id).toBe('first');
+  const queries=h.state.queries.filter(q=>q.table==='scenes');expect(queries).toHaveLength(1);
+  expect(queries[0].steps.filter(s=>s.method==='order')).toEqual([
+   {method:'order',args:['created_at',{ascending:true}]},{method:'order',args:['id',{ascending:true}]},
+  ]);
+  expect(queries[0].steps).toContainEqual({method:'eq',args:['campaign_id','campaign']});
+ });
+ it('keeps a valid viewed scene ahead of the default',async()=>{
+  h.state.queries=[];h.state.respond=table=>({data:table==='scenes'?{id:'viewed',grid_size_px:70,width_cells:10,height_cells:10}:[],error:null});
+  expect((await loadActiveBattleMap('campaign',{viewedSceneId:'viewed'}))?.id).toBe('viewed');
+  const queries=h.state.queries.filter(q=>q.table==='scenes');expect(queries).toHaveLength(1);
+  expect(queries[0].steps.filter(s=>s.method==='order')).toEqual([]);
+  expect(queries[0].steps).toContainEqual({method:'eq',args:['id','viewed']});
+  expect(queries[0].steps).toContainEqual({method:'eq',args:['campaign_id','campaign']});
+ });
+ it('falls back when a stale viewed scene is missing or belongs to another campaign',async()=>{
+  h.state.queries=[];let scenes=0;
+  h.state.respond=table=>({data:table==='scenes'?(++scenes===1?null:{id:'first',grid_size_px:70,width_cells:10,height_cells:10}):[],error:null});
+  expect((await loadActiveBattleMap('campaign',{viewedSceneId:'foreign'}))?.id).toBe('first');
+  expect(h.state.queries.filter(q=>q.table==='scenes')).toHaveLength(2);
+ });
 });

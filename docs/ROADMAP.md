@@ -1,5 +1,21 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Consistent default map geometry, v2.758
+
+With no viewed map, attack geometry picked the most recently edited scene,
+while the map and cold combat starter picked the oldest-created scene. Editing
+another scene could therefore change calculated ranges without changing the
+map that opens. Geometry now uses the same created-at order as the scene list;
+both break timestamp ties by id. Explicit viewed scenes still win, scoped to
+the requested campaign. No token coordinates, permissions or schema changed.
+
+Validation: selection unit tests and local browser integration with two scenes
+placing the same characters 5 ft versus 40 ft apart, including a newer edit,
+stale viewed id and tied creation timestamps; full release gate.
+Persisting an encounter-to-scene association for cross-client consistency is
+still a separate queued improvement; this fixes the cold default mismatch.
+
+
 ### 2026-10-07 — Psionic Surge on conditional discipline rolls, v2.757
 
 The owner's UA update p.4 permits one Hit Point Die after rolling Energy Dice,

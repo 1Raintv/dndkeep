@@ -101,7 +101,8 @@ export async function listScenes(campaignId: string): Promise<Scene[]> {
     .from('scenes')
     .select('*')
     .eq('campaign_id', campaignId)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true });
   if (error) {
     console.error('[scenes] listScenes failed', error);
     return [];
