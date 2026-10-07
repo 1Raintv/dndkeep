@@ -1,5 +1,18 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Preserve the page on first worker installation, v2.771
+
+The initial service-worker claim no longer reloads an already-current page.
+Previously first-time visitors could lose an open dialog when installation
+finished a few seconds later. Replacing an existing controller still reloads
+once to pick up a deployment; duplicate events remain guarded.
+
+Desktop/mobile fresh-browser checks verify installation/control without another
+document navigation. The actual inline registration script is also exercised
+against first-claim, existing-controller, and repeated-change sequences. Restoring
+the old first-claim reload fails the fresh-browser regression.
+
+
 ### 2026-10-07 — Biofeedback dice and temporary HP, v2.770
 
 Biofeedback now has a usable Actions button. After confirming the qualifying
