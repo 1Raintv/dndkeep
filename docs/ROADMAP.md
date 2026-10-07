@@ -1,6 +1,25 @@
 # DNDKeep — Two-Track Roadmap
 
-### In progress — cantrip damage and Potent Thoughts, planned v2.789
+### In progress — standalone healing and spell history, planned v2.790
+
+Standalone healing previously accepted only bare dice, so Cure Wounds with
+`+ MOD` did nothing; the Spells-tab modal offered no healing roll. Both tabs now
+use the existing healing parser/roller, offer a slot choice, use that slot’s
+healing table and effective casting modifier, and spend one slot. Canceling
+spends nothing. Flat healing records its amount without an invented die roll.
+Standalone healing remains a tabletop roll; it does not select or modify HP.
+
+The remaining spell cast/attack/heal/save log calls now identify the character
+rather than the account, fixing foreign-key failures. Untargeted spell attacks
+no longer claim a hit against an invented AC of 10. Local desktop/mobile tests
+verify Metamorph Cure Wounds at level 2 (4d8 + INT), exact slot persistence,
+cancellation and Mage Hand history. Ten combined desktop/mobile checks pass;
+two focused follow-ups verify the final healing preview. Screenshots inspected.
+Full gate: 1,727 unit tests, TS 207/207 (baseline ratcheted down), required
+rules/map/hooks/build checks and 254 KB entry all pass. Release pending.
+
+
+### Released — cantrip damage and Potent Thoughts, v2.789
 
 Verified against owner-provided Psion Update p.10: level-6 Telepath adds INT
 to damage from Psion cantrips. The casting paths were missing this modifier
@@ -27,7 +46,8 @@ True Strike weapon selection/damage and Toll the Dead conditional damage remain
 separate follow-ups. The base table is not treated as a full True Strike weapon
 attack. Remaining casting audit: primary-class casting-stat selection for
 multiclass spells, legacy cast/heal log identity, and leveled save-outcome rules.
-Production release pending.
+PR #118 merged as `c9fea3aa`; main CI 37681526934 passed and public service
+worker confirms 2.789.0.
 
 
 ### Released — spell grant level validation, v2.788

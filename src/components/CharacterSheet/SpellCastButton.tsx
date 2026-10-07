@@ -33,7 +33,7 @@ const SpellTargetPickerModal = lazy(() => import('../Combat/SpellTargetPickerMod
 const MultiAttackPickerModal = lazy(() => import('../Combat/MultiAttackPickerModal'));
 const SpellHealPickerModal = lazy(() => import('../Combat/SpellHealPickerModal'));
 import { findMultiAttackSpell, computeDefaultAttackCount } from '../../lib/multiAttackSpells';
-import { findHealSpell, type HealSpellDef } from '../../lib/healSpells';
+import { findHealSpell, resolveHealDice, rollResolvedHeal, type HealSpellDef } from '../../lib/healSpells';
 import { BUFF_SPELL_REGISTRY } from '../../lib/buffs';
 
 interface SpellCastButtonProps {
@@ -71,20 +71,8 @@ const DAMAGE_COLORS: Record<string, string> = {
  Force: '#c084fc',
 };
 
-/** Parse "2d6" -> { count:2, sides:6 } */
-function parseDice(expr: string): { count: number; sides: number } | null {
- const m = expr.match(/^(\d+)d(\d+)$/);
- if (!m) return null;
- return { count: parseInt(m[1]), sides: parseInt(m[2]) };
-}
-
-/** Roll N dice of S sides, return individual values */
-function rollNdS(count: number, sides: number): number[] {
- return Array.from({ length: count }, () => rollDie(sides));
-}
-
 export default function SpellCastButton({
- spell, character, userId, campaignId, onUpdateSlots, compact = false,
+ spell, character, campaignId, onUpdateSlots, compact = false,
  spellLockedOut = false, onLeveledSpellCast, forceSlotLevel, onConcentrationCast, upcastTrigger,
 }: SpellCastButtonProps) {
  const isBonusActionCast = /bonus action/i.test(spell.casting_time);
@@ -260,6 +248,11 @@ export default function SpellCastButton({
  const saveDC = 8 + spellAttack;
  const damageProfile=cantripDamage(character,spell,mechanics.damageDice,stats.modifiers.intelligence);
  mechanics.damageDice=damageProfile.dice?addDiceModifier(damageProfile.dice,damageProfile.bonus):null;
+ const previewHeal=resolveHealDice(spell.heal_at_slot_level?.[String(selectedSlot)]??mechanics.healDice,spellMod);
+ const healingPreview=previewHeal&&<p style={{fontSize:12,color:'#6ee7b7',margin:'8px 0'}}>
+ Healing: {previewHeal.diceCount?`${previewHeal.diceCount}d${previewHeal.diceSides}${previewHeal.flatBonus>0?'+':''}${previewHeal.flatBonus||''}`:previewHeal.flatBonus}
+ </p>;
+
 
 
  /** Deduct one slot of the given level */
@@ -299,7 +292,8 @@ export default function SpellCastButton({
  }
 
  // The animation, logged expression and combat payload use the same damage.
- triggerRoll({
+ if(rolled.dice.length)triggerRoll({
+ result:rolled.dice[0].value,dieType:rolled.dice[0].die,
  allDice:rolled.dice,expression:effectiveDice,flatBonus:rolled.modifier,total,
  label:`${spell.name} — ${mechanics.damageType ?? 'damage'}`,
  });
@@ -315,24 +309,23 @@ export default function SpellCastButton({
  }
 
  /** Roll heal dice → 3D roller + action log */
- async function rollHeal() {
+ async function rollHeal(slotLevel?:number) {
  if (!mechanics.healDice) return;
- const parsed = parseDice(mechanics.healDice);
- if (!parsed) return;
- const { count, sides } = parsed;
- const rolls = rollNdS(count, sides);
- const total = rolls.reduce((a, b) => a + b, 0);
- if (!isCantrip && availableSlots.length === 1) spendSlot(availableSlots[0].level);
- triggerRoll({
- allDice: count > 1 ? rolls.map(v => ({ die: sides, value: v })) : undefined,
- result: count === 1 ? rolls[0] : undefined,
- dieType: count === 1 ? sides : undefined,
- expression: mechanics.healDice, flatBonus: 0, total,
- label: `${spell.name} — healing`,
- } as any);
- await logAction({ campaignId, characterId: userId, characterName: character.name,
- actionType: 'heal', actionName: spell.name,
- diceExpression: mechanics.healDice, individualResults: rolls, total });
+ const effectiveSlot=slotLevel??forceSlotLevel??(isCantrip?0:availableSlots[0]?.level);
+ if(effectiveSlot===undefined||(!isCantrip&&!availableSlots.some(s=>s.level===effectiveSlot)))return;
+ const expression=spell.heal_at_slot_level?.[String(effectiveSlot)]??mechanics.healDice;
+ const resolved=resolveHealDice(expression,spellMod);
+ if(!resolved)return;
+ const rolled=rollResolvedHeal(resolved),total=Math.max(0,rolled.total);
+ // v2.790 — resolve MOD/upcasting before paying; every successful cast pays once.
+ burnSlot(effectiveSlot);
+ flashCast(effectiveSlot);
+ if(rolled.rolls.length)triggerRoll({result:rolled.rolls[0],dieType:resolved.diceSides,
+ allDice:rolled.rolls.map(value=>({die:resolved.diceSides,value})),
+ expression,flatBonus:resolved.flatBonus,total,label:`${spell.name} — healing`});
+ await logAction({campaignId,characterId:character.id,characterName:character.name,
+ actionType:'heal',actionName:spell.name,targetName:target||undefined,diceExpression:expression,individualResults:rolled.rolls,total,
+ notes:`Level ${effectiveSlot} slot; healing bonus ${resolved.flatBonus>=0?'+':''}${resolved.flatBonus}. Apply healing at the table.`});
  }
 
  /** Roll spell attack (d20 + spellAttack) — marks leveled spell as cast */
@@ -347,13 +340,14 @@ export default function SpellCastButton({
  const roll2 = hasDisadvantage ? rollDie(20) : roll1;
  const d20 = hasDisadvantage ? Math.min(roll1, roll2) : roll1;
  const total = d20 + spellAttack;
- const hitResult = d20 === 20 ? 'crit' : d20 === 1 ? 'fumble' : total >= 10 ? 'hit' : 'miss';
+ // No target AC is known for this standalone roll. Do not invent an AC-10 hit.
+ const hitResult = d20 === 20 ? 'crit' : d20 === 1 ? 'fumble' : '';
  const disadvLabel = hasDisadvantage ? ` (Disadv. — ${disadvSources.join(', ')})` : '';
  triggerRoll({
  result: d20, dieType: 20, modifier: spellAttack, total,
  label: `${spell.name} — Spell Attack${disadvLabel}`,
  });
- await logAction({ campaignId, characterId: userId, characterName: character.name,
+ await logAction({ campaignId, characterId: character.id, characterName: character.name,
  actionType: 'attack', actionName: `${spell.name} — Spell Attack${disadvLabel}`,
  diceExpression: hasDisadvantage ? '2d20kl1' : '1d20',
  individualResults: hasDisadvantage ? [roll1, roll2] : [d20],
@@ -384,7 +378,7 @@ export default function SpellCastButton({
   *  resolve the effect after the reaction window closes un-countered. */
  async function applyEffect(slotLevel: number, targetName?: string) {
  flashCast(slotLevel);
- await logAction({ campaignId, characterId: userId, characterName: character.name,
+ await logAction({ campaignId, characterId: character.id, characterName: character.name,
  actionType: 'spell', actionName: spell.name, targetName,
  notes: `${isCantrip ? 'Cantrip' : `Level ${slotLevel} slot`} · ${spell.range} · ${spell.duration}` });
  }
@@ -438,7 +432,7 @@ export default function SpellCastButton({
  /** Log save DC to party */
  async function logSaveDC() {
  const saveColor = SAVE_COLORS[mechanics.saveType ?? ''];
- await logAction({ campaignId, characterId: userId, characterName: character.name,
+ await logAction({ campaignId, characterId: character.id, characterName: character.name,
  actionType: 'save', actionName: `${spell.name} — ${mechanics.saveType} Save`,
  total: saveDC,
  notes: `Targets must beat DC ${saveDC} ${mechanics.saveType} save${mechanics.damageDice ? ` or take ${mechanics.damageDice} ${mechanics.damageType} damage` : ''}` });
@@ -513,6 +507,7 @@ export default function SpellCastButton({
  }}>
  {spell.name}
  </h3>
+ {healingPreview}
  <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 6 }}>
  Base level {spell.level} · Cast with a higher slot for greater effect
  </div>
@@ -632,8 +627,11 @@ export default function SpellCastButton({
      burning a slot (e.g. concentration spell tick) is handled elsewhere. */}
  <button
  onClick={() => {
+ if(mechanics.healDice)rollHeal(selectedSlot);
+ else {
  castUtility(selectedSlot, target);
  if (mechanics.damageDice) rollDamage(selectedSlot);
+ }
  setShowModal(false);
  setTarget('');
  }}
@@ -649,7 +647,7 @@ export default function SpellCastButton({
  >
  {mechanics.damageDice
  ? `↑ Upcast at Level ${selectedSlot} + Roll Damage`
- : `↑ Upcast at Level ${selectedSlot}`}
+ : `↑ Upcast at Level ${selectedSlot}${mechanics.healDice?' + Roll Healing':''}`}
  </button>
  <button
  className="btn-secondary"
@@ -737,8 +735,8 @@ export default function SpellCastButton({
     </Suspense>
   );
 
- // v2.789 — cantrips use the same cast/roll/target controls in both sheet tabs.
- if (compact || isCantrip) {
+ // v2.790 — cantrips and healing share cast/roll/target controls in both tabs.
+ if (compact || isCantrip || mechanics.healDice) {
  // If a leveled spell was already cast this turn, lock this spell out
  if (spellLockedOut) {
  return (
@@ -1077,7 +1075,11 @@ export default function SpellCastButton({
            setHealPicker({ slotLevel: effSlot, healDice: effDice, def: healDef! });
            return;
          }
-         rollHeal();
+         const effSlot=forceSlotLevel??(isCantrip?0:availableSlots[0]?.level);
+         if(!isCantrip&&forceSlotLevel===undefined&&availableSlots.length>1){
+           setSelectedSlot(effSlot!);setShowModal(true);return;
+         }
+         rollHeal(effSlot);
        }}
        title={canRoute
          ? `Pick up to ${healDef!.maxTargets} target${healDef!.maxTargets === 1 ? '' : 's'} to heal. Applies HP directly.`
@@ -1122,6 +1124,7 @@ export default function SpellCastButton({
  }}>
  {spell.name}
  </h3>
+ {healingPreview}
  <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 6 }}>
  Base level {spell.level}{isUpcasting ? ` · Casting at level ${selectedSlot}` : ''}
  </div>
@@ -1203,7 +1206,7 @@ export default function SpellCastButton({
  const verb = isUpcasting ? '↑ Upcast' : 'Cast';
  const confirmLabel = mechanics.damageDice
  ? `${verb} at Level ${selectedSlot} + Roll Damage`
- : `${verb} at Level ${selectedSlot}`;
+ : `${verb} at Level ${selectedSlot}${mechanics.healDice?' + Roll Healing':''}`;
  return (
  <div style={{
  display: 'flex', flexDirection: 'column' as const, gap: 8,
@@ -1211,8 +1214,11 @@ export default function SpellCastButton({
  }}>
  <button
  onClick={() => {
+ if(mechanics.healDice)rollHeal(selectedSlot);
+ else {
  castUtility(selectedSlot, target);
  if (mechanics.damageDice) rollDamage(selectedSlot);
+ }
  setShowModal(false);
  setTarget('');
  }}
