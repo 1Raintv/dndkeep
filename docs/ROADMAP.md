@@ -1,6 +1,6 @@
 # DNDKeep — Two-Track Roadmap
 
-### In progress — Campaign concentration persistence, planned v2.786
+### Release pending — Campaign concentration persistence, v2.786
 
 Confirmed: pending saves read `state=offered`, roll and clear concentration,
 then update the prompt. Two clients can both resolve the same offer; timeout
@@ -19,7 +19,7 @@ that advances on every explicit spell write, including same-spell recasts, but
 not on HP edits or duration ticks. Ordinary direct/RPC edits cannot spoof the
 revision. Existing pending prompts retain a NULL revision because their original
 casting cannot be reconstructed safely. Four real Docker tests pass, including
-concurrent casts and transaction rollback. No production migration is shipped.
+concurrent casts and transaction rollback. Production application is recorded below.
 Local migration 20261007154500 adds `settle_pending_concentration_save`: the
 owner/DM-authorized character and prompt locks record one outcome, clear the
 original spell and slot metadata, remove only that caster's effects (including
@@ -27,7 +27,7 @@ condition cascades), and write history in one transaction. Replays return the
 saved roll; stale/legacy offers retire without touching current effects. Ten
 real database scenarios cover racing owner/DM clients, multiple offers, same-spell
 recasts, unrelated effects, natural-extreme preferences, authorization and full
-rollback when history fails. These migrations are local only.
+rollback when history fails. Production application is recorded below.
 The local API recovery layer saves a proposed d20 before network I/O, reuses
 it across failures/reloads, shares in-flight requests within a tab and accepts
 another client's authoritative receipt. Sixteen isolated API tests cover offer
@@ -55,12 +55,14 @@ All 48 concentration browser/database checks pass together (desktop/mobile).
 Full gate: 1,555 unit tests, TS 208/208, build/rules/coordinates/anchors/hooks
 and bundle budget green (253 KB entry).
 
-Remaining before release: database-first deployment. Active save bonuses,
+Remaining before release: merge/deploy the frontend after its checks pass. Active save bonuses,
 advantage/exhaustion parity, summon/aura cleanup and other effects still need
 audit. During-combat sheet HP still uses the character snapshot; map HP uses the
 combatant. A unified live HP model is separate follow-up work. Offer creation and
 parent damage application are not yet durable/idempotent like save settlement.
-These three migrations and frontend changes remain local.
+All three migrations shipped through schema PR #113 (merge 48b5fd5). Production
+workflow 37652706065 succeeded; its apply log confirms each migration applied.
+Frontend PR #114 is pending; production frontend remains v2.785.
 
 PR #112 (sheet concentration, v2.785) merged at 89350c6 after all PR checks passed.
 Production CI 37644873225 passed; the public service worker confirms v2.785.0.
