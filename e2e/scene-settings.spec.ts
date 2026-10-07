@@ -83,4 +83,55 @@ test.describe('scene settings without a database',()=>{
     await expect(dialog).toBeHidden();await expect(page.getByTestId('deleted-scene')).toHaveText('scene-fixture');
     expect(deletes).toBe(2);expect(errors).toEqual([]);
   });
+  test('image fitting reports failures and oversized images without losing dimensions',async({page},info)=>{
+    let requests=0;
+    await page.route('**/storage/v1/object/public/**',async route=>{
+      requests++;
+      if(requests===1) {await route.fulfill({status:404,body:'missing'});return;}
+      await route.fulfill({status:200,contentType:'image/svg+xml',headers:{'Access-Control-Allow-Origin':'*'},body:'<svg xmlns="http://www.w3.org/2000/svg" width="2100" height="700"><rect width="2100" height="700" fill="tan"/></svg>'});
+    });
+    await page.goto('/e2e/fixtures/scene-settings.html?image');
+    await page.getByRole('button',{name:'Open scene settings'}).click();
+    const dialog=page.getByRole('dialog',{name:'Scene settings',exact:true});
+    const fit=dialog.getByRole('button',{name:'Fit to map image',exact:true});
+    const grid=dialog.getByRole('spinbutton',{name:'Grid size in pixels'});
+    const width=dialog.getByRole('spinbutton',{name:'Width in cells'});
+    const height=dialog.getByRole('spinbutton',{name:'Height in cells'});
+    await fit.click();await expect(dialog.getByRole('alert')).toContainText('could not be loaded');
+    await expect(width).toHaveValue('20');await expect(height).toHaveValue('15');
+    await grid.fill('10');await fit.click();
+    await expect(dialog.getByRole('alert')).toContainText('210 × 70 cells');
+    await expect(width).toHaveValue('20');await expect(height).toHaveValue('15');
+    await page.screenshot({path:info.outputPath('image-fit-error.png')});
+    await grid.fill('70');await fit.click();
+    await expect(width).toHaveValue('30');await expect(height).toHaveValue('10');
+    await expect(dialog.getByRole('alert')).toBeHidden();
+    await page.screenshot({path:info.outputPath('image-fit-success.png')});
+  });
+  test('image fitting blocks conflicting edits but keeps Cancel available',async({page})=>{
+    let release!:()=>void;const pending=new Promise<void>(r=>release=r);
+    await page.route('**/storage/v1/object/public/**',async route=>{
+      await pending;
+      await route.fulfill({status:200,contentType:'image/svg+xml',headers:{'Access-Control-Allow-Origin':'*'},body:'<svg xmlns="http://www.w3.org/2000/svg" width="2100" height="700"/>'});
+    });
+    try {
+      await page.goto('/e2e/fixtures/scene-settings.html?image');
+      await page.getByRole('button',{name:'Open scene settings'}).click();
+      const dialog=page.getByRole('dialog',{name:'Scene settings',exact:true});
+      await dialog.getByRole('button',{name:'Fit to map image',exact:true}).click();
+      await expect(dialog.getByRole('button',{name:'Loading image…',exact:true})).toBeDisabled();
+      await expect(dialog.getByRole('spinbutton',{name:'Grid size in pixels'})).toBeDisabled();
+      await expect(dialog.getByRole('button',{name:'Save',exact:true})).toBeDisabled();
+      await expect(dialog.getByRole('button',{name:'Delete Scene',exact:true})).toBeDisabled();
+      await dialog.getByRole('button',{name:'Cancel',exact:true}).click();
+      await expect(dialog).toBeHidden();
+      await page.getByRole('button',{name:'Open scene settings'}).click();
+      release();
+      await expect(dialog.getByRole('spinbutton',{name:'Width in cells'})).toHaveValue('20');
+      await expect(dialog.getByRole('button',{name:'Fit to map image',exact:true})).toBeEnabled();
+      await dialog.getByRole('button',{name:'Fit to map image',exact:true}).click();
+      await expect(dialog.getByRole('spinbutton',{name:'Width in cells'})).toHaveValue('30');
+    } finally {release();}
+  });
+
 });

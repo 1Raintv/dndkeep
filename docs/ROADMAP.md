@@ -1,5 +1,19 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Recoverable map-image fitting, v2.763
+
+Scene settings now shows when the map image is loading, blocks conflicting edits,
+saves and deletion during fitting, and keeps Cancel available. Image failures
+produce an accessible in-dialog error with retry/manual-entry guidance. Fitting
+rejects dimensions beyond the existing 200-cell limit without replacing the draft;
+raising the grid pixel size and retrying succeeds. Closing or changing scenes
+invalidates delayed image results. No image resampling or token writes occur.
+
+Validation: desktop/mobile browser tests intercept all backend traffic and cover
+404/retry, oversized-image preservation, successful sizing, cancellation/reopen,
+and existing save/delete/error/focus behavior. Full release gate and visual checks.
+
+
 ### 2026-10-07 — Correct character Attack action counts, v2.762
 
 Encounter seeding read a nonexistent `class` field, so real characters started
