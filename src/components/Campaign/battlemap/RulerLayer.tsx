@@ -2,6 +2,7 @@
 // See that file's header changelog for this code's full history.
 
 import { Container, Graphics, Text, TextStyle } from 'pixi.js';
+import {rulerLabelPosition} from './rulerLabelPosition';
 import { Viewport } from 'pixi-viewport';
 import { useEffect, useRef } from 'react';
 import { snapToCellCenter } from '../../../lib/map/coords';
@@ -126,9 +127,11 @@ export function RulerLayer(props: {
      * L-shaped path reads as the total movement, not just the
      * end-to-end straight line.
      */
-    let lastZoom = viewport.scale.x;
+    let lastZoom = viewport.scale.x, lastX = viewport.x, lastY = viewport.y;
+    let lastWidth = viewport.screenWidth, lastHeight = viewport.screenHeight;
     function redraw() {
-      lastZoom = viewport!.scale.x;
+      lastZoom = viewport!.scale.x; lastX = viewport!.x; lastY = viewport!.y;
+      lastWidth = viewport!.screenWidth; lastHeight = viewport!.screenHeight;
       const pts = pointsRef.current;
       const pending = pendingPosRef.current;
       const gfx = graphicsRef.current;
@@ -198,7 +201,12 @@ export function RulerLayer(props: {
 
       label.text = `${feet} ft · ${totalCells} ${totalCells === 1 ? 'cell' : 'cells'}`;
       const tip = previewSnapped ?? snapped[snapped.length - 1];
-      label.position.set(tip.x, tip.y + 14 / zoom);
+      // v2.778 — inverse zoom makes these local text bounds CSS-pixel sized.
+      // Preserve the endpoint/path; only move its label when it would be clipped.
+      const bounds = label.getLocalBounds();
+      const screen = rulerLabelPosition(viewport!.toScreen(tip.x, tip.y), bounds,
+        {width:viewport!.screenWidth,height:viewport!.screenHeight});
+      label.position.copyFrom(viewport!.toWorld(screen.x-bounds.x,screen.y-bounds.y));
 
       container.visible = true;
     }
@@ -265,15 +273,18 @@ export function RulerLayer(props: {
       }
     }
 
-    const refreshZoom = () => { if(viewport.scale.x !== lastZoom)redraw(); };
-    viewport.on('frame-end', refreshZoom);
+    const refreshView = () => {
+      if(viewport.scale.x !== lastZoom || viewport.x !== lastX || viewport.y !== lastY
+        || viewport.screenWidth !== lastWidth || viewport.screenHeight !== lastHeight)redraw();
+    };
+    viewport.on('frame-end', refreshView);
     canvasEl.addEventListener('pointerdown', onDown);
     window.addEventListener('pointermove', onMove);
     canvasEl.addEventListener('contextmenu', onContextMenu);
     canvasEl.addEventListener('pointerleave', clearPreview);
     window.addEventListener('keydown', onKey);
     return () => {
-      viewport.off('frame-end', refreshZoom);
+      viewport.off('frame-end', refreshView);
       canvasEl.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointermove', onMove);
       canvasEl.removeEventListener('contextmenu', onContextMenu);

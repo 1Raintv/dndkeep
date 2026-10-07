@@ -22,6 +22,9 @@ function Fixture(){
    Object.assign(window,{rulerFixture:{
     zoom:(scale:number)=>{vp.setZoom(scale,false);vp.moveCenter(175,35);},
     active:setActive,
+    resize:(width:number,height:number)=>{app.renderer.resize(width,height);vp.resize(width,height);},
+    tipAt:(x:number,y:number)=>{vp.setZoom(1,false);vp.moveCorner(175-x,35-y);},
+    labelBounds:()=>{const label=vp.children.find(c=>c.label==='map-ruler')?.children.find(c=>c.label==='map-ruler-label');if(!label)return null;const b=label.getBounds();return {x:b.x,y:b.y,width:b.width,height:b.height};},
     text:()=>vp.children.find(c=>c.label==='map-ruler')?.children.find(c=>c.label==='map-ruler-label')?.text,
     pixels:()=>{app.render();const copy=document.createElement('canvas');copy.width=320;copy.height=320;const ctx=copy.getContext('2d')!;ctx.drawImage(app.canvas,0,0,320,320);return Array.from(ctx.getImageData(0,0,320,320).data);},
     rulerCount:()=>vp.children.filter(c=>c.label==='map-ruler').length,
