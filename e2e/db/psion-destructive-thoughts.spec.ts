@@ -1,0 +1,120 @@
+import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { expect, test } from '@playwright/test';
+import { gateDbSuite, signInAsSeedDm } from './helpers';
+// Resource behavior is independent of the production updater lifecycle.
+test.use({serviceWorkers:'block'});
+
+const sql = (q: string): string => execFileSync('docker', ['exec', '-i', 'supabase_db_dndkeep', 'psql', '-U', 'postgres', '-d', 'postgres', '-t', '-A', '-v', 'ON_ERROR_STOP=1'], { input: q, encoding: 'utf8' }).trim();
+
+test.describe('Psion Destructive Thoughts', () => {
+  gateDbSuite();
+  let charId: string;
+  let userId: string;
+  let email: string;
+  test.beforeEach(() => {
+    charId = randomUUID(); userId = randomUUID();
+    email = 'psion-' + userId + '@dndkeep.local';
+    // v2.747: own disposable account, so shared seed users' slot limits and
+    // parallel suites cannot affect this fixture. Never alter their characters.
+    sql(`begin;
+      insert into auth.users (instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at,confirmation_token,recovery_token,email_change,email_change_token_new)
+      values ('00000000-0000-0000-0000-000000000000','${userId}','authenticated','authenticated','${email}',extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),now(),'{"provider":"email","providers":["email"]}','{"display_name":"Psion Fixture"}',now(),now(),'','','','');
+      insert into auth.identities (id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at)
+      values (gen_random_uuid(),'${userId}','${userId}','{"sub":"${userId}","email":"${email}"}','email',now(),now(),now());
+      update profiles set show_ua_content=true where id='${userId}';
+      insert into characters (id,user_id,name,species,class_name,background,subclass,level,class_resources)
+      values ('${charId}','${userId}','Restoration Fixture','Human','Psion','Sage','Psi Warper',20,'{"psion-disciplines":["Destructive Thoughts"],"psionic-energy-dice":2}');
+      commit;`);
+  });
+  test.afterEach(() => {
+    if (userId) sql(`delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
+  });
+
+
+  test('tabletop damage pays chosen dice once and retains the result',async({page},info)=>{
+    await page.addInitScript(()=>{Math.random=()=>0.01;});
+    sql(`update characters set level=5,intelligence=18,class_resources='{"psion-disciplines":["Destructive Thoughts"],"psionic-energy-dice":6,"other":9}' where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await page.getByRole('button',{name:'Roll damage',exact:true}).locator('visible=true').first().click();
+    const target=page.getByRole('dialog',{name:'Destructive Thoughts target'});
+    await target.getByRole('textbox').fill('Tabletop Goblin');await target.getByRole('button',{name:'Choose target'}).click();
+    const cost=page.getByRole('dialog',{name:'Destructive Thoughts',exact:true});
+    await expect(cost).toContainText('Conjuration or Evocation');await cost.getByRole('textbox').fill('3');
+    await page.screenshot({path:info.outputPath('destructive-cost.png')});
+    await cost.getByRole('button',{name:'Spend and roll'}).click();
+    await expect(page.getByRole('status').filter({hasText:'7 Psychic ·'})).toContainText('Apply at the table');
+    await expect.poll(()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('3');
+    await expect.poll(()=>sql(`select total from action_logs where character_id='${charId}' and action_name='Destructive Thoughts'`)).toBe('7');
+    expect(sql(`select class_resources->>'other' from characters where id='${charId}'`)).toBe('9');
+    await page.getByRole('status').filter({hasText:'7 Psychic ·'}).scrollIntoViewIfNeeded();
+    await page.screenshot({path:info.outputPath('destructive-tabletop.png')});
+  });
+
+  test('player queues paid Surge damage once after a lost response; DM applies it',async({page,browser},info)=>{
+    test.setTimeout(90_000);
+    const dm=randomUUID(),camp=randomUUID(),enc=randomUUID(),self=randomUUID(),target=randomUUID(),hidden=randomUUID(),cbSelf=randomUUID(),cbTarget=randomUUID(),cbHidden=randomUUID();
+    const dmEmail=`psion-dm-${dm}@dndkeep.local`,campName=`Destructive ${camp.slice(0,8)}`;
+    const dmContext=await browser.newContext({serviceWorkers:'block'});
+    try{
+      sql(`begin;
+        insert into auth.users (instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at,confirmation_token,recovery_token,email_change,email_change_token_new)
+        values ('00000000-0000-0000-0000-000000000000','${dm}','authenticated','authenticated','${dmEmail}',extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),now(),'{"provider":"email","providers":["email"]}','{"display_name":"Damage DM"}',now(),now(),'','','','');
+        insert into auth.identities (id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at)
+        values (gen_random_uuid(),'${dm}','${dm}','{"sub":"${dm}","email":"${dmEmail}"}','email',now(),now(),now());
+        insert into campaigns(id,owner_id,name) values('${camp}','${dm}','${campName}');
+        insert into campaign_members(campaign_id,user_id,role) values('${camp}','${userId}','player');
+        update characters set campaign_id='${camp}',level=7,intelligence=18,hit_dice_spent=0,class_resources='{"psion-disciplines":["Destructive Thoughts"],"psionic-energy-dice":2,"other":9}' where id='${charId}';
+        insert into combatants(id,campaign_id,owner_id,name,definition_type,definition_id,current_hp,max_hp) values
+          ('${cbSelf}','${camp}','${userId}','Restoration Fixture','character','${charId}',30,30),
+          ('${cbTarget}','${camp}','${dm}','Visible Goblin','srd_monster','fixture-goblin',30,30),
+          ('${cbHidden}','${camp}','${dm}','Secret Assassin','srd_monster','fixture-assassin',30,30);
+        insert into combat_encounters(id,campaign_id,status,current_turn_index) values('${enc}','${camp}','active',0);
+        insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,initiative,combatant_id,hidden_from_players) values
+          ('${self}','${enc}','${camp}','character','${charId}','Restoration Fixture',0,20,'${cbSelf}',false),
+          ('${target}','${enc}','${camp}','creature','fixture-goblin','Visible Goblin',1,10,'${cbTarget}',false),
+          ('${hidden}','${enc}','${camp}','creature','fixture-assassin','Secret Assassin',2,5,'${cbHidden}',true);
+        commit;`);
+      const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+      await page.addInitScript(()=>{Math.random=()=>0.01;});
+      await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+      await page.getByRole('button',{name:'Roll damage',exact:true}).locator('visible=true').first().click();
+      await expect(page.getByRole('heading',{name:'Destructive Thoughts target'})).toBeVisible();
+      await expect(page.getByText('Secret Assassin',{exact:true})).toHaveCount(0);
+      await page.screenshot({path:info.outputPath('destructive-targets.png')});
+      await page.getByRole('button').filter({hasText:'Visible Goblin'}).click();
+      const cost=page.getByRole('dialog',{name:'Destructive Thoughts',exact:true});
+      await cost.getByRole('textbox').fill('2');await cost.getByRole('button',{name:'Spend and roll'}).click();
+      let posts=0;
+      await page.route('**/rest/v1/pending_attacks*',async route=>{
+        if(route.request().method()==='POST'){
+          posts++;const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort();
+        }else await route.continue();
+      });
+      await page.getByRole('button',{name:'Spend 1 Hit Point Die',exact:true}).click();
+      await expect(page.getByRole('button',{name:'Retry queue',exact:true})).toBeVisible();
+      await expect(page.getByRole('status').filter({hasText:'12 Psychic ·'})).toContainText('Not queued');
+      await page.getByRole('button',{name:'Retry queue',exact:true}).click();
+      await expect(page.getByRole('status').filter({hasText:'12 Psychic ·'})).toContainText('Queued in combat');
+      expect(posts).toBe(1);
+      expect(sql(`select count(*) from pending_attacks where campaign_id='${camp}'`)).toBe('1');
+      expect(JSON.parse(sql(`select json_build_object('dice',damage_dice,'type',damage_type,'kind',attack_kind,'target',target_participant_id) from pending_attacks where campaign_id='${camp}'`))).toEqual({dice:'12',type:'Psychic',kind:'auto_hit',target});
+      const resources=()=>JSON.parse(sql(`select json_build_object('pool',class_resources->'psionic-energy-dice','spent',hit_dice_spent,'other',class_resources->'other') from characters where id='${charId}'`));
+      await expect.poll(resources).toEqual({pool:0,spent:1,other:9});
+      await page.getByRole('status').filter({hasText:'12 Psychic ·'}).scrollIntoViewIfNeeded();
+      await page.screenshot({path:info.outputPath('destructive-queued.png')});
+      const dmPage=await dmContext.newPage();dmPage.on('pageerror',e=>errors.push(e.message));
+      await signInAsSeedDm(dmPage,dmEmail);await dmPage.goto('/campaigns');
+      await dmPage.getByText(campName,{exact:true}).locator('visible=true').first().click();
+      await dmPage.getByRole('button',{name:/Roll Damage/}).click();
+      await expect(dmPage.getByRole('button',{name:/Apply Damage/})).toBeVisible();
+      await dmPage.screenshot({path:info.outputPath('destructive-resolve.png')});
+      await dmPage.getByRole('button',{name:/Apply Damage/}).click();
+      await expect.poll(()=>sql(`select current_hp from combatants where id='${cbTarget}'`)).toBe('18');
+      expect(resources()).toEqual({pool:0,spent:1,other:9});expect(errors).toEqual([]);
+    }finally{
+      await dmContext.close();
+      sql(`delete from campaigns where id='${camp}'; delete from auth.users where id='${dm}';`);
+    }
+  });
+});

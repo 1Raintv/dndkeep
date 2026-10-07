@@ -1,3 +1,4 @@
+import {log} from './log';
 import { savingThrowPassed } from '../rules/savingThrows';
 import { getCharacterSaveNaturalExtremes } from './api/characterSaveRules';
 // v2.97.0 — Phase E of the Combat Backbone
@@ -87,6 +88,8 @@ function getNat1AutoFails(): boolean {
 // ─── Declare ─────────────────────────────────────────────────────
 
 export interface DeclareAttackInput {
+  /** v2.777 — stable client ID lets a paid result retry without duplicating damage. */
+  requestId?: string;
   campaignId: string;
   encounterId?: string | null;
 
@@ -129,6 +132,7 @@ export async function declareAttack(input: DeclareAttackInput): Promise<PendingA
   const { data, error } = await supabase
     .from('pending_attacks')
     .insert({
+      ...(input.requestId ? {id:input.requestId} : {}),
       campaign_id: input.campaignId,
       encounter_id: input.encounterId ?? null,
       attacker_participant_id: input.attackerParticipantId ?? null,
@@ -154,6 +158,10 @@ export async function declareAttack(input: DeclareAttackInput): Promise<PendingA
     .select()
     .single();
 
+  if(error?.code==='23505' && input.requestId){
+    const {data:existing}=await supabase.from('pending_attacks').select('*').eq('id',input.requestId).eq('campaign_id',input.campaignId).maybeSingle();
+    return existing as PendingAttack|null;
+  }
   if (error || !data) {
     // eslint-disable-next-line no-console
     console.warn('[pendingAttack] declare failed:', error?.message);
@@ -186,7 +194,7 @@ export async function declareAttack(input: DeclareAttackInput): Promise<PendingA
       .eq('id', input.targetParticipantId);
   }
 
-  await emitCombatEvent({
+  const declarationEvent = emitCombatEvent({
     campaignId: input.campaignId,
     encounterId: input.encounterId ?? null,
     chainId,
@@ -209,6 +217,9 @@ export async function declareAttack(input: DeclareAttackInput): Promise<PendingA
     },
   });
 
+  // A paid roll must not wait for history delivery before becoming usable.
+  if(input.requestId)void declarationEvent.catch(error=>log.error('Paid attack history delivery failed',error,{requestId:input.requestId}));
+  else await declarationEvent;
   return data as PendingAttack;
 }
 
