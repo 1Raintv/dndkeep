@@ -66,6 +66,7 @@ describe('Psion creation payload', () => {
     expect(vi.mocked(createCharacter).mock.calls[0][0]).toMatchObject({
       known_spells: ['shield', 'minor-illusion', 'mage-hand'],
       prepared_spells: setupMode === 'recommended' ? ['shield'] : [],
+      spell_preparation_sources: { shield: setupMode === 'recommended' ? ['class:Psion'] : [], 'minor-illusion': [], 'mage-hand': [] },
       spell_sources: { shield: ['class:Psion'], 'minor-illusion': ['class:Psion'], 'mage-hand': ['class:Psion'] },
     });
   });

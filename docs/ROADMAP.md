@@ -74,6 +74,15 @@ metadata, immutable input and review. This domain module is not yet connected
 to saved character data or UI; database shape, creation/learning/replacement
 integration, counts, review controls and real browser checks remain required.
 
+Local migration 20261007191000 now persists spell_preparation_sources using
+the same validated tag shape as learned sources; existing records retain {}.
+New-character payloads record explicit prepared/unprepared class copies, and
+realtime sync includes the field. A real local database round trip preserves
+both nonempty and empty source arrays; a malformed update is rejected without
+changing the saved map. Both desktop/mobile database checks pass. The migration
+is applied only to Docker, and its ledger entry is verified. Ordinary learning,
+level-up replacement and source-review controls still need this field wired in.
+
 Before release: source tracking for automatic grants and per-class prepared-state
 ownership. A spell learned through Psion and later removed must not accidentally
 prepare an originally unprepared copy retained by Wizard.

@@ -8,10 +8,11 @@ export function buildInitialCharacterSpells(className: string, selected: readonl
   const chosen = [...new Set(selected)];
   const suggested = mode === 'recommended' ? buildRecommendedSetup(className, chosen).addKnown : [];
   const known = [...new Set([...chosen, ...suggested, ...(className === 'Psion' ? ['mage-hand'] : [])])];
-  const setup = mode === 'recommended' ? buildRecommendedSetup(className, known) : { prepared: [], pinned: [] };
+  const setup: { prepared: string[]; pinned: string[] } = mode === 'recommended' ? buildRecommendedSetup(className, known) : { prepared: [], pinned: [] };
   // These choices were made through this class's creator, so their origin is
   // known. Legacy character spell lists deliberately receive no such inference.
   const owner: SpellSource = `class:${className}`;
   const sources: SpellSources = Object.fromEntries(known.map(id => [id, [owner]]));
-  return { known_spells: known, prepared_spells: setup.prepared, pinned_spells: setup.pinned, spell_sources: sources };
+  const preparationSources: SpellSources = Object.fromEntries(known.map(id => [id, setup.prepared.includes(id) ? [owner] : []]));
+  return { spell_preparation_sources: preparationSources, known_spells: known, prepared_spells: setup.prepared, pinned_spells: setup.pinned, spell_sources: sources };
 }

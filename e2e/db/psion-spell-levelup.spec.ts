@@ -29,6 +29,22 @@ test.describe('Psion spell replacement level-up', () => {
     if (userId) sql(`delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
   });
 
+  test('database stores independent preparation and rejects invalid metadata',()=>{
+    expect(JSON.parse(sql(`select spell_preparation_sources from characters where id='${charId}'`))).toEqual({});
+    const sources={armor:['class:Psion'],shield:[]};
+    sql(`update characters set spell_preparation_sources='${JSON.stringify(sources)}'::jsonb where id='${charId}'`);
+    expect(JSON.parse(sql(`select spell_preparation_sources from characters where id='${charId}'`))).toEqual(sources);
+    // Catch a real CHECK violation inside a subtransaction, without noisy
+    // expected psql failures or changing the successfully persisted fixture.
+    sql(`do $$ begin
+      begin
+        update characters set spell_preparation_sources='{"armor":null}'::jsonb where id='${charId}';
+        raise exception 'Invalid preparation metadata was accepted';
+      exception when check_violation then null; end;
+    end $$;`);
+    expect(JSON.parse(sql(`select spell_preparation_sources from characters where id='${charId}'`))).toEqual(sources);
+  });
+
   for(const flow of ['banner','settings']) test(`${flow} replaces one spell and cantrip at level-up`,async({page},info)=>{
     sql(`update characters set level=5,pending_manual_level_grants=1,known_spells=ARRAY['minor-illusion','mind-sliver','mage-hand','mage-armor'],prepared_spells=ARRAY['mage-armor'],spell_slots='{"1":{"total":4,"used":1},"2":{"total":3,"used":0},"3":{"total":2,"used":0}}' where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);

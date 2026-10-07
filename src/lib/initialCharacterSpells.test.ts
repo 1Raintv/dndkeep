@@ -15,9 +15,12 @@ describe('initial character spell selection', () => {
     expect(result.known_spells).toEqual(['shield', 'minor-illusion', 'mage-hand']);
     expect(result.prepared_spells).toEqual(mode === 'recommended' ? ['shield'] : []);
     expect(result.spell_sources.shield).toEqual(['class:Psion']);
+    expect(result.spell_preparation_sources.shield).toEqual(mode === 'recommended' ? ['class:Psion'] : []);
+    expect(result.spell_preparation_sources['mage-hand']).toEqual([]);
   });
   it('keeps an empty blank build empty except the automatic class grant', () => {
     expect(buildInitialCharacterSpells('Psion', [], 'blank')).toEqual({
+      spell_preparation_sources: { 'mage-hand': [] },
       known_spells: ['mage-hand'], prepared_spells: [], pinned_spells: [], spell_sources: { 'mage-hand': ['class:Psion'] },
     });
   });

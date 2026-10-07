@@ -455,6 +455,7 @@ export type Database = {
           concentration_rounds_remaining: number | null;
           concentration_slot_level: number | null;
           spell_sources: Record<string, any>;
+          spell_preparation_sources: Record<string, any>;
           combat_hp_sync_id: string | null;
           concentration_revision: number;
           damage_resistances: string[];
@@ -544,6 +545,7 @@ export type Database = {
           concentration_rounds_remaining?: number | null;
           concentration_slot_level?: number | null;
           spell_sources?: Record<string, any>;
+          spell_preparation_sources?: Record<string, any>;
           combat_hp_sync_id?: string | null;
           concentration_revision?: number;
           damage_resistances?: string[];
@@ -633,6 +635,7 @@ export type Database = {
           concentration_rounds_remaining?: number | null;
           concentration_slot_level?: number | null;
           spell_sources?: Record<string, any>;
+          spell_preparation_sources?: Record<string, any>;
           combat_hp_sync_id?: string | null;
           concentration_revision?: number;
           damage_resistances?: string[];

@@ -99,3 +99,11 @@ it('accepts spell lists and their source metadata together, including cleared se
  expect(reconcileCharacterUpdate(ref,{known_spells:[],prepared_spells:[],spell_sources:{}},{}).patch)
   .toEqual({known_spells:[],prepared_spells:[],spell_sources:{}});
 });
+
+it('syncs independent preparation and preserves explicit empty review entries',()=>{
+ const ref={current:{...character,spell_preparation_sources:{armor:['class:Psion']},prepared_spells:['armor']} as Character};
+ const patch={spell_preparation_sources:{armor:[]},prepared_spells:[]};
+ expect(reconcileCharacterUpdate(ref,patch,{}).patch).toEqual(patch);
+ expect(ref.current.spell_preparation_sources).toEqual({armor:[]});
+ expect(reconcileCharacterUpdate(ref,{spell_preparation_sources:{}},{}).patch).toEqual({spell_preparation_sources:{}});
+});
