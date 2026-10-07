@@ -57,12 +57,14 @@ level. The TypeScript baseline fell from 210 to 208.
 Level-up paths retain their existing available dice while updating choices and
 capacity; a Long Rest restores the new maximum. A database regression checks
 that leveling and movement-trait recovery do not refresh paid Psion resources.
-Remaining release work: broader regression checks and deployment. Audit subclass
-spell-slot payments separately; do not invent an unsupported PED-to-slot feature.
-Ordinary whole-resource sheet saves
-must not overwrite transaction-owned keys from a stale tab; adding one RPC
-alone does not solve that. Preserve conditional spending and the first free
-Connection extension, stable request recovery, and unrelated resource edits.
+Validation: all 134 selected Psion browser/database checks now pass across
+desktop/mobile (130 in the broad run, four legacy discipline checks rerun after
+replacing their capped shared-account fixture with disposable accounts).
+The full gate passes with 1,537 unit tests, TypeScript 208/208 and a 253 KB entry.
+Remaining release work: deploy the database endpoints before the updated app.
+Audit subclass spell-slot payments separately; do not invent an unsupported
+PED-to-slot feature. Ordinary saves now preserve transaction-owned keys;
+conditional spending, the free Connection extension and unrelated edits are tested.
 Shared Discipline turn claims remain separate unfinished work.
 
 ### 2026-10-07 — Cancel interrupted group drags, v2.783
