@@ -110,6 +110,8 @@ function filterTargets(
 export default function ClassAbilityResolveModal({
   open, onClose, ability, saveDC, character, campaign, campaignId, onConfirmed,
 }: Props) {
+  const singleTarget=ability.psionicUse?.kind==='propel';
+  const [selectedTarget,setSelectedTarget]=useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // v2.486.0 — In-app confirm hook for "voluntarily fail" prompt.
@@ -139,6 +141,7 @@ export default function ClassAbilityResolveModal({
       setLoading(true);
       setError(null);
       setOutcomes({});
+      setSelectedTarget('');
       setSaveBonuses({});
 
       const { data: enc } = await supabase
@@ -268,12 +271,15 @@ export default function ClassAbilityResolveModal({
   }
 
   function handleConfirm() {
-    onConfirmed(Object.values(outcomes));
+    const resolved=singleTarget?[outcomes[selectedTarget]].filter(Boolean):Object.values(outcomes);
+    if(singleTarget&&(resolved.length!==1||resolved[0].outcome==='pending'))return;
+    onConfirmed(resolved);
     onClose();
   }
 
-  const allResolved = targets.length > 0
-    && targets.every(t => outcomes[t.id]?.outcome !== 'pending');
+  const visibleTargets=singleTarget?targets.filter(t=>t.id===selectedTarget):targets;
+  const allResolved = visibleTargets.length > 0
+    && visibleTargets.every(t => outcomes[t.id]?.outcome !== 'pending');
 
   return createPortal(
     <div
@@ -339,7 +345,8 @@ export default function ClassAbilityResolveModal({
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {targets.map(p => {
+              {singleTarget&&<div style={{marginBottom:12}}><p>Choose one Large or smaller creature you can see within 30 ft. Apply movement straight toward or away from you.</p><p>{ability.psionicUse?.kind==='propel'?(ability.psionicUse.mode==='free'?'Free: 5 ft on a failed save.':`Rolled ${ability.psionicUse.roll}: ${ability.psionicUse.roll*5} ft on failure. ${ability.psionicUse.mode==='powered'?'Spend 1 die only on failure.':'No die spent.'}`):''}</p><label>Propel target<select aria-label="Propel target" value={selectedTarget} onChange={e=>setSelectedTarget(e.target.value)} style={{width:'100%'}}><option value="">Choose one target</option>{targets.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label></div>}
+              {visibleTargets.map(p => {
                 const out = outcomes[p.id];
                 const showAutoFail =
                   willingFailMode !== 'off' &&
@@ -523,7 +530,7 @@ export default function ClassAbilityResolveModal({
             </button>
             <button
               onClick={handleConfirm}
-              disabled={targets.length > 0 && !allResolved}
+              disabled={singleTarget?!allResolved:targets.length > 0 && !allResolved}
               style={{
                 fontSize: 13, fontWeight: 800, padding: '8px 18px',
                 background: '#a78bfa', color: '#fff',

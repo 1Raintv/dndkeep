@@ -29,6 +29,31 @@ test.describe('Psionic Restoration (local stack)', () => {
     if (userId) sql(`delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
   });
 
+  test('Psion powers charge only the correct uses and persist after reload',async({page},info)=>{
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    const button=(name:string)=>page.getByRole('button',{name,exact:true}).locator('visible=true').first();
+    const dice=()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`);
+    await button('Free 5 ft').click();await expect(page.getByRole('dialog',{name:'Telekinetic Propel'})).toBeVisible();
+    await button('Save failed').click();expect(dice()).toBe('2');
+    await button('Powered (1 die)').click();await button('Save passed').click();await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Telekinetic Propel' and notes like 'Passed STR save%'`)).toBe('1');expect(dice()).toBe('2');
+    await button('Powered (1 die)').click();
+    await page.screenshot({path:info.outputPath('propel-save.png')});
+    await button('Save failed').click();await expect.poll(dice).toBe('1');
+    await button('Extend (free)').click();await button('Cancel').click();expect(dice()).toBe('1');
+    await button('Extend (free)').click();await button('Extend telepathy').click();
+    await expect(button('Extend (1 die)')).toBeEnabled();
+    await expect.poll(()=>sql(`select feature_uses->>'Telepathic Connection' from characters where id='${charId}'`)).toBe('1');
+    expect(dice()).toBe('1');await page.reload();await expect(button('Extend (1 die)')).toBeEnabled();
+    await button('Extend (1 die)').click();await button('Extend telepathy').click();await expect.poll(dice).toBe('0');
+    await expect(button('Powered (1 die)')).toBeDisabled();await expect(button('Extend (1 die)')).toBeDisabled();await expect(button('Free 5 ft')).toBeEnabled();
+    await button('Free 5 ft').scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('psion-powers.png')});
+    await page.getByRole('button',{name:/^Rest$/}).locator('visible=true').first().click();await page.getByTitle('End short rest',{exact:true}).click();
+    await expect.poll(dice).toBe('1');await expect(button('Extend (1 die)')).toBeEnabled();
+    await page.getByRole('button',{name:/^Rest$/}).locator('visible=true').first().click();await button('Take Long Rest').click();
+    await expect.poll(dice).toBe('6');await expect(button('Extend (free)')).toBeEnabled();expect(errors).toEqual([]);
+  });
+
   test('Psionic Restoration refills dice, persists and refreshes only after a Long Rest',async({page},info)=>{
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
