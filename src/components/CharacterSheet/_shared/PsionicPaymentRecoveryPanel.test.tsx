@@ -7,7 +7,7 @@ import PsionicPaymentRecoveryPanel from './PsionicPaymentRecoveryPanel';
 import {ModalProvider} from '../../shared/Modal';
 const payment={kind:'enkindled' as const,request:{requestId:'saved',turn:{soloTurn:0},count:2,baseRolls:[2,3],extraRolls:[4,6],sourceFeature:'Biofeedback',recoveryNote:'Add Intelligence 4 once.'}};
 const receipt={requestId:'saved',extraRolls:[4,6],hitDiceSpent:2,hitDiceRevision:1,replayed:true};
-function service():PsionicEnhancementPersistence{return {getTurn:vi.fn(),surge:vi.fn(),spend:vi.fn(async()=>{forgetPsionicPayment('hero','saved');return receipt;})};}
+function service():PsionicEnhancementPersistence{return {energy:vi.fn(),getTurn:vi.fn(),surge:vi.fn(),spend:vi.fn(async()=>{forgetPsionicPayment('hero','saved');return receipt;})};}
 const ui=(persistence:PsionicEnhancementPersistence,id='hero')=><ModalProvider><PsionicPaymentRecoveryPanel characterId={id} persistence={persistence}/></ModalProvider>;
 afterEach(cleanup);beforeEach(()=>{localStorage.clear();rememberPsionicPayment('hero',payment);});
 it('keeps the base and extra rolls visible after confirmation for manual resolution',async()=>{
@@ -29,3 +29,11 @@ it('dismissal removes only the local recovery entry and never sends a payment',a
  await waitFor(()=>expect(pendingPsionicPayments('hero')).toEqual([]));expect(persistence.spend).not.toHaveBeenCalled();
 });
 
+
+it('confirms Restoration as an already-applied recovery without telling the player to restore again',async()=>{
+ localStorage.clear();const request={requestId:'restore',operation:'restore' as const,count:0,rolls:[],sourceFeature:'Psionic Restoration'};
+ rememberPsionicPayment('hero',{kind:'energy',request});const persistence=service();
+ vi.mocked(persistence.energy).mockImplementation(async()=>{forgetPsionicPayment('hero','restore');return {requestId:'restore',remaining:6,restorationResource:0,restorationUsed:1,energyRevision:1,rolls:[],replayed:true};});
+ render(ui(persistence));fireEvent.click(screen.getByRole('button',{name:'Confirm dice cost'}));
+ await screen.findByText(/Psionic Restoration confirmed/);expect(screen.getByText(/do not restore them again/)).toBeTruthy();expect(persistence.energy).toHaveBeenCalledWith(request);
+});

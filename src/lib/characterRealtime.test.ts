@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import type {Character} from '../types';
-import {reconcileCharacterUpdate} from './characterRealtime';
+import {acceptPsionicEnergyReceipt,reconcileCharacterUpdate} from './characterRealtime';
 const character={id:'pc',current_hp:20,hit_dice_spent:2,feature_uses:{'Telepathic Connection':1},class_resources:{'psionic-energy-dice':2}} as unknown as Character;
 it('accepts consecutive echoes before a React render, including a return to the original value',()=>{
  const ref={current:character};
@@ -33,4 +33,21 @@ it('ignores delayed Hit Point Dice receipts but accepts newer rest recovery',()=
 it('keeps a queued local rest while recording the paid receipt revision',()=>{
  const ref={current:{...character,psionic_hit_dice_revision:0}};
  expect(reconcileCharacterUpdate(ref,{hit_dice_spent:3,psionic_hit_dice_revision:1},{hit_dice_spent:0}).patch).toEqual({hit_dice_spent:0,psionic_hit_dice_revision:1});
+});
+
+it('accepts Energy Dice payments without replacing unrelated resources or feature uses',()=>{
+ const ref={current:{...character,class_resources:{'psionic-energy-dice':6,Other:8},psionic_energy_revision:1}};
+ acceptPsionicEnergyReceipt(ref,{remaining:4,energyRevision:2,restorationResource:null,restorationUsed:null});
+ expect(ref.current.class_resources).toEqual({'psionic-energy-dice':4,Other:8});expect(ref.current.feature_uses).toEqual({'Telepathic Connection':1});
+ acceptPsionicEnergyReceipt(ref,{remaining:5,energyRevision:1,restorationResource:0,restorationUsed:1});
+ expect(ref.current.class_resources).toEqual({'psionic-energy-dice':4,Other:8});expect(ref.current.feature_uses).toEqual({'Telepathic Connection':1});
+});
+it('keeps newer Restoration recovery while accepting unrelated changes from an older echo',()=>{
+ const ref={current:{...character,psionic_energy_revision:3}};
+ acceptPsionicEnergyReceipt(ref,{remaining:6,energyRevision:4,restorationResource:0,restorationUsed:1});
+ reconcileCharacterUpdate(ref,{class_resources:{'psionic-energy-dice':1,Other:9},feature_uses:{Other:2},psionic_energy_revision:3},{});
+ expect(ref.current.class_resources).toEqual({'psionic-energy-dice':6,'psionic-restoration':0,Other:9});
+ expect(ref.current.feature_uses).toEqual({'Psionic Restoration':1,'Telepathic Connection':1,Other:2});expect(ref.current.psionic_energy_revision).toBe(4);
+ acceptPsionicEnergyReceipt(ref,{remaining:6,energyRevision:5,restorationResource:1,restorationUsed:null,connectionUsed:null});
+ expect(ref.current.feature_uses).toEqual({Other:2});expect(ref.current.class_resources?.['psionic-restoration']).toBe(1);
 });

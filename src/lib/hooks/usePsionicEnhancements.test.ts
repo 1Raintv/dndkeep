@@ -51,3 +51,13 @@ it('does not mislabel an older unknown payment as unpaid when a retry is blocked
  const hook=renderHook(()=>usePsionicEnhancements('hero',saves,vi.fn()));
  await expect(hook.result.current.spend(request)).rejects.toMatchObject({definitelyNotPaid:false});expect(mocks.rpc).not.toHaveBeenCalled();expect(pendingPsionicPayments('hero')).toHaveLength(1);
 });
+
+it('persists an unknown Energy Dice payment and confirms the exact original request later',async()=>{
+ const saves=queue(),accept=vi.fn(),energy={requestId:'energy',operation:'spend' as const,count:1,rolls:[3],sourceFeature:'Manual'};
+ mocks.rpc.mockRejectedValue(new Error('Lost response'));const hook=renderHook(()=>usePsionicEnhancements('hero',saves,accept));
+ await expect(hook.result.current.energy(energy)).rejects.toMatchObject({definitelyNotPaid:false});
+ expect(pendingPsionicPayments('hero')).toEqual([{kind:'energy',request:energy}]);expect(accept).not.toHaveBeenCalled();
+ const paid={requestId:'energy',remaining:4,energyRevision:2,restorationResource:null,restorationUsed:null,rolls:[3],replayed:true};
+ mocks.rpc.mockResolvedValue({data:paid,error:null});await act(async()=>{expect(await hook.result.current.energy(energy)).toEqual(paid);});
+ expect(pendingPsionicPayments('hero')).toEqual([]);expect(accept).toHaveBeenCalledWith(paid);expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[2]);
+});

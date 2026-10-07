@@ -3,7 +3,9 @@ import {useState} from 'react';
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 import {ModalProvider} from '../../shared/Modal';
-import PsionicRestorationButton from './PsionicRestorationButton';
+import RealPsionicRestorationButton from './PsionicRestorationButton';
+import {withTestPsionicPersistence} from './psionicPersistence.testSupport';
+const PsionicRestorationButton=withTestPsionicPersistence(RealPsionicRestorationButton);
 import type {Character} from '../../../types';
 import {CLASS_COMBAT_ABILITIES} from '../../../data/classAbilities';
 // The ability catalog imports game helpers transitively; unit tests must not initialize a database client.

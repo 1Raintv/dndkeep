@@ -1,8 +1,9 @@
+import {longRestHitDice} from '../../rules/restRecovery';
 import PsionicPaymentRecoveryPanel from './_shared/PsionicPaymentRecoveryPanel';
 import {usePsionicEnhancements} from '../../lib/hooks/usePsionicEnhancements';
 import {useOptimisticCharacterRef} from '../../lib/hooks/useOptimisticCharacterRef';
 import {characterProficiencyBonus} from '../../rules/proficiency';
-import {reconcileCharacterUpdate,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
+import {reconcileCharacterUpdate,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
 import { attacksPerAction } from '../../rules/extraAttack';
 import PsionCastingNote from './_shared/PsionCastingNote';
 import { useState, useCallback, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
@@ -298,7 +299,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Uses a ref to avoid stale closure — always reads current character value
  const characterRef = useOptimisticCharacterRef(character);
  const psionicPersistence=usePsionicEnhancements(character.id,saveQueue,receipt=>{
-  const {patch}=acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
+  const {patch}='energyRevision' in receipt?acceptPsionicEnergyReceipt(characterRef,receipt,saveQueue.getPending()):acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
   if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
  },frozen);
 
@@ -1021,8 +1022,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const recoveredSlots = Object.fromEntries(
  Object.entries(character.spell_slots).map(([k, s]) => [k, { ...(s as object), used: 0 }])
  ) as typeof character.spell_slots;
- const recoveredHD = Math.max(1, Math.floor(character.level / 2));
- const newSpent = Math.max(0, (character.hit_dice_spent ?? 0) - recoveredHD);
+ const {recovered:recoveredHD,spent:newSpent}=longRestHitDice(character.hit_dice_spent);
 
  // Recover ALL class resources on long rest
  const abilityScores = { strength: character.strength, dexterity: character.dexterity, constitution: character.constitution, intelligence: character.intelligence, wisdom: character.wisdom, charisma: character.charisma };
@@ -2029,7 +2029,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <div className="panel">
  <h4 style={{ marginBottom: 'var(--sp-2)' }}>Long Rest</h4>
  <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--t-2)', marginBottom: 'var(--sp-3)', lineHeight: 1.5 }}>
- 8+ hours. Regain all HP, all spell slots, and half your spent hit dice (min 1).
+ 8+ hours. Regain all HP, all spell slots, and all spent Hit Point Dice.
  Removes one level of Exhaustion.
  </p>
  <button className="btn-gold" onClick={doLongRest} style={{ width: '100%', justifyContent: 'center' }}>
@@ -2698,6 +2698,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* ── FEATURES & TRAITS ── */}
  {activeTab === 'features' && (
  <FeaturesAndTraitsPanel
+ persistence={psionicPersistence}
  character={character}
  onUpdate={u => applyUpdate(u, true)}
  />

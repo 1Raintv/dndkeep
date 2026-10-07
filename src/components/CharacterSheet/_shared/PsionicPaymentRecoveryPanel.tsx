@@ -12,12 +12,18 @@ export default function PsionicPaymentRecoveryPanel({characterId,persistence}:{c
  useEffect(()=>{const update=()=>setPending(pendingPsionicPayments(characterId));update();setMessage('');setBusy(false);window.addEventListener('storage',update);window.addEventListener(PSIONIC_PAYMENT_CHANGED,update);return()=>{window.removeEventListener('storage',update);window.removeEventListener(PSIONIC_PAYMENT_CHANGED,update);};},[characterId]);
  async function recover(payment:PendingPsionicPayment){
   if(busy)return;setBusy(true);
-  const original=payment.kind==='enkindled'?`Base rolls: ${payment.request.baseRolls.join(', ')}.`:`Original rolls: ${payment.request.rolls.join(', ')}.`;
+  const original=payment.kind==='enkindled'?`Base rolls: ${payment.request.baseRolls.join(', ')}.`:payment.request.rolls.length?`Original rolls: ${payment.request.rolls.join(', ')}.`:'No dice roll was requested.';
   try{
-   const receipt=payment.kind==='enkindled'?await persistence.spend(payment.request):await persistence.surge(payment.request);
+   const receipt=payment.kind==='enkindled'?await persistence.spend(payment.request):payment.kind==='energy'?await persistence.energy(payment.request):await persistence.surge(payment.request);
    if(!mounted.current||current.current!==characterId)return;
    const rolls='extraRolls' in receipt?receipt.extraRolls:receipt.rolls;
-   setMessage(`${payment.request.sourceFeature}: dice cost confirmed. ${original} ${payment.kind==='enkindled'?'Extra rolls':'Surged rolls'}: ${rolls.join(', ')}. ${payment.request.recoveryNote??''} This notice did not apply the feature. Check your sheet, combat and History before resolving it manually; do not pay again.`);
+   if(payment.kind==='energy'&&['recover-die','refresh-misty-step','recover-misty-step'].includes(payment.request.operation)){
+    setMessage(`${payment.request.sourceFeature}: resource recovery confirmed. Current resources are refreshed. This does not perform a spell or feature; do not repeat the recovery.`);return;
+   }
+   if(payment.kind==='energy'&&payment.request.operation==='restore'){
+    setMessage('Psionic Restoration confirmed. The saved meditation restored Energy Dice and consumed its once-per-Long-Rest use. Current resources are refreshed; do not restore them again.');return;
+   }
+   setMessage(`${payment.request.sourceFeature}: dice cost confirmed. ${original} ${payment.kind==='energy'?'':`${payment.kind==='enkindled'?'Extra rolls':'Surged rolls'}: ${rolls.join(', ')}.`} ${payment.request.recoveryNote??''} This notice did not apply the feature. Check your sheet, combat and History before resolving it manually; do not pay again.`);
   }catch(error){if(mounted.current&&current.current===characterId)setMessage(`${error instanceof Error?error.message:'Dice cost is still unconfirmed.'} ${original} ${payment.request.recoveryNote??''} Check History before resolving the feature manually.`);}
   finally{if(mounted.current&&current.current===characterId)setBusy(false);}
  }

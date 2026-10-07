@@ -1,5 +1,50 @@
 # DNDKeep — Two-Track Roadmap
 
+### In progress — Energy Dice persistence, planned v2.784
+
+A real two-tab browser regression reproduces the remaining base-pool race:
+two paid manual rolls from six dice leave five instead of four. The new local
+`settle_psionic_energy` transaction serializes costs and Psionic Restoration,
+records immutable request payloads and recovery history, preserves sibling
+resources, and returns ordered receipts. Fourteen real database scenarios cover
+concurrent requests, last-die contention, rollback, authorization, Restoration,
+malformed values and all 20 level boundaries. API/reconciliation tests pass.
+
+This remains local and unshipped. Manual rolls, Biofeedback, Destructive Thoughts,
+conditional bonus costs, Propel/Connection settlement and Restoration (Actions and Features) now use the saved
+payment path. The original two-tab manual-roll regression passes on desktop and
+mobile, as does lost base-payment recovery across reload without a second cost or
+automatic effect. Receipt acknowledgement is local only and rejects older revisions.
+
+Connection claims its first free extension atomically; competing free requests
+reject rather than becoming silently paid. The protected ordinary-sheet-patch RPC
+also passes database checks, but is not connected to the save queue yet.
+
+SRD 5.2.1 p.185 exposed a separate 2014-rule remnant: Long Rest recovered only
+half-level Hit Point Dice. The local sheet and DM party-rest path now restore all spent dice and log
+the actual amount; desktop/mobile sheet rest tests verify zero dice remain spent.
+
+Manual pool edits, explicit subclass costs, paid teleportation refresh, free-use
+casting and manual tracker corrections now use transactions. Desktop/mobile tests
+verify their persisted balances without whole-resource writes. Competing manual
+corrections and paid refreshes have one winner and stable retries.
+
+The local `complete_psionic_rest` foundation saves a complete captured rest patch
+under the same character lock. It rejects changed snapshots, repairs malformed
+pools on Long Rest, preserves daily features on Short Rest, restores all Hit
+Point Dice on Long Rest, and replays without repeating recovery. Four new real
+database scenarios verify rest contention, replay, daily limits and full rollback.
+It is not connected to either rest screen yet.
+
+Remaining integration: player and DM rest recovery, saved rest-request recovery,
+level-change resource behavior, then protected ordinary saves. Audit subclass
+spell-slot payments separately; do not invent an unsupported PED-to-slot feature.
+Ordinary whole-resource sheet saves
+must not overwrite transaction-owned keys from a stale tab; adding one RPC
+alone does not solve that. Preserve conditional spending and the first free
+Connection extension, stable request recovery, and unrelated resource edits.
+Shared Discipline turn claims remain separate unfinished work.
+
 ### 2026-10-07 — Cancel interrupted group drags, v2.783
 
 Losing pointer capture or hiding a tab now cancels group movement previews,
@@ -35,7 +80,7 @@ Validation includes real local transactions for authorization, malformed rolls,
 replays, competing tabs, last-die contention, history rollback and turn rewinds;
 desktop/mobile reload, shared-limit and complete roll-flow checks; plus the full
 project gate. The production migration applied successfully through CI after PR #108.
-Frontend deployment is checked separately.
+Frontend v2.782 was verified live; v2.783 map cancellation is also live after PR #109.
 
 
 ### 2026-10-07 — Preserve sheet turn budgets on failed advance, v2.781

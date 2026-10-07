@@ -320,6 +320,7 @@ export interface Character {
   hit_dice_spent: number;  // number spent since last long rest; max = level
   /** v2.782 — server ordering for paid Psion costs and rest recovery. */
   psionic_hit_dice_revision?: number;
+  psionic_energy_revision?: number;
 
   // Combat
   armor_class: number;

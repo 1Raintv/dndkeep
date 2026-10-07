@@ -58,7 +58,7 @@ test.describe('Psionic Restoration (local stack)', () => {
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('response', response => { if(response.status() >= 400) errors.push(`${response.status()} ${response.url()}`); });
-    sql(`update characters set class_resources = class_resources || '{"psionic-energy-dice":2}'::jsonb, feature_uses='{}'::jsonb where id='${charId}'`);
+    sql(`update characters set class_resources = class_resources || '{"psionic-energy-dice":2}'::jsonb, hit_dice_spent=5, feature_uses='{}'::jsonb where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     if(view==='Features') await page.locator('button.tab').filter({hasText:/^Features$/}).click();
     const meditate=()=>page.getByRole('button',{name:'Meditate (1 min)',exact:true}).locator('visible=true').first();
@@ -84,6 +84,7 @@ test.describe('Psionic Restoration (local stack)', () => {
     await page.getByRole('button',{name:/^Rest$/}).locator('visible=true').first().click();
     await page.getByRole('button',{name:'Take Long Rest',exact:true}).click();
     await expect.poll(()=>sql(`select class_resources->>'psionic-restoration' from characters where id='${charId}'`)).toBe('1');
+    await expect.poll(()=>sql(`select hit_dice_spent from characters where id='${charId}'`)).toBe('0');
     await expect(page.getByRole('button',{name:'Dice full',exact:true}).locator('visible=true').first()).toBeDisabled();
     sql(`update characters set class_resources=class_resources || '{"psionic-energy-dice":5}'::jsonb where id='${charId}'`);
     await page.reload();if(view==='Features') await page.locator('button.tab').filter({hasText:/^Features$/}).click();await expect(meditate()).toBeEnabled();

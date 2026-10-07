@@ -1,3 +1,4 @@
+import {payPsionicEnergy} from './payPsionicEnergy';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
 import {acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
 import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharacterRef';
@@ -23,16 +24,15 @@ function capacity(c:Character){
 interface PaidResult {requestId:string;characterId:string;characterName:string;amount:number;targetName:string;target:CombatParticipant|null;context:PsionicDamageContext|null;queued:boolean}
 /** v2.777 — confirm the spell trigger, then spend/roll once. Retrying delivery
  * reuses the paid result and declaration ID; it never rolls or charges again. */
-export default function DestructiveThoughtsButton({persistence,character,onUpdate}:{persistence?:PsionicEnhancementPersistence;character:Character;onUpdate:(patch:Partial<Character>)=>void}){
+export default function DestructiveThoughtsButton({persistence,character}:{persistence?:PsionicEnhancementPersistence;character:Character;onUpdate:(patch:Partial<Character>)=>void}){
  const latest=useOptimisticCharacterRef(character);
- const update=useRef(onUpdate);update.current=onUpdate;
+
  const mounted=useRef(true),busy=useRef(false);const [pending,setPending]=useState(false);
  const [picker,setPicker]=useState<PsionicDamageContext|null>(null),[paid,setPaid]=useState<PaidResult|null>(null);
  const pickResolve=useRef<((target:CombatParticipant|null)=>void)|null>(null);
  const modal=useModal(),{showToast}=useToast();
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;pickResolve.current?.(null);pickResolve.current=null;};},[]);
  useEffect(()=>setPaid(null),[character.id]);
- function patch(change:Partial<Character>){latest.current={...latest.current,...change};update.current(change);}
  function finishPick(target:CombatParticipant|null){setPicker(null);pickResolve.current?.(target);pickResolve.current=null;}
  async function deliver(result:PaidResult){
   if(!result.context||!result.target)return;
@@ -67,7 +67,7 @@ export default function DestructiveThoughtsButton({persistence,character,onUpdat
    if(current.campaign_id!==campaignId||!Number.isInteger(count)||count<1||!now||count>now.maxDice){showToast('Check your target, Intelligence and available Psionic Energy Dice.','warn');return;}
    const intelligence=computeStats(current).modifiers.intelligence;
    const rolls=Array.from({length:count},()=>rollDie(now.sides));
-   patch({class_resources:{...current.class_resources,'psionic-energy-dice':now.remaining-count}});
+   if(!await payPsionicEnergy(persistence,latest,{requestId:crypto.randomUUID(),operation:'spend',count,rolls,sourceFeature:'Destructive Thoughts',recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for Psychic damage (minimum 1) to ${targetName}. No damage was queued yet.`.slice(0,1000)},{active:()=>mounted.current&&latest.current.id===id,confirm:modal.confirm,warn:message=>showToast(message,'warn')}))return;
    const surged=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:rolls[0],rolls,sides:now.sides,feature:'Destructive Thoughts',campaignId,recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for Psychic damage (minimum 1) to ${targetName}. No damage was queued yet.`.slice(0,1000),
     current:()=>latest.current,active:()=>mounted.current,eligible:c=>!!capacity(c),prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
    if(surged?.unconfirmed)return;

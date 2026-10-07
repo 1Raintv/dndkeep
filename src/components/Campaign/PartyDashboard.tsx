@@ -1,3 +1,4 @@
+import {longRestHitDice} from '../../rules/restRecovery';
 import { useState, useEffect, type CSSProperties } from 'react';
 import { supabase } from '../../lib/supabase';
 import { checkedWrite } from '../../lib/api/checked';
@@ -377,7 +378,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
   // each character + clearing feature_uses (matching the player-side
   // doLongRest in CharacterSheet/index.tsx).
   //
-  // Hit dice: keeps RAW recovery of floor(level/2) (min 1).
+  // v2.784: 2024 Long Rest restores all spent Hit Point Dice.
   //
   // partyShortRest broadcasts a `short_rest_prompt` campaign_chat
   // message. Players see a popup linking to their existing rest
@@ -421,7 +422,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
       return {
         id: c.id,
         name: c.name,
-        hd_recovered: Math.max(1, Math.floor(c.level / 2)),
+        hd_recovered: longRestHitDice(c.hit_dice_spent).recovered,
         exhaustion_before: exhBefore,
         exhaustion_after: Math.max(0, exhBefore - 1),
         beforeInventory: c.inventory ?? [],
@@ -434,8 +435,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
       const recoveredSlots = Object.fromEntries(
         Object.entries(c.spell_slots ?? {}).map(([k, s]) => [k, { ...(s as object), used: 0 }])
       );
-      const recoveredHD = Math.max(1, Math.floor(c.level / 2));
-      const newSpent = Math.max(0, (c.hit_dice_spent ?? 0) - recoveredHD);
+      const {spent:newSpent}=longRestHitDice(c.hit_dice_spent);
       // Remove Exhaustion from conditions (2024: long rest fully removes
       // unless you were at 0 HP during the rest — we don't track that
       // edge case; remove unconditionally is the common-table behavior).

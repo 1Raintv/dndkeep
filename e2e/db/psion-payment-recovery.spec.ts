@@ -33,26 +33,27 @@ test.describe('Psion saved payment recovery', () => {
 
 
 
-  for(const kind of ['enkindled','surge'])test(`a lost ${kind} response survives reload without a second charge or automatic effect`,async({page},info)=>{
+  for(const kind of ['energy','enkindled','surge'])test(`a lost ${kind} response survives reload without a second charge or automatic effect`,async({page},info)=>{
     test.setTimeout(90_000);await page.addInitScript(()=>{Math.random=()=>0.01;});
     sql(`update characters set intelligence=18,temp_hp=0,hit_dice_spent=0,class_resources='{"psion-disciplines":["Biofeedback"],"psionic-energy-dice":12}' where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
-    const endpoint=kind==='enkindled'?'**/rest/v1/rpc/spend_enkindled_life_force':'**/rest/v1/rpc/spend_psionic_surge';
-    const spent=kind==='enkindled'?2:3;let calls=0;await page.route(endpoint,async route=>{calls++;const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort();});
+    const endpoint=kind==='energy'?'**/rest/v1/rpc/settle_psionic_energy':kind==='enkindled'?'**/rest/v1/rpc/spend_enkindled_life_force':'**/rest/v1/rpc/spend_psionic_surge';
+    const spent=kind==='energy'?0:kind==='enkindled'?2:3;let calls=0;await page.route(endpoint,async route=>{calls++;const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort();});
     await page.getByRole('button',{name:'Gain temp HP',exact:true}).locator('visible=true').first().click();
     const base=page.getByRole('dialog',{name:'Biofeedback',exact:true});await base.getByRole('textbox').fill('2');await base.getByRole('button',{name:'Spend and roll'}).click();
-    const extra=page.getByRole('dialog',{name:'Enkindled Life Force'});await extra.getByRole('textbox').fill('2');await extra.getByRole('button',{name:'Continue'}).click();
+    if(kind!=='energy'){const extra=page.getByRole('dialog',{name:'Enkindled Life Force'});await extra.getByRole('textbox').fill('2');await extra.getByRole('button',{name:'Continue'}).click();}
     if(kind==='surge')await page.getByRole('dialog',{name:'Psionic Surge'}).getByRole('button',{name:'Spend 1 Hit Point Die'}).click();
     await page.getByRole('dialog',{name:'Dice cost not confirmed'}).getByRole('button',{name:'Resolve later'}).click();expect(calls).toBe(2);
     const state=()=>JSON.parse(sql(`select json_build_object('spent',hit_dice_spent,'pool',class_resources->'psionic-energy-dice','temp',temp_hp) from characters where id='${charId}'`));
     expect(state()).toEqual({spent,pool:10,temp:0});
     await page.unroute(endpoint);await page.reload();
-    const recovery=page.getByRole('status',{name:'Psion roll recovery'});await expect(recovery).toContainText(kind==='enkindled'?'proposed extra 1, 1':'original rolls 1, 1, 1, 1');await expect(recovery).toContainText('Intelligence 4');
+    const recovery=page.getByRole('status',{name:'Psion roll recovery'});await expect(recovery).toContainText(kind==='enkindled'?'proposed extra 1, 1':kind==='energy'?'original rolls 1, 1':'original rolls 1, 1, 1, 1');await expect(recovery).toContainText('Intelligence 4');
     await recovery.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('saved-psion-payment.png')});
     await recovery.getByRole('button',{name:'Confirm dice cost'}).click();await expect(recovery).toContainText('dice cost confirmed');
     expect(state()).toEqual({spent,pool:10,temp:0});
-    expect(sql(`select count(*) from psionic_feature_uses where character_id='${charId}'`)).toBe('1');
-    expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Enkindled Life Force'`)).toBe('1');
+    expect(sql(`select count(*) from psionic_feature_uses where character_id='${charId}'`)).toBe(kind==='energy'?'0':'1');
+    expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Enkindled Life Force'`)).toBe(kind==='energy'?'0':'1');
+    if(kind==='energy')expect(sql(`select count(*) from psionic_energy_uses where character_id='${charId}'`)).toBe('1');
     if(kind==='surge')expect(sql(`select count(*) from psionic_surge_uses where character_id='${charId}'`)).toBe('1');
     await expect.poll(()=>page.evaluate(id=>Object.keys(localStorage).filter(key=>key.startsWith(`dndkeep:psionic-payment:${id}:`)).length,charId)).toBe(0);
     await page.screenshot({path:info.outputPath('confirmed-psion-payment.png')});
