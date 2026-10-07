@@ -1,5 +1,14 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Background image lifecycle, v2.772
+
+Closing a map invalidates pending image loads and their retries, releasing stale
+textures instead of mounting an orphan sprite. Replacing the viewport transfers
+an already-loaded background and updates its size. Requests for the same image
+retain the shared texture while a newer request is pending. Six focused tests
+cover cleanup, viewport replacement, resize races and delayed retries; restoring
+the previous implementation fails these regressions.
+
 ### 2026-10-07 — Preserve the page on first worker installation, v2.771
 
 The initial service-worker claim no longer reloads an already-current page.
