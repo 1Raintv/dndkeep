@@ -30,8 +30,8 @@ test.describe('Psion spell choice eligibility', () => {
   });
 
 
-  test('source review is a cancelable draft with readable controls',async({page},info)=>{
-    sql(`update characters set level=1,subclass=null,known_spells=ARRAY['charm-person'],prepared_spells='{}',spell_slots='{"1":{"total":2,"used":0}}' where id='${charId}'`);
+  test('source review remains a cancelable draft when Psion slot data is missing',async({page},info)=>{
+    sql(`update characters set level=1,subclass=null,known_spells=ARRAY['charm-person'],prepared_spells='{}',spell_slots='{}' where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     await page.locator('button.tab').filter({hasText:/^Spells/}).click();
     await page.getByText('Review spell sources',{exact:true}).click();
@@ -44,6 +44,7 @@ test.describe('Psion spell choice eligibility', () => {
     await review.getByRole('button',{name:'Cancel review',exact:true}).click();
     await page.getByLabel('Spell to review',{exact:true}).selectOption('charm-person');
     await expect(review.getByRole('checkbox',{name:'Learned through Psion',exact:true})).not.toBeChecked();
+    expect(sql(`select spell_slots::text from characters where id='${charId}'`)).toBe('{}');
     expect(sql(`select prepared_spells::text from characters where id='${charId}'`)).toBe('{}');
   });
   test('preparation blocks imported illegal choices and keeps legal choices',async({page})=>{

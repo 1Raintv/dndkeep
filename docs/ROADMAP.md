@@ -168,13 +168,15 @@ and species-grant expiry on desktop/mobile. Grant expiry keeps a separately
 learned Psion Darkness copy unprepared and preserves Paladin Divine Smite.
 Full gate passes again. A final combined green run is still required before release.
 
-Before release: source tracking for automatic grants and per-class prepared-state
-ownership. A spell learned through Psion and later removed must not accidentally
-prepare an originally unprepared copy retained by Wizard.
-Legacy spell-source records must remain unknown until reviewed. The shared
-prepared list also lacks per-class prepared-state detail; preserve other sources'
-current state until that representation is addressed. This work remains local
-and is not yet deployed.
+Release verification: source tracking is connected to creation, ordinary
+learning/removal/preparation, both level-up flows and automatic grants. Explicit
+review handles legacy records without inferred ownership. Spell management now
+remains available for casters with missing slot records, including secondary
+classes and unlocked casting subclasses; no slot values are invented. Seven
+workspace checks and the full gate pass (1,686 tests; TS 208/208; 253 KB entry).
+All 36 combined desktop/mobile browser checks passed together. Next: schema-only PR and confirmed
+production migration, followed by the versioned application PR, main CI and live
+service-worker version verification. Nothing from v2.787 is deployed yet.
 
 ### Released — Campaign concentration persistence, v2.786
 

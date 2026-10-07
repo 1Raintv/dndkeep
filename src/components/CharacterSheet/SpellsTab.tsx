@@ -1,3 +1,4 @@
+import {hasCharacterSpellWorkspace} from '../../lib/characterSpellWorkspace';
 import SpellSourceReview from './SpellSourceReview';
 import PsionCastingNote from './_shared/PsionCastingNote';
 import { SUBTLE_TELEKINESIS_TEXT } from '../../data/psionFeatureDescriptions';
@@ -217,7 +218,7 @@ export default function SpellsTab({
  return map;
  }, [visibleSpells, showUpcasts, maxAvailableSlotLevel]);
 
- if (!hasSpellSlots) {
+ if (!hasSpellSlots&&!hasCharacterSpellWorkspace(character)) {
  return (
  <div style={{ textAlign: 'center', padding: 'var(--sp-12)', color: 'var(--t-2)' }}>
  <div style={{ fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--t-1)', marginBottom: 'var(--sp-2)' }}>
