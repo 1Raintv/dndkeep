@@ -1,3 +1,4 @@
+import {characterProficiencyBonus} from '../rules/proficiency';
 import { savingThrowPassed } from '../rules/savingThrows';
 // v2.630.0 — Weapon Mastery riders, Ship B part 1 (SRD 5.2.1).
 //
@@ -69,7 +70,7 @@ export async function getMasteryContext(atk: PendingAttack): Promise<MasteryCont
 
   const { data: ch } = await (supabase as any)
     .from('characters')
-    .select('weapon_masteries, level, strength, dexterity')
+    .select('weapon_masteries, level, secondary_class, secondary_level, strength, dexterity')
     .eq('id', part.entity_id)
     .maybeSingle();
   if (!ch) return null;
@@ -86,7 +87,7 @@ export async function getMasteryContext(atk: PendingAttack): Promise<MasteryCont
     : weaponEntry.finesse
       ? Math.max(mod(ch.strength), mod(ch.dexterity))
       : mod(ch.strength);
-  const profBonus = 2 + Math.floor((((ch.level as number) ?? 1) - 1) / 4);
+  const profBonus = characterProficiencyBonus(ch);
   return { mastery: weaponEntry.mastery, abilityMod, profBonus };
 }
 

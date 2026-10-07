@@ -1,5 +1,20 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Multiclass proficiency and casting consistency, v2.775
+
+Shared character statistics now derive proficiency from total character level,
+as required by SRD 5.2.1 p.25. Sheet skills/saves/DCs, ability checks, feature
+calculations, party passive Perception, roll requests, weapon mastery DCs,
+combat target saves, concentration saves and reaction DCs use the same helper.
+Narrow database reads now include secondary-class progression. The level-up
+preview keeps its already-correct total-level behavior through the shared rule.
+Spell casting also uses effective item-adjusted ability scores, matching the
+sheet header instead of reverting to the base Intelligence score.
+
+This does not fix multiclass spell-slot aggregation or every secondary-class
+feature. Older subclass description formulas in classes.ts remain a separate
+source audit (some combine proficiency with outdated feature rules).
+
 ### 2026-10-07 — Psion spell-choice eligibility, v2.774
 
 Adding/preparing Psion spells now checks the Psion class level independently of

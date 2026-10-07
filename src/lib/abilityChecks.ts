@@ -17,7 +17,7 @@
 import { rollDie } from '../rules/dice';
 import type { Character, AbilityKey } from '../types';
 import { SKILL_MAP } from '../data/skills';
-import { abilityModifier, proficiencyBonus } from './gameUtils';
+import { abilityModifier, characterProficiencyBonus } from './gameUtils';
 
 export type CheckTarget =
   | { kind: 'skill'; name: string }    // e.g. "Stealth"
@@ -52,7 +52,7 @@ export function checkModifier(
   character: Character,
   target: CheckTarget,
 ): { mod: number; proficient: boolean; expert: boolean; ability: AbilityKey } {
-  const pb = proficiencyBonus(character.level);
+  const pb = characterProficiencyBonus(character);
 
   if (target.kind === 'ability') {
     const score = character[target.ability] ?? 10;

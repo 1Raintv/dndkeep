@@ -54,4 +54,20 @@ test.describe('Psion spell stat display', () => {
     await expect(stats).toContainText('+0MODIFIER');await expect(stats).toContainText('+3SPELL ATTACK');await expect(stats).toContainText('11SAVE DC');
     expect(errors).toEqual([]);expect(failed).toEqual([]);
   });
+  test('multiclass Psion casting uses total proficiency and effective Intelligence',async({page})=>{
+    sql(`update characters set level=3,secondary_class='Fighter',secondary_level=2,intelligence=10,known_spells='{"charm-person"}',prepared_spells='{"charm-person"}',spell_slots='{"1":{"total":4,"used":0},"2":{"total":2,"used":0}}',inventory='[{"id":"casting-headband","magic_item_id":"headband-of-intellect","name":"Headband of Intellect","quantity":1,"equipped":true,"attuned":true}]' where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+    const stats=page.getByRole('region',{name:'Spellcasting statistics'});
+    await expect(stats).toContainText('+7SPELL ATTACK');await expect(stats).toContainText('15SAVE DC');
+    const row=page.locator('.srow-grid').filter({has:page.getByText('Charm Person',{exact:true})}).first();
+    await row.getByRole('button',{name:'Cast',exact:true}).click();
+    await expect(page.getByText('WIS Save — DC 15',{exact:true})).toBeVisible();
+    sql(`update characters set inventory='[]' where id='${charId}'`);
+    await page.reload();await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+    await expect(stats).toContainText('+3SPELL ATTACK');await expect(stats).toContainText('11SAVE DC');
+    await row.getByRole('button',{name:'Cast',exact:true}).click();
+    await expect(page.getByText('WIS Save — DC 11',{exact:true})).toBeVisible();
+  });
+
 });

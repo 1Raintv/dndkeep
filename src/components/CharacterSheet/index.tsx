@@ -1,3 +1,4 @@
+import {characterProficiencyBonus} from '../../rules/proficiency';
 import {reconcileCharacterUpdate} from '../../lib/characterRealtime';
 import { attacksPerAction } from '../../rules/extraAttack';
 import PsionCastingNote from './_shared/PsionCastingNote';
@@ -694,7 +695,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  function rollConcentrationSave(dc: number): { passed: boolean; total: number; d20: number } {
  const conScore = character.constitution ?? 10;
  const conMod = abilityModifier(conScore);
- const pb = Math.ceil(character.level / 4) + 1;
+ const pb = characterProficiencyBonus(character);
  const hasSaveProf = character.saving_throw_proficiencies?.includes('constitution');
  const saveBonus = conMod + (hasSaveProf ? pb : 0);
  const d20 = Math.floor(Math.random() * 20) + 1;
@@ -1682,7 +1683,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {concentrationSaveDC !== null && concentrationSpellId && (() => {
  const conScore = character.constitution ?? 10;
  const conMod = abilityModifier(conScore);
- const pb = Math.ceil(character.level / 4) + 1;
+ const pb = characterProficiencyBonus(character);
  const hasSaveProf = character.saving_throw_proficiencies?.includes('constitution');
  const saveBonus = conMod + (hasSaveProf ? pb : 0);
  const spellName = spellMap[concentrationSpellId]?.name ?? 'Concentration';

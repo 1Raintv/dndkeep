@@ -22,7 +22,7 @@ import { encounterLairBonus } from './legendaryResistance';
 import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { offerReactionsFor } from './pendingReaction';
-import { abilityModifier, proficiencyBonus, crToProficiencyBonus } from './gameUtils';
+import { abilityModifier, characterProficiencyBonus, crToProficiencyBonus } from './gameUtils';
 import { getAdvantageState, meleeAutoCritApplies, conditionsAutoFailSave, conditionsDisadvantageSave, conditionsResistAll, clearConditionsFromConcentration } from './conditions';
 import {
   getAttackRollBonuses, getSaveBonuses, getDamageRiders,
@@ -1721,7 +1721,7 @@ export async function getTargetSaveBonus(
 
   const { data: c } = await supabase
     .from('characters')
-    .select('level, constitution, strength, dexterity, intelligence, wisdom, charisma, saving_throw_proficiencies, nat_1_20_saves')
+    .select('level, secondary_class, secondary_level, constitution, strength, dexterity, intelligence, wisdom, charisma, saving_throw_proficiencies, nat_1_20_saves')
     .eq('id', part.entity_id)
     .single();
   if (!c) return { bonus: 0, breakdown: '0 (no character)', confidence: 'low' };
@@ -1744,7 +1744,7 @@ export async function getTargetSaveBonus(
   const profs: string[] = ((c as any).saving_throw_proficiencies ?? []) as string[];
   const full = abiFull[ability];
   const hasProf = profs.some(p => p.toLowerCase() === ability.toLowerCase() || p.toLowerCase() === full);
-  const pb = proficiencyBonus((c as any).level ?? 1);
+  const pb = characterProficiencyBonus(c as any);
   const bonus = mod + (hasProf ? pb : 0);
   const breakdown = hasProf
     ? `${mod >= 0 ? '+' : ''}${mod} (${ability}) + ${pb} (prof) = ${bonus >= 0 ? '+' : ''}${bonus}`
@@ -1779,7 +1779,7 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
 
   const { data: charRow } = await supabase
     .from('characters')
-    .select('id, concentration_spell, constitution, level, saving_throw_proficiencies, automation_overrides, advanced_automations_unlocked, nat_1_20_saves')
+    .select('id, concentration_spell, constitution, level, secondary_class, secondary_level, saving_throw_proficiencies, automation_overrides, advanced_automations_unlocked, nat_1_20_saves')
     .eq('id', part.entity_id)
     .single();
   if (!charRow) return;
@@ -1827,12 +1827,11 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
 
   // v2.118.0 — Phase I pt 2: compute save mechanics once, used by both paths.
   const con = (charRow as any).constitution ?? 10;
-  const lvl = (charRow as any).level ?? 1;
   const profs: string[] = ((charRow as any).saving_throw_proficiencies ?? []) as string[];
   const hasConProf = profs.some(p => p.toLowerCase() === 'con' || p.toLowerCase() === 'constitution');
 
   const conMod = abilityModifier(con);
-  const pb = proficiencyBonus(lvl);
+  const pb = characterProficiencyBonus(charRow as any);
   const bonus = conMod + (hasConProf ? pb : 0);
   // v2.636 — was an inline max(10, floor(dmg/2)) missing the RAW DC 30 cap
   const dc = concentrationDC(ctx.damage);

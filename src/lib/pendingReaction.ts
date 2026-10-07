@@ -441,9 +441,9 @@ REACTION_REGISTRY.push({
       const intl = (reactorCharacter as any).intelligence ?? 10;
       const wis = (reactorCharacter as any).wisdom ?? 10;
       const spellAbil = Math.max(cha, intl, wis);
-      const { abilityModifier, proficiencyBonus } = await import('./gameUtils');
+      const { abilityModifier, characterProficiencyBonus } = await import('./gameUtils');
       const spellMod = abilityModifier(spellAbil);
-      const pb = proficiencyBonus((reactorCharacter as any).level ?? 1);
+      const pb = characterProficiencyBonus(reactorCharacter);
       saveDC = 8 + pb + spellMod;
     }
 

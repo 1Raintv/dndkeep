@@ -2,7 +2,7 @@ import { SUBTLE_TELEKINESIS_TEXT, TELEKINETIC_PROPEL_TEXT, TELEKINETIC_PROPEL_SU
 import type {PsionicPowerUse} from '../rules/psionicPowers';
 import { abilityModifier } from '../rules/abilities';
 import type { Character } from '../types';
-import { proficiencyBonus } from '../lib/gameUtils';
+import { characterProficiencyBonus } from '../lib/gameUtils';
 
 export type ActionType = 'action' | 'bonus' | 'reaction' | 'special' | 'free';
 
@@ -107,7 +107,7 @@ function wis(c: Character) { return abilityModifier(c.wisdom); }
 // v2.260.0 — was reading c.proficiency_bonus (?? 2), which doesn't
 // exist on Character. Same bug as FeaturesAndTraitsPanel — every
 // CLASS_COMBAT_ABILITIES description used PB=2. Compute from level.
-function prof(c: Character) { return proficiencyBonus(c.level); }
+function prof(c: Character) { return characterProficiencyBonus(c); }
 
 export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
   Barbarian: [
@@ -239,11 +239,11 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       // v2.526.0 — Half proficiency (round down) to any ability check that
       // doesn't already include proficiency.
       description: (c: any) => {
-        const half = Math.floor(proficiencyBonus(c?.level ?? 2) / 2);
+        const half = Math.floor(characterProficiencyBonus(c ?? {level:2}) / 2);
         return `Add half your proficiency bonus (+${half}) to any ability check you make that doesn\u2019t already include your proficiency bonus.`;
       },
       descriptionLong: (c: any) => {
-        const half = Math.floor(proficiencyBonus(c?.level ?? 2) / 2);
+        const half = Math.floor(characterProficiencyBonus(c ?? {level:2}) / 2);
         return `You can add half your proficiency bonus, rounded down (currently +${half}), to any ability check you make that doesn\u2019t already include your proficiency bonus. This also improves your Initiative rolls. It makes you competent at virtually everything, even skills you aren\u2019t trained in.`;
       },
       minLevel: 2,
@@ -1163,11 +1163,11 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       // skill you're proficient in (Arcana, History, Investigation,
       // Medicine, Nature, or Religion).
       description: (c: any) => {
-        const pb = proficiencyBonus(c?.level ?? 2);
+        const pb = characterProficiencyBonus(c ?? {level:2});
         return `You have Expertise (double proficiency, +${pb * 2}) in one Intelligence skill you\u2019re proficient in \u2014 Arcana, History, Investigation, Medicine, Nature, or Religion.`;
       },
       descriptionLong: (c: any) => {
-        const pb = proficiencyBonus(c?.level ?? 2);
+        const pb = characterProficiencyBonus(c ?? {level:2});
         return `When you reached level 2 you chose one of the following skills you have proficiency in and gained Expertise (your proficiency bonus is doubled, currently +${pb * 2}) for checks with it: Arcana, History, Investigation, Medicine, Nature, or Religion. The mark of a true scholar of the arcane.`;
       },
       minLevel: 2,
@@ -1240,11 +1240,11 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       name: 'Tool Expertise',
       actionType: 'free',
       description: (c: any) => {
-        const pb = proficiencyBonus(c?.level ?? 6);
+        const pb = characterProficiencyBonus(c ?? {level:6});
         return `You have Expertise (double proficiency, +${pb * 2}) with any Artisan\u2019s Tools you\u2019re proficient in.`;
       },
       descriptionLong: (c: any) => {
-        const pb = proficiencyBonus(c?.level ?? 6);
+        const pb = characterProficiencyBonus(c ?? {level:6});
         return `You now add double your proficiency bonus (currently +${pb * 2}) to any ability check you make that uses Artisan\u2019s Tools with which you have proficiency. As the consummate craftsperson, your tool checks are reliably exceptional.`;
       },
       minLevel: 6,

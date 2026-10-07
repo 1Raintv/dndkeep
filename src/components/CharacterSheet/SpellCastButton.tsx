@@ -1,5 +1,4 @@
 import { SpellDescription } from '../shared/SpellDescription';
-import { abilityModifier } from '../../rules/abilities';
 import { useState, Suspense } from 'react';
 // Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
 import { lazyWithRetry as lazy } from '../../lib/lazyWithRetry';
@@ -9,13 +8,13 @@ import { AURA_SPELLS } from '../../lib/auras';
 import SummonFormPickerModal from './SummonFormPickerModal';
 const AuraCastModal = lazy(() => import('./AuraCastModal'));
 import { createPortal } from 'react-dom';
-import type { Character, SpellSlots } from '../../types';
+import type { Character, SpellSlots, AbilityKey } from '../../types';
 import type { SpellData } from '../../types';
 import { logAction } from '../shared/ActionLog';
 import { parseSpellMechanics, parseUpcastScaling, computeUpcastDice, canUpcastSpell } from '../../lib/spellParser';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { CONDITION_MAP } from '../../data/conditions';
-import { rollDie } from '../../lib/gameUtils';
+import { rollDie, computeStats } from '../../lib/gameUtils';
 import { parseRangeToFt } from '../../lib/rangeParse';
 import { supabase } from '../../lib/supabase';
 import PlayerAttackButton from '../Combat/PlayerAttackButton';
@@ -245,15 +244,16 @@ export default function SpellCastButton({
  const canCast = isCantrip || availableSlots.length > 0;
 
  // Spell modifier
- const spellAbilityMap: Record<string, keyof Character> = {
+ const spellAbilityMap: Record<string, AbilityKey> = {
  Wizard: 'intelligence', Artificer: 'intelligence', Psion: 'intelligence',
  Cleric: 'wisdom', Druid: 'wisdom', Ranger: 'wisdom',
  Paladin: 'charisma', Bard: 'charisma', Sorcerer: 'charisma', Warlock: 'charisma',
  };
  const key = spellAbilityMap[character.class_name] ?? 'intelligence';
- const score = (character[key] as number) ?? 10;
- const spellMod = abilityModifier(score);
- const profBonus = Math.ceil(character.level / 4) + 1;
+ // v2.775 — casting must use the same effective scores and total-level PB as the sheet.
+ const stats = computeStats(character);
+ const spellMod = stats.modifiers[key];
+ const profBonus = stats.proficiency_bonus;
  const spellAttack = spellMod + profBonus;
  const saveDC = 8 + spellAttack;
 

@@ -1,3 +1,4 @@
+import {characterProficiencyBonus} from '../rules/proficiency';
 import { abilityModifier } from '../rules/abilities';
 import type { Character, ComputedStats, AbilityKey } from '../types';
 import { SKILLS } from '../data/skills';
@@ -10,10 +11,8 @@ import { rollDie, rollDiceExpr } from '../rules/dice';
  *  existing lazy-side importers keep working unchanged. */
 export { abilityModifier };
 
-/** PHB formula: ceil(level / 4) + 1, clamped to levels 1–20 */
-export function proficiencyBonus(level: number): number {
-  return Math.ceil(Math.max(1, Math.min(20, level)) / 4) + 1;
-}
+// v2.775 — canonical proficiency rules, also safe for lightweight consumers.
+export { proficiencyBonus, characterProficiencyBonus } from '../rules/proficiency';
 
 /** v2.253.0 — Convert an NPC/monster CR string to its proficiency
  *  bonus per the 2024 PHB / DMG monster-CR table. Accepts the CR
@@ -69,7 +68,7 @@ export function xpForNextLevel(currentLevel: number): number {
 
 /** Compute all derived stats for a character in one pass. */
 export function computeStats(character: Character): ComputedStats {
-  const pb = proficiencyBonus(character.level);
+  const pb = characterProficiencyBonus(character);
 
   // v2.327.0 — T5: apply attunement-gated ability-score overrides
   // (Gauntlets of Ogre Power, Headband of Intellect, etc.) BEFORE

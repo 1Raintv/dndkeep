@@ -4,7 +4,7 @@ import { checkedWrite } from '../../lib/api/checked';
 import { asJsonb } from '../../lib/jsonbCast';
 import type { Character, Campaign } from '../../types';
 import { CONDITIONS, CONDITION_MAP } from '../../data/conditions';
-import { xpToLevel, xpForNextLevel, abilityModifier, proficiencyBonus } from '../../lib/gameUtils';
+import { xpToLevel, xpForNextLevel, abilityModifier, characterProficiencyBonus } from '../../lib/gameUtils';
 import { applyDamageToPools, applyHealing, concentrationDC } from '../../rules/hp';
 import { SPELLS } from '../../data/spells';
 import {
@@ -2165,7 +2165,7 @@ function StatMini({ label, value, color }: { label: string; value: string | numb
 
 // ── Passive Perception chip ──────────────────────────────────────────
 function PassivePerceptionChip({ character: c, dcInput }: { character: Character; dcInput: string }) {
-  const pb = proficiencyBonus(c.level);
+  const pb = characterProficiencyBonus(c);
   const wisMod = abilityModifier(c.wisdom);
   const hasPerception = (c.skill_proficiencies ?? []).includes('Perception');
   const hasExpertise = (c.skill_expertises ?? []).includes('Perception');
