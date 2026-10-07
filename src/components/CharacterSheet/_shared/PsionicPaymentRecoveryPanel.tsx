@@ -12,6 +12,15 @@ export default function PsionicPaymentRecoveryPanel({characterId,persistence}:{c
  useEffect(()=>{const update=()=>setPending(pendingPsionicPayments(characterId));update();setMessage('');setBusy(false);window.addEventListener('storage',update);window.addEventListener(PSIONIC_PAYMENT_CHANGED,update);return()=>{window.removeEventListener('storage',update);window.removeEventListener(PSIONIC_PAYMENT_CHANGED,update);};},[characterId]);
  async function recover(payment:PendingPsionicPayment){
   if(busy)return;setBusy(true);
+  if(payment.kind==='rest'){
+   try{
+    if(!persistence.rest)throw new Error('Rest recovery is unavailable on this sheet.');
+    await persistence.rest(payment.request);
+    if(mounted.current&&current.current===characterId)setMessage(`${payment.request.sourceFeature} confirmed. Its saved recovery and item rolls were applied once. Do not take another rest to recover this request.`);
+   }catch(error){if(mounted.current&&current.current===characterId)setMessage(error instanceof Error?error.message:'Rest is still unconfirmed.');}
+   finally{if(mounted.current&&current.current===characterId)setBusy(false);}
+   return;
+  }
   const original=payment.kind==='enkindled'?`Base rolls: ${payment.request.baseRolls.join(', ')}.`:payment.request.rolls.length?`Original rolls: ${payment.request.rolls.join(', ')}.`:'No dice roll was requested.';
   try{
    const receipt=payment.kind==='enkindled'?await persistence.spend(payment.request):payment.kind==='energy'?await persistence.energy(payment.request):await persistence.surge(payment.request);
@@ -29,16 +38,16 @@ export default function PsionicPaymentRecoveryPanel({characterId,persistence}:{c
  }
  async function dismiss(payment:PendingPsionicPayment){
   if(busy)return;
-  if(await modal.confirm({title:'Dismiss saved roll?',message:'This only removes the recovery notice from this browser. It does not refund dice, cancel a paid use or apply the feature. Check History and resolve the saved rolls manually first.',confirmLabel:'Dismiss recovery'}))forgetPsionicPayment(characterId,payment.request.requestId);
+  if(await modal.confirm({title:'Dismiss saved roll?',message:payment.kind==='rest'?'This removes only the saved rest notice. It does not undo recovery. Confirm the rest and check History first.':'This only removes the recovery notice from this browser. It does not refund dice, cancel a paid use or apply the feature. Check History and resolve the saved rolls manually first.',confirmLabel:'Dismiss recovery'}))forgetPsionicPayment(characterId,payment.request.requestId);
  }
  if(!pending.length&&!message)return null;
  return <section role="status" aria-label="Psion roll recovery" style={{padding:12,marginBottom:12,border:'1px solid #a78bfa',borderRadius:10,background:'var(--c-surface)',overflowWrap:'anywhere'}}>
-  <strong style={{color:'#c4b5fd'}}>Saved Psion roll</strong>
+  <strong style={{color:'#c4b5fd'}}>{pending.length&&pending.every(payment=>payment.kind==='rest')?'Saved rest':'Saved Psion roll'}</strong>
   {pending.map(payment=><div key={payment.request.requestId} style={{marginTop:8,fontSize:12}}>
-   <div>{payment.request.sourceFeature} · {payment.kind==='enkindled'?`base ${payment.request.baseRolls.join(', ')}; proposed extra ${payment.request.extraRolls.join(', ')}`:`original rolls ${payment.request.rolls.join(', ')}`}</div>
-   <p>Dice cost was not confirmed. Your rolls are saved. {payment.request.recoveryNote}</p>
+   <div>{payment.request.sourceFeature} · {payment.kind==='rest'?'saved recovery':payment.kind==='enkindled'?`base ${payment.request.baseRolls.join(', ')}; proposed extra ${payment.request.extraRolls.join(', ')}`:`original rolls ${payment.request.rolls.join(', ')}`}</div>
+   <p>{payment.kind==='rest'?'Rest was not confirmed. Its recovery and item rolls are saved.':'Dice cost was not confirmed. Your rolls are saved.'} {payment.request.recoveryNote}</p>
    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-    <button className="btn-secondary btn-sm" disabled={busy} onClick={()=>void recover(payment)}>Confirm dice cost</button>
+    <button className="btn-secondary btn-sm" disabled={busy} onClick={()=>void recover(payment)}>{payment.kind==='rest'?'Confirm rest':'Confirm dice cost'}</button>
     <button className="btn-ghost btn-sm" disabled={busy} onClick={()=>void dismiss(payment)}>Dismiss recovery</button>
    </div>
   </div>)}

@@ -1,7 +1,7 @@
 import type {Character} from '../types';
 const fields = [
  'current_hp','temp_hp','active_conditions','concentration_spell','concentration_rounds_remaining',
- 'spell_slots','death_saves_successes','death_saves_failures','inspiration',
+ 'exhaustion_level','concentration_slot_level','spell_slots','death_saves_successes','death_saves_failures','inspiration',
  'hit_dice_spent','psionic_hit_dice_revision','psionic_energy_revision','class_resources','feature_uses','currency','inventory','experience_points',
 ] as const;
 
@@ -55,4 +55,25 @@ export function acceptPsionicEnergyReceipt(ref:{current:Character},receipt:{mist
  if(receipt.connectionUsed!==undefined){if(receipt.connectionUsed===null)delete uses['Telepathic Connection'];else uses['Telepathic Connection']=receipt.connectionUsed;}
  if(receipt.restorationUsed===null)delete uses['Psionic Restoration'];else uses['Psionic Restoration']=receipt.restorationUsed;
  return reconcileCharacterUpdate(ref,{class_resources:resources,feature_uses:uses,psionic_energy_revision:receipt.energyRevision},pending);
+}
+
+/** Rest acknowledgements update only captured fields. New local edits and newer
+ * realtime changes survive a delayed response, including sibling resource keys. */
+export function acceptPsionicRestReceipt(ref:{current:Character},receipt:{character:Character;expected:Record<string,unknown>},pending:Partial<Character>={}){
+ const current=ref.current as unknown as Record<string,unknown>,saved=receipt.character as unknown as Record<string,unknown>;
+ const incoming:Record<string,unknown>={psionic_energy_revision:saved.psionic_energy_revision};
+ if('hit_dice_spent' in receipt.expected)incoming.psionic_hit_dice_revision=saved.psionic_hit_dice_revision;
+ for(const key of fields){
+  if(!(key in receipt.expected))continue;
+  if(key==='class_resources'||key==='feature_uses'){
+   const before=(receipt.expected[key]??{}) as Record<string,unknown>,now=(current[key]??{}) as Record<string,unknown>,after={...saved[key] as Record<string,unknown>};
+   const owned=key==='class_resources'?['psionic-energy-dice','psionic-restoration']:['Psionic Restoration','Telepathic Connection','Free Misty Step (Teleportation)'];
+   for(const entry of new Set([...Object.keys(before),...Object.keys(now),...Object.keys(after)])){
+    if(owned.includes(entry)||JSON.stringify(now[entry])===JSON.stringify(before[entry]))continue;
+    if(Object.prototype.hasOwnProperty.call(now,entry))after[entry]=now[entry];else delete after[entry];
+   }
+   incoming[key]=after;
+  }else if(JSON.stringify(current[key]??null)===JSON.stringify(receipt.expected[key]))incoming[key]=saved[key];
+ }
+ return reconcileCharacterUpdate(ref,incoming,pending);
 }

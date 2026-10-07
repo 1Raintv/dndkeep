@@ -1,3 +1,5 @@
+import type {Character} from '../../types';
+import {validPsionicRestRequest,type PsionicRestRequest} from '../psionicRestRequest';
 import {supabase} from '../supabase';
 export type PsionicTurn={soloTurn:number}|{encounterId:string;round:number;index:number;turnId:string};
 export interface EnkindledUse {requestId:string;sourceFeature:string;baseRolls:number[];extraRolls:number[];diceCount:number}
@@ -9,6 +11,7 @@ export interface SurgeReceipt {requestId:string;rolls:number[];total:number;hitD
 /** Injected into roll controls so a paid server result can refresh the sheet
  * without being enqueued as another optimistic absolute-value write. */
 export interface PsionicEnhancementPersistence {
+ rest?:(request:PsionicRestRequest)=>Promise<PsionicRestReceipt>;
  energy:(request:EnergyRequest)=>Promise<EnergyReceipt>;
  getTurn:()=>Promise<EnkindledTurn>;
  spend:(request:EnkindledRequest)=>Promise<EnkindledReceipt>;
@@ -80,4 +83,21 @@ export async function settlePsionicEnergy(characterId:string,request:EnergyReque
   ||(request.operation.endsWith('misty-step')&&r.mistyStepUsed===undefined)||(request.operation==='connection'&&r.connectionUsed===undefined)||!Array.isArray(r.rolls)
   ||JSON.stringify(r.rolls)!==JSON.stringify(request.rolls))throw new PsionicRequestError('The Energy Dice payment could not be verified. Keep the saved request.',false);
  return r as EnergyReceipt;
+}
+
+export interface PsionicRestReceipt {requestId:string;character:Character;replayed:boolean;expected:Record<string,unknown>}
+/** The server saves every rest field together and deduplicates the frozen
+ * snapshot. A response failure must retain this exact request for recovery. */
+export async function completePsionicRest(characterId:string,request:PsionicRestRequest):Promise<PsionicRestReceipt>{
+ if(!validPsionicRestRequest(request))throw new PsionicRequestError('Invalid saved rest. No request was sent.',true);
+ const data=await rpc('complete_psionic_rest',{p_character_id:characterId,p_request_id:request.requestId,p_rest_kind:request.restKind,p_expected:request.expected,p_updates:request.updates},true);
+ const result=data as Partial<PsionicRestReceipt>|null,c=result?.character;
+ if(!result||result.requestId!==request.requestId||typeof result.replayed!=='boolean'||!c||c.id!==characterId
+  ||!Number.isSafeInteger(c.psionic_energy_revision)||Number(c.psionic_energy_revision)<0
+  ||!Number.isSafeInteger(c.psionic_hit_dice_revision)||Number(c.psionic_hit_dice_revision)<0
+  ||!c.class_resources||typeof c.class_resources!=='object'||Array.isArray(c.class_resources)
+  ||!c.feature_uses||typeof c.feature_uses!=='object'||Array.isArray(c.feature_uses)
+  ||Object.keys(request.updates).some(key=>!Object.prototype.hasOwnProperty.call(c,key)))
+  throw new PsionicRequestError('The rest response could not be verified. Keep the saved request.',false);
+ return {...result,expected:request.expected} as PsionicRestReceipt;
 }

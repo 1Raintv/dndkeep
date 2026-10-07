@@ -1,9 +1,11 @@
+import {createPsionicRestRequest} from '../../lib/psionicRestRequest';
+import {pendingPsionicPayments} from '../../lib/psionicPaymentRecovery';
 import {longRestHitDice} from '../../rules/restRecovery';
 import PsionicPaymentRecoveryPanel from './_shared/PsionicPaymentRecoveryPanel';
 import {usePsionicEnhancements} from '../../lib/hooks/usePsionicEnhancements';
 import {useOptimisticCharacterRef} from '../../lib/hooks/useOptimisticCharacterRef';
 import {characterProficiencyBonus} from '../../rules/proficiency';
-import {reconcileCharacterUpdate,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
+import {reconcileCharacterUpdate,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
 import { attacksPerAction } from '../../rules/extraAttack';
 import PsionCastingNote from './_shared/PsionCastingNote';
 import { useState, useCallback, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
@@ -299,7 +301,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Uses a ref to avoid stale closure — always reads current character value
  const characterRef = useOptimisticCharacterRef(character);
  const psionicPersistence=usePsionicEnhancements(character.id,saveQueue,receipt=>{
-  const {patch}='energyRevision' in receipt?acceptPsionicEnergyReceipt(characterRef,receipt,saveQueue.getPending()):acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
+  const {patch}='character' in receipt?acceptPsionicRestReceipt(characterRef,receipt,saveQueue.getPending()):'energyRevision' in receipt?acceptPsionicEnergyReceipt(characterRef,receipt,saveQueue.getPending()):acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
   if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
  },frozen);
 
@@ -608,7 +610,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  /** Persist concentration spell ID immediately to DB so it survives refresh.
  * v2.38.0: Also parses the spell's duration and starts a round countdown. */
- function setConcentration(spellId: string | null, slotLevel?: number) {
+ function setConcentration(spellId: string | null, slotLevel?: number, persist=true) {
  // v2.600.0 — automation arc ship 4a: when concentration on a summon
  // spell ends (Drop button, failed CON save, timer expiry, or a new
  // concentration cast replacing it), auto-despawn its battle-map
@@ -645,7 +647,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }).catch(() => { /* aura teardown is best-effort */ });
  }
  if (!spellId) {
- applyUpdate({ concentration_spell: '', concentration_rounds_remaining: null, concentration_slot_level: null }, true);
+ if(persist)applyUpdate({ concentration_spell: '', concentration_rounds_remaining: null, concentration_slot_level: null }, true);
  return;
  }
  const spell = spellMap[spellId];
@@ -941,7 +943,24 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Back-compat shim: anything still calling rollHitDie() rolls one.
  function rollHitDie() { rollHitDice(1); }
 
- function finishShortRest() {
+ const restBusy=useRef(false);
+ const [restSaving,setRestSaving]=useState(false);
+ async function persistRest(kind:'short'|'long',updates:Partial<Character>){
+  if(restBusy.current||frozen)return false;
+  if(character.class_name!=='Psion'){applyUpdate(updates,true);return true;}
+  if(pendingPsionicPayments(character.id).some(payment=>payment.kind==='rest')){
+   toast.showToast('Confirm your saved rest in Actions before taking another rest.','warn');return false;
+  }
+  restBusy.current=true;setRestSaving(true);
+  try{
+   if(!psionicPersistence.rest)throw new Error('Rest recovery is unavailable.');
+   const request=createPsionicRestRequest(character,kind,updates,crypto.randomUUID());
+   await psionicPersistence.rest(request);
+   return characterRef.current.id===character.id;
+  }catch(error){toast.showToast(error instanceof Error?error.message:'Rest was not confirmed. Check saved recovery in Actions.','warn');return false;}
+  finally{restBusy.current=false;setRestSaving(false);}
+ }
+ async function finishShortRest() {
  const newSlots = character.class_name === 'Warlock'
  ? Object.fromEntries(Object.entries(character.spell_slots).map(([k, s]) => [k, { ...(s as object), used: 0 }]))
  : character.spell_slots;
@@ -995,7 +1014,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }
  }
 
- applyUpdate({ spell_slots: newSlots, class_resources: newResources, feature_uses: newFeatureUses }, true);
+ if(!await persistRest('short',{ spell_slots: newSlots, class_resources: newResources, feature_uses: newFeatureUses }))return;
  setShortRestHpGained(0);
  setShowRest(false);
  setShortRestPromptedByDM(false);
@@ -1018,7 +1037,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }).catch(() => {});
  }
 
- function doLongRest() {
+ async function doLongRest() {
  const recoveredSlots = Object.fromEntries(
  Object.entries(character.spell_slots).map(([k, s]) => [k, { ...(s as object), used: 0 }])
  ) as typeof character.spell_slots;
@@ -1064,7 +1083,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
    console.log('[long rest] item recharge:\n  ' + chargeEvents.join('\n  '));
  }
 
- applyUpdate({
+ if(!await persistRest('long',{
+ concentration_spell: '',
+ concentration_rounds_remaining: null,
+ concentration_slot_level: null,
  current_hp: character.max_hp,
  temp_hp: 0,
  spell_slots: recoveredSlots,
@@ -1076,8 +1098,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  class_resources: newResources,
  feature_uses: {}, // All per-rest feature uses reset on long rest
  inventory: rechargedInventory,
- }, true);
- setConcentration(null);
+ }))return;
+ setConcentration(null,undefined,character.class_name!=='Psion');
  setShortRestHpGained(0);
  setShowRest(false);
 
@@ -2002,6 +2024,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </button>
  <button
  className="btn-secondary"
+ disabled={restSaving}
  onClick={finishShortRest}
  title="End short rest"
  >
@@ -2032,7 +2055,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  8+ hours. Regain all HP, all spell slots, and all spent Hit Point Dice.
  Removes one level of Exhaustion.
  </p>
- <button className="btn-gold" onClick={doLongRest} style={{ width: '100%', justifyContent: 'center' }}>
+ <button className="btn-gold" disabled={restSaving} onClick={doLongRest} style={{ width: '100%', justifyContent: 'center' }}>
  Take Long Rest
  </button>
  </div>

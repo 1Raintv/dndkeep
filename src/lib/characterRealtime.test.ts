@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import type {Character} from '../types';
-import {acceptPsionicEnergyReceipt,reconcileCharacterUpdate} from './characterRealtime';
+import {acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,reconcileCharacterUpdate} from './characterRealtime';
 const character={id:'pc',current_hp:20,hit_dice_spent:2,feature_uses:{'Telepathic Connection':1},class_resources:{'psionic-energy-dice':2}} as unknown as Character;
 it('accepts consecutive echoes before a React render, including a return to the original value',()=>{
  const ref={current:character};
@@ -50,4 +50,17 @@ it('keeps newer Restoration recovery while accepting unrelated changes from an o
  expect(ref.current.feature_uses).toEqual({'Psionic Restoration':1,'Telepathic Connection':1,Other:2});expect(ref.current.psionic_energy_revision).toBe(4);
  acceptPsionicEnergyReceipt(ref,{remaining:6,energyRevision:5,restorationResource:1,restorationUsed:null,connectionUsed:null});
  expect(ref.current.feature_uses).toEqual({Other:2});expect(ref.current.class_resources?.['psionic-restoration']).toBe(1);
+});
+
+it('a delayed rest preserves newer HP, exhaustion and sibling resources while acknowledging its dice',()=>{
+ const ref={current:{...character,current_hp:12,exhaustion_level:1,class_resources:{'psionic-energy-dice':2,Other:9},psionic_energy_revision:1}};
+ const expected={current_hp:20,exhaustion_level:2,class_resources:{'psionic-energy-dice':2,Other:7},feature_uses:character.feature_uses};
+ const saved={...character,current_hp:40,exhaustion_level:1,class_resources:{'psionic-energy-dice':6,Other:7},feature_uses:{},psionic_energy_revision:2};
+ acceptPsionicRestReceipt(ref,{character:saved,expected});
+ expect(ref.current).toMatchObject({current_hp:12,exhaustion_level:1,class_resources:{'psionic-energy-dice':6,Other:9},feature_uses:{}});
+});
+it('rest receipts restore unchanged captured fields, preserve pending edits and reject old dice revisions',()=>{
+ const ref={current:{...character,psionic_energy_revision:5,psionic_hit_dice_revision:4}};
+ acceptPsionicRestReceipt(ref,{character:{...character,current_hp:40,hit_dice_spent:0,psionic_energy_revision:4,psionic_hit_dice_revision:3,class_resources:{'psionic-energy-dice':6}},expected:{current_hp:20,hit_dice_spent:2,class_resources:character.class_resources}},{current_hp:17});
+ expect(ref.current).toMatchObject({current_hp:17,hit_dice_spent:2,psionic_energy_revision:5,class_resources:{'psionic-energy-dice':2}});
 });

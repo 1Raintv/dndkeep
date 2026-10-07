@@ -34,9 +34,15 @@ under the same character lock. It rejects changed snapshots, repairs malformed
 pools on Long Rest, preserves daily features on Short Rest, restores all Hit
 Point Dice on Long Rest, and replays without repeating recovery. Four new real
 database scenarios verify rest contention, replay, daily limits and full rollback.
-It is not connected to either rest screen yet.
+Player Short/Long Rest controls now use this transaction. Captured snapshots and
+item recharge outcomes are retained in browser recovery before sending. Lost
+responses can be confirmed after reload without restoring later-spent dice or
+item charges; all four desktop/mobile interruption cases pass. Six normal rest,
+Restoration-refresh and malformed-pool browser cases pass too. Delayed rest
+acknowledgements preserve newer local/remote HP, exhaustion and sibling resources.
+The DM party-rest transaction integration is still pending.
 
-Remaining integration: player and DM rest recovery, saved rest-request recovery,
+Remaining integration: DM rest recovery and its saved-request UI,
 level-change resource behavior, then protected ordinary saves. Audit subclass
 spell-slot payments separately; do not invent an unsupported PED-to-slot feature.
 Ordinary whole-resource sheet saves

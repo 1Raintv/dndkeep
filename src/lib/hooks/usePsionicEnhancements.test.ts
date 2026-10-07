@@ -1,3 +1,5 @@
+import {createPsionicRestRequest} from '../psionicRestRequest';
+import type {Character} from '../../types';
 // @vitest-environment happy-dom
 import {act,cleanup,renderHook} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
@@ -60,4 +62,14 @@ it('persists an unknown Energy Dice payment and confirms the exact original requ
  const paid={requestId:'energy',remaining:4,energyRevision:2,restorationResource:null,restorationUsed:null,rolls:[3],replayed:true};
  mocks.rpc.mockResolvedValue({data:paid,error:null});await act(async()=>{expect(await hook.result.current.energy(energy)).toEqual(paid);});
  expect(pendingPsionicPayments('hero')).toEqual([]);expect(accept).toHaveBeenCalledWith(paid);expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[2]);
+});
+
+it('retains an interrupted rest snapshot and accepts its exact replay without another character save',async()=>{
+ const c={id:'hero',class_name:'Psion',level:7,class_resources:{'psionic-energy-dice':2},feature_uses:{},spell_slots:{},psionic_energy_revision:1,psionic_hit_dice_revision:0} as unknown as Character;
+ const request=createPsionicRestRequest(c,'short',{class_resources:{'psionic-energy-dice':3},feature_uses:{},spell_slots:{}},'rest');
+ const saves=queue(),accept=vi.fn(),hook=renderHook(()=>usePsionicEnhancements('hero',saves,accept));mocks.rpc.mockRejectedValue(new Error('Lost response'));
+ await expect(hook.result.current.rest!(request)).rejects.toMatchObject({definitelyNotPaid:false});expect(pendingPsionicPayments('hero')).toEqual([{kind:'rest',request}]);
+ mocks.rpc.mockResolvedValue({data:{requestId:'rest',character:c,replayed:true},error:null});await act(async()=>{await hook.result.current.rest!(request);});
+ expect(pendingPsionicPayments('hero')).toEqual([]);expect(accept).toHaveBeenCalledWith({requestId:'rest',character:c,replayed:true,expected:request.expected});
+ expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[2]);
 });

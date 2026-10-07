@@ -1,8 +1,8 @@
 import {rememberPsionicPayment,forgetPsionicPayment,setPsionicPaymentActive,hasSavedPsionicPayment,type PendingPsionicPayment} from '../psionicPaymentRecovery';
 import {useEffect,useMemo,useRef} from 'react';
-import {settlePsionicEnergy,type EnergyReceipt,getEnkindledTurn,spendEnkindledLifeForce,spendPsionicSurge,PsionicRequestError,type PsionicEnhancementPersistence} from '../api/psionicTurns';
+import {completePsionicRest,type PsionicRestReceipt,settlePsionicEnergy,type EnergyReceipt,getEnkindledTurn,spendEnkindledLifeForce,spendPsionicSurge,PsionicRequestError,type PsionicEnhancementPersistence} from '../api/psionicTurns';
 interface SaveQueue {flush:()=>Promise<void>;getSnapshot:()=>{pending:boolean;error:string|null}}
-type Receipt={hitDiceSpent:number;hitDiceRevision:number}|EnergyReceipt;
+type Receipt=PsionicRestReceipt|{hitDiceSpent:number;hitDiceRevision:number}|EnergyReceipt;
 /** v2.782 — settle queued edits before the server charges dice; acknowledge its
  * snapshot locally rather than writing the same absolute resource value again. */
 export function usePsionicEnhancements(characterId:string,queue:SaveQueue,accept:(receipt:Receipt)=>void,frozen=false):PsionicEnhancementPersistence{
@@ -29,6 +29,6 @@ export function usePsionicEnhancements(characterId:string,queue:SaveQueue,accept
    if(mounted.current&&live.current.characterId===characterId)live.current.accept(receipt);
    return receipt;
   }
-  return {energy:request=>pay({kind:'energy',request},()=>settlePsionicEnergy(characterId,request)),getTurn:()=>getEnkindledTurn(characterId),spend:request=>pay({kind:'enkindled',request},()=>spendEnkindledLifeForce(characterId,request)),surge:request=>pay({kind:'surge',request},()=>spendPsionicSurge(characterId,request))};
+  return {rest:request=>pay({kind:'rest',request},()=>completePsionicRest(characterId,request)),energy:request=>pay({kind:'energy',request},()=>settlePsionicEnergy(characterId,request)),getTurn:()=>getEnkindledTurn(characterId),spend:request=>pay({kind:'enkindled',request},()=>spendEnkindledLifeForce(characterId,request)),surge:request=>pay({kind:'surge',request},()=>spendPsionicSurge(characterId,request))};
  },[characterId,queue]);
 }
