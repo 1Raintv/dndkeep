@@ -1,5 +1,27 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Destructive Thoughts damage automation, v2.777
+
+The selected Discipline now offers a target and Energy Die count, spends that
+count once, rolls the canonical die size, adds effective Intelligence once and
+supports Surge across every low die for one Hit Point Die. Confirm the qualifying
+Psion Conjuration/Evocation spell and visible creature yourself; damage is
+independent of that spell's save. The existing one-Discipline-per-turn reminder
+remains manual, and this action does not cast or spend the triggering spell.
+
+In an active encounter, a fixed paid total enters normal combat damage resolution.
+A retained result and stable declaration ID allow retry after an ambiguous write
+without another charge or duplicate damage. Hidden participants remain filtered
+by database policy. Outside an encounter, a named-target result is logged for
+manual tabletop application. Character resource persistence is still optimistic,
+not transactional with the combat queue; the result display is session-local.
+
+Local desktop/mobile checks cover tabletop use, a real player with hidden enemy
+rows, a deliberately lost insert response, retry, and a separate DM applying
+12 Psychic damage (30 HP to 18) with exactly two Energy Dice and one Hit Point
+Die spent. Focused tests cover resource changes, sheet closure and slow logging.
+
+
 ### 2026-10-07 — Ruler readability across zoom, v2.776
 
 Ruler labels keep a 14-pixel screen size with capped high-density text rendering.

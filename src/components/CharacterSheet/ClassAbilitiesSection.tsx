@@ -1,3 +1,4 @@
+import DestructiveThoughtsButton from './_shared/DestructiveThoughtsButton';
 import BiofeedbackButton from './_shared/BiofeedbackButton';
 import { psionicPoolRemaining } from '../../rules/psionicRestoration';
 import ConditionalPsionicButton from './_shared/ConditionalPsionicButton';
@@ -809,7 +810,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  const target = e.target as HTMLElement;
  if (target.closest('button')) e.stopPropagation();
  }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'nowrap' as const, alignItems: 'center', width: '100%' }}>
- {conditionalDiscipline?.id==='biofeedback' ? <BiofeedbackButton character={character} onUpdate={onUpdate}/> : conditionalDiscipline?.conditionalOutcome ? <ConditionalPsionicButton character={character} discipline={conditionalDiscipline} onUpdate={onUpdate} campaignId={campaignId}/> : (ability.name==='Telekinetic Propel'||ability.name==='Telepathic Connection') ? <PsionicPowerButton character={character} onUpdate={onUpdate} kind={ability.name==='Telekinetic Propel'?'propel':'connection'} onUse={async(use:PsionicPowerUse)=>{await handleUseAbility({...ability,psionicUse:use});}}/> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton character={character} onUpdate={onUpdate}/> : ability.actionType !== 'free' && (
+ {conditionalDiscipline?.id==='destructive-thoughts' ? <DestructiveThoughtsButton character={character} onUpdate={onUpdate}/> : conditionalDiscipline?.id==='biofeedback' ? <BiofeedbackButton character={character} onUpdate={onUpdate}/> : conditionalDiscipline?.conditionalOutcome ? <ConditionalPsionicButton character={character} discipline={conditionalDiscipline} onUpdate={onUpdate} campaignId={campaignId}/> : (ability.name==='Telekinetic Propel'||ability.name==='Telepathic Connection') ? <PsionicPowerButton character={character} onUpdate={onUpdate} kind={ability.name==='Telekinetic Propel'?'propel':'connection'} onUse={async(use:PsionicPowerUse)=>{await handleUseAbility({...ability,psionicUse:use});}}/> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton character={character} onUpdate={onUpdate}/> : ability.actionType !== 'free' && (
  <button
  onClick={() => handleUseAbility(ability, maxUses !== undefined ? 1 : undefined)}
  disabled={isPedPoolRow && (psionicPoolRemaining(character.level,character.class_resources?.['psionic-energy-dice'])??0)<1}
