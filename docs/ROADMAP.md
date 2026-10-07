@@ -1,5 +1,22 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Biofeedback dice and temporary HP, v2.770
+
+Biofeedback now has a usable Actions button. After confirming the qualifying
+Psion Necromancy/Transmutation spell trigger, choose dice up to effective INT
+modifier and current availability. The chosen cost is paid before the result;
+add INT once and keep higher existing temporary HP. Cancelling the count prompt
+costs nothing. Psionic Surge can improve every low roll for one Hit Point Die,
+including when Biofeedback just spent the last Energy Dice. Original rolls and
+costs are logged, and unrelated resources are retained.
+
+This is manual trigger confirmation: it does not cast a spell or enforce the
+once-per-turn Discipline limit across every character/campaign action. The
+prompt states those requirements. If Surge becomes unavailable after payment,
+the original Biofeedback result still applies. Desktop/mobile checks cover
+persistence, non-stacking, cancellation, last-die Surge and existing powers.
+
+
 ### 2026-10-07 — Unlock Psion spell slots on level-up, v2.769
 
 The banner level-up wizard now updates a single-class Psion's slot capacities
