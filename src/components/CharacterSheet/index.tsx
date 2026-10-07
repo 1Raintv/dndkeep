@@ -1,10 +1,10 @@
 import {createPsionicRestRequest} from '../../lib/psionicRestRequest';
 import {pendingPsionicPayments} from '../../lib/psionicPaymentRecovery';
+import {savingThrowPassed} from '../../rules/savingThrows';
 import {longRestHitDice} from '../../rules/restRecovery';
 import PsionicPaymentRecoveryPanel from './_shared/PsionicPaymentRecoveryPanel';
 import {usePsionicEnhancements} from '../../lib/hooks/usePsionicEnhancements';
 import {useOptimisticCharacterRef} from '../../lib/hooks/useOptimisticCharacterRef';
-import {characterProficiencyBonus} from '../../rules/proficiency';
 import {preservePsionicResources,acceptSavedPsionicResources,reconcileCharacterUpdate,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
 import { attacksPerAction } from '../../rules/extraAttack';
 import PsionCastingNote from './_shared/PsionCastingNote';
@@ -709,31 +709,19 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  * handler still fires even if onResult never does (e.g. physics error).
  */
  function rollConcentrationSave(dc: number): { passed: boolean; total: number; d20: number } {
- const conScore = character.constitution ?? 10;
- const conMod = abilityModifier(conScore);
- const pb = characterProficiencyBonus(character);
- const hasSaveProf = character.saving_throw_proficiencies?.includes('constitution');
- const saveBonus = conMod + (hasSaveProf ? pb : 0);
- const d20 = Math.floor(Math.random() * 20) + 1;
+ // v2.785 — use the same effective Constitution/proficiency as the sheet.
+ // Base-score math ignored active item overrides and disagreed with its tiles.
+ const conMod = computed.modifiers.constitution;
+ const pb = computed.proficiency_bonus;
+ const hasSaveProf = computed.saving_throws.constitution.proficient;
+ const saveBonus = computed.saving_throws.constitution.total;
+ const d20 = rollDie(20);
  const total = d20 + saveBonus;
- // v2.49.0: NAT 1/20 house rule — overrides total comparison if enabled.
- // RAW: saving throws don't crit; only attacks + death saves do. Many tables
- // play with the house rule that NAT 1 = auto-fail, NAT 20 = auto-success on
- // ALL d20 rolls. The character can opt in via Settings.
- // v2.63.0: ON BY DEFAULT — only false when the user explicitly disables it.
  const useNat = character.nat_1_20_saves !== false;
- let passed: boolean;
- let verdict: string;
- if (useNat && d20 === 20) {
- passed = true;
- verdict = '✓ Maintained (NAT 20 — auto-success)';
- } else if (useNat && d20 === 1) {
- passed = false;
- verdict = '✗ Broken (NAT 1 — auto-fail)';
- } else {
- passed = total >= dc;
- verdict = passed ? '✓ Maintained' : '✗ Broken';
- }
+ const passed = savingThrowPassed(d20, total, dc, { naturalExtremes: useNat });
+ const verdict = useNat && d20 === 20 ? '✓ Maintained (NAT 20 — auto-success)'
+ : useNat && d20 === 1 ? '✗ Broken (NAT 1 — auto-fail)'
+ : passed ? '✓ Maintained' : '✗ Broken';
  // v2.74.0: gather deferred actions — fire only after dice settle.
  const spellName = concentrationSpellId ? (spellMap[concentrationSpellId]?.name ?? 'Concentration') : 'Concentration';
  const concSpellIdAtRoll = concentrationSpellId; // capture for the callback
@@ -770,7 +758,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  import('../shared/ActionLog').then(({ logAction }) => {
  logAction({
  campaignId: character.campaign_id,
- characterId: userId ?? '',
+ characterId: character.id,
  characterName: character.name,
  actionType: 'save',
  actionName: 'Concentration Check',
@@ -1716,11 +1704,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      breakdown so users can see why the DC is what it is. RAW: DC = max(10, floor(damage/2)),
      capped at 30. */}
  {concentrationSaveDC !== null && concentrationSpellId && (() => {
- const conScore = character.constitution ?? 10;
- const conMod = abilityModifier(conScore);
- const pb = characterProficiencyBonus(character);
- const hasSaveProf = character.saving_throw_proficiencies?.includes('constitution');
- const saveBonus = conMod + (hasSaveProf ? pb : 0);
+ const saveBonus = computed.saving_throws.constitution.total;
  const spellName = spellMap[concentrationSpellId]?.name ?? 'Concentration';
  const dmg = concentrationSaveDamage ?? 0;
  const halfDmg = Math.floor(dmg / 2);

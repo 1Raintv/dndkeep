@@ -1,5 +1,23 @@
 # DNDKeep — Two-Track Roadmap
 
+### In progress — Character-sheet concentration correctness, planned v2.785
+
+The standalone sheet now reads the same effective Constitution/save proficiency
+as its ability tiles, uses the canonical dice/save helpers, and records saves
+under the character ID (previously the account ID, losing character history).
+Eight local desktop/mobile scenarios verify bonuses, standard natural extremes,
+the explicit natural-20 house rule, failed-save cleanup and persisted history.
+This is local follow-up work, not a production release.
+
+Remaining concentration audit: delayed failed-roll callbacks can clear a newly
+cast spell; campaign save prompts use a separate resolver; active save bonuses,
+advantage and exhaustion need consistent handling across both paths. Do not
+claim concentration automation complete until these paths are reconciled.
+
+Release status: database PR #110 merged at 60499b3, but migration run 37642330605
+failed before any steps because GitHub could not acquire a runner. Reruns and
+pushes return HTTP 500. Client PR #111 remains draft until migration is confirmed.
+
 ### In progress — Energy Dice persistence, planned v2.784
 
 A real two-tab browser regression reproduces the remaining base-pool race:
