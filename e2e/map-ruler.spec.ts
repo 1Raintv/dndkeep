@@ -27,3 +27,19 @@ test('ruler text stays legible through toolbar zoom without changing distance',a
  await page.evaluate(()=>(window as any).rulerFixture.active(true));await expect.poll(()=>page.evaluate(()=>(window as any).rulerFixture.rulerCount())).toBe(1);
  expect(errors).toEqual([]);
 });
+
+test('ruler label stays inside the canvas while panning near every edge',async({page,context,baseURL},info)=>{
+ await context.route('**/*',route=>new URL(route.request().url()).origin===new URL(baseURL!).origin?route.continue():route.abort());
+ await page.goto('/e2e/fixtures/map-ruler.html');await page.waitForFunction(()=>!!(window as any).rulerFixture);
+ const canvas=page.locator('canvas');await canvas.click({position:{x:35,y:35}});await canvas.click({position:{x:175,y:35}});
+ await page.getByRole('heading',{name:'Map ruler'}).hover();
+ for(const [x,y] of [[5,5],[315,5],[315,315],[5,315],[160,160]]){
+  await page.evaluate(([x,y])=>(window as any).rulerFixture.tipAt(x,y),[x,y]);
+  await expect.poll(()=>page.evaluate(()=>{const b=(window as any).rulerFixture.labelBounds();return b&&b.x>=4&&b.y>=4&&b.x+b.width<=316&&b.y+b.height<=316;})).toBe(true);
+  expect(await page.evaluate(()=>(window as any).rulerFixture.text())).toBe('10 ft · 2 cells');
+  await page.screenshot({path:info.outputPath(`ruler-edge-${x}-${y}.png`)});
+ }
+ await page.evaluate(()=>(window as any).rulerFixture.resize(160,120));
+ await expect.poll(()=>page.evaluate(()=>{const b=(window as any).rulerFixture.labelBounds();return b&&b.x>=4&&b.y>=4&&b.x+b.width<=156&&b.y+b.height<=116;})).toBe(true);
+ expect(await page.evaluate(()=>(window as any).rulerFixture.text())).toBe('10 ft · 2 cells');
+});

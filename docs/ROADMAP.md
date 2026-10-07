@@ -1,5 +1,14 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Keep ruler labels inside the canvas, v2.778
+
+Ruler labels move above the endpoint near the bottom and shift inward at the
+left/right edges. Camera panning and resize now refresh placement as well as
+zoom. The measured path and distance stay unchanged. Pure placement checks and
+actual Pixi desktop/mobile corner tests cover this; the new browser regression
+fails against the previous unclamped label placement.
+
+
 ### 2026-10-07 — Destructive Thoughts damage automation, v2.777
 
 The selected Discipline now offers a target and Energy Die count, spends that
