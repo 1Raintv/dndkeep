@@ -20,11 +20,21 @@ whole scrollable picker inside the screen. Desktop/mobile screenshots checked.
 All 12 replacement/picker/discipline level-up browser cases passed together. Full
 gate: 1,575 unit tests, TS 208/208, all required checks and 253 KB entry budget pass.
 
-Before release: verify new-subclass acquisition, cancel/skip and target-switch
-behavior, and audit multiclass spell ownership. The shared known_spells list
-currently lacks per-class provenance; an overlapping Wizard/Psion spell must not
-silently be treated as a Psion-owned replacement. This work remains local and
-is not yet a finished or deployed feature.
+New-subclass acquisition, cancel/reopen and target switching now pass real
+browser checks: grants survive a replacement, canceled choices stay unsaved,
+and switching from Psion to Fighter discards the pending spell swap. All 10
+spell-replacement browser cases pass together on desktop/mobile. A shared
+context builder protects species grants at total character level and both
+classes' automatic grants without projecting away the other class. Three
+context regressions plus the full gate pass (1,578 unit tests; TS 208/208).
+
+Before release: finish multiclass spell ownership. The shared known_spells list
+has no per-class provenance, so an overlapping Wizard/Psion spell cannot safely
+be classified from its class-list tags. Add explicit ownership for ambiguous
+legacy choices, preserve another class's copy when Psion replaces its copy,
+and apply ownership to eligibility/counts. Also audit feat-granted spell sources.
+Do not infer ownership or present the existing shared-list behavior as complete
+multiclass support. This work remains local and is not yet deployed.
 
 ### Released — Campaign concentration persistence, v2.786
 

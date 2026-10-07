@@ -133,7 +133,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  const [selectedSubclass, setSelectedSubclass] = useState(existingSubclassForTarget ?? '');
  const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([...currentDisciplines]);
  const [disciplineSearch, setDisciplineSearch] = useState('');
- const spellChoices=usePsionLevelUpSpells({...character,class_name:effectiveClassName,level:effectiveCurrentLevel,subclass:selectedSubclass},newLevel);
+ const spellChoices=usePsionLevelUpSpells(character,newLevel,{kind:targetKind,className:effectiveClassName,level:effectiveCurrentLevel,subclass:selectedSubclass});
  const [asiChoice, setAsiChoice] = useState<'asi' | 'feat'>('asi');
  const [abiBoosts, setAbiBoosts] = useState<Partial<Record<AbilityKey, number>>>({});
  const [selectedFeat, setSelectedFeat] = useState('');
