@@ -32,7 +32,7 @@ test.describe('Psion spell stat display', () => {
   test('spell attack and DC follow Psion level and Intelligence',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
     const failed:string[]=[];page.on('response',r=>{if(r.status()>=400)failed.push(`${r.status()} ${r.url()}`);});
-    sql(`update characters set level=5,intelligence=18 where id='${charId}'`);
+    sql(`update characters set level=5,intelligence=18,spell_slots='{"1":{"total":4,"used":0},"2":{"total":3,"used":0},"3":{"total":2,"used":0}}' where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     const attack=page.getByText('Spell Attack',{exact:true}).locator('visible=true').first().locator('..');
     const dc=page.getByText('Spell DC',{exact:true}).locator('visible=true').first().locator('..');
@@ -40,6 +40,18 @@ test.describe('Psion spell stat display', () => {
     await attack.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('psion-stats.png')});
     sql(`update characters set level=17,intelligence=20 where id='${charId}'`);
     await page.reload();await expect(attack).toHaveText('+11Spell Attack');await expect(dc).toHaveText('19Spell DC');
+    await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+    const stats=page.getByRole('region',{name:'Spellcasting statistics'});
+    await expect(stats).toContainText('+5MODIFIER');await expect(stats).toContainText('+11SPELL ATTACK');await expect(stats).toContainText('19SAVE DC');
+    // The header must use effective Intelligence, including an attuned item.
+    sql(`update characters set level=5,intelligence=10,inventory='[{"id":"header-headband","magic_item_id":"headband-of-intellect","name":"Headband of Intellect","quantity":1,"equipped":true,"attuned":true}]' where id='${charId}'`);
+    await page.reload();await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+    await expect(stats).toContainText('+4MODIFIER');await expect(stats).toContainText('+7SPELL ATTACK');await expect(stats).toContainText('15SAVE DC');
+    await stats.evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));
+    await page.screenshot({path:info.outputPath('psion-spell-header.png')});
+    sql(`update characters set inventory='[]' where id='${charId}'`);
+    await page.reload();await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+    await expect(stats).toContainText('+0MODIFIER');await expect(stats).toContainText('+3SPELL ATTACK');await expect(stats).toContainText('11SAVE DC');
     expect(errors).toEqual([]);expect(failed).toEqual([]);
   });
 });

@@ -1,7 +1,6 @@
 import PsionCastingNote from './_shared/PsionCastingNote';
 import { SUBTLE_TELEKINESIS_TEXT } from '../../data/psionFeatureDescriptions';
 import { SpellDescription } from '../shared/SpellDescription';
-import { abilityModifier } from '../../rules/abilities';
 import { useState, useMemo, type ReactNode } from 'react';
 import type { Character, ComputedStats, SpellData } from '../../types';
 import SpellCastButton from './SpellCastButton';
@@ -312,15 +311,14 @@ export default function SpellsTab({
  </div>
 
  {/* ── Spell stats header (DDB-style) — modifier / attack / save DC ── */}
- {computed.proficiency_bonus > 0 && (() => {
- const spellAbility = ({ Bard:'charisma', Cleric:'wisdom', Druid:'wisdom', Paladin:'charisma', Ranger:'wisdom', Sorcerer:'charisma', Warlock:'charisma', Wizard:'intelligence', Artificer:'intelligence' } as Record<string,string>)[character.class_name];
- if (!spellAbility) return null;
- const score = (character as any)[spellAbility] ?? 10;
- const mod = abilityModifier(score);
- const atk = mod + computed.proficiency_bonus;
- const dc = 8 + atk;
+ {computed.spell_attack_bonus !== null && computed.spell_save_dc !== null && (() => {
+ // v2.767 — share the effective stats used by spell rolls, including Psion
+ // and attuned ability-score items. A separate class map omitted Psion.
+ const atk = computed.spell_attack_bonus;
+ const dc = computed.spell_save_dc;
+ const mod = atk - computed.proficiency_bonus;
  return (
- <div style={{ display: 'flex', gap: 24, padding: '10px 16px', background: 'var(--c-surface)', border: '1px solid rgba(192,132,252,0.2)', borderRadius: 'var(--r-lg)', alignItems: 'center', flexWrap: 'wrap' as const }}>
+ <div role="region" aria-label="Spellcasting statistics" style={{ display: 'flex', gap: 24, padding: '10px 16px', background: 'var(--c-surface)', border: '1px solid rgba(192,132,252,0.2)', borderRadius: 'var(--r-lg)', alignItems: 'center', flexWrap: 'wrap' as const }}>
  {[
  { label: 'MODIFIER', value: mod >= 0 ? `+${mod}` : String(mod) },
  { label: 'SPELL ATTACK', value: atk >= 0 ? `+${atk}` : String(atk) },
@@ -328,7 +326,7 @@ export default function SpellsTab({
  ].map(s => (
  <div key={s.label} style={{ textAlign: 'center' }}>
  <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: '1.5rem', color: '#c084fc', lineHeight: 1 }}>{s.value}</div>
- <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 9, letterSpacing: '0.12em', textTransform: 'uppercase' as const, color: 'rgba(192,132,252,0.6)', marginTop: 2 }}>{s.label}</div>
+ <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11, letterSpacing: '0.06em', textTransform: 'uppercase' as const, color: 'var(--t-2)', marginTop: 2 }}>{s.label}</div>
  </div>
  ))}
  </div>
