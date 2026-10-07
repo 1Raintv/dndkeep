@@ -40,10 +40,16 @@ responses can be confirmed after reload without restoring later-spent dice or
 item charges; all four desktop/mobile interruption cases pass. Six normal rest,
 Restoration-refresh and malformed-pool browser cases pass too. Delayed rest
 acknowledgements preserve newer local/remote HP, exhaustion and sibling resources.
-The DM party-rest transaction integration is still pending.
+DM party rests now use the same captured transaction for Psions. Each saved rest
+has a named recovery notice in the Party tab, surviving reload. Partial failures
+are reported without claiming the whole party rested; known failures can retry
+only their characters. Already-rested characters remain untouched. Six real
+mixed-class party scenarios pass across desktop/mobile, including a DM updating
+another account's character, lost responses, reload and targeted rejected retries.
+Party-rest text now accurately describes all Hit Point Dice and one exhaustion
+level. The TypeScript baseline fell from 210 to 208.
 
-Remaining integration: DM rest recovery and its saved-request UI,
-level-change resource behavior, then protected ordinary saves. Audit subclass
+Remaining integration: level-change resource behavior, then protected ordinary saves. Audit subclass
 spell-slot payments separately; do not invent an unsupported PED-to-slot feature.
 Ordinary whole-resource sheet saves
 must not overwrite transaction-owned keys from a stale tab; adding one RPC

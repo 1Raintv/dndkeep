@@ -1,4 +1,5 @@
-import {rememberPsionicPayment,forgetPsionicPayment,setPsionicPaymentActive,hasSavedPsionicPayment,type PendingPsionicPayment} from '../psionicPaymentRecovery';
+import {settleSavedPsionicPayment} from '../settleSavedPsionicPayment';
+import {hasSavedPsionicPayment,type PendingPsionicPayment} from '../psionicPaymentRecovery';
 import {useEffect,useMemo,useRef} from 'react';
 import {completePsionicRest,type PsionicRestReceipt,settlePsionicEnergy,type EnergyReceipt,getEnkindledTurn,spendEnkindledLifeForce,spendPsionicSurge,PsionicRequestError,type PsionicEnhancementPersistence} from '../api/psionicTurns';
 interface SaveQueue {flush:()=>Promise<void>;getSnapshot:()=>{pending:boolean;error:string|null}}
@@ -18,14 +19,7 @@ export function usePsionicEnhancements(characterId:string,queue:SaveQueue,accept
    const snapshot=queue.getSnapshot();
    if(snapshot.pending||snapshot.error)throw blocked('Save your pending character changes before spending Psion resources.');
    if(!mounted.current||live.current.characterId!==characterId||live.current.frozen)throw blocked('The character sheet changed before confirming the dice cost.');
-   setPsionicPaymentActive(characterId,payment.request.requestId,true);
-   try{rememberPsionicPayment(characterId,payment);}catch{setPsionicPaymentActive(characterId,payment.request.requestId,false);throw blocked('Browser recovery storage is unavailable. No new dice-cost confirmation was sent.');}
-   let receipt:T;
-   try{receipt=await request();}catch(error){
-    if(error instanceof PsionicRequestError&&error.definitelyNotPaid)forgetPsionicPayment(characterId,payment.request.requestId);
-    throw error;
-   }finally{setPsionicPaymentActive(characterId,payment.request.requestId,false);}
-   forgetPsionicPayment(characterId,payment.request.requestId);
+   const receipt=await settleSavedPsionicPayment(characterId,payment,request);
    if(mounted.current&&live.current.characterId===characterId)live.current.accept(receipt);
    return receipt;
   }

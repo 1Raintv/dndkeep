@@ -4,12 +4,13 @@ import {pendingPsionicPayments,forgetPsionicPayment,PSIONIC_PAYMENT_CHANGED,type
 import {useModal} from '../../shared/Modal';
 /** Recovery confirms payment only. It must never replay a parent heal/damage
  * action whose outcome may already have been applied in another tab. */
-export default function PsionicPaymentRecoveryPanel({characterId,persistence}:{characterId:string;persistence:PsionicEnhancementPersistence}){
- const [pending,setPending]=useState(()=>pendingPsionicPayments(characterId));
+const readPending=(characterId:string,kindFilter?:PendingPsionicPayment['kind'])=>pendingPsionicPayments(characterId).filter(payment=>!kindFilter||payment.kind===kindFilter);
+export default function PsionicPaymentRecoveryPanel({characterId,persistence,kindFilter,label}:{characterId:string;persistence:PsionicEnhancementPersistence;kindFilter?:PendingPsionicPayment['kind'];label?:string}){
+ const [pending,setPending]=useState(()=>readPending(characterId,kindFilter));
  const [busy,setBusy]=useState(false),[message,setMessage]=useState('');const modal=useModal();
  const current=useRef(characterId),mounted=useRef(true);current.current=characterId;
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
- useEffect(()=>{const update=()=>setPending(pendingPsionicPayments(characterId));update();setMessage('');setBusy(false);window.addEventListener('storage',update);window.addEventListener(PSIONIC_PAYMENT_CHANGED,update);return()=>{window.removeEventListener('storage',update);window.removeEventListener(PSIONIC_PAYMENT_CHANGED,update);};},[characterId]);
+ useEffect(()=>{const update=()=>setPending(readPending(characterId,kindFilter));update();setMessage('');setBusy(false);window.addEventListener('storage',update);window.addEventListener(PSIONIC_PAYMENT_CHANGED,update);return()=>{window.removeEventListener('storage',update);window.removeEventListener(PSIONIC_PAYMENT_CHANGED,update);};},[characterId,kindFilter]);
  async function recover(payment:PendingPsionicPayment){
   if(busy)return;setBusy(true);
   if(payment.kind==='rest'){
@@ -42,7 +43,7 @@ export default function PsionicPaymentRecoveryPanel({characterId,persistence}:{c
  }
  if(!pending.length&&!message)return null;
  return <section role="status" aria-label="Psion roll recovery" style={{padding:12,marginBottom:12,border:'1px solid #a78bfa',borderRadius:10,background:'var(--c-surface)',overflowWrap:'anywhere'}}>
-  <strong style={{color:'#c4b5fd'}}>{pending.length&&pending.every(payment=>payment.kind==='rest')?'Saved rest':'Saved Psion roll'}</strong>
+  <strong style={{color:'#c4b5fd'}}>{label??(pending.length&&pending.every(payment=>payment.kind==='rest')?'Saved rest':'Saved Psion roll')}</strong>
   {pending.map(payment=><div key={payment.request.requestId} style={{marginTop:8,fontSize:12}}>
    <div>{payment.request.sourceFeature} · {payment.kind==='rest'?'saved recovery':payment.kind==='enkindled'?`base ${payment.request.baseRolls.join(', ')}; proposed extra ${payment.request.extraRolls.join(', ')}`:`original rolls ${payment.request.rolls.join(', ')}`}</div>
    <p>{payment.kind==='rest'?'Rest was not confirmed. Its recovery and item rolls are saved.':'Dice cost was not confirmed. Your rolls are saved.'} {payment.request.recoveryNote}</p>
