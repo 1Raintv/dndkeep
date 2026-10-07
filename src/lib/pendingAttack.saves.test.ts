@@ -1,5 +1,5 @@
 import {beforeEach,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({die:vi.fn(),query:vi.fn(),event:vi.fn(),clearConditions:vi.fn(),clearBuffs:vi.fn(),preference:vi.fn(),writes:[] as Array<{table:string;patch:Record<string,unknown>}>,character:false,conditions:[] as string[]}));
+const m=vi.hoisted(()=>({die:vi.fn(),query:vi.fn(),event:vi.fn(),clearConditions:vi.fn(),clearBuffs:vi.fn(),preference:vi.fn(),writes:[] as Array<{table:string;patch:Record<string,unknown>}>,writeError:null as {message:string}|null,character:false,conditions:[] as string[]}));
 vi.mock('./supabase',()=>({supabase:{from:m.query}}));
 vi.mock('../rules/dice',async importOriginal=>({...await importOriginal<typeof import('../rules/dice')>(),rollDie:m.die}));
 vi.mock('./combatEvents',()=>({emitCombatEvent:m.event,newChainId:()=> 'chain'}));
@@ -9,10 +9,10 @@ vi.mock('./buffs',()=>({getSaveBonuses:()=>[],clearBuffsFromConcentration:m.clea
 vi.mock('./combatParticipantNormalize',()=>({JOINED_COMBATANT_FIELDS:'combatant',normalizeParticipantRow:(r:unknown)=>r}));
 import {rollSave,performConcentrationSave} from './pendingAttack';
 beforeEach(()=>{
- vi.clearAllMocks();m.writes=[];m.character=false;m.conditions=[];m.die.mockReturnValue(1);m.preference.mockResolvedValue(false);
+ vi.clearAllMocks();m.writes=[];m.writeError=null;m.character=false;m.conditions=[];m.die.mockReturnValue(1);m.preference.mockResolvedValue(false);
  m.query.mockImplementation((table:string)=>{
   let patch:Record<string,unknown>|undefined;
-  const result=()=>({data:table==='pending_attacks'?{id:'attack',attack_kind:'save',save_ability:'STR',save_dc:13,target_participant_id:'target',target_type:m.character?'character':'creature',...patch}:table==='combat_participants'?{participant_type:m.character?'character':'creature',entity_id:'hero',active_conditions:m.conditions}:null});
+  const result=()=>({error:table==='characters'?m.writeError:null,data:table==='pending_attacks'?{id:'attack',attack_kind:'save',save_ability:'STR',save_dc:13,target_participant_id:'target',target_type:m.character?'character':'creature',...patch}:table==='combat_participants'?{participant_type:m.character?'character':'creature',entity_id:'hero',active_conditions:m.conditions}:null});
   const q={select:()=>q,eq:()=>q,update:(p:Record<string,unknown>)=>{patch=p;m.writes.push({table,patch:p});return q;},single:async()=>result(),maybeSingle:async()=>result(),then:(resolve:(v:unknown)=>unknown)=>Promise.resolve(result()).then(resolve)};
   return q;
  });
@@ -44,11 +44,18 @@ it('successful RAW concentration on natural 1 retains spell and effects',async()
 it('house-rule concentration failure clears spell and dependent effects',async()=>{
  expect((await performConcentrationSave({...concentration,naturalExtremes:true})).saved).toBe(false);
  expect(m.preference).not.toHaveBeenCalled();
- expect(m.writes).toContainEqual({table:'characters',patch:{concentration_spell:'',concentration_rounds_remaining:null}});
+ expect(m.writes).toContainEqual({table:'characters',patch:{concentration_spell:'',concentration_rounds_remaining:null,concentration_slot_level:null}});
  expect(m.clearConditions).toHaveBeenCalled();expect(m.clearBuffs).toHaveBeenCalled();
 });
 it('failed preference read leaves concentration intact',async()=>{
  m.preference.mockRejectedValue(new Error('offline'));
  await expect(performConcentrationSave(concentration)).rejects.toThrow('offline');
  expect(m.writes).toEqual([]);expect(m.event).not.toHaveBeenCalled();
+});
+
+it('failed concentration persistence keeps dependent effects and does not claim a completed drop',async()=>{
+ m.writeError={message:'Save rejected'};
+ await expect(performConcentrationSave({...concentration,naturalExtremes:true})).rejects.toThrow('Save rejected');
+ expect(m.clearConditions).not.toHaveBeenCalled();expect(m.clearBuffs).not.toHaveBeenCalled();
+ expect(m.event.mock.calls.map(([event])=>event.eventType)).toEqual(['save_rolled']);
 });

@@ -453,6 +453,7 @@ export type Database = {
           pending_manual_level_grants: number;
           advanced_deep_edits_unlocked: boolean;
           concentration_rounds_remaining: number | null;
+          concentration_slot_level: number | null;
           damage_resistances: string[];
           damage_immunities: string[];
           damage_vulnerabilities: string[];
@@ -538,6 +539,7 @@ export type Database = {
           pending_manual_level_grants?: number;
           advanced_deep_edits_unlocked?: boolean;
           concentration_rounds_remaining?: number | null;
+          concentration_slot_level?: number | null;
           damage_resistances?: string[];
           damage_immunities?: string[];
           damage_vulnerabilities?: string[];
@@ -623,6 +625,7 @@ export type Database = {
           pending_manual_level_grants?: number;
           advanced_deep_edits_unlocked?: boolean;
           concentration_rounds_remaining?: number | null;
+          concentration_slot_level?: number | null;
           damage_resistances?: string[];
           damage_immunities?: string[];
           damage_vulnerabilities?: string[];

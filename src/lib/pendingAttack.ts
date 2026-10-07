@@ -1962,12 +1962,14 @@ export async function performConcentrationSave(
   });
 
   if (!saved) {
-    // v2.472.0: clear value standardized to '' (see paired note in the
-    // death-cleanup path above).
-    await supabase
+    // v2.786 — dependent effects must survive if the authoritative spell
+    // clear fails. Otherwise the sheet still concentrates while its effects
+    // vanish and the combat log falsely reports a completed concentration drop.
+    const { error } = await supabase
       .from('characters')
-      .update({ concentration_spell: '', concentration_rounds_remaining: null })
+      .update({ concentration_spell: '', concentration_rounds_remaining: null, concentration_slot_level: null })
       .eq('id', charId);
+    if (error) throw new Error(error.message);
 
     // v2.471.0: removed the no-op UPDATE on combat_participants that
     // cleared the now-dropped concentration_spell_id column. The

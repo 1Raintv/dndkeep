@@ -1,5 +1,25 @@
 # DNDKeep — Two-Track Roadmap
 
+### In progress — Campaign concentration persistence, planned v2.786
+
+Confirmed: pending saves read `state=offered`, roll and clear concentration,
+then update the prompt. Two clients can both resolve the same offer; timeout
+callbacks repeat every 250 ms without a claim. Old offers can also clear a new
+casting. Next work must atomically remember one result and bind the offer to a
+casting identity, including a fresh cast of the same spell. Cleanup must follow
+confirmed persistence and stay recoverable after interrupted responses.
+
+First local correction: a rejected character write now stops before dependent
+conditions/buffs are removed or a concentration-broken event is emitted. Successful
+clears also reset concentration_slot_level, whose existing database column is now
+represented in the character types. Regression plus full gate pass: 1,538 unit
+tests, TS 208/208, all build/rules/coordinates/anchors/hooks/budget checks.
+This does not yet solve concurrent prompts or saved-result replay; do not release
+this branch as complete campaign concentration automation.
+
+PR #112 (sheet concentration, v2.785) merged at 89350c6 after all PR checks passed.
+Production CI 37644873225 and the live deployment remain to be verified.
+
 ### In progress — Character-sheet concentration correctness, v2.785
 
 The standalone sheet now reads the same effective Constitution/save proficiency
