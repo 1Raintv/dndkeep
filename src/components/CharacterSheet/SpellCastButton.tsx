@@ -1,3 +1,5 @@
+import {cantripDamage} from '../../rules/cantripDamage';
+import {addDiceModifier,rollDiceGroups} from '../../rules/dice';
 import { SpellDescription } from '../shared/SpellDescription';
 import { useState, Suspense } from 'react';
 // Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
@@ -78,7 +80,7 @@ function parseDice(expr: string): { count: number; sides: number } | null {
 
 /** Roll N dice of S sides, return individual values */
 function rollNdS(count: number, sides: number): number[] {
- return Array.from({ length: count }, () => Math.floor(Math.random() * sides) + 1);
+ return Array.from({ length: count }, () => rollDie(sides));
 }
 
 export default function SpellCastButton({
@@ -256,6 +258,9 @@ export default function SpellCastButton({
  const profBonus = stats.proficiency_bonus;
  const spellAttack = spellMod + profBonus;
  const saveDC = 8 + spellAttack;
+ const damageProfile=cantripDamage(character,spell,mechanics.damageDice,stats.modifiers.intelligence);
+ mechanics.damageDice=damageProfile.dice?addDiceModifier(damageProfile.dice,damageProfile.bonus):null;
+
 
  /** Deduct one slot of the given level */
  function spendSlot(slotLevel: number) {
@@ -272,21 +277,10 @@ export default function SpellCastButton({
  const effectiveDice = upcast.extraDice
  ? computeUpcastDice(mechanics.damageDice, upcast.extraDice, upcast.baseLevel, effectiveSlot)
  : mechanics.damageDice;
- const parsed = parseDice(effectiveDice.includes('+')
- ? effectiveDice.split('+')[0] // parse first component only for now
- : effectiveDice);
- if (!parsed) return;
- const { count, sides } = parsed;
- const rolls = rollNdS(count, sides);
- // Handle compound dice e.g. "3d6+2d8" — add second component
- let extraRolls: number[] = [];
- if (effectiveDice.includes('+')) {
- const secondPart = effectiveDice.split('+')[1];
- const p2 = parseDice(secondPart);
- if (p2) extraRolls = rollNdS(p2.count, p2.sides);
- }
- const allRolls = [...rolls, ...extraRolls];
- const total = allRolls.reduce((a, b) => a + b, 0);
+ const rolled=rollDiceGroups(effectiveDice);
+ if(!rolled)return;
+ const allRolls=rolled.dice.map(d=>d.value);
+ const total=Math.max(0,rolled.total);
 
  // Spend slot if leveled spell + mark spell as cast this turn.
  // v2.46.0: cantrips also fire onLeveledSpellCast so parent action-economy
@@ -304,27 +298,18 @@ export default function SpellCastButton({
  flashCast(0);
  }
 
- // Fire 3D roller
- if (count === 1) {
+ // The animation, logged expression and combat payload use the same damage.
  triggerRoll({
- result: rolls[0], dieType: sides, modifier: 0, total,
- label: `${spell.name} — ${mechanics.damageType ?? 'damage'}`,
+ allDice:rolled.dice,expression:effectiveDice,flatBonus:rolled.modifier,total,
+ label:`${spell.name} — ${mechanics.damageType ?? 'damage'}`,
  });
- } else {
- triggerRoll({
- allDice: rolls.map(v => ({ die: sides, value: v })),
- expression: mechanics.damageDice,
- flatBonus: 0, total,
- label: `${spell.name} — ${mechanics.damageType ?? 'damage'}`,
- });
- }
 
  await logAction({
- campaignId, characterId: userId, characterName: character.name,
+ campaignId, characterId: character.id, characterName: character.name,
  actionType: 'damage',
  actionName: `${spell.name} — ${mechanics.damageType ?? 'damage'}`,
- diceExpression: mechanics.damageDice,
- individualResults: allRolls.length ? allRolls : rolls, total,
+ diceExpression: effectiveDice,
+ individualResults: allRolls, total,
  notes: isCantrip ? 'cantrip' : `Level ${slotLevel ?? availableSlots[0]?.level ?? spell.level} slot`,
  });
  }
@@ -752,7 +737,8 @@ export default function SpellCastButton({
     </Suspense>
   );
 
- if (compact) {
+ // v2.789 — cantrips use the same cast/roll/target controls in both sheet tabs.
+ if (compact || isCantrip) {
  // If a leveled spell was already cast this turn, lock this spell out
  if (spellLockedOut) {
  return (
@@ -886,7 +872,7 @@ export default function SpellCastButton({
      <button
        onClick={() => setMultiAttackPicker({
          slotLevel: effSlot,
-         damageDice: multi.perBeamDice ?? mechanics.damageDice!,
+         damageDice: multi.perBeamDice ? addDiceModifier(multi.perBeamDice,damageProfile.bonus) : mechanics.damageDice!,
          attackCount: beamCount,
        })}
        title={`${beamCount} beam${beamCount === 1 ? '' : 's'} · attack +${spellAttack} · ${multi.perBeamDice ?? mechanics.damageDice} ${mechanics.damageType ?? ''} each. Click to assign targets.`}
@@ -952,7 +938,7 @@ export default function SpellCastButton({
 <>
  <button
  onClick={() => setAoePicker({ slotLevel: effSlot, damageDice: dice })}
- title={`${spell.area_of_effect!.size}ft ${spell.area_of_effect!.type} · ${mechanics.saveType} DC ${saveDC} save · ${dice} ${mechanics.damageType ?? 'damage'} (half on save). Pick targets to cast.`}
+ title={`${spell.area_of_effect!.size}ft ${spell.area_of_effect!.type} · ${mechanics.saveType} DC ${saveDC} save · ${dice} ${mechanics.damageType ?? 'damage'} (${isCantrip?'none':'half'} on save). Pick targets to cast.`}
  style={{
  ...btnBase,
  background: recentlyCast ? '#34d399' : 'rgba(167,139,250,0.15)',
@@ -983,7 +969,7 @@ export default function SpellCastButton({
  maxRangeFt={parseRangeToFt(spell.range)}
  saveDC={saveDC}
  saveAbility={mechanics.saveType as any}
- saveSuccessEffect="half"
+ saveSuccessEffect={isCantrip?'none':'half'}
  damageDice={dice}
  damageType={mechanics.damageType ?? ''}
  attackName={spell.name}

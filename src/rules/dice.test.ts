@@ -3,7 +3,7 @@
 // pendingAttack damage, buff riders/ticks, monster browser, bestiary
 // bare-integer damage (v2.448), and crit doubling (2024 PHB).
 import { describe, expect, it } from 'vitest';
-import { doubleDice, rollDiceExpr, rollDie } from './dice';
+import { addDiceModifier, rollDiceGroups, doubleDice, rollDiceExpr, rollDie } from './dice';
 
 describe('rollDie', () => {
   it('stays in [1, sides] and hits every face over many rolls', () => {
@@ -77,4 +77,20 @@ describe('doubleDice (2024 PHB crit: double dice, not modifier)', () => {
     expect(doubleDice('garbage')).toBe('garbage');
     expect(doubleDice('7')).toBe('7');
   });
+});
+
+describe('spell damage groups',()=>{
+ it('keeps mixed dice and a signed modifier',()=>{
+  const rolled=rollDiceGroups('2d6 + 1d8 - 2')!;
+  expect(rolled.dice.map(d=>d.die)).toEqual([6,6,8]);
+  expect(rolled.modifier).toBe(-2);
+  expect(rolled.total).toBe(rolled.dice.reduce((n,d)=>n+d.value,0)-2);
+ });
+ it.each(['2d6oops','1d6+','1d6-1d4','0d6','1d0','101d6','1d6+bad'])('rejects an invalid expression %s',expr=>expect(rollDiceGroups(expr)).toBeNull());
+ it('combines rather than duplicates existing flat bonuses',()=>{
+  expect(addDiceModifier('2d6+2',4)).toBe('2d6+6');
+  expect(addDiceModifier('2d6+2',-2)).toBe('2d6');
+  expect(addDiceModifier('2d6',-1)).toBe('2d6-1');
+  expect(doubleDice(addDiceModifier('2d6',4))).toBe('4d6+4');
+ });
 });
