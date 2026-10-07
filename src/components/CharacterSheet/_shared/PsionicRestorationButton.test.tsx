@@ -6,6 +6,8 @@ import {ModalProvider} from '../../shared/Modal';
 import PsionicRestorationButton from './PsionicRestorationButton';
 import type {Character} from '../../../types';
 import {CLASS_COMBAT_ABILITIES} from '../../../data/classAbilities';
+// The ability catalog imports game helpers transitively; unit tests must not initialize a database client.
+vi.mock('../../../lib/supabase',()=>({supabase:{}}));
 const initial={id:'psion',class_name:'Psion',level:5,class_resources:{'psionic-energy-dice':2},feature_uses:{}} as unknown as Character;
 afterEach(cleanup);
 it('has a level-five limited-use Actions entry',()=>{
