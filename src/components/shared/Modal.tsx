@@ -65,15 +65,17 @@ const ModalContext = createContext<ModalContextValue>({
 });
 
 type ActiveState =
-  | { kind: 'prompt'; opts: PromptOptions; resolve: (v: string | null) => void }
-  | { kind: 'confirm'; opts: ConfirmOptions; resolve: (v: boolean) => void };
+  | { id:number; kind: 'prompt'; opts: PromptOptions; resolve: (v: string | null) => void }
+  | { id:number; kind: 'confirm'; opts: ConfirmOptions; resolve: (v: boolean) => void };
 
 export function ModalProvider({ children }: { children: ReactNode }) {
   const [active, setActive] = useState<ActiveState | null>(null);
   // Hold the resolver in a ref too, so cleanup paths (Esc, backdrop
   // click, second modal opened) can call it without stale closure.
   const activeRef = useRef<ActiveState | null>(null);
-  useEffect(() => { activeRef.current = active; }, [active]);
+  const requestId=useRef(0);
+  // v2.760 — publish requests synchronously. Waiting for a passive effect
+  // loses back-to-back requests or a confirmation immediately after render.
 
   const prompt = useCallback((opts: PromptOptions) => {
     return new Promise<string | null>((resolve) => {
@@ -83,7 +85,8 @@ export function ModalProvider({ children }: { children: ReactNode }) {
         if (prior.kind === 'prompt') prior.resolve(null);
         else prior.resolve(false);
       }
-      setActive({ kind: 'prompt', opts, resolve });
+      const next:ActiveState={id:++requestId.current,kind:'prompt',opts,resolve};
+      activeRef.current=next;setActive(next);
     });
   }, []);
 
@@ -94,7 +97,8 @@ export function ModalProvider({ children }: { children: ReactNode }) {
         if (prior.kind === 'prompt') prior.resolve(null);
         else prior.resolve(false);
       }
-      setActive({ kind: 'confirm', opts, resolve });
+      const next:ActiveState={id:++requestId.current,kind:'confirm',opts,resolve};
+      activeRef.current=next;setActive(next);
     });
   }, []);
 
@@ -112,10 +116,11 @@ export function ModalProvider({ children }: { children: ReactNode }) {
 
   function close(value: string | boolean | null) {
     const a = activeRef.current;
-    if (!a) return;
+    // Ignore a delayed click from a dialog replaced since this render.
+    if (!a || a!==active) return;
+    activeRef.current=null;setActive(null);
     if (a.kind === 'prompt') a.resolve(value as string | null);
     else a.resolve(value as boolean);
-    setActive(null);
   }
 
   return (
@@ -123,6 +128,7 @@ export function ModalProvider({ children }: { children: ReactNode }) {
       {children}
       {active && (
         <ModalOverlay
+          key={active.id}
           state={active}
           onCancel={() => close(active.kind === 'prompt' ? null : false)}
           onSubmit={(v) => close(v)}

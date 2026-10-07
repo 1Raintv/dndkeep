@@ -15,6 +15,12 @@ Confusion's automatic successful save rather than an invented blanket exemption.
 Life-Bending Weapons retains the source's start-of-next-turn restriction without
 introducing a new automated interpretation. Private UA/source gates stay intact.
 
+Chained dialog reliability: the shared Modal now publishes its request immediately,
+clears it before resolving, ignores clicks from replaced dialogs, and remounts
+replacement prompts to reset their input/focus. This protects Surge's two-step
+confirmation. Deterministic tests reproduce three failures in the old modal;
+rapid replacement, early confirmation, stale clicks and unmount are covered.
+
 This is reference accuracy, not automation of these effects. Psi Warper remains
 unchanged pending the original v1 source. Validation: full gate, desktop/mobile
 expanded Features checks for all three subclasses, screenshots and layout probe.
