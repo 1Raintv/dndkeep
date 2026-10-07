@@ -133,14 +133,7 @@ export function getAvailableDisciplines(_psionLevel: number): PsionDiscipline[] 
 }
 
 /** Get the number of disciplines a Psion has at a given level (UA 2025 v2 progression) */
-export function getDisciplineCount(psionLevel: number): number {
-  if (psionLevel >= 17) return 6;
-  if (psionLevel >= 13) return 5;
-  if (psionLevel >= 10) return 4;
-  if (psionLevel >= 5) return 3;
-  if (psionLevel >= 2) return 2;
-  return 0;
-}
+export {getDisciplineCount} from '../rules/psionDisciplineChoices';
 
 // ─── Stored-key resolution ───────────────────────────────────────────────────
 // v2.674.0 — Disciplines are persisted in `class_resources['psion-disciplines']`.
