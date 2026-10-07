@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { recoverPsionicReserves } from '../../lib/api/psionicReserves';
+import { hasPsionicReserves } from '../../rules/psionicReserves';
+import { log } from '../../lib/log';
+import { useRef, useState } from 'react';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { rollDie } from '../../rules/dice';
 import { describeACBreakdownRows } from '../../lib/armorClass';
@@ -49,7 +52,25 @@ export default function HPStatsPanel({
   const spellDC = computed.spell_save_dc;
   const initMod = computed.modifiers.dexterity + (character.initiative_bonus ?? 0);
 
-  function rollInitiative() {
+  const initiativeBusy = useRef(false);
+  const [initiativeNotice,setInitiativeNotice] = useState('');
+  async function rollInitiative() {
+    if(initiativeBusy.current)return;
+    initiativeBusy.current=true;
+    setInitiativeNotice('');
+    let recoveryLabel='';
+    if(hasPsionicReserves(character)) {
+      try {
+        const recovered=await recoverPsionicReserves(character.id);
+        if(recovered) {
+          recoveryLabel=` · Psionic Reserves: +${recovered} dice (4 remaining)`;
+          setInitiativeNotice(recoveryLabel.slice(3));
+        }
+      } catch(error) {
+        log.error('Psionic Reserves recovery failed',error,{characterId:character.id});
+        setInitiativeNotice('Psionic Reserves could not sync. Check your dice pool and restore it to 4 manually if needed.');
+      }
+    }
     // v2.54.0: RAW: Initiative is a DEX check. Conditions that impose
     // disadvantage on ability checks (Frightened, Poisoned) apply to it.
     const activeConditions: ConditionName[] = character.active_conditions ?? [];
@@ -61,9 +82,10 @@ export default function HPStatsPanel({
     const disadvLabel = hasDisadvantage ? ` (Disadv. — ${disadvSources.join(', ')})` : '';
     triggerRoll({
       result: d20, dieType: 20, modifier: initMod, total: d20 + initMod,
-      label: `Initiative${disadvLabel}`,
+      label: `Initiative${disadvLabel}${recoveryLabel}`,
       logHistory: { characterId: character.id, userId: character.user_id },
     });
+    initiativeBusy.current=false;
   }
 
   const activeConditions: ConditionName[] = character.active_conditions ?? [];
@@ -489,6 +511,7 @@ export default function HPStatsPanel({
         )}
       </div>
 
+      {initiativeNotice && <div role="status" style={{fontSize:12,color:'var(--t-2)'}}>{initiativeNotice}</div>}
       {/* v2.33.3: Conditions modal — opened by the COND chip in the stats strip above */}
       {onUpdateConditions && showConditionModal && (
         <ConditionPickerModal

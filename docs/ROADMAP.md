@@ -1,5 +1,31 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Psionic Reserves initiative recovery, v2.754
+
+Owner UA update p.4: eighteen Psion levels, initiative restores expended dice
+TO four when fewer remain. Solo sheet rolls, campaign auto-rolls, late joins
+that roll, and individual initiative rolls now recover automatically. Player
+agency participants do not recover until they roll. Primary and secondary
+Psion class levels qualify independently; total level does not qualify.
+
+Migration `20261007070000_psionic_reserves.sql` adds an authenticated,
+SECURITY INVOKER function that locks the character and changes only the PED
+JSON key under existing owner/DM RLS. Full/missing/malformed pools are not
+reduced or guessed. Repeated calls without spending do nothing. Success is
+visible in the sheet or combat log; sync failures advise manual recovery
+without losing an already-started encounter. No private-content gates change.
+
+Validation: 1122 unit tests and full gate; six desktop/mobile local DB cases
+cover solo and real campaign roll orchestration, level boundaries, secondary
+class, unchanged other resources, repeated calls and unauthorized callers.
+Screenshots and shared overflow probe pass for the notice; browser regression
+fails with the solo hook removed. Migration applied and ledger verified locally;
+production migration must succeed through CI when this branch is merged.
+
+Next: map interaction and visual polish, then remaining Psion disciplines and
+subclass automation/source audit. Original v1 Psi Warper source remains missing.
+
+
 ### 2026-10-07 — Psion sheet spell numbers, v2.753
 
 The vitals strip now uses canonical computed spell attack/DC instead of a
