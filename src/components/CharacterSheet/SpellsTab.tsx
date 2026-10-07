@@ -1,3 +1,5 @@
+import {hasCharacterSpellWorkspace} from '../../lib/characterSpellWorkspace';
+import SpellSourceReview from './SpellSourceReview';
 import PsionCastingNote from './_shared/PsionCastingNote';
 import { SUBTLE_TELEKINESIS_TEXT } from '../../data/psionFeatureDescriptions';
 import { SpellDescription } from '../shared/SpellDescription';
@@ -9,7 +11,7 @@ import { SPELLS } from '../../data/spells';
 import { getMaxSpellsKnown, isKnownCaster } from '../../data/spellSlots';
 import { parseSpellMechanics, canUpcastSpell } from '../../lib/spellParser';
 import { getGrantedSpellIds, type GrantedSpellEntry } from '../../lib/grantedSpells';
-import { getSpellCounts, getMaxPrepared, getMaxCantrips, getSpellAbilityMod } from '../../lib/spellLimits';
+import { getClassKnownSpellIds, getClassPreparedSpellIds, getSpellCounts, getMaxPrepared, getMaxCantrips, getSpellAbilityMod } from '../../lib/spellLimits';
 import { shortCastingTime } from '../../lib/spellDisplay';
 import LevelTab from './_shared/LevelTab';
 
@@ -25,6 +27,7 @@ interface SpellsTabProps {
  onAddSpell: (id: string) => void;
  onRemoveSpell: (id: string) => void;
  onTogglePrepared: (id: string) => void;
+ onReviewSpellSources: (patch: Partial<Character>) => void;
  onConcentrate: (id: string) => void;
  // v2.380.0 — Toggle a spell ID in/out of pinned_spells. Cap of 6
  // is enforced by the parent; this callback just handles the toggle.
@@ -83,7 +86,7 @@ function getEffectCategory(spell: SpellData): { label: string; color: string } {
 export default function SpellsTab({
  character, computed, knownSpellData, availableSpells, maxSpellLevel,
  concentrationSpellId, hasSpellSlots, onUpdateSlots, onAddSpell,
- onRemoveSpell, onTogglePrepared, onConcentrate, onTogglePinned, userId, campaignId,
+ onRemoveSpell, onTogglePrepared, onReviewSpellSources, onConcentrate, onTogglePinned, userId, campaignId,
  openBookRequest = null, onOpenBookHandled,
 }: SpellsTabProps) {
  const [activeLevel, setActiveLevel] = useState<number | 'all'>('all');
@@ -94,6 +97,8 @@ export default function SpellsTab({
  // upcast trigger button that opens the slot picker modal.
  const showUpcasts = false;
 
+ const classKnownSpellIds=getClassKnownSpellIds(character);
+ const classPreparedSpellIds=getClassPreparedSpellIds(character);
  const isPreparer = PREPARER_CLASSES.includes(character.class_name);
  const isKnown = isKnownCaster(character.class_name);
  const knownMax = getMaxSpellsKnown(character.class_name, character.level);
@@ -213,7 +218,7 @@ export default function SpellsTab({
  return map;
  }, [visibleSpells, showUpcasts, maxAvailableSlotLevel]);
 
- if (!hasSpellSlots) {
+ if (!hasSpellSlots&&!hasCharacterSpellWorkspace(character)) {
  return (
  <div style={{ textAlign: 'center', padding: 'var(--sp-12)', color: 'var(--t-2)' }}>
  <div style={{ fontWeight: 700, fontSize: 'var(--fs-md)', color: 'var(--t-1)', marginBottom: 'var(--sp-2)' }}>
@@ -231,11 +236,12 @@ export default function SpellsTab({
  return (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
+ <SpellSourceReview character={character} spells={knownSpellData} onSave={onReviewSpellSources}/>
  {/* ── Top bar: prepared count + Add Spells button ── */}
  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
  {/* Known-casters: show spells known counter */}
  {isKnown && knownMax !== null && (() => {
- const knownCount = knownSpellData.filter(s => s.level > 0 && !grantedPrepared.includes(s.id)).length;
+ const knownCount = getSpellCounts(character).known;
  const atCap = knownCount >= knownMax;
  return (
  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', background: 'var(--c-card)', border: `1px solid ${atCap ? 'var(--c-gold-bdr)' : 'var(--c-border)'}`, borderRadius: 999 }}>
@@ -279,6 +285,7 @@ export default function SpellsTab({
  );
  })()}
 
+ {character.class_name==='Psion'&&<p style={{fontSize:12,color:'var(--t-2)'}}>Choose missing spells here. Replace one cantrip and one prepared spell when gaining a Psion level.</p>}
  {/* Spell Book button — opens picker with all levels including cantrips (Level 0 tab) */}
  <div style={{ marginLeft: 'auto' }}>
  <SpellPickerDropdown
@@ -286,8 +293,9 @@ export default function SpellsTab({
  isCantrip={false}
  className={character.class_name}
  maxLevel={maxSpellLevel}
- selected={character.known_spells}
- onToggle={id => character.known_spells.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
+ selected={classKnownSpellIds}
+ removalReason={character.class_name==='Psion'&&!character.advanced_spell_edits_unlocked?'Replace one cantrip and one prepared spell when gaining a Psion level.':undefined}
+ onToggle={id => classKnownSpellIds.includes(id) ? onRemoveSpell(id) : onAddSpell(id)}
  cantripMax={cantripMax}
  prepareMax={isPreparer ? prepareMax : isKnown ? (knownMax ?? undefined) : undefined}
  // v2.366.0 — For non-Wizard preparers (Cleric/Druid/Paladin/
@@ -484,7 +492,9 @@ export default function SpellsTab({
  effectiveLevel={spell.effectiveLevel}
  isUpcast={spell.isUpcast}
  isExpanded={expandedSpell === `${spell.id}-${spell.effectiveLevel}`}
- isPrepared={character.prepared_spells.includes(spell.id)}
+ isPrepared={classPreparedSpellIds.includes(spell.id)}
+ isAvailable={character.prepared_spells.includes(spell.id)}
+ preparationClass={character.class_name}
  isConcentrating={concentrationSpellId === spell.id}
  isPreparer={isPreparer && !isKnown}
  grantedReason={grantedReasonMap[spell.id]}
@@ -537,8 +547,9 @@ export default function SpellsTab({
 
 // ── Level tab button ─────────────────────────────────────────────────
 // ── Spell card ───────────────────────────────────────────────────────
-function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC, subtleTelekinesis, psionicCasting, pinnedSpells, onTogglePinned }: {
+function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, isAvailable, preparationClass, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC, subtleTelekinesis, psionicCasting, pinnedSpells, onTogglePinned }: {
  spell: SpellData; effectiveLevel?: number; isUpcast?: boolean;
+ isAvailable: boolean; preparationClass: string;
  isExpanded: boolean; isPrepared: boolean; isConcentrating: boolean;
  isPreparer: boolean; castButton: ReactNode; upcastButton?: ReactNode; grantedReason?: string;
  spellAttack?: number; saveDC?: number;
@@ -555,7 +566,7 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  onTogglePinned: (id: string) => void;
 }) {
  const schoolColor = SCHOOL_COLORS[spell.school] ?? '#94a3b8';
- const dimmed = isPreparer && spell.level > 0 && !isPrepared && !grantedReason; // isPreparer already false for known casters
+ const dimmed = isPreparer && spell.level > 0 && !isAvailable && !grantedReason; // isPreparer already false for known casters
  const displayLevel = effectiveLevel ?? spell.level; // for badges / labels that show the cast tier
  const effect = getEffectCategory(spell);
  const mechanics = parseSpellMechanics(spell.description, {
@@ -623,7 +634,7 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  ) : (
  <button
  onClick={e => { e.stopPropagation(); onTogglePrepared(); }}
- title={isPrepared ? 'Prepared — click to unprepare' : 'Not prepared — click to prepare'}
+ title={isPrepared ? `Prepared through ${preparationClass} — click to unprepare` : `Not prepared through ${preparationClass} — click to prepare`}
  style={{
  cursor: 'pointer', borderRadius: 6, padding: '5px 10px', minHeight: 0,
  border: `1px solid ${isPrepared ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`,

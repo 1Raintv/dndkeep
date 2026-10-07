@@ -1,6 +1,6 @@
 import type {Character} from '../types';
 const fields = [
- 'combat_hp_sync_id','current_hp','temp_hp','active_conditions','concentration_spell','concentration_rounds_remaining',
+ 'spell_preparation_sources','spell_sources','known_spells','prepared_spells','combat_hp_sync_id','current_hp','temp_hp','active_conditions','concentration_spell','concentration_rounds_remaining',
  'exhaustion_level','concentration_slot_level','spell_slots','death_saves_successes','death_saves_failures','inspiration',
  'hit_dice_spent','psionic_hit_dice_revision','psionic_energy_revision','class_resources','feature_uses','currency','inventory','experience_points',
 ] as const;

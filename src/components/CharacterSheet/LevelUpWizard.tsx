@@ -1,3 +1,6 @@
+import {automaticSpellGrantPatch} from '../../lib/automaticSpellGrants';
+import PsionLevelUpSpellChoices from './PsionLevelUpSpellChoices';
+import {usePsionLevelUpSpells} from '../../lib/hooks/usePsionLevelUpSpells';
 import {proficiencyBonus} from '../../rules/proficiency';
 import {getSpellSlotRow} from '../../data/spellSlots';
 import {levelUpSpellSlots} from '../../rules/levelUpSpellSlots';
@@ -5,7 +8,7 @@ import ModalPortal from '../shared/ModalPortal';
 import {validDisciplineLevelUp} from '../../rules/psionDisciplineChoices';
 import { useState, useEffect } from 'react';
 import type { Character } from '../../types';
-import { CLASSES, getSubclassSpellIds } from '../../data/classes';
+import { CLASSES } from '../../data/classes';
 import { FEATS } from '../../data/feats';
 import { SKILLS } from '../../data/skills';
 import { computeFeatRiders } from '../../lib/featRiders';
@@ -131,6 +134,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  const [selectedSubclass, setSelectedSubclass] = useState(existingSubclassForTarget ?? '');
  const [selectedDisciplines, setSelectedDisciplines] = useState<string[]>([...currentDisciplines]);
  const [disciplineSearch, setDisciplineSearch] = useState('');
+ const spellChoices=usePsionLevelUpSpells(character,newLevel,{kind:targetKind,className:effectiveClassName,level:effectiveCurrentLevel,subclass:selectedSubclass});
  const [asiChoice, setAsiChoice] = useState<'asi' | 'feat'>('asi');
  const [abiBoosts, setAbiBoosts] = useState<Partial<Record<AbilityKey, number>>>({});
  const [selectedFeat, setSelectedFeat] = useState('');
@@ -224,6 +228,8 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
   updates.spell_slots=levelUpSpellSlots(character.spell_slots,getSpellSlotRow('Psion',newLevel));
  }
 
+ Object.assign(updates,spellChoices.patch);
+
  // Subclass field routing
  if (needsSubclass && selectedSubclass) {
  if (targetKind === 'primary') {
@@ -232,12 +238,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  // secondary or new — both write to secondary_subclass
  updates.secondary_subclass = selectedSubclass;
  }
- // Auto-add subclass always-prepared spells — filter by level being assigned
- const subSpellIds = getSubclassSpellIds(selectedSubclass, effectiveClassName, newLevel);
- if (subSpellIds.length > 0) {
- const existing = [...new Set([...character.known_spells, ...subSpellIds])];
- updates.known_spells = existing;
- }
+
  }
 
  // Save selected disciplines (only relevant when Psion is the target class)
@@ -317,13 +318,14 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  updates.features_and_traits = existing + featNote;
  }
  }
+ Object.assign(updates,automaticSpellGrantPatch({...character,...updates}));
  return updates;
  }
 
  function handleConfirm() {
  // v2.518.0 — safety net: never commit a level-up past the free cap
  // without an active subscription, even if the UI is bypassed.
- if (blockedByLevelCap || (needsDiscipline && !validDisciplineLevelUp(newLevel,currentDisciplines,selectedDisciplines))) return;
+ if (!spellChoices.valid || blockedByLevelCap || (needsDiscipline && !validDisciplineLevelUp(newLevel,currentDisciplines,selectedDisciplines))) return;
  onLevelUp(buildUpdates());
  onClose();
  }
@@ -468,6 +470,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
 
  {step === 'confirm' && (
  <>
+ <PsionLevelUpSpellChoices choices={spellChoices}/>
  <ConfirmStep
  character={character}
  newLevel={newLevel}
@@ -507,7 +510,7 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  Subscribe to reach level {totalNewLevel}
  </button>
  ) : (
- <button className="btn-gold" onClick={handleConfirm} style={{ fontWeight: 700 }}>
+ <button className="btn-gold" disabled={!spellChoices.valid} onClick={handleConfirm} style={{ fontWeight: 700 }}>
  Confirm Level Up
  </button>
  )

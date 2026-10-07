@@ -19,7 +19,7 @@ import StepAbilityScores from './StepAbilityScores';
 import StepBuild from './StepBuild';
 import { useCreatorDraft } from './useCreatorDraft';
 import StepReview from './StepReview';
-import { buildRecommendedSetup } from '../../data/recommendedLoadouts';
+import { buildInitialCharacterSpells } from '../../lib/initialCharacterSpells';
 
 const ORIGIN_FEAT_SPECIES = ['Human'];
 const ABILITIES = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'] as const;
@@ -206,31 +206,7 @@ function CreatorForm({ userId }: { userId: string }) {
       skill_proficiencies: allSkills,
       skill_expertises: [],
       spell_slots: spellSlots,
-      // v2.575.0 — one-time setup ("Ready to play" vs "Blank slate").
-      // Recommended mode auto-prepares every known leveled spell, pins
-      // up to 4 to the quick-cast bar, and — only when NO spells were
-      // chosen — grants a curated class starter set (generalizing the
-      // Psion starter precedent). Fully editable on the sheet after.
-      ...(() => {
-        const base = [...buildChoices.spells, ...buildChoices.cantrips];
-        // Psion gets Mage Hand automatically (invisible, no components)
-        if (className === 'Psion' && !base.includes('mage-hand')) base.push('mage-hand');
-        // Psion starter spells — Psi Warper recommended set per UA 2025.
-        if (className === 'Psion') {
-          for (const sid of ['charm-person', 'command', 'dissonant-whispers', 'mage-armor']) {
-            if (!base.includes(sid)) base.push(sid);
-          }
-        }
-        if (setupMode !== 'recommended') {
-          return { known_spells: base, prepared_spells: [], pinned_spells: [] };
-        }
-        const rec = buildRecommendedSetup(className, base);
-        return {
-          known_spells: [...base, ...rec.addKnown],
-          prepared_spells: rec.prepared,
-          pinned_spells: rec.pinned,
-        };
-      })(),
+      ...buildInitialCharacterSpells(className, [...buildChoices.spells, ...buildChoices.cantrips], setupMode),
       inventory: [],
       currency: { cp: 0, sp: 0, ep: 0, gp: 0, pp: 0 },
       active_conditions: [],

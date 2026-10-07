@@ -1,6 +1,186 @@
 # DNDKeep — Two-Track Roadmap
 
-### Release pending — Campaign concentration persistence, v2.786
+### In progress — Psion spell replacements, planned v2.787
+
+UA Psion Update p.3 (local supplied PDF) allows one cantrip and one prepared
+spell replacement when gaining a Psion level. Current Spell Book removal/addition
+bypasses that timing, and neither level-up flow offers the replacements.
+The shared pure validator now checks one optional swap per category, class-list
+eligibility, the new Psion-level spell ceiling, duplicate ownership, and protected
+grants. It preserves unrelated choices and prepares the replacement leveled spell.
+Its 42-test module passes (16 new replacement cases plus existing level checks).
+Both level-up flows now share the replacement selector and commit validated
+choices with the level increase. Ordinary picker removal is disabled for Psions;
+missing selections can still be filled, and Advanced Spell Edits remains an
+explicit manual-correction escape hatch. New subclass grant merging preserves
+the selected replacement rather than rebuilding from the old known list.
+Browser testing exposed an existing popup placement failure on phones: the Add
+button could open below the viewport. A tested placement helper now keeps the
+whole scrollable picker inside the screen. Desktop/mobile screenshots checked.
+All 12 replacement/picker/discipline level-up browser cases passed together. Full
+gate: 1,575 unit tests, TS 208/208, all required checks and 253 KB entry budget pass.
+
+New-subclass acquisition, cancel/reopen and target switching now pass real
+browser checks: grants survive a replacement, canceled choices stay unsaved,
+and switching from Psion to Fighter discards the pending spell swap. All 10
+spell-replacement browser cases pass together on desktop/mobile. A shared
+context builder protects species grants at total character level and both
+classes' automatic grants without projecting away the other class. Three
+context regressions plus the full gate pass (1,578 unit tests; TS 208/208).
+
+Local migration 20261007190000 adds spell_sources (spell ID → source tags),
+leaving legacy ownership unknown. The level-up review now records explicit
+class/feat/species/other sources rather than guessing from class-list tags.
+Replacement removes only the Psion source: another class/feature keeps its copy;
+a spell already known through Wizard can acquire a Psion source without a
+duplicate known entry. Unreviewed outgoing spells cannot be replaced. Fourteen
+new domain tests cover ownership; all 12 browser cases pass, including shared
+Wizard/Psion persistence through reload. Four updated layout/shared-spell checks
+also pass with valid Wizard level 3 eligibility. Mobile source controls inspected.
+Full gate passes: 1,592 unit tests, TS 208/208, entry 253 KB. Migration is local only.
+
+Local migration 20261007190500 validates source maps at the database boundary;
+the domain validator matches its accepted source tags and the level-up UI blocks
+unreadable source data without rewriting it. Eighteen shape tests pass. Realtime
+now accepts known/prepared lists and source metadata together; a mounted level-up
+view discards stale choices when another update changes their sources. Four real
+DB/browser checks pass across desktop/mobile: malformed writes leave the prior
+map untouched, and an open sheet observes the new lists and Wizard ownership.
+Full gate: 1,611 unit tests, TS 208/208, all required checks and 253 KB entry pass.
+Both spell-source migrations remain local only.
+
+Explicit ownership now drives class spell counts and the ordinary learning
+picker. Spells owned only by another class/feature no longer consume Psion
+choices; shared spells count once. Unknown legacy entries retain conservative
+counts without acquiring invented sources. Normal learning adds the chosen
+class source, deduplicates the shared list and prepares learned Psion leveled
+spells. Advanced removal drops only the selected class's source and preserves
+independent copies. Unit regressions and desktop/mobile Add/Remove/count checks
+pass; full gate passes with 1,622 unit tests, TS 208/208 and 253 KB entry.
+
+Character creation now respects custom Psion spell selections and Blank Slate:
+the four starter spells are suggested only for an empty recommended build.
+Automatic Mage Hand does not suppress the default suggestions or consume a
+chosen cantrip. New choices record their class source without inferring legacy
+ownership. Six helper cases and two real-wizard submission cases pass, including
+custom recommended and blank payloads; all 1,630 unit tests pass.
+
+Preparation domain foundation: a separate per-spell source list distinguishes
+reviewed unprepared copies (an explicit empty list) from unknown legacy readiness
+(a missing entry). Preparing/removing one source preserves independently prepared
+copies and refuses ambiguous legacy edits pending an explicit review. Twelve
+regressions cover the Psion→Wizard readiness leak, independent copies, malformed
+metadata, immutable input and review. This domain module is not yet connected
+to saved character data or UI; database shape, creation/learning/replacement
+integration, counts, review controls and real browser checks remain required.
+
+Local migration 20261007191000 now persists spell_preparation_sources using
+the same validated tag shape as learned sources; existing records retain {}.
+New-character payloads record explicit prepared/unprepared class copies, and
+realtime sync includes the field. A real local database round trip preserves
+both nonempty and empty source arrays; a malformed update is rejected without
+changing the saved map. Both desktop/mobile database checks pass. The migration
+is applied only to Docker, and its ledger entry is verified. Ordinary learning,
+level-up replacement and source-review controls still need this field wired in.
+
+Ordinary learning/removal now uses one pure proposed change for learned sources
+and preparation sources. A rejected readiness change cannot partially save a new
+ownership claim. Seven additional unit cases cover shared copies, final removal,
+feature copies, malformed metadata and ambiguous legacy readiness. The actual
+picker is tested against both initially prepared and initially unprepared Wizard
+copies; adding then removing Psion restores the original readiness and ownership.
+Remaining integration: ordinary preparation toggles and per-class counts, level-up
+replacement, explicit readiness review and automatic grants. Until these paths
+are connected, the local release remains held.
+
+Both level-up paths now apply source-specific preparation when swapping spells.
+Shared legacy readiness blocks confirmation until explicitly reviewed; the UI
+lets the player identify prepared sources or mark all copies unprepared. A source
+ownership edit invalidates that spell's prior readiness review. Draft readiness
+resets with remote spell-list changes and target switches. Replacement preserves
+prepared Wizard copies and does not prepare a Wizard copy that was learned only.
+All ten focused desktop/mobile checks pass (both flows, subclass grants, cancel,
+class switching, shared-spell review/persistence); desktop/mobile layouts inspected.
+Full gate passes with 1,652 unit tests, TS 208/208 and 253 KB entry.
+Still local: ordinary preparation toggles/counts and automatic-grant source
+tracking must be integrated before the schema-first production release.
+
+Class preparation counts and ordinary toggles now read per-source readiness.
+A Wizard-prepared shared spell does not fill the Psion prepared counter, and
+preparing/unpreparing Psion keeps Wizard's copy ready. The card remains available
+when another source is prepared; its toggle title names the edited class.
+Both desktop/mobile toggle-and-reload regressions pass after correcting a test
+locator that mistook the sheet's counted level tab for the picker tab.
+
+New release prerequisite exposed by wiring the controls: legacy spells with
+unknown learned ownership need a source/readiness review on the ordinary spell
+sheet, not only in level-up. The older psion-spell-choices browser test must use
+that review path for legal Charm Person while still proving illegal imported
+choices are rejected; its old toggle titles also need updating. Do not deploy
+until this path, automatic grants and a combined browser run pass.
+
+The ordinary spell sheet now has explicit source/readiness review for existing
+non-granted spells. A review cannot add a spell, remove automatic grants, claim an
+absent character class, prepare a cantrip, or bypass Psion level/list/prepared
+limits. Saving records the reviewed copies together; canceled drafts do not save.
+Six adapter regressions and the full gate pass (1,662 tests, TS 208/208, 253 KB).
+Eight desktop/mobile checks pass across legacy legal/illegal preparation,
+per-class counters/toggles and shared-spell learning/removal. The prior legal
+Charm Person test now reviews its legacy source before preparing it.
+
+Additional follow-up noticed during fixture verification: a Psion with an empty
+slot map is rendered as a noncaster. The new cancellation fixture initially
+omitted its level-one slots; fix the broader classification separately so damaged
+or imported slot data cannot hide spell recovery controls.
+
+Automatic-grant foundation now distinguishes grant:class:<name> and grant:species
+from deliberately learned class/species copies. Pure reconciliation removes only
+expired tracked grants, preserves independent ownership/readiness, and never
+reclassifies unknown legacy membership as grant-only. It separately expires
+known granted readiness even when learned ownership remains unknown. Nine
+regressions cover these cases plus malformed maps; tag-shape coverage is extended.
+Local migration 20261007191500 updates the shared validator used by both source
+columns. Docker apply, ledger and valid/invalid tag probes pass. This reconciliation
+is not yet connected to the automatic-grant effect: replace the old ID-based
+pruning there, derive both classes and species at total level, and correct initial
+Mage Hand tagging before release. Unknown old grants must remain reviewable rather
+than being silently deleted from a list that lacks provenance.
+
+The sheet and both level-up flows now use one automatic-grant adapter, replacing
+ID-based pruning in the root component. It derives grants for each class at its
+own level and species at total level, tracks grants on the same level-up save,
+and emits no patch when already reconciled. Creator Mage Hand is tagged as an
+automatic Psion grant rather than a chosen spell. Four adapter tests and the full
+gate pass (1,676 tests, TS 208/208, 253 KB entry). Combined browser verification
+is in progress; its cancellation test's empty-map expectation must be updated
+because automatic Mage Hand now correctly has a saved grant tag. A new real
+species-expiry test checks independent Psion ownership and Paladin grants.
+
+Combined run evidence: 31 browser cases passed; three failed (the cancellation
+assertion on both viewports and a real mobile draft-reset race). Cancellation now
+checks that Charm Person's sources remain unsaved, allowing the unrelated Mage
+Hand grant tag. A canonical spell-state key now ignores list/key/source ordering
+and duplicate values when deciding whether saved state changed; JSONB ordering
+or cloned arrays no longer clear a level-up draft. A real-hook test proves an
+equivalent echo preserves choices while a changed known list resets them.
+All six focused follow-up browser checks pass: cancellation, shared-spell level-up
+and species-grant expiry on desktop/mobile. Grant expiry keeps a separately
+learned Psion Darkness copy unprepared and preserves Paladin Divine Smite.
+Full gate passes again. A final combined green run is still required before release.
+
+Release verification: source tracking is connected to creation, ordinary
+learning/removal/preparation, both level-up flows and automatic grants. Explicit
+review handles legacy records without inferred ownership. Spell management now
+remains available for casters with missing slot records, including secondary
+classes and unlocked casting subclasses; no slot values are invented. Seven
+workspace checks and the full gate pass (1,686 tests; TS 208/208; 253 KB entry).
+All 36 combined desktop/mobile browser checks passed together. Schema PR #115 merged at 6d954dc after all hosted checks passed. Production
+migration run 37674807253 succeeded, and its actual apply log confirms all four
+source migrations applied. The app branch includes that merge with no code
+difference from the locally verified release candidate. Next: app PR, main CI
+and public service-worker verification; the v2.787 frontend is not yet deployed.
+
+### Released — Campaign concentration persistence, v2.786
 
 Confirmed: pending saves read `state=offered`, roll and clear concentration,
 then update the prompt. Two clients can both resolve the same offer; timeout
@@ -55,14 +235,15 @@ All 48 concentration browser/database checks pass together (desktop/mobile).
 Full gate: 1,555 unit tests, TS 208/208, build/rules/coordinates/anchors/hooks
 and bundle budget green (253 KB entry).
 
-Remaining before release: merge/deploy the frontend after its checks pass. Active save bonuses,
+Active save bonuses,
 advantage/exhaustion parity, summon/aura cleanup and other effects still need
 audit. During-combat sheet HP still uses the character snapshot; map HP uses the
 combatant. A unified live HP model is separate follow-up work. Offer creation and
 parent damage application are not yet durable/idempotent like save settlement.
 All three migrations shipped through schema PR #113 (merge 48b5fd5). Production
 workflow 37652706065 succeeded; its apply log confirms each migration applied.
-Frontend PR #114 is pending; production frontend remains v2.785.
+Frontend PR #114 merged at 461e5be after all checks passed. Main CI
+37654111665 passed; the public service worker confirms v2.786.0.
 
 PR #112 (sheet concentration, v2.785) merged at 89350c6 after all PR checks passed.
 Production CI 37644873225 passed; the public service worker confirms v2.785.0.

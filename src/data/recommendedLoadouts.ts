@@ -24,6 +24,10 @@ interface StarterSet {
 }
 
 const STARTER_SETS: Record<string, StarterSet> = {
+  Psion: {
+    cantrips: ['minor-illusion', 'telekinetic-fling'],
+    level1: ['charm-person', 'command', 'dissonant-whispers', 'mage-armor'],
+  },
   Bard: {
     cantrips: ['vicious-mockery', 'minor-illusion'],
     level1: ['healing-word', 'dissonant-whispers', 'faerie-fire', 'thunderwave'],

@@ -90,3 +90,20 @@ it('identifies HP carry-over without suppressing later genuine damage',()=>{
  expect(isCombatHpCarryover({combat_hp_sync_id:'first'}, {current_hp:8})).toBe(false);
  expect(isCombatHpCarryover({}, {combat_hp_sync_id:null,current_hp:8})).toBe(false);
 });
+
+it('accepts spell lists and their source metadata together, including cleared selections',()=>{
+ const ref={current:{...character,known_spells:['old'],prepared_spells:['old'],spell_sources:{old:['class:Psion']}} as Character};
+ const incoming={known_spells:['next'],prepared_spells:['next'],spell_sources:{next:['class:Psion']}};
+ expect(reconcileCharacterUpdate(ref,incoming,{}).patch).toEqual(incoming);
+ expect(ref.current.known_spells).toEqual(['next']);
+ expect(reconcileCharacterUpdate(ref,{known_spells:[],prepared_spells:[],spell_sources:{}},{}).patch)
+  .toEqual({known_spells:[],prepared_spells:[],spell_sources:{}});
+});
+
+it('syncs independent preparation and preserves explicit empty review entries',()=>{
+ const ref={current:{...character,spell_preparation_sources:{armor:['class:Psion']},prepared_spells:['armor']} as Character};
+ const patch={spell_preparation_sources:{armor:[]},prepared_spells:[]};
+ expect(reconcileCharacterUpdate(ref,patch,{}).patch).toEqual(patch);
+ expect(ref.current.spell_preparation_sources).toEqual({armor:[]});
+ expect(reconcileCharacterUpdate(ref,{spell_preparation_sources:{}},{}).patch).toEqual({spell_preparation_sources:{}});
+});

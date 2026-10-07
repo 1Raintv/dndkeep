@@ -1,3 +1,5 @@
+import type {SpellPreparationSources} from '../rules/spellPreparation';
+import type {SpellSources} from '../rules/psionSpellChoices';
 // =============================================================
 // DNDKeep — Core TypeScript Types
 // 2024 PHB ruleset: backgrounds grant ASI, species do not.
@@ -337,6 +339,8 @@ export interface Character {
   spell_slots: SpellSlots;
   prepared_spells: string[];  // spell ids
   known_spells: string[];     // spell ids
+  spell_sources?: SpellSources;
+  spell_preparation_sources?: SpellPreparationSources;
   // v2.380.0 — Quick-cast favorites bar. Spell IDs pinned to the top
   // of the character sheet for one-click cast access. Max 6 enforced
   // client-side. Pre-v2.380 characters default to [] via DB column.
