@@ -54,12 +54,13 @@ test.describe('Psionic Restoration (local stack)', () => {
     await expect.poll(dice).toBe('6');await expect(button('Extend (free)')).toBeEnabled();expect(errors).toEqual([]);
   });
 
-  test('Psionic Restoration refills dice, persists and refreshes only after a Long Rest',async({page},info)=>{
+  for (const view of ['Actions','Features']) test(`Psionic Restoration from ${view} refills dice, persists and refreshes only after a Long Rest`,async({page},info)=>{
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('response', response => { if(response.status() >= 400) errors.push(`${response.status()} ${response.url()}`); });
     sql(`update characters set class_resources = class_resources || '{"psionic-energy-dice":2}'::jsonb, feature_uses='{}'::jsonb where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    if(view==='Features') await page.locator('button.tab').filter({hasText:/^Features$/}).click();
     const meditate=()=>page.getByRole('button',{name:'Meditate (1 min)',exact:true}).locator('visible=true').first();
     await expect(meditate()).toBeVisible({timeout:20_000});
     await meditate().scrollIntoViewIfNeeded();
@@ -71,11 +72,11 @@ test.describe('Psionic Restoration (local stack)', () => {
     await expect(page.getByRole('button',{name:'Used · Long Rest',exact:true}).locator('visible=true').first()).toBeDisabled();
     await expect.poll(()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('6');
     await expect.poll(()=>sql(`select feature_uses->>'Psionic Restoration' from characters where id='${charId}'`)).toBe('1');
-    await page.reload();
+    await page.reload();if(view==='Features') await page.locator('button.tab').filter({hasText:/^Features$/}).click();
     await expect(page.getByRole('button',{name:'Used · Long Rest',exact:true}).locator('visible=true').first()).toBeDisabled();
     // Spend again, then exercise real rest handlers rather than resetting trackers by hand.
     sql(`update characters set class_resources=class_resources || '{"psionic-energy-dice":2}'::jsonb where id='${charId}'`);
-    await page.reload();
+    await page.reload();if(view==='Features') await page.locator('button.tab').filter({hasText:/^Features$/}).click();
     await page.getByRole('button',{name:/^Rest$/}).locator('visible=true').first().click();
     await page.getByTitle('End short rest', {exact:true}).click();
     await expect.poll(()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('3');
@@ -85,7 +86,7 @@ test.describe('Psionic Restoration (local stack)', () => {
     await expect.poll(()=>sql(`select class_resources->>'psionic-restoration' from characters where id='${charId}'`)).toBe('1');
     await expect(page.getByRole('button',{name:'Dice full',exact:true}).locator('visible=true').first()).toBeDisabled();
     sql(`update characters set class_resources=class_resources || '{"psionic-energy-dice":5}'::jsonb where id='${charId}'`);
-    await page.reload();await expect(meditate()).toBeEnabled();
+    await page.reload();if(view==='Features') await page.locator('button.tab').filter({hasText:/^Features$/}).click();await expect(meditate()).toBeEnabled();
     expect(errors).toEqual([]);
   });
 

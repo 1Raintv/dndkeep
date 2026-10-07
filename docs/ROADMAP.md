@@ -1,5 +1,19 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Restoration works from Features too, v2.761
+
+The Features-tab button matched the generic non-save handler, which merely
+flashed Used! because Restoration had no tracker configuration there. It neither
+restored dice nor marked the real once-per-Long-Rest use. This entry point now
+reuses the same meditation control and resource logic as Actions. Both show full
+and used states, confirm the one-minute meditation, refill the pool and persist
+the two existing use trackers. No second recovery implementation was introduced.
+
+Validation: the real local resource/rest regression now runs from BOTH Actions
+and Features on desktop and mobile, including reload, Short Rest remaining spent,
+and Long Rest refresh. Full gate and screenshots/layout checks pass.
+
+
 ### 2026-10-07 — Revised Psion subclass reference audit, v2.760
 
 Audited 18 feature entries for Metamorph, Psykinetic and Telepath against the
