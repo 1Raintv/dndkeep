@@ -1,5 +1,15 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Psion casting-stat header, v2.767
+
+The Spells tab now displays Psion's casting modifier, spell attack and save DC.
+The header uses the same calculated values as spell actions, so an equipped and
+attuned Headband of Intellect also appears correctly. Removes a duplicated
+class/ability map that excluded Psion and ignored effective ability scores;
+stat captions are larger and use the normal secondary-text color. Desktop/mobile
+local checks cover level/Intelligence scaling and the attuned-item override.
+
+
 ### 2026-10-07 — Clear grid at every zoom, v2.766
 
 Map grid strokes now retain their screen thickness as the artwork zooms. Both
