@@ -1,3 +1,4 @@
+import {getSpellSlotRow} from './spellSlots';
 // src/data/psionSpellList.test.ts
 //
 // v2.685.0 — Locks the Psion tag in spells.ts to the base spell list printed
@@ -123,4 +124,15 @@ describe('Psion spell list (UA2025-Psion-v2)', () => {
     expect(granted).toContain('Cloud of Daggers');
     expect(granted).toContain('Steel Wind Strike');
   });
+});
+
+// Owner's Psion Update p.2, independently transcribed slot columns (zero = dash).
+const PSION_SLOT_ROWS=[
+ [2],[3],[4,2],[4,3],[4,3,2],[4,3,3],[4,3,3,1],[4,3,3,2],
+ [4,3,3,3,1],[4,3,3,3,2],[4,3,3,3,2,1],[4,3,3,3,2,1],
+ [4,3,3,3,2,1,1],[4,3,3,3,2,1,1],[4,3,3,3,2,1,1,1],[4,3,3,3,2,1,1,1],
+ [4,3,3,3,2,1,1,1,1],[4,3,3,3,3,1,1,1,1],[4,3,3,3,3,2,1,1,1],[4,3,3,3,3,2,2,1,1],
+];
+it.each(PSION_SLOT_ROWS.map((row,i)=>({level:i+1,row:[...row,...Array(9-row.length).fill(0)]})))('Psion $level slot capacity matches the source table',({level,row})=>{
+ expect(getSpellSlotRow('Psion',level)).toEqual(row);
 });

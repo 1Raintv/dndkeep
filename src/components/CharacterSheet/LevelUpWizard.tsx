@@ -1,3 +1,5 @@
+import {getSpellSlotRow} from '../../data/spellSlots';
+import {levelUpSpellSlots} from '../../rules/levelUpSpellSlots';
 import ModalPortal from '../shared/ModalPortal';
 import {validDisciplineLevelUp} from '../../rules/psionDisciplineChoices';
 import { useState, useEffect } from 'react';
@@ -216,6 +218,12 @@ export default function LevelUpWizard({ character, onLevelUp, onClose }: LevelUp
  updates.secondary_class = newSecondaryClassName;
  updates.secondary_level = 1; // starting a new class at level 1
  updates.secondary_subclass = ''; // cleared — gets filled at subclass unlock
+ }
+
+ // v2.769 — the banner wizard previously advanced Psion levels without
+ // unlocking their new slots. Multiclass slot aggregation is separate work.
+ if(targetKind==='primary' && character.class_name==='Psion' && !hasSecondary){
+  updates.spell_slots=levelUpSpellSlots(character.spell_slots,getSpellSlotRow('Psion',newLevel));
  }
 
  // Subclass field routing
