@@ -1457,7 +1457,8 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
         for (const { combatantId, characterId } of characterCombatantIds) {
           const c = combMap.get(combatantId);
           if (!c) continue;
-          const updates: Record<string, unknown> = { current_hp: c.current_hp };
+          // v2.786: realtime consumers must not roll again for settled combat damage.
+          const updates: Record<string, unknown> = { current_hp: c.current_hp, combat_hp_sync_id: newChainId() };
           if (c.temp_hp != null) updates.temp_hp = c.temp_hp;
           // v2.746.0 — the characters columns are death_saveS_* (plural,
           // src/types/supabase.ts + local schema agree); combatants use

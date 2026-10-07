@@ -1,3 +1,4 @@
+import {createConcentrationOffer,resolveConcentrationSave} from './api/concentrationSaves';
 import {log} from './log';
 import { savingThrowPassed } from '../rules/savingThrows';
 import { getCharacterSaveNaturalExtremes } from './api/characterSaveRules';
@@ -24,10 +25,10 @@ import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { offerReactionsFor } from './pendingReaction';
 import { abilityModifier, characterProficiencyBonus, crToProficiencyBonus } from './gameUtils';
-import { getAdvantageState, meleeAutoCritApplies, conditionsAutoFailSave, conditionsDisadvantageSave, conditionsResistAll, clearConditionsFromConcentration } from './conditions';
+import { getAdvantageState, meleeAutoCritApplies, conditionsAutoFailSave, conditionsDisadvantageSave, conditionsResistAll } from './conditions';
 import {
   getAttackRollBonuses, getSaveBonuses, getDamageRiders,
-  clearBuffsFromConcentration, removeBuff,
+  removeBuff,
 } from './buffs';
 import type { ActiveBuff } from './buffs';
 import { surveyMasteryMarkers, consumeMasteryMarkers } from './masteryRiders';
@@ -1790,7 +1791,7 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
 
   const { data: charRow } = await supabase
     .from('characters')
-    .select('id, concentration_spell, constitution, level, secondary_class, secondary_level, saving_throw_proficiencies, automation_overrides, advanced_automations_unlocked, nat_1_20_saves')
+    .select('id, concentration_spell, concentration_revision, constitution, level, secondary_class, secondary_level, saving_throw_proficiencies, automation_overrides, advanced_automations_unlocked, nat_1_20_saves')
     .eq('id', part.entity_id)
     .single();
   if (!charRow) return;
@@ -1847,217 +1848,17 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
   // v2.636 — was an inline max(10, floor(dmg/2)) missing the RAW DC 30 cap
   const dc = concentrationDC(ctx.damage);
 
-  // 'prompt' branch: insert a pending_concentration_saves row and return.
-  // The player's modal subscribes via realtime, shows the damage/DC/spell,
-  // and on click calls resolvePendingConcentrationSave which reuses the
-  // same roll-and-drop logic as the auto path.
-  if (automationSetting === 'prompt') {
-    const PROMPT_TIMEOUT_SECONDS = 120;
-    const offeredAt = new Date();
-    const expiresAt = new Date(offeredAt.getTime() + PROMPT_TIMEOUT_SECONDS * 1000);
-    await supabase
-      .from('pending_concentration_saves')
-      .insert({
-        campaign_id: ctx.campaignId,
-        encounter_id: ctx.encounterId,
-        chain_id: ctx.chainId,
-        participant_id: ctx.participantId,
-        character_id: (charRow as any).id,
-        spell_name: concentrationSpell,
-        damage: ctx.damage,
-        dc,
-        con_bonus: bonus,
-        has_con_prof: hasConProf,
-        state: 'offered',
-        offered_at: offeredAt.toISOString(),
-        expires_at: expiresAt.toISOString(),
-      });
-
-    await emitCombatEvent({
-      campaignId: ctx.campaignId,
-      encounterId: ctx.encounterId,
-      chainId: ctx.chainId,
-      sequence: 60,
-      actorType: 'system',
-      actorName: 'System',
-      targetType: 'self',
-      targetName: ctx.targetName,
-      eventType: 'concentration_save_prompted',
-      payload: {
-        spell: concentrationSpell,
-        dc,
-        damage: ctx.damage,
-        expires_in_seconds: PROMPT_TIMEOUT_SECONDS,
-        automation_setting: 'prompt',
-      },
-    });
-    return;
+  // v2.786 — both paths create a revision-bound offer and settle through
+  // the same transaction. No client-side spell/effect cleanup is replayed.
+  const pendingId=await createConcentrationOffer({characterId:charRow.id,campaignId:ctx.campaignId,
+    encounterId:ctx.encounterId,chainId:ctx.chainId,participantId:ctx.participantId,
+    spell:concentrationSpell,revision:charRow.concentration_revision,damage:ctx.damage,dc,bonus,
+    proficient:hasConProf,automatic:automationSetting==='auto'});
+  if(automationSetting==='auto'){
+    await resolveConcentrationSave(charRow.id,pendingId,'player');
+  }else{
+    await emitCombatEvent({campaignId:ctx.campaignId,encounterId:ctx.encounterId,chainId:ctx.chainId,sequence:59,
+      actorType:'system',actorName:'System',targetType:'self',targetName:ctx.targetName,eventType:'concentration_save_prompted',
+      payload:{spell:concentrationSpell,dc,damage:ctx.damage,expires_in_seconds:120,automation_setting:'prompt'}});
   }
-
-  // 'auto' branch: roll and resolve inline.
-  await performConcentrationSave({
-    ctx,
-    charId: (charRow as any).id,
-    concentrationSpell,
-    dc,
-    bonus,
-    naturalExtremes: charRow.nat_1_20_saves !== false,
-    resolutionSource: 'player',   // 'auto' is effectively the player accepting by default
-    automationSetting,
-  });
-}
-
-// ─── Shared concentration save resolver ──────────────────────────
-// v2.118.0 — Phase I pt 2: extracted from runConcentrationSave so that both
-// the 'auto' automation branch and the prompt-resolution path (called when
-// the player clicks "Roll Save" in the modal, or on 120s timeout) share one
-// implementation. Rolls the d20, emits save_rolled, and on failure drops
-// concentration + cleans up spell-sourced conditions and buffs.
-
-export interface PerformConcentrationSaveInput {
-  naturalExtremes?: boolean;
-  ctx: ConcentrationSaveContext;
-  charId: string;
-  concentrationSpell: string;
-  dc: number;
-  bonus: number;
-  resolutionSource: 'player' | 'timeout';
-  automationSetting: string;
-}
-
-export async function performConcentrationSave(
-  input: PerformConcentrationSaveInput,
-): Promise<{ saved: boolean; d20: number; total: number }> {
-  const { ctx, charId, concentrationSpell, dc, bonus } = input;
-
-  const d20 = rollDie(20);
-  const total = d20 + bonus;
-  const naturalExtremes = input.naturalExtremes ?? await getCharacterSaveNaturalExtremes(charId);
-  const saved = savingThrowPassed(d20, total, dc, { naturalExtremes });
-
-  await emitCombatEvent({
-    campaignId: ctx.campaignId,
-    encounterId: ctx.encounterId,
-    chainId: ctx.chainId,
-    sequence: 60,
-    actorType: 'player',
-    actorName: ctx.targetName,
-    targetType: 'self',
-    targetName: ctx.targetName,
-    eventType: 'save_rolled',
-    payload: {
-      save_type: 'concentration',
-      ability: 'CON',
-      dc,
-      d20,
-      bonus,
-      total,
-      result: saved ? 'passed' : 'failed',
-      trigger: 'damage',
-      damage: ctx.damage,
-      concentration_spell: concentrationSpell,
-      automation_setting: input.automationSetting,
-      resolution_source: input.resolutionSource,
-    },
-  });
-
-  if (!saved) {
-    // v2.472.0: clear value standardized to '' (see paired note in the
-    // death-cleanup path above).
-    await supabase
-      .from('characters')
-      .update({ concentration_spell: '', concentration_rounds_remaining: null })
-      .eq('id', charId);
-
-    // v2.471.0: removed the no-op UPDATE on combat_participants that
-    // cleared the now-dropped concentration_spell_id column. The
-    // characters.concentration_spell update above is the source of
-    // truth; the broad cleanup walk in clearConditionsFromConcentration
-    // / clearBuffsFromConcentration below handles dependent state.
-
-    await emitCombatEvent({
-      campaignId: ctx.campaignId,
-      encounterId: ctx.encounterId,
-      chainId: ctx.chainId,
-      sequence: 61,
-      actorType: 'system',
-      actorName: 'System',
-      targetType: 'self',
-      targetName: ctx.targetName,
-      eventType: 'concentration_broken',
-      payload: {
-        spell: concentrationSpell,
-        reason: 'failed_save',
-        dc,
-        total,
-      },
-    });
-
-    await clearConditionsFromConcentration(
-      ctx.campaignId,
-      ctx.encounterId,
-      ctx.participantId,
-      concentrationSpell,
-    );
-    await clearBuffsFromConcentration(
-      ctx.campaignId,
-      ctx.encounterId,
-      ctx.participantId,
-      concentrationSpell,
-    );
-  }
-
-  return { saved, d20, total };
-}
-
-// ─── Resolve a pending prompt row ────────────────────────────────
-// Called from ConcentrationSavePromptModal on player action or timeout.
-
-export async function resolvePendingConcentrationSave(
-  pendingId: string,
-  resolutionSource: 'player' | 'timeout',
-): Promise<void> {
-  const { data: row } = await supabase
-    .from('pending_concentration_saves')
-    .select('*')
-    .eq('id', pendingId)
-    .single();
-  if (!row || row.state !== 'offered') return;
-
-  const ctx: ConcentrationSaveContext = {
-    campaignId: row.campaign_id as string,
-    encounterId: row.encounter_id as string | null,
-    chainId: row.chain_id as string,
-    participantId: row.participant_id as string,
-    targetName: '',            // filled from participants below for event payload
-    damage: row.damage as number,
-  };
-
-  const { data: part } = await supabase
-    .from('combat_participants')
-    .select('name')
-    .eq('id', ctx.participantId)
-    .maybeSingle();
-  ctx.targetName = (part?.name as string | null) ?? 'Unknown';
-
-  const { saved, d20, total } = await performConcentrationSave({
-    ctx,
-    charId: row.character_id as string,
-    concentrationSpell: row.spell_name as string,
-    dc: row.dc as number,
-    bonus: row.con_bonus as number,
-    resolutionSource,
-    automationSetting: 'prompt',
-  });
-
-  await supabase
-    .from('pending_concentration_saves')
-    .update({
-      state: resolutionSource === 'timeout' ? 'expired' : 'resolved',
-      decided_at: new Date().toISOString(),
-      d20, total,
-      result: saved ? 'passed' : 'failed',
-      resolution_source: resolutionSource,
-    })
-    .eq('id', pendingId);
 }
