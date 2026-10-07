@@ -73,3 +73,11 @@ it.each(['rejection','error result'])('warns without undoing paid temporary HP a
  expect(update).toHaveBeenCalledTimes(2);expect(update).toHaveBeenLastCalledWith({temp_hp:8});
  expect((screen.getByRole('button',{name:'Gain temp HP'}) as HTMLButtonElement).disabled).toBe(false);
 });
+
+it('adds two free capstone dice and Surges all five rolls, adding Intelligence only once',async()=>{
+ const update=vi.fn();render(ui({...character,level:20,hit_dice_spent:0,class_resources:{...character.class_resources,'psionic-energy-dice':12}},update));await choose('3');
+ await screen.findByRole('dialog',{name:'Enkindled Life Force'});fireEvent.change(screen.getByRole('textbox'),{target:{value:'2'}});fireEvent.click(screen.getByRole('button',{name:'Continue'}));
+ await screen.findByRole('dialog',{name:'Psionic Surge'});fireEvent.click(screen.getByRole('button',{name:'Spend 1 Hit Point Die'}));
+ await waitFor(()=>expect(update).toHaveBeenLastCalledWith({temp_hp:24}));expect(update.mock.calls.slice(0,3)).toEqual([[{class_resources:{...character.class_resources,'psionic-energy-dice':9}}],[{hit_dice_spent:2}],[{hit_dice_spent:3}]]);
+ expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({actionName:'Biofeedback',diceExpression:'5d12',individualResults:[2,2,2,2,2],total:24}));
+});

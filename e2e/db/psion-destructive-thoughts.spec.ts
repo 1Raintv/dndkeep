@@ -51,8 +51,8 @@ test.describe('Psion Destructive Thoughts', () => {
     await page.screenshot({path:info.outputPath('destructive-tabletop.png')});
   });
 
-  test('player queues paid Surge damage once after a lost response; DM applies it',async({page,browser},info)=>{
-    test.setTimeout(90_000);
+  for(const level of [7,20])test(`player ${level} queues paid enhanced damage once after a lost response; DM applies it`,async({page,browser},info)=>{
+    test.setTimeout(90_000);const amount=level===20?20:12,spent=level===20?3:1;
     const dm=randomUUID(),camp=randomUUID(),enc=randomUUID(),self=randomUUID(),target=randomUUID(),hidden=randomUUID(),cbSelf=randomUUID(),cbTarget=randomUUID(),cbHidden=randomUUID();
     const dmEmail=`psion-dm-${dm}@dndkeep.local`,campName=`Destructive ${camp.slice(0,8)}`;
     const dmContext=await browser.newContext({serviceWorkers:'block'});
@@ -64,7 +64,7 @@ test.describe('Psion Destructive Thoughts', () => {
         values (gen_random_uuid(),'${dm}','${dm}','{"sub":"${dm}","email":"${dmEmail}"}','email',now(),now(),now());
         insert into campaigns(id,owner_id,name) values('${camp}','${dm}','${campName}');
         insert into campaign_members(campaign_id,user_id,role) values('${camp}','${userId}','player');
-        update characters set campaign_id='${camp}',level=7,intelligence=18,hit_dice_spent=0,class_resources='{"psion-disciplines":["Destructive Thoughts"],"psionic-energy-dice":2,"other":9}' where id='${charId}';
+        update characters set campaign_id='${camp}',level=${level},intelligence=18,hit_dice_spent=0,class_resources='{"psion-disciplines":["Destructive Thoughts"],"psionic-energy-dice":2,"other":9}' where id='${charId}';
         insert into combatants(id,campaign_id,owner_id,name,definition_type,definition_id,current_hp,max_hp) values
           ('${cbSelf}','${camp}','${userId}','Restoration Fixture','character','${charId}',30,30),
           ('${cbTarget}','${camp}','${dm}','Visible Goblin','srd_monster','fixture-goblin',30,30),
@@ -91,17 +91,18 @@ test.describe('Psion Destructive Thoughts', () => {
           posts++;const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort();
         }else await route.continue();
       });
+      if(level===20){const extra=page.getByRole('dialog',{name:'Enkindled Life Force'});await extra.getByRole('textbox').fill('2');await extra.getByRole('button',{name:'Continue'}).click();}
       await page.getByRole('button',{name:'Spend 1 Hit Point Die',exact:true}).click();
       await expect(page.getByRole('button',{name:'Retry queue',exact:true})).toBeVisible();
-      await expect(page.getByRole('status').filter({hasText:'12 Psychic ·'})).toContainText('Not queued');
+      await expect(page.getByRole('status').filter({hasText:`${amount} Psychic ·`})).toContainText('Not queued');
       await page.getByRole('button',{name:'Retry queue',exact:true}).click();
-      await expect(page.getByRole('status').filter({hasText:'12 Psychic ·'})).toContainText('Queued in combat');
+      await expect(page.getByRole('status').filter({hasText:`${amount} Psychic ·`})).toContainText('Queued in combat');
       expect(posts).toBe(1);
       expect(sql(`select count(*) from pending_attacks where campaign_id='${camp}'`)).toBe('1');
-      expect(JSON.parse(sql(`select json_build_object('dice',damage_dice,'type',damage_type,'kind',attack_kind,'target',target_participant_id) from pending_attacks where campaign_id='${camp}'`))).toEqual({dice:'12',type:'Psychic',kind:'auto_hit',target});
+      expect(JSON.parse(sql(`select json_build_object('dice',damage_dice,'type',damage_type,'kind',attack_kind,'target',target_participant_id) from pending_attacks where campaign_id='${camp}'`))).toEqual({dice:String(amount),type:'Psychic',kind:'auto_hit',target});
       const resources=()=>JSON.parse(sql(`select json_build_object('pool',class_resources->'psionic-energy-dice','spent',hit_dice_spent,'other',class_resources->'other') from characters where id='${charId}'`));
-      await expect.poll(resources).toEqual({pool:0,spent:1,other:9});
-      await page.getByRole('status').filter({hasText:'12 Psychic ·'}).scrollIntoViewIfNeeded();
+      await expect.poll(resources).toEqual({pool:0,spent,other:9});
+      await page.getByRole('status').filter({hasText:`${amount} Psychic ·`}).scrollIntoViewIfNeeded();
       await page.screenshot({path:info.outputPath('destructive-queued.png')});
       const dmPage=await dmContext.newPage();dmPage.on('pageerror',e=>errors.push(e.message));
       await signInAsSeedDm(dmPage,dmEmail);await dmPage.goto('/campaigns');
@@ -110,8 +111,8 @@ test.describe('Psion Destructive Thoughts', () => {
       await expect(dmPage.getByRole('button',{name:/Apply Damage/})).toBeVisible();
       await dmPage.screenshot({path:info.outputPath('destructive-resolve.png')});
       await dmPage.getByRole('button',{name:/Apply Damage/}).click();
-      await expect.poll(()=>sql(`select current_hp from combatants where id='${cbTarget}'`)).toBe('18');
-      expect(resources()).toEqual({pool:0,spent:1,other:9});expect(errors).toEqual([]);
+      await expect.poll(()=>sql(`select current_hp from combatants where id='${cbTarget}'`)).toBe(String(30-amount));
+      expect(resources()).toEqual({pool:0,spent,other:9});expect(errors).toEqual([]);
     }finally{
       await dmContext.close();
       sql(`delete from campaigns where id='${camp}'; delete from auth.users where id='${dm}';`);

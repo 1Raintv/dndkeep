@@ -1,5 +1,27 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Enkindled Life Force roll integration, v2.780
+
+Level-20 primary Psions can add one or two Energy Dice to their roll by spending
+that many Hit Point Dice. Extra Energy Dice do not reduce the pool. This now
+flows through Biofeedback, Destructive Thoughts, conditional check/attack bonuses,
+Telekinetic Propel, Telepathic Connection and manual Energy Die rolls. Surge is
+offered after extra dice, improving all low dice for one additional Hit Point Die
+when available. The free Psykinetic d4 is excluded. Larger totals retain original
+dice metadata through settlement instead of being rejected as impossible d12s.
+
+A shared optimistic character reference prevents an unchanged prop on a modal
+rerender from refunding an already-paid cost. Fresh character snapshots still
+replace it. The manual roller owns its resource deduction, and generic ambient
+pool rows no longer fall through to a Psionic Energy Die deduction. Removing
+that obsolete path lowers the TypeScript baseline from 211 to 210.
+
+Enkindled's once-per-turn use is explicitly confirmed by the player; automatic
+shared turn claims remain unfinished. This adds the capstone to existing roll
+flows, not the missing effects of other disciplines or subclasses. Character
+resource persistence remains optimistic rather than transactional.
+
+
 ### 2026-10-07 — Biofeedback history and paid-roll recovery, v2.779
 
 Biofeedback releases its control after applying temporary HP without waiting for

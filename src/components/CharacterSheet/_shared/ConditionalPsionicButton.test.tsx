@@ -9,7 +9,7 @@ import ConditionalPsionicButton from './ConditionalPsionicButton';
 import {ModalProvider} from '../../shared/Modal';
 import {findDiscipline} from '../../../data/psionDisciplines';
 import type {Character} from '../../../types';
-afterEach(cleanup);beforeEach(()=>{vi.clearAllMocks();mocks.roll=4;});
+afterEach(cleanup);beforeEach(()=>{vi.clearAllMocks();mocks.roll=4;mocks.log.mockResolvedValue(undefined);});
 const discipline=findDiscipline('inerrant-aim')!;
 const character={id:'psion',name:'Psion',class_name:'Psion',level:5,class_resources:{'psion-disciplines':['Inerrant Aim'],'psionic-energy-dice':2,other:9},feature_uses:{other:2}} as unknown as Character;
 const ui=(c:Character,onUpdate:ReturnType<typeof vi.fn>)=><ModalProvider><ConditionalPsionicButton character={c} discipline={discipline} onUpdate={onUpdate}/></ModalProvider>;
@@ -87,4 +87,17 @@ it('cannot spend Surge after the character changes',async()=>{
 it.each([{...highLevel,level:6},{...highLevel,hit_dice_spent:7}])('skips unavailable Surge',c=>{
  mocks.roll=1;render(ui(c,vi.fn()));fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));
  expect(screen.getByRole('dialog',{name:'Inerrant Aim'})).toBeTruthy();
+});
+
+it('keeps paid capstone costs separate when the enhanced bonus still fails',async()=>{
+ const update=vi.fn();render(ui({...character,level:20,hit_dice_spent:0},update));fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));
+ await screen.findByRole('dialog',{name:'Enkindled Life Force'});fireEvent.change(screen.getByRole('textbox'),{target:{value:'2'}});fireEvent.click(screen.getByRole('button',{name:'Continue'}));
+ await screen.findByRole('dialog',{name:'Inerrant Aim'});expect(screen.getByText(/Add \+12 to/)).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:'Keep die'}));
+ await waitFor(()=>expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({actionName:'Inerrant Aim',total:12,individualResults:[4,4,4]})));
+ expect(update).toHaveBeenCalledTimes(1);expect(update).toHaveBeenCalledWith({hit_dice_spent:2});
+});
+
+it('releases a settled bonus even when its history remains pending',async()=>{
+ mocks.log.mockReturnValue(new Promise(()=>{}));const update=vi.fn();render(ui(character,update));fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));fireEvent.click(screen.getByRole('button',{name:'Changed to hit · spend 1'}));
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Roll bonus'}) as HTMLButtonElement).disabled).toBe(false));expect(update).toHaveBeenCalledTimes(1);
 });
