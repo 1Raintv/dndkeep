@@ -48,4 +48,22 @@ test.describe('Concentration sheet saves (local stack)', () => {
     await expect.poll(()=>sql(`select concentration_spell from characters where id='${charId}'`)).toBe(sample.passed?'detect-magic':'');
     expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Concentration Check'`)).toBe('1');
   });
+  for(const replacement of ['detect-magic','invisibility'])test(`delayed dice completion preserves a later ${replacement} casting`,async({page})=>{
+    await page.addInitScript(()=>{Math.random=()=>0.001;});
+    sql(`update characters set current_hp=100,max_hp=100,temp_hp=0,constitution=10,
+      saving_throw_proficiencies='{}',nat_1_20_saves=false,concentration_spell='detect-magic',
+      concentration_rounds_remaining=100 where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await page.getByTitle('Take 1 damage',{exact:true}).locator('visible=true').first().click();
+    const roll=page.getByRole('button',{name:'Roll CON Save (+0)',exact:true}).locator('visible=true').first();
+    await expect(roll).toBeVisible();await page.clock.install();await page.clock.pauseAt(new Date());
+    // Freeze animation and fallback timers. The failed save must already be
+    // persisted; completing an old animation is never a later spell mutation.
+    await roll.dispatchEvent('click');
+    await expect.poll(()=>sql(`select concentration_spell from characters where id='${charId}'`)).toBe('');
+    sql(`update characters set concentration_spell='${replacement}',concentration_rounds_remaining=100 where id='${charId}'`);
+    await page.clock.runFor(4500);
+    await expect.poll(()=>sql(`select concentration_spell from characters where id='${charId}'`)).toBe(replacement);
+    await page.reload();await expect(page.getByText('Concentration Check Required',{exact:true})).toHaveCount(0);
+  });
 });

@@ -501,7 +501,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  setConcentrationSaveDC(dc);
  setConcentrationSaveDamage(totalDamage);
  } else if (mode === 'auto') {
- // Note: rollConcentrationSave reads from the latest character state via closure;
+ // rollConcentrationSave reads the latest character ref, not this subscription closure;
  // queue with rAF so the patch lands first.
  requestAnimationFrame(() => rollConcentrationSave(dc));
  }
@@ -618,19 +618,20 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  /** Persist concentration spell ID immediately to DB so it survives refresh.
  * v2.38.0: Also parses the spell's duration and starts a round countdown. */
  function setConcentration(spellId: string | null, slotLevel?: number, persist=true) {
+ const currentCharacter = characterRef.current;
  // v2.600.0 — automation arc ship 4a: when concentration on a summon
  // spell ends (Drop button, failed CON save, timer expiry, or a new
  // concentration cast replacing it), auto-despawn its battle-map
  // token. Every clear path funnels through this function, so this is
  // the single hook. Fire-and-forget — token cleanup never blocks the
  // concentration state write.
- const prevSpellId = character.concentration_spell || null;
- if (prevSpellId && prevSpellId !== spellId && character.campaign_id) {
+ const prevSpellId = currentCharacter.concentration_spell || null;
+ if (prevSpellId && prevSpellId !== spellId && currentCharacter.campaign_id) {
  import('../../lib/summonTokens').then(({ SUMMON_TOKEN_SPELLS, removeSummonTokens }) => {
  if (!SUMMON_TOKEN_SPELLS[prevSpellId]) return;
  removeSummonTokens({
- campaignId: character.campaign_id!,
- casterName: character.name,
+ campaignId: currentCharacter.campaign_id!,
+ casterName: currentCharacter.name,
  spellId: prevSpellId,
  }).then(n => {
  if (n > 0) console.info(`[CharacterSheet] despawned ${n} summon token(s) for ${prevSpellId}`);
@@ -641,12 +642,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // spell ends (Drop, failed CON save, timer expiry, or replacement
  // cast), remove the Emanation from the caster's participant row.
  // Fire-and-forget — teardown never blocks the concentration write.
- if (prevSpellId && prevSpellId !== spellId && character.campaign_id) {
+ if (prevSpellId && prevSpellId !== spellId && currentCharacter.campaign_id) {
  import('../../lib/auras').then(({ AURA_SPELLS, endAuraForSpell }) => {
  if (!AURA_SPELLS[prevSpellId]) return;
  endAuraForSpell({
- campaignId: character.campaign_id!,
- casterCharacterId: character.id,
+ campaignId: currentCharacter.campaign_id!,
+ casterCharacterId: currentCharacter.id,
  spellId: prevSpellId,
  }).then(ended => {
  if (ended) console.info(`[CharacterSheet] ended aura for ${prevSpellId}`);
@@ -702,29 +703,33 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  * bonus vs the DC, logs to the action log, and drops concentration on
  * a failed save. Returns the roll result for callers that want it.
  *
- * v2.74.0: the "concentration broken" toast + the actual drop of
- * concentration now wait until the 3D dice roller fires onResult (dice
- * have physically settled). Previously the toast flashed up before the
- * animation finished, which looked broken. A 3.5s fallback ensures the
- * handler still fires even if onResult never does (e.g. physics error).
+ * v2.785: concentration changes immediately; only the loss notification
+ * waits for the dice to settle. The 3.5s fallback can never mutate a spell
+ * cast after this save.
  */
  function rollConcentrationSave(dc: number): { passed: boolean; total: number; d20: number } {
+ const currentCharacter = characterRef.current;
+ const currentStats = computeStats(currentCharacter);
+ const spellAtRoll = currentCharacter.concentration_spell || null;
  // v2.785 — use the same effective Constitution/proficiency as the sheet.
  // Base-score math ignored active item overrides and disagreed with its tiles.
- const conMod = computed.modifiers.constitution;
- const pb = computed.proficiency_bonus;
- const hasSaveProf = computed.saving_throws.constitution.proficient;
- const saveBonus = computed.saving_throws.constitution.total;
+ const conMod = currentStats.modifiers.constitution;
+ const pb = currentStats.proficiency_bonus;
+ const hasSaveProf = currentStats.saving_throws.constitution.proficient;
+ const saveBonus = currentStats.saving_throws.constitution.total;
  const d20 = rollDie(20);
  const total = d20 + saveBonus;
- const useNat = character.nat_1_20_saves !== false;
+ const useNat = currentCharacter.nat_1_20_saves !== false;
  const passed = savingThrowPassed(d20, total, dc, { naturalExtremes: useNat });
  const verdict = useNat && d20 === 20 ? '✓ Maintained (NAT 20 — auto-success)'
  : useNat && d20 === 1 ? '✗ Broken (NAT 1 — auto-fail)'
  : passed ? '✓ Maintained' : '✗ Broken';
- // v2.74.0: gather deferred actions — fire only after dice settle.
- const spellName = concentrationSpellId ? (spellMap[concentrationSpellId]?.name ?? 'Concentration') : 'Concentration';
- const concSpellIdAtRoll = concentrationSpellId; // capture for the callback
+ // Capture the save label before clearing concentration.
+ const spellName = spellAtRoll ? (spellMap[spellAtRoll]?.name ?? 'Concentration') : 'Concentration';
+ const concSpellIdAtRoll = spellAtRoll; // capture for the callback
+ // v2.785 — settle the failed save before animation. A delayed onResult
+ // must never clear a different spell (or a fresh casting of the same spell).
+ if (!passed && spellAtRoll) setConcentration(null);
  let resolved = false;
  // eslint-disable-next-line prefer-const -- assigned after resolveVerdict closes over it
  let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
@@ -732,12 +737,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  if (resolved) return;
  resolved = true;
  clearTimeout(fallbackTimer); // audit fix: don't leave the 3.5s fallback pending after onResult fires
- if (!passed) {
+ if (!passed && characterRef.current.id === currentCharacter.id && !characterRef.current.concentration_spell) {
  showConcentrationLossToast(
  concSpellIdAtRoll,
  useNat && d20 === 1 ? 'NAT 1 — auto-fail' : `CON save failed (${total} vs DC ${dc})`
  );
- setConcentration(null);
  }
  };
  // v2.48.0: Fire the 3D dice roller so the user sees the d20 land and the
@@ -751,15 +755,15 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  onResult: resolveVerdict, // fires when physics dice settle
  });
  // Fallback: if for any reason onResult never fires, resolve after 3.5s
- // so the toast + concentration-drop still happens.
+ // so the notification still appears without any delayed spell mutation.
  fallbackTimer = setTimeout(resolveVerdict, 3500);
  // Action log can write immediately — it's a separate surface and doesn't
  // conflict with the dice animation.
  import('../shared/ActionLog').then(({ logAction }) => {
  logAction({
- campaignId: character.campaign_id,
- characterId: character.id,
- characterName: character.name,
+ campaignId: currentCharacter.campaign_id,
+ characterId: currentCharacter.id,
+ characterName: currentCharacter.name,
  actionType: 'save',
  actionName: 'Concentration Check',
  diceExpression: '1d20',
