@@ -1,4 +1,3 @@
-import type {SpellSource} from '../../rules/psionSpellChoices';
 import type {usePsionLevelUpSpells} from '../../lib/hooks/usePsionLevelUpSpells';
 
 export default function PsionLevelUpSpellChoices({choices}:{choices:ReturnType<typeof usePsionLevelUpSpells>}){
@@ -7,9 +6,20 @@ export default function PsionLevelUpSpellChoices({choices}:{choices:ReturnType<t
   <legend>{name}: learned through</legend>
   {choices.sourceOptions.map(source=><label key={source} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',fontSize:12}}>
    <input type="checkbox" style={{width:16,height:16,margin:0,flexShrink:0}} aria-label={`${name}: ${source.replace('class:','')}`} checked={choices.sources[id]?.includes(source)??false}
-    onChange={e=>choices.setSources(previous=>{const selected=new Set<SpellSource>(previous[id]??[]);if(e.target.checked)selected.add(source);else selected.delete(source);return {...previous,[id]:[...selected]};})}/>
+    onChange={e=>choices.changeSource(id,source,e.target.checked)}/>
    {source.replace('class:','')}
   </label>)}
+  {(choices.reviewable.find(spell=>spell.id===id)?.level??0)>0&&(choices.sources[id]?.length??0)>0&&<fieldset style={{marginTop:8,padding:8,border:'1px solid var(--c-border)'}}>
+   <legend>{name}: prepared through</legend>
+   <p style={{fontSize:12,margin:'0 0 6px'}}>Choose every source that currently has this spell prepared. Unchecked sources keep it learned only.</p>
+   {!Object.prototype.hasOwnProperty.call(choices.preparationSources,id)&&<p style={{fontSize:12}}>Preparation not yet reviewed.</p>}
+   {(choices.sources[id]??[]).map(source=><label key={source} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0',fontSize:12}}>
+    <input type="checkbox" style={{width:16,height:16,margin:0,flexShrink:0}} aria-label={`${name}: prepared through ${source.replace('class:','')}`} checked={choices.preparationSources[id]?.includes(source)??false}
+     onChange={e=>choices.reviewPreparation(id,e.target.checked?[...(choices.preparationSources[id]??[]),source]:(choices.preparationSources[id]??[]).filter(item=>item!==source))}/>
+    {source.replace('class:','')}
+   </label>)}
+   <button type="button" onClick={()=>choices.reviewPreparation(id,[])} aria-label={`${name}: none prepared`}>None prepared</button>
+  </fieldset>}
  </fieldset>;}
  return <section aria-label="Psion spell replacements" style={{marginTop:16,padding:12,border:'1px solid var(--c-border)',borderRadius:8}}>
   <h3 style={{margin:'0 0 8px'}}>Replace Psion spells</h3>

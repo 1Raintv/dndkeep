@@ -93,6 +93,18 @@ Remaining integration: ordinary preparation toggles and per-class counts, level-
 replacement, explicit readiness review and automatic grants. Until these paths
 are connected, the local release remains held.
 
+Both level-up paths now apply source-specific preparation when swapping spells.
+Shared legacy readiness blocks confirmation until explicitly reviewed; the UI
+lets the player identify prepared sources or mark all copies unprepared. A source
+ownership edit invalidates that spell's prior readiness review. Draft readiness
+resets with remote spell-list changes and target switches. Replacement preserves
+prepared Wizard copies and does not prepare a Wizard copy that was learned only.
+All ten focused desktop/mobile checks pass (both flows, subclass grants, cancel,
+class switching, shared-spell review/persistence); desktop/mobile layouts inspected.
+Full gate passes with 1,652 unit tests, TS 208/208 and 253 KB entry.
+Still local: ordinary preparation toggles/counts and automatic-grant source
+tracking must be integrated before the schema-first production release.
+
 Before release: source tracking for automatic grants and per-class prepared-state
 ownership. A spell learned through Psion and later removed must not accidentally
 prepare an originally unprepared copy retained by Wizard.

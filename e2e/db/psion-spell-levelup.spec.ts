@@ -146,10 +146,13 @@ test.describe('Psion spell replacement level-up', () => {
     await section.getByLabel('Replace prepared spell',{exact:true}).selectOption('mage-armor');
     await expect(section.getByRole('checkbox',{name:'Mage Armor: Wizard',exact:true})).toBeChecked();
     await section.getByLabel('New prepared spell',{exact:true}).selectOption('hold-person');
+    await expect(page.getByRole('button',{name:'Confirm Level Up',exact:true})).toBeDisabled();
+    await section.getByRole('checkbox',{name:'Mage Armor: prepared through Wizard',exact:true}).check();
     await page.getByRole('button',{name:'Confirm Level Up',exact:true}).click();
     await expect.poll(()=>sql(`select level from characters where id='${charId}'`)).toBe('6');
     const sources=JSON.parse(sql(`select spell_sources from characters where id='${charId}'`));
     expect(sources['mage-armor']).toEqual(['class:Wizard']);expect(sources['hold-person']).toEqual(['class:Wizard','class:Psion']);
+    expect(JSON.parse(sql(`select spell_preparation_sources from characters where id='${charId}'`))).toMatchObject({'mage-armor':['class:Wizard'],'hold-person':['class:Psion']});
     const known=JSON.parse(sql(`select to_json(known_spells) from characters where id='${charId}'`));
     expect(known).toContain('mage-armor');expect(known.filter((id:string)=>id==='hold-person')).toHaveLength(1);
     await page.reload();expect(JSON.parse(sql(`select spell_sources from characters where id='${charId}'`))).toEqual(sources);

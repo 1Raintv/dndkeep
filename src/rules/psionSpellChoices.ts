@@ -1,3 +1,4 @@
+import {setSpellSourcePrepared,type SpellPreparationSources} from './spellPreparation';
 import {isSpellSources,type SpellSource,type SpellSources} from './spellSources';
 export type {SpellSource,SpellSources} from './spellSources';
 /** UA Psion Update pp.2–3: spell choices use Psion progression, not
@@ -45,10 +46,11 @@ type PsionSwapInput = Parameters<typeof replacePsionLevelUpSpells>[0];
 /** A spell can be learned independently through multiple classes/features.
  * Missing entries are unknown, not evidence that a spell belongs to Psion.
  * The existing rule still owns level/category/list/grant validation. */
-export function replaceOwnedPsionLevelUpSpells(input:PsionSwapInput & {sources:SpellSources}):
- | {ok:true;known:string[];prepared:string[];sources:SpellSources}
+export function replaceOwnedPsionLevelUpSpells(input:PsionSwapInput & {sources:SpellSources;preparationSources?:SpellPreparationSources}):
+ | {ok:true;known:string[];prepared:string[];sources:SpellSources;preparationSources:SpellPreparationSources}
  | {ok:false;reason:string} {
  if(!isSpellSources(input.sources))return {ok:false,reason:'Spell sources could not be read. Correct the saved source data before replacing spells.'};
+ if(!isSpellSources(input.preparationSources??{}))return {ok:false,reason:'Spell preparation sources could not be read.'};
  const owner:SpellSource='class:Psion';
  for(const swap of [input.swaps.cantrip,input.swaps.spell]){
   if(!swap)continue;
@@ -61,14 +63,22 @@ export function replaceOwnedPsionLevelUpSpells(input:PsionSwapInput & {sources:S
  const result=replacePsionLevelUpSpells({...input,known:owned,prepared:input.prepared.filter(id=>owned.includes(id))});
  if(!result.ok)return result;
  const sources:SpellSources=Object.fromEntries(Object.entries(input.sources).map(([id,owners])=>[id,[...owners]]));
- const known=new Set(input.known),prepared=new Set(input.prepared);
+ const known=new Set(input.known);
+ let prepared=[...input.prepared],preparationSources=input.preparationSources??{};
  for(const kind of ['cantrip','spell'] as const){
   const swap=input.swaps[kind];if(!swap)continue;
   const remaining=[...new Set(sources[swap.from].filter(source=>source!==owner))];
   if(remaining.length)sources[swap.from]=remaining;
-  else {delete sources[swap.from];known.delete(swap.from);prepared.delete(swap.from);}
+  else {delete sources[swap.from];known.delete(swap.from);}
   sources[swap.to]=[...new Set([...(sources[swap.to]??[]),owner])];
-  known.add(swap.to);if(kind==='spell')prepared.add(swap.to);
+  known.add(swap.to);
+  if(kind==='spell'){
+   const removed=setSpellSourcePrepared({id:swap.from,source:owner,ready:false,sources,prepared,preparationSources});
+   if(!removed.ok)return removed;
+   const added=setSpellSourcePrepared({id:swap.to,source:owner,ready:true,sources,prepared:removed.prepared,preparationSources:removed.preparationSources});
+   if(!added.ok)return added;
+   prepared=added.prepared;preparationSources=added.preparationSources;
+  }
  }
- return {ok:true,known:[...known],prepared:[...prepared],sources};
+ return {ok:true,known:[...known],prepared,sources,preparationSources};
 }
