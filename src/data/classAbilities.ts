@@ -1307,6 +1307,14 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
 
   Psion: [
     {
+      name:'Psionic Restoration',
+      actionType:'special',
+      description:'Meditate for 1 minute to regain all expended Psionic Energy Dice. Once per Long Rest.',
+      minLevel:5,
+      maxUses:1,
+      rest:'long',
+    },
+    {
       name: 'Psionic Energy Dice',
       actionType: 'special',
       // v2.80.0: basic description is now a one-liner per user request. The

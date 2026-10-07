@@ -19,6 +19,8 @@ import { formatOutcomesLog, type TargetOutcome } from '../../lib/classAbilityOut
 import { supabase } from '../../lib/supabase';
 import SlotBoxes, { PALETTE_TEAL, PALETTE_PSI, type SlotBoxesPalette } from './_shared/SlotBoxes';
 import PsionicDicePool from './_shared/PsionicDicePool';
+import PsionicRestorationButton from './_shared/PsionicRestorationButton';
+import {psionicDieCount as getPsionicDieCount} from '../../rules/psionicRestoration';
 
 interface Props {
  character: Character;
@@ -142,13 +144,6 @@ function getPsionicDieSize(level: number): string {
  return 'd6';
 }
 
-function getPsionicDieCount(level: number): number {
- if (level >= 17) return 12;
- if (level >= 13) return 10;
- if (level >= 9) return 8;
- if (level >= 5) return 6;
- return 4;
-}
 
 function resolveDesc(desc: string | ((c: Character) => string), character: Character): string {
  const raw = typeof desc === 'function' ? desc(character) : desc;
@@ -751,7 +746,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  }}
  />
  );
- })() : maxUses !== undefined && (ability.rest || (ability as any).recovery) ? (
+ })() : ability.name==='Psionic Restoration' ? <span style={{fontSize:11,color:'var(--t-3)'}}>1 / Long Rest</span> : maxUses !== undefined && (ability.rest || (ability as any).recovery) ? (
  <UseTracker
  abilityName={ability.name}
  max={maxUses}
@@ -786,7 +781,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  const target = e.target as HTMLElement;
  if (target.closest('button')) e.stopPropagation();
  }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'nowrap' as const, alignItems: 'center', width: '100%' }}>
- {ability.actionType !== 'free' && (
+ {ability.name==='Psionic Restoration' ? <PsionicRestorationButton character={character} onUpdate={onUpdate}/> : ability.actionType !== 'free' && (
  <button
  onClick={() => handleUseAbility(ability, maxUses !== undefined ? 1 : undefined)}
  style={{

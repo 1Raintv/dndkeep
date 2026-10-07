@@ -3,6 +3,28 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-10-06 — Psion automation: Psionic Restoration, v2.747
+
+The level-5 feature existed in reference/resource data but was absent from
+the live Actions catalog. Added a one-minute meditation completion action:
+refill all Psionic Energy Dice and consume the once-per-Long-Rest use together.
+Full pools, repeat use and cancellation do not spend a use. Existing short-rest
+recovery remains +1 die; Long Rest resets both tracker representations.
+No campaign is required. Uses the established v1-plus-v2 policy in
+`PSION_UA_SOURCES.md`; does not broaden private Psion content access.
+
+Next Psion action items, before claiming full automation:
+- Audit Telekinetic Propel/Telepathic Connection against the update: explicit
+  free versus powered choices, correct cost/save timing and measured effects.
+- Gate Psi Warper action rows by subclass; the current base Psion Actions
+  catalog includes them without a subclass filter.
+- Wire level-18 Psionic Reserves into initiative; it currently appears in
+  reference feature data, with no corresponding automation found.
+- Audit each discipline's cost, success-only consumption/refund, and rest
+  behavior; cover all four subclasses and secondary-class progression.
+- Run a Psion character through creation, level-up, combat, persistence and
+  both rests with database-backed regression coverage.
+
 ### 2026-09-22 — Tokens land where the preview shows; every token is a target, v2.746
 
 Reproduced the "token shifts a little after I let go" report on the local stack
