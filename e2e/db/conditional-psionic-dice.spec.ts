@@ -32,7 +32,7 @@ test.describe('Conditional Psion dice', () => {
   test('four disciplines roll first and spend only on confirmed changed outcomes',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
     page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
-    sql(`update characters set level=10,class_resources='{"psion-disciplines":["Devilish Tongue","Expanded Awareness","Inerrant Aim","Observant Mind"],"psionic-energy-dice":3,"other":9}' where id='${charId}'`);
+    sql(`update characters set level=10,hit_dice_spent=10,class_resources='{"psion-disciplines":["Devilish Tongue","Expanded Awareness","Inerrant Aim","Observant Mind"],"psionic-energy-dice":3,"other":9}' where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     await expect(page.getByRole('button',{name:'Roll bonus',exact:true})).toHaveCount(4);
     const row=page.locator('.arow-grid').filter({has:page.getByText('Inerrant Aim',{exact:true})});
@@ -52,4 +52,40 @@ test.describe('Conditional Psion dice', () => {
     await page.getByRole('button',{name:'Keep die'}).click();
     expect(errors).toEqual([]);
   });
+  test('Surge spends Hit Point Dice independently of the conditional Energy Die',async({page},info)=>{
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+    page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
+    sql(`update characters set level=7,hit_dice_spent=0,class_resources='{"psion-disciplines":["Inerrant Aim"],"psionic-energy-dice":3,"other":9}' where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    const row=page.locator('.arow-grid').filter({has:page.getByText('Inerrant Aim',{exact:true})});
+    await expect(row.getByRole('button',{name:'Roll bonus'})).toBeVisible();
+    // Fixed entropy only in this disposable browser page: exercise the actual
+    // canonical roller's low result, not a substitute game-rule implementation.
+    await page.evaluate(()=>{Math.random=()=>0.01;});
+    const surge=page.getByRole('dialog',{name:'Psionic Surge'});
+    const outcome=page.getByRole('dialog',{name:'Inerrant Aim'});
+    const resources=()=>sql(`select hit_dice_spent||':'||(class_resources->>'psionic-energy-dice') from characters where id='${charId}'`);
+    await row.getByRole('button',{name:'Roll bonus'}).click();
+    await expect(surge).toContainText('rolled 1 on 1d8');expect(resources()).toBe('0:3');
+    await page.screenshot({path:info.outputPath('psionic-surge.png')});
+    await surge.getByRole('button',{name:'Spend 1 Hit Point Die'}).click();
+    await expect(outcome).toContainText('Surge treats it as 4');
+    await expect.poll(resources).toBe('1:3');
+    await page.screenshot({path:info.outputPath('surged-outcome.png')});
+    await outcome.getByRole('button',{name:'Keep die'}).click();
+    await expect(outcome).not.toBeVisible();expect(resources()).toBe('1:3');
+    await row.getByRole('button',{name:'Roll bonus'}).click();
+    await surge.getByRole('button',{name:'Keep roll of 1'}).click();
+    await expect(outcome).toContainText('Rolled 1 on 1d8');
+    await outcome.getByRole('button',{name:'Keep die'}).click();
+    await expect(outcome).not.toBeVisible();expect(resources()).toBe('1:3');
+    await row.getByRole('button',{name:'Roll bonus'}).click();
+    await surge.getByRole('button',{name:'Spend 1 Hit Point Die'}).click();
+    await outcome.getByRole('button',{name:'Changed to hit · spend 1'}).click();
+    await expect.poll(resources).toBe('2:2');
+    expect(sql(`select class_resources->>'other' from characters where id='${charId}'`)).toBe('9');
+    await page.reload();await expect(row.getByRole('button',{name:'Roll bonus'})).toBeVisible();
+    expect(resources()).toBe('2:2');expect(errors).toEqual([]);
+  });
+
 });
