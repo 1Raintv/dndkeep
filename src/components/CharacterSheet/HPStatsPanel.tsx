@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useDiceRoll } from '../../context/DiceRollContext';
-import { rollDie, abilityModifier } from '../../lib/gameUtils';
+import { rollDie } from '../../rules/dice';
 import { describeACBreakdownRows } from '../../lib/armorClass';
 import ConditionPickerModal from './ConditionPickerModal';
 import { CONDITION_MAP } from '../../data/conditions';
@@ -26,7 +26,6 @@ interface HPStatsPanelProps {
   dodgingThisTurn?: boolean;
 }
 
-const SPELLCASTERS = ['Bard','Cleric','Druid','Paladin','Ranger','Sorcerer','Warlock','Wizard','Artificer'];
 
 export default function HPStatsPanel({
   character, computed, onUpdateAC, onUpdateSpeed, onToggleInspiration, onUpdateConditions, onUpdateExhaustionLevel, acTooltip, defenseChips = [], onOpenSettings, dashingThisTurn = false, dodgingThisTurn = false,
@@ -44,11 +43,10 @@ export default function HPStatsPanel({
 
   const editsUnlocked = !!character.advanced_edits_unlocked;
 
-  const isSpellcaster = SPELLCASTERS.includes(character.class_name);
-  const spellAbility = { Bard: 'charisma', Cleric: 'wisdom', Druid: 'wisdom', Paladin: 'charisma', Ranger: 'wisdom', Sorcerer: 'charisma', Warlock: 'charisma', Wizard: 'intelligence', Artificer: 'intelligence' }[character.class_name] ?? 'intelligence';
-  const spellMod = abilityModifier(character[spellAbility as keyof Character] as number ?? 10);
-  const spellAttack = spellMod + computed.proficiency_bonus;
-  const spellDC = 8 + spellAttack;
+  // v2.753 — Share the canonical class/equipment calculation. A second class
+  // list hid Psion stats, and base-score math ignored attuned ability boosts.
+  const spellAttack = computed.spell_attack_bonus;
+  const spellDC = computed.spell_save_dc;
   const initMod = computed.modifiers.dexterity + (character.initiative_bonus ?? 0);
 
   function rollInitiative() {
@@ -174,7 +172,7 @@ export default function HPStatsPanel({
           ].join(', ') + ' — click to manage'
         : 'No conditions — click to add',
     }] : []),
-    ...(isSpellcaster ? [
+    ...(spellAttack !== null && spellDC !== null ? [
       { label: 'Spell Attack', value: spellAttack >= 0 ? `+${spellAttack}` : String(spellAttack), color: '#c084fc' },
       { label: 'Spell DC',     value: spellDC,                                                     color: '#c084fc' },
     ] : []),
