@@ -31,7 +31,7 @@
 //     data at module load, so adding `recovery: 'movement'` to a new
 //     trait automatically enrolls it here — no second edit needed.
 
-import { supabase } from './supabase';
+import { supabase,updateCharacter } from './supabase';
 import { SPECIES } from '../data/species';
 
 // Build the set of movement-gated feature names once. Today this is
@@ -104,12 +104,8 @@ export async function resetMovementGatedFeatures(
     }
     if (!changed) return; // nothing exhausted — no write needed
 
-    const { error: writeErr } = await supabase
-      .from('characters')
-      // v2.506.0 — feature_uses is a jsonb column; asJsonb keeps the
-      // typed write clean (see src/lib/jsonbCast.ts).
-      .update({ feature_uses: featureUses as unknown as never })
-      .eq('id', input.entityId);
+    // v2.784 — a movement reset must not replay stale daily Psion counters.
+    const { error: writeErr } = await updateCharacter(input.entityId,{feature_uses:featureUses});
     if (writeErr) {
       console.warn('[resetMovementGatedFeatures] feature_uses write failed', writeErr);
     }

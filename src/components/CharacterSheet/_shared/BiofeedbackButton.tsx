@@ -1,3 +1,4 @@
+import {payPsionicEnergy} from './payPsionicEnergy';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
 import {acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
 import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharacterRef';
@@ -36,7 +37,7 @@ export default function BiofeedbackButton({persistence,character,onUpdate}:{pers
    if(!Number.isInteger(count)||count<1||!now||count>now.maxDice){showToast('Check your dice count, Intelligence and available Psionic Energy Dice.','warn');return;}
    const intelligence=computeStats(current).modifiers.intelligence;
    const rolls=Array.from({length:count},()=>rollDie(now.sides));
-   patch({class_resources:{...current.class_resources,'psionic-energy-dice':now.remaining-count}});
+   if(!await payPsionicEnergy(persistence,latest,{requestId:crypto.randomUUID(),operation:'spend',count,rolls,sourceFeature:'Biofeedback',recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for temporary HP (minimum 1); keep higher existing temporary HP.`.slice(0,1000)},{active:()=>mounted.current&&latest.current.id===id,confirm:modal.confirm,warn:message=>showToast(message,'warn')}))return;
    const surged=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:rolls[0],rolls,sides:now.sides,feature:'Biofeedback',recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for temporary HP (minimum 1); keep higher existing temporary HP.`,campaignId:current.campaign_id,
     current:()=>latest.current,active:()=>mounted.current,eligible:c=>!!capacity(c),
     prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});

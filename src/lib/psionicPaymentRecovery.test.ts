@@ -21,3 +21,16 @@ it('keeps an unremovable entry available for idempotent confirmation',()=>{
  rememberPsionicPayment('hero',payment);vi.spyOn(localStorage,'removeItem').mockImplementation(()=>{throw new Error('Unavailable');});expect(()=>forgetPsionicPayment('hero','saved')).not.toThrow();expect(pendingPsionicPayments('hero')).toEqual([payment]);
 });
 
+
+it('retains Energy Dice and Restoration requests but rejects malformed costs',()=>{
+ const spend={kind:'energy' as const,request:{requestId:'base',operation:'spend' as const,count:2,rolls:[2,3],sourceFeature:'Biofeedback'}};
+ const restore={kind:'energy' as const,request:{requestId:'restore',operation:'restore' as const,count:0,rolls:[],sourceFeature:'Psionic Restoration'}};
+ rememberPsionicPayment('hero',spend);rememberPsionicPayment('hero',restore);expect(pendingPsionicPayments('hero')).toEqual([spend,restore]);
+ for(const request of [{...spend.request,count:1},{...spend.request,rolls:[0,3]},{...restore.request,count:1},{...restore.request,sourceFeature:'Other'}])expect(()=>rememberPsionicPayment('hero',{kind:'energy',request})).toThrow('Invalid saved');
+});
+
+it('saves manual teleportation corrections with no Energy Dice cost',()=>{
+ const correction={kind:'energy' as const,request:{requestId:'manual',operation:'recover-misty-step' as const,count:0,rolls:[],sourceFeature:'Free Misty Step (Teleportation)'}};
+ rememberPsionicPayment('hero',correction);expect(pendingPsionicPayments('hero')).toEqual([correction]);
+ for(const request of [{...correction.request,count:1},{...correction.request,rolls:[1]},{...correction.request,sourceFeature:'Other'}])expect(()=>rememberPsionicPayment('hero',{kind:'energy',request})).toThrow('Invalid saved');
+});

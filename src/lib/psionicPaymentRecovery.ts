@@ -1,5 +1,6 @@
-import type {EnkindledRequest,SurgeRequest} from './api/psionicTurns';
-export type PendingPsionicPayment={kind:'enkindled';request:EnkindledRequest}|{kind:'surge';request:SurgeRequest};
+import {validPsionicRestRequest,type PsionicRestRequest} from './psionicRestRequest';
+import type {EnkindledRequest,SurgeRequest,EnergyRequest} from './api/psionicTurns';
+export type PendingPsionicPayment={kind:'rest';request:PsionicRestRequest}|{kind:'enkindled';request:EnkindledRequest}|{kind:'surge';request:SurgeRequest}|{kind:'energy';request:EnergyRequest};
 export const PSIONIC_PAYMENT_CHANGED='dndkeep:psionic-payment-changed';
 const activePayments=new Set<string>();
 const prefix=(characterId:string)=>`dndkeep:psionic-payment:${characterId}:`;
@@ -9,7 +10,15 @@ function valid(value:unknown):value is PendingPsionicPayment{
  const v=value as Record<string,unknown>,r=v.request as Record<string,unknown>|undefined;
  if(!r||typeof r!=='object'||typeof r.requestId!=='string'||!r.requestId||typeof r.sourceFeature!=='string'||r.sourceFeature.length>120)return false;
  if(r.recoveryNote!==undefined&&(typeof r.recoveryNote!=='string'||r.recoveryNote.length>1000))return false;
+ if(v.kind==='rest')return validPsionicRestRequest(r);
  if(v.kind==='surge')return dice(r.rolls,14);
+ if(v.kind==='energy')return Array.isArray(r.rolls)&&(
+  (r.operation==='recover-die'&&r.count===1&&r.rolls.length===0&&r.sourceFeature==='Manual Energy Die recovery')||
+  ((r.operation==='refresh-misty-step'||r.operation==='use-misty-step'||r.operation==='recover-misty-step')&&r.count===(r.operation==='refresh-misty-step'?1:0)&&r.rolls.length===0&&r.sourceFeature==='Free Misty Step (Teleportation)')||
+  (r.operation==='connection'&&(r.count===0||r.count===1)&&dice(r.rolls,1)&&r.sourceFeature==='Telepathic Connection')||
+  (r.operation==='restore'&&r.count===0&&r.rolls.length===0&&r.sourceFeature==='Psionic Restoration')||
+  (r.operation==='spend'&&Number.isInteger(r.count)&&Number(r.count)>=1&&Number(r.count)<=12&&
+   (r.rolls.length===0||(dice(r.rolls,12)&&r.rolls.length===r.count))));
  if(v.kind!=='enkindled'||!Number.isInteger(r.count)||Number(r.count)<1||Number(r.count)>2||!dice(r.baseRolls,12)||!dice(r.extraRolls,2)||(r.extraRolls as unknown[]).length!==r.count)return false;
  const turn=r.turn as Record<string,unknown>|undefined;
  return !!turn&&typeof turn==='object'&&(

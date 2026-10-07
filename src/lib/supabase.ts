@@ -223,12 +223,11 @@ export async function updateCharacter(
   characterId: string,
   updates: Database['public']['Tables']['characters']['Update']
 ) {
-  return supabase
-    .from('characters')
-    .update(updates)
-    .eq('id', characterId)
-    .select()
-    .single();
+  // v2.784 — serialize ordinary edits with Psion transactions. A stale
+  // whole-resource map cannot refund costs or reset daily feature uses.
+  const result=await (supabase as any).rpc('patch_character_preserving_psion',{p_character_id:characterId,p_updates:updates});
+  if(!result.error&&(!result.data||result.data.id!==characterId))return {...result,data:null,error:{message:'The character save response could not be verified. Retry the saved edit.'}};
+  return {...result,data:result.data as Character|null,error:result.error as {message:string}|null};
 }
 
 export async function deleteCharacter(characterId: string): Promise<{ error: null | Error }> {

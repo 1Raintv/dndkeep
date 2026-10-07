@@ -1,4 +1,6 @@
-import type {PsionicEnhancementPersistence} from '../../lib/api/psionicTurns';
+import {payPsionicEnergy} from './_shared/payPsionicEnergy';
+import {useModal} from '../shared/Modal';
+import type {EnergyRequest,PsionicEnhancementPersistence} from '../../lib/api/psionicTurns';
 import {useOptimisticCharacterRef} from '../../lib/hooks/useOptimisticCharacterRef';
 import PsionicDieRollButton from './_shared/PsionicDieRollButton';
 import DestructiveThoughtsButton from './_shared/DestructiveThoughtsButton';
@@ -6,7 +8,7 @@ import BiofeedbackButton from './_shared/BiofeedbackButton';
 import { psionicPoolRemaining } from '../../rules/psionicRestoration';
 import ConditionalPsionicButton from './_shared/ConditionalPsionicButton';
 import { canUseClassAbility } from '../../rules/classAbilityEligibility';
-import { useState, useRef, Fragment, Suspense } from 'react';
+import { useState, useRef, useEffect, Fragment, Suspense } from 'react';
 // Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
 import { lazyWithRetry as lazy } from '../../lib/lazyWithRetry';
 
@@ -87,15 +89,17 @@ function resolveSaveDC(save: SaveSpec | undefined, character: Character): number
 // uses, the user clicks individual boxes. SlotBoxes handles size scaling
 // (sm 12×12 when max > 8 to keep the row narrow; md 16×16 otherwise for
 // thumb-tap comfort).
-function UseTracker({ abilityName, max, rest, recovery, character, onUpdate, palette }: {
+function UseTracker({ abilityName, max, rest, recovery, character, onUpdate, palette, onUseChange }: {
  abilityName: string; max: number; rest?: 'short' | 'long';
  recovery?: 'movement';
  character: Character; onUpdate: (u: Partial<Character>) => void;
  palette?: SlotBoxesPalette;
+ onUseChange?: (isExpending: boolean) => void;
 }) {
  const uses = ((character.feature_uses as Record<string, number>) ?? {})[abilityName] ?? 0;
 
  function handleToggle(_idx: number, isExpending: boolean) {
+  if(onUseChange){onUseChange(isExpending);return;}
   const next = isExpending ? uses + 1 : uses - 1;
   const clamped = Math.min(max, Math.max(0, next));
   onUpdate({
@@ -158,6 +162,8 @@ function resolveDesc(desc: string | ((c: Character) => string), character: Chara
 
 export default function ClassAbilitiesSection({ persistence, character, combatFilter, onUpdate, userId, campaignId, campaign }: Props) {
  const { showToast } = useToast();
+ const paymentModal=useModal(),mounted=useRef(true);
+ useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  const [justUsed, setJustUsed] = useState<string | null>(null);
  const [psionicRollHistory, setPsionicRollHistory] = useState<{ value: number; die: string }[]>([]);
  // v2.80.0: which ability card is expanded (click chevron to open detail panel)
@@ -174,6 +180,16 @@ export default function ClassAbilitiesSection({ persistence, character, combatFi
  const [resolveModal, setResolveModal] = useState<{
  ability: ClassAbility; saveDC: number; cost?: number;
  } | null>(null);
+
+ const pendingResourceUses=useRef(new Set<string>());
+ async function payResource(operation:EnergyRequest['operation'],count:number,sourceFeature:string){
+  const id=livePowerCharacter.current.id,key=id+':'+sourceFeature;
+  if(pendingResourceUses.current.has(key))return null;
+  pendingResourceUses.current.add(key);
+  try{return await payPsionicEnergy(persistence,livePowerCharacter,{requestId:crypto.randomUUID(),operation,count,rolls:[],sourceFeature,recoveryNote:'Resource use recorded. Check History before resolving the feature; do not spend again.'},
+   {active:()=>mounted.current&&livePowerCharacter.current.id===id,confirm:paymentModal.confirm,warn:message=>showToast(message,'warn')});}
+  finally{pendingResourceUses.current.delete(key);}
+ }
 
  // v2.190.0 — Phase Q.0 pt 31: refresh a depleted once-per-rest feature
  // by spending Psionic Energy Dice. The "Restore (N PED)" button only
@@ -200,18 +216,7 @@ export default function ClassAbilitiesSection({ persistence, character, combatFi
  const fu = ((character.feature_uses as Record<string, number>) ?? {});
  const used = fu[ability.name] ?? 0;
  if (used <= 0) return; // nothing to restore
- onUpdate({
- class_resources: { ...resources, 'psionic-energy-dice': currentDice - restoreCost },
- feature_uses: { ...fu, [ability.name]: Math.max(0, used - 1) },
- });
- await logAction({
- campaignId: campaignId ?? null,
- characterId: character.id,
- characterName: character.name,
- actionType: 'roll',
- actionName: `Restored ${ability.name} (spent ${restoreCost} PED)`,
- notes: `Refreshed feature use mid-rest. ${currentDice - restoreCost} PED remaining.`,
- });
+ if(!await payResource('refresh-misty-step',restoreCost,ability.name))return;
  setJustUsed(`restore:${ability.name}`);
  setTimeout(() => setJustUsed(curr => curr === `restore:${ability.name}` ? null : curr), 1800);
  }
@@ -269,9 +274,17 @@ export default function ClassAbilitiesSection({ persistence, character, combatFi
    const result=resolvePsionicPower(livePowerCharacter.current,use,use.kind==='propel'?outcomes[0].outcome!=='passed':undefined);
    if(!result){showToast('Resources changed. Choose the power again.','warn');return;}
    settledPowerUses.current.add(use);
-     livePowerCharacter.current={...livePowerCharacter.current,...result.patch} as Character;
-     onUpdate(result.patch as Partial<Character>);
-     showToast(result.notes,'success');
+   // v2.784 — the free Connection claim and any Energy Die cost settle together.
+   // Free/successful Propel has no pool write that could refund a peer's spend.
+   if(use.kind==='connection'||result.cost){
+    const id=livePowerCharacter.current.id;
+    const payment=await payPsionicEnergy(persistence,livePowerCharacter,{requestId:crypto.randomUUID(),operation:use.kind==='connection'?'connection':'spend',count:result.cost,
+     rolls:[use.originalRoll??use.roll],sourceFeature:use.kind==='connection'?'Telepathic Connection':'Telekinetic Propel',
+     recoveryNote:result.notes.slice(0,1000)},
+     {active:()=>mounted.current&&livePowerCharacter.current.id===id,confirm:paymentModal.confirm,warn:message=>showToast(message,'warn')});
+    if(!payment)return;
+   }
+     if(mounted.current)showToast(result.notes,'success');
      const warnLog=()=>showToast(`${ability.name} resolved, but its history could not be saved.`,'warn');
      void logAction({campaignId:campaignId??null,characterId:character.id,characterName:character.name,
        actionType:'roll',actionName:ability.name,total:use.roll,individualResults:use.roll?[use.originalRoll??use.roll,...(use.enkindledRolls??[])]:undefined,
@@ -299,9 +312,7 @@ export default function ClassAbilitiesSection({ persistence, character, combatFi
  showToast(`Not enough Psionic Energy Dice. Need ${pedCost}, have ${currentDice}.`, 'warn');
  return;
  }
- const remainingPsionicDice=currentDice-pedCost;
- const nextResources = { ...resources, 'psionic-energy-dice': remainingPsionicDice };
- onUpdate({ class_resources: nextResources });
+ if(!await payResource('spend',pedCost,ability.name))return;
  }
 
  // Mark as used if it has limited uses
@@ -316,7 +327,9 @@ export default function ClassAbilitiesSection({ persistence, character, combatFi
  // reported "first die spent gets refunded" bug. Per-feature
  // limited-use rows (Free Misty Step, Action Surge, etc.) still
  // write feature_uses since that IS their tracker.
- if (cost !== undefined && !((ability as any).isPool && (ability as any).psionicDie)) {
+ if(ability.name==='Free Misty Step (Teleportation)'){
+  if(!await payResource('use-misty-step',0,ability.name))return;
+ } else if (cost !== undefined && !((ability as any).isPool && (ability as any).psionicDie)) {
  const current = ((character.feature_uses as Record<string, number>) ?? {})[ability.name] ?? 0;
  onUpdate({
  feature_uses: { ...((character.feature_uses as Record<string, number>) ?? {}), [ability.name]: current + 1 }
@@ -733,12 +746,7 @@ export default function ClassAbilitiesSection({ persistence, character, combatFi
  character={character}
  total={maxUses}
  used={used}
- onChange={(newUsed) => {
- const newRemaining = Math.max(0, maxUses - newUsed);
- onUpdate({
- class_resources: { ...resources, 'psionic-energy-dice': newRemaining },
- });
- }}
+ persistence={persistence}
  />
  );
  })() : ability.name==='Psionic Restoration' ? <span style={{fontSize:11,color:'var(--t-3)'}}>1 / Long Rest</span> : maxUses !== undefined && (ability.rest || (ability as any).recovery) ? (
@@ -749,6 +757,8 @@ export default function ClassAbilitiesSection({ persistence, character, combatFi
  recovery={(ability as any).recovery}
  character={character}
  onUpdate={onUpdate}
+ onUseChange={character.class_name==='Psion'&&ability.name==='Free Misty Step (Teleportation)'
+  ? isExpending=>{void payResource(isExpending?'use-misty-step':'recover-misty-step',0,ability.name);}:undefined}
  palette={trackerPalette}
  />
  ) : null}
@@ -776,7 +786,7 @@ export default function ClassAbilitiesSection({ persistence, character, combatFi
  const target = e.target as HTMLElement;
  if (target.closest('button')) e.stopPropagation();
  }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'nowrap' as const, alignItems: 'center', width: '100%' }}>
- {conditionalDiscipline?.id==='destructive-thoughts' ? <DestructiveThoughtsButton persistence={persistence} character={character} onUpdate={onUpdate}/> : conditionalDiscipline?.id==='biofeedback' ? <BiofeedbackButton persistence={persistence} character={character} onUpdate={onUpdate}/> : conditionalDiscipline?.conditionalOutcome ? <ConditionalPsionicButton persistence={persistence} character={character} discipline={conditionalDiscipline} onUpdate={onUpdate} campaignId={campaignId}/> : (ability.name==='Telekinetic Propel'||ability.name==='Telepathic Connection') ? <PsionicPowerButton persistence={persistence} character={character} onUpdate={onUpdate} kind={ability.name==='Telekinetic Propel'?'propel':'connection'} onUse={async(use:PsionicPowerUse)=>{await handleUseAbility({...ability,psionicUse:use});}}/> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton character={character} onUpdate={onUpdate}/> : ability.psionicDie && ability.actionType !== 'free' ? <PsionicDieRollButton persistence={persistence} character={character} onUpdate={onUpdate} feature={ability.name} label={restingLabel} onRolled={(value,sides)=>setPsionicRollHistory(prev=>[{value,die:`d${sides}`},...prev].slice(0,5))}/> : ability.actionType !== 'free' && (
+ {conditionalDiscipline?.id==='destructive-thoughts' ? <DestructiveThoughtsButton persistence={persistence} character={character} onUpdate={onUpdate}/> : conditionalDiscipline?.id==='biofeedback' ? <BiofeedbackButton persistence={persistence} character={character} onUpdate={onUpdate}/> : conditionalDiscipline?.conditionalOutcome ? <ConditionalPsionicButton persistence={persistence} character={character} discipline={conditionalDiscipline} onUpdate={onUpdate} campaignId={campaignId}/> : (ability.name==='Telekinetic Propel'||ability.name==='Telepathic Connection') ? <PsionicPowerButton persistence={persistence} character={character} onUpdate={onUpdate} kind={ability.name==='Telekinetic Propel'?'propel':'connection'} onUse={async(use:PsionicPowerUse)=>{await handleUseAbility({...ability,psionicUse:use});}}/> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton persistence={persistence} character={character} onUpdate={onUpdate}/> : ability.psionicDie && ability.actionType !== 'free' ? <PsionicDieRollButton persistence={persistence} character={character} onUpdate={onUpdate} feature={ability.name} label={restingLabel} onRolled={(value,sides)=>setPsionicRollHistory(prev=>[{value,die:`d${sides}`},...prev].slice(0,5))}/> : ability.actionType !== 'free' && (
  <button
  onClick={() => handleUseAbility(ability, maxUses !== undefined ? 1 : undefined)}
  disabled={isPedPoolRow && (psionicPoolRemaining(character.level,character.class_resources?.['psionic-energy-dice'])??0)<1}

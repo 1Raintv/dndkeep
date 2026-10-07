@@ -1,4 +1,5 @@
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
+import {payPsionicEnergy} from './payPsionicEnergy';
 import {acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
 import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharacterRef';
 import {useEffect,useRef,useState} from 'react';
@@ -12,8 +13,8 @@ import {useToast} from '../../shared/Toast';
 import {logAction} from '../../shared/ActionLog';
 /** v2.780 — manual Energy Die rolls share the same enhancements as automated
  * powers; the result is logged even if the originating sheet closes. */
-export default function PsionicDieRollButton({persistence,character,onUpdate,feature,label,onRolled}:{persistence?:PsionicEnhancementPersistence;character:Character;onUpdate:(patch:Partial<Character>)=>void;feature:string;label:string;onRolled:(total:number,sides:number)=>void}){
- const latest=useOptimisticCharacterRef(character);const update=useRef(onUpdate);update.current=onUpdate;
+export default function PsionicDieRollButton({persistence,character,feature,label,onRolled}:{persistence?:PsionicEnhancementPersistence;character:Character;onUpdate:(patch:Partial<Character>)=>void;feature:string;label:string;onRolled:(total:number,sides:number)=>void}){
+ const latest=useOptimisticCharacterRef(character);
  const mounted=useRef(true),busy=useRef(false);const [pending,setPending]=useState(false);
  const modal=useModal(),{showToast}=useToast();
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
@@ -22,13 +23,13 @@ export default function PsionicDieRollButton({persistence,character,onUpdate,fea
   const discipline=findDiscipline(feature),chosen=c.class_resources?.['psion-disciplines'];
   return !discipline||(Array.isArray(chosen)&&hasDiscipline(chosen.filter((v):v is string=>typeof v==='string'),discipline));
  };
- function patch(change:Partial<Character>){latest.current={...latest.current,...change};update.current(change);}
  async function run(){
   const c=latest.current,pool=psionicPoolRemaining(c.level,c.class_resources?.['psionic-energy-dice']);
   if(busy.current||!eligible(c)||!pool)return;busy.current=true;setPending(true);
   try{
    const sides=psionicDieSides(c.level),original=rollDie(sides);
-   patch({class_resources:{...c.class_resources,'psionic-energy-dice':pool-1}});
+   const request={requestId:crypto.randomUUID(),operation:'spend' as const,count:1,rolls:[original],sourceFeature:feature,recoveryNote:'The base Energy Die was spent. Apply this saved roll manually; do not spend it again.'};
+   if(!await payPsionicEnergy(persistence,latest,request,{active:()=>mounted.current&&latest.current.id===c.id,confirm:modal.confirm,warn:message=>showToast(message,'warn')}))return;
    const enhanced=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:original,sides,feature,recoveryNote:'The base Energy Die was already spent. Apply the rolled feature manually without spending it again.',campaignId:c.campaign_id,current:()=>latest.current,active:()=>mounted.current,eligible,prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
    if(enhanced?.unconfirmed)return;
    const total=enhanced?.roll??original,originals=enhanced?.originalRolls??[original];

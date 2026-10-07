@@ -1,55 +1,45 @@
-// v2.324.0 — T3 limited-use refactor.
-//
-// Dedicated tracker for the Psion's Psionic Energy Dice (PED) pool.
-// Renders the pool as a row of SlotBoxes (purple palette, sm size to fit
-// up to 12 dice on a level-20 Psion) plus a current/max readout.
-//
-// Why a dedicated component (vs. reusing UseTracker):
-//   - PED state lives in two places that have to stay in sync:
-//     `class_resources['psionic-energy-dice']` for the pool count and
-//     `feature_uses['Psionic Energy Dice']` for the chiclet display.
-//     Wrapping both reads + the click-to-mutate logic in one component
-//     keeps the dual-storage situation contained instead of leaking
-//     into UseTracker's generic feature_uses path.
-//   - The "Spend Die (1dN)" roll button is co-located with the chiclets
-//     so spending and visualization stay together visually.
-//   - Roll history is rendered alongside the chiclets in the expanded
-//     panel, but this component handles only the chiclet rail —
-//     ClassAbilitiesSection still owns the roll button + history view.
-//
-// SlotBoxes palette: PALETTE_PSI (purple). Size: 'sm' (12×12) so a
-// level-17+ Psion's 12 dice fit in the same horizontal real-estate as
-// a 4-die low-level Psion.
-
+import {useEffect,useRef,useState} from 'react';
+import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
+import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharacterRef';
+import {useModal} from '../../shared/Modal';
+import {useToast} from '../../shared/Toast';
+import {payPsionicEnergy} from './payPsionicEnergy';
+// v2.784  --  the pool is stored once; each manual toggle is an explicit,
+// retry-safe one-die transaction rather than a stale absolute-value save.
 import type { Character } from '../../../types';
 import SlotBoxes, { PALETTE_PSI } from './SlotBoxes';
 
 interface Props {
+  persistence?:PsionicEnhancementPersistence;
   character: Character;
   /** Total PED pool size at the character's current level. */
   total: number;
   /** Current dice spent (used). */
   used: number;
-  /** Click handler — receives the new `used` value (clamped 0..total). */
-  onChange: (newUsed: number) => void;
   /** When true, boxes are non-interactive. */
   disabled?: boolean;
 }
 
 export default function PsionicDicePool({
-  character: _character,
+  character,
+  persistence,
   total,
   used,
-  onChange,
   disabled = false,
 }: Props) {
+  const latest=useOptimisticCharacterRef(character),busy=useRef(false),mounted=useRef(true);
+  const [pending,setPending]=useState(false),modal=useModal(),{showToast}=useToast();
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   if (total <= 0) return null;
   const safeUsed = Math.max(0, Math.min(total, used));
   const remaining = total - safeUsed;
 
   function handleToggle(_idx: number, isExpending: boolean) {
-    if (disabled) return;
-    onChange(isExpending ? safeUsed + 1 : safeUsed - 1);
+    if (disabled||busy.current) return;
+    busy.current=true;setPending(true);const id=latest.current.id;
+    void payPsionicEnergy(persistence,latest,{requestId:crypto.randomUUID(),operation:isExpending?'spend':'recover-die',count:1,rolls:[],sourceFeature:isExpending?'Psionic Energy Dice':'Manual Energy Die recovery',recoveryNote:'Manual tracker adjustment only; no feature effect or dice roll was requested.'},
+     {active:()=>mounted.current&&latest.current.id===id,confirm:modal.confirm,warn:message=>showToast(message,'warn')})
+     .finally(()=>{busy.current=false;if(mounted.current)setPending(false);});
   }
 
   return (
@@ -60,7 +50,7 @@ export default function PsionicDicePool({
         onToggle={handleToggle}
         size="sm"
         palette={PALETTE_PSI}
-        disabled={disabled}
+        disabled={disabled||pending}
         ariaLabel="Psionic Energy Dice pool"
         ariaLabelPrefix="Psionic Energy Die"
         title={(_, available) =>

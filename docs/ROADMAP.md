@@ -1,5 +1,72 @@
 # DNDKeep — Two-Track Roadmap
 
+### In progress — Energy Dice persistence, planned v2.784
+
+A real two-tab browser regression reproduces the remaining base-pool race:
+two paid manual rolls from six dice leave five instead of four. The new local
+`settle_psionic_energy` transaction serializes costs and Psionic Restoration,
+records immutable request payloads and recovery history, preserves sibling
+resources, and returns ordered receipts. Fifteen real database scenarios cover
+concurrent requests, last-die contention, rollback, authorization, Restoration,
+malformed values and all 20 level boundaries. API/reconciliation tests pass.
+
+This remains local and unshipped. Manual rolls, Biofeedback, Destructive Thoughts,
+conditional bonus costs, Propel/Connection settlement and Restoration (Actions and Features) now use the saved
+payment path. The original two-tab manual-roll regression passes on desktop and
+mobile, as does lost base-payment recovery across reload without a second cost or
+automatic effect. Receipt acknowledgement is local only and rejects older revisions.
+
+Connection claims its first free extension atomically; competing free requests
+reject rather than becoming silently paid. The protected ordinary-sheet-patch RPC
+now backs ordinary character saves. Ordered acknowledgements repair stale tabs,
+and pending whole-map edits preserve transaction-owned resource keys. A real
+delayed Settings save racing another tab's die spend keeps both the database and
+displayed balance correct on desktop/mobile. Existing failed-save navigation and
+retry tests also pass through the protected endpoint. Movement-trait auto-resets
+use it too, preventing stale daily-feature counters from being replayed.
+
+SRD 5.2.1 p.185 exposed a separate 2014-rule remnant: Long Rest recovered only
+half-level Hit Point Dice. The local sheet and DM party-rest path now restore all spent dice and log
+the actual amount; desktop/mobile sheet rest tests verify zero dice remain spent.
+
+Manual pool edits, explicit subclass costs, paid teleportation refresh, free-use
+casting and manual tracker corrections now use transactions. Desktop/mobile tests
+verify their persisted balances without whole-resource writes. Competing manual
+corrections and paid refreshes have one winner and stable retries.
+
+The local `complete_psionic_rest` foundation saves a complete captured rest patch
+under the same character lock. It rejects changed snapshots, repairs malformed
+pools on Long Rest, preserves daily features on Short Rest, restores all Hit
+Point Dice on Long Rest, and replays without repeating recovery. Four new real
+database scenarios verify rest contention, replay, daily limits and full rollback.
+Player Short/Long Rest controls now use this transaction. Captured snapshots and
+item recharge outcomes are retained in browser recovery before sending. Lost
+responses can be confirmed after reload without restoring later-spent dice or
+item charges; all four desktop/mobile interruption cases pass. Six normal rest,
+Restoration-refresh and malformed-pool browser cases pass too. Delayed rest
+acknowledgements preserve newer local/remote HP, exhaustion and sibling resources.
+DM party rests now use the same captured transaction for Psions. Each saved rest
+has a named recovery notice in the Party tab, surviving reload. Partial failures
+are reported without claiming the whole party rested; known failures can retry
+only their characters. Already-rested characters remain untouched. Six real
+mixed-class party scenarios pass across desktop/mobile, including a DM updating
+another account's character, lost responses, reload and targeted rejected retries.
+Party-rest text now accurately describes all Hit Point Dice and one exhaustion
+level. The TypeScript baseline fell from 210 to 208.
+
+Level-up paths retain their existing available dice while updating choices and
+capacity; a Long Rest restores the new maximum. A database regression checks
+that leveling and movement-trait recovery do not refresh paid Psion resources.
+Validation: all 134 selected Psion browser/database checks now pass across
+desktop/mobile (130 in the broad run, four legacy discipline checks rerun after
+replacing their capped shared-account fixture with disposable accounts).
+The full gate passes with 1,537 unit tests, TypeScript 208/208 and a 253 KB entry.
+Remaining release work: deploy the database endpoints before the updated app.
+Audit subclass spell-slot payments separately; do not invent an unsupported
+PED-to-slot feature. Ordinary saves now preserve transaction-owned keys;
+conditional spending, the free Connection extension and unrelated edits are tested.
+Shared Discipline turn claims remain separate unfinished work.
+
 ### 2026-10-07 — Cancel interrupted group drags, v2.783
 
 Losing pointer capture or hiding a tab now cancels group movement previews,
@@ -35,7 +102,7 @@ Validation includes real local transactions for authorization, malformed rolls,
 replays, competing tabs, last-die contention, history rollback and turn rewinds;
 desktop/mobile reload, shared-limit and complete roll-flow checks; plus the full
 project gate. The production migration applied successfully through CI after PR #108.
-Frontend deployment is checked separately.
+Frontend v2.782 was verified live; v2.783 map cancellation is also live after PR #109.
 
 
 ### 2026-10-07 — Preserve sheet turn budgets on failed advance, v2.781

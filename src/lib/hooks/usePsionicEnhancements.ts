@@ -1,8 +1,9 @@
-import {rememberPsionicPayment,forgetPsionicPayment,setPsionicPaymentActive,hasSavedPsionicPayment,type PendingPsionicPayment} from '../psionicPaymentRecovery';
+import {settleSavedPsionicPayment} from '../settleSavedPsionicPayment';
+import {hasSavedPsionicPayment,type PendingPsionicPayment} from '../psionicPaymentRecovery';
 import {useEffect,useMemo,useRef} from 'react';
-import {getEnkindledTurn,spendEnkindledLifeForce,spendPsionicSurge,PsionicRequestError,type PsionicEnhancementPersistence} from '../api/psionicTurns';
+import {completePsionicRest,type PsionicRestReceipt,settlePsionicEnergy,type EnergyReceipt,getEnkindledTurn,spendEnkindledLifeForce,spendPsionicSurge,PsionicRequestError,type PsionicEnhancementPersistence} from '../api/psionicTurns';
 interface SaveQueue {flush:()=>Promise<void>;getSnapshot:()=>{pending:boolean;error:string|null}}
-interface Receipt {hitDiceSpent:number;hitDiceRevision:number}
+type Receipt=PsionicRestReceipt|{hitDiceSpent:number;hitDiceRevision:number}|EnergyReceipt;
 /** v2.782 — settle queued edits before the server charges dice; acknowledge its
  * snapshot locally rather than writing the same absolute resource value again. */
 export function usePsionicEnhancements(characterId:string,queue:SaveQueue,accept:(receipt:Receipt)=>void,frozen=false):PsionicEnhancementPersistence{
@@ -13,22 +14,15 @@ export function usePsionicEnhancements(characterId:string,queue:SaveQueue,accept
    const previouslyUnconfirmed=hasSavedPsionicPayment(characterId,payment.request.requestId);
    const blocked=(message:string)=>new PsionicRequestError(message,!previouslyUnconfirmed);
    if(!mounted.current||live.current.characterId!==characterId||live.current.frozen)throw blocked('This sheet is not available for resource changes.');
-   if(queue.getSnapshot().error)throw blocked('Retry your failed character save before spending Hit Point Dice.');
+   if(queue.getSnapshot().error)throw blocked('Retry your failed character save before spending Psion resources.');
    try{await queue.flush();}catch{throw blocked('Your character changes could not be saved. No new dice-cost confirmation was sent.');}
    const snapshot=queue.getSnapshot();
-   if(snapshot.pending||snapshot.error)throw blocked('Save your pending character changes before spending Hit Point Dice.');
+   if(snapshot.pending||snapshot.error)throw blocked('Save your pending character changes before spending Psion resources.');
    if(!mounted.current||live.current.characterId!==characterId||live.current.frozen)throw blocked('The character sheet changed before confirming the dice cost.');
-   setPsionicPaymentActive(characterId,payment.request.requestId,true);
-   try{rememberPsionicPayment(characterId,payment);}catch{setPsionicPaymentActive(characterId,payment.request.requestId,false);throw blocked('Browser recovery storage is unavailable. No new dice-cost confirmation was sent.');}
-   let receipt:T;
-   try{receipt=await request();}catch(error){
-    if(error instanceof PsionicRequestError&&error.definitelyNotPaid)forgetPsionicPayment(characterId,payment.request.requestId);
-    throw error;
-   }finally{setPsionicPaymentActive(characterId,payment.request.requestId,false);}
-   forgetPsionicPayment(characterId,payment.request.requestId);
+   const receipt=await settleSavedPsionicPayment(characterId,payment,request);
    if(mounted.current&&live.current.characterId===characterId)live.current.accept(receipt);
    return receipt;
   }
-  return {getTurn:()=>getEnkindledTurn(characterId),spend:request=>pay({kind:'enkindled',request},()=>spendEnkindledLifeForce(characterId,request)),surge:request=>pay({kind:'surge',request},()=>spendPsionicSurge(characterId,request))};
+  return {rest:request=>pay({kind:'rest',request},()=>completePsionicRest(characterId,request)),energy:request=>pay({kind:'energy',request},()=>settlePsionicEnergy(characterId,request)),getTurn:()=>getEnkindledTurn(characterId),spend:request=>pay({kind:'enkindled',request},()=>spendEnkindledLifeForce(characterId,request)),surge:request=>pay({kind:'surge',request},()=>spendPsionicSurge(characterId,request))};
  },[characterId,queue]);
 }

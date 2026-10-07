@@ -1,4 +1,11 @@
-import { useState, useEffect, type CSSProperties } from 'react';
+import type {Database} from '../../types/supabase';
+import {createPsionicRestRequest} from '../../lib/psionicRestRequest';
+import {completePsionicRest} from '../../lib/api/psionicTurns';
+import {settleSavedPsionicPayment} from '../../lib/settleSavedPsionicPayment';
+import {pendingPsionicPayments} from '../../lib/psionicPaymentRecovery';
+import PsionicPartyRestRecovery from './PsionicPartyRestRecovery';
+import {longRestHitDice} from '../../rules/restRecovery';
+import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { supabase } from '../../lib/supabase';
 import { checkedWrite } from '../../lib/api/checked';
 import { asJsonb } from '../../lib/jsonbCast';
@@ -91,6 +98,9 @@ function hpLabel(current: number, max: number) {
 export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyDashboardProps) {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
+  const restBusy=useRef(false);
+  const [restRetryIds,setRestRetryIds]=useState<string[]>([]);
+  const [restSaving,setRestSaving]=useState(false),[restMessage,setRestMessage]=useState('');
   const [xpInput, setXpInput] = useState('');
   const [xpNote, setXpNote] = useState('');
   // v2.173.0 — Phase Q.0 pt 14: per-character selection for targeted
@@ -377,7 +387,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
   // each character + clearing feature_uses (matching the player-side
   // doLongRest in CharacterSheet/index.tsx).
   //
-  // Hit dice: keeps RAW recovery of floor(level/2) (min 1).
+  // v2.784: 2024 Long Rest restores all spent Hit Point Dice.
   //
   // partyShortRest broadcasts a `short_rest_prompt` campaign_chat
   // message. Players see a popup linking to their existing rest
@@ -385,7 +395,14 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
   // the prompt-then-player-rolls pattern used by save_prompt and
   // check_prompt — the DM doesn't roll hit dice on the players'
   // behalf because each player decides how many to spend.
-  async function partyLongRest() {
+  async function partyLongRest(retryIds?:string[]) {
+    const restCharacters=retryIds?characters.filter(c=>retryIds.includes(c.id)):characters;
+    if(!isOwner||restBusy.current||!restCharacters.length)return;
+    if(restCharacters.some(c=>pendingPsionicPayments(c.id).some(payment=>payment.kind==='rest'))){
+      setRestMessage('Confirm the saved rests below before starting another party rest.');return;
+    }
+    restBusy.current=true;setRestSaving(true);setRestMessage('');
+    try{
     // v2.195.0 — Phase Q.0 pt 36: capture per-character pre-rest deltas
     // before the parallel updates so we can emit a rest_taken event for
     // each character with accurate `hd_recovered` / `exhaustion_*`
@@ -414,14 +431,14 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     // doLongRest) and write the recharged inventory in the update.
     // Per-item recharge events fan out after the parallel writes,
     // matching the v2.204 per-item emission pattern.
-    const restDeltas = characters.map(c => {
+    const restDeltas = restCharacters.map(c => {
       const exhBefore = (c as any).exhaustion_level ?? 0;
       const { inventory: rechargedInventory, events: chargeEvents } =
         rechargeOnLongRest(c.inventory ?? []);
       return {
         id: c.id,
         name: c.name,
-        hd_recovered: Math.max(1, Math.floor(c.level / 2)),
+        hd_recovered: longRestHitDice(c.hit_dice_spent).recovered,
         exhaustion_before: exhBefore,
         exhaustion_after: Math.max(0, exhBefore - 1),
         beforeInventory: c.inventory ?? [],
@@ -430,12 +447,11 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
       };
     });
     const rechargeMap = new Map(restDeltas.map(d => [d.id, d]));
-    await Promise.all(characters.map(c => {
+    const results=await Promise.allSettled(restCharacters.map(async c => {
       const recoveredSlots = Object.fromEntries(
         Object.entries(c.spell_slots ?? {}).map(([k, s]) => [k, { ...(s as object), used: 0 }])
-      );
-      const recoveredHD = Math.max(1, Math.floor(c.level / 2));
-      const newSpent = Math.max(0, (c.hit_dice_spent ?? 0) - recoveredHD);
+      ) as Character['spell_slots'];
+      const {spent:newSpent}=longRestHitDice(c.hit_dice_spent);
       // Remove Exhaustion from conditions (2024: long rest fully removes
       // unless you were at 0 HP during the rest — we don't track that
       // edge case; remove unconditionally is the common-table behavior).
@@ -458,7 +474,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
         if (typeof val !== 'number') (newResources as any)[key] = val;
       }
       const recharge = rechargeMap.get(c.id);
-      return checkedWrite('characters.update long-rest', { characterId: c.id }, supabase.from('characters').update({
+      const updates={
         current_hp: c.max_hp,
         temp_hp: 0,
         spell_slots: recoveredSlots,
@@ -468,13 +484,29 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
         death_saves_failures: 0,
         hit_dice_spent: newSpent,
         concentration_spell: '',
+        concentration_rounds_remaining: null,
+        concentration_slot_level: null,
         class_resources: newResources,
         feature_uses: {},
         // v2.498.0 — asJsonb() casts the typed InventoryItem[] into the
         // supabase-js Json union. See src/lib/jsonbCast.ts.
-        inventory: asJsonb(recharge?.rechargedInventory ?? c.inventory),
-      }).eq('id', c.id));
+        inventory: recharge?.rechargedInventory ?? c.inventory,
+      };
+      if(c.class_name==='Psion'){
+        const request=createPsionicRestRequest(c,'long',updates,crypto.randomUUID());
+        return settleSavedPsionicPayment(c.id,{kind:'rest',request},()=>completePsionicRest(c.id,request));
+      }
+      const legacyUpdates:Database['public']['Tables']['characters']['Update']={...updates,class_resources:asJsonb(updates.class_resources),spell_slots:asJsonb(updates.spell_slots),inventory:asJsonb(updates.inventory)};
+      const result=await checkedWrite('characters.update long-rest',{characterId:c.id},supabase.from('characters').update(legacyUpdates).eq('id',c.id));
+      if(result.error)throw new Error(result.error.message);
+      return {replayed:false};
     }));
+    const completed=new Set(restCharacters.filter((_,i)=>results[i].status==='fulfilled').map(c=>c.id));
+    const failures=restCharacters.filter(c=>!completed.has(c.id));
+    setRestRetryIds(failures.filter(c=>!pendingPsionicPayments(c.id).some(payment=>payment.kind==='rest')).map(c=>c.id));
+    if(failures.length)setRestMessage(`${completed.size} of ${restCharacters.length} rests confirmed. Not confirmed: ${failures.map(c=>c.name).join(', ')}. Confirm saved rests below or retry only the failed characters; do not repeat the whole party rest.`);
+    else setRestMessage(retryIds?'Selected rest recovery confirmed. Previously rested characters were unchanged.':'Party Long Rest confirmed. All spent Hit Point Dice restored; exhaustion reduced by one.');
+
 
     // v2.195.0 — fire-and-forget per-character rest_taken events.
     // Done after the DB updates land so the timestamps reflect the
@@ -484,6 +516,8 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     // v2.205.0 — payload now carries charge_events_count for parity
     // with the per-character doLongRest path.
     for (const d of restDeltas) {
+      const result=results[restCharacters.findIndex(c=>c.id===d.id)];
+      if(result.status!=='fulfilled'||result.value.replayed)continue;
       emitCombatEvent({
         campaignId,
         actorType: 'player',
@@ -538,14 +572,16 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     }
 
     // Notify players so the inbox / toast surfaces what just happened
-    await checkedWrite('campaign_chat.insert long-rest-notice', { campaignId }, supabase.from('campaign_chat').insert({
+    if(failures.length===0&&!retryIds)await checkedWrite('campaign_chat.insert long-rest-notice', { campaignId }, supabase.from('campaign_chat').insert({
       campaign_id: campaignId,
       user_id: (await supabase.auth.getSession()).data.session?.user?.id,
       character_name: 'DM',
-      message: 'The party takes a long rest. HP, spell slots, hit dice (half), and class resources restored. Exhaustion cleared.',
+      message: 'The party takes a long rest. HP, spell slots, all spent Hit Point Dice, and class resources restored. Exhaustion reduced by one.',
       message_type: 'long_rest_completed',
     }));
-    setDmPanel(null);
+    await loadCharacters();
+    }catch(error){setRestMessage(error instanceof Error?error.message:'Party rest could not be confirmed. Check saved recovery before retrying.');}
+    finally{restBusy.current=false;setRestSaving(false);}
   }
 
   // v2.167.0 — Phase Q.0 pt 8: short rest broadcast.
@@ -621,8 +657,8 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
       // to decrement per RAW; previously cast as (c as any) and silently
       // fell through to 0). Without these, the DM-side rest path silently
       // no-ops on charge recharge and exhaustion reduction.
-      'id,user_id,campaign_id,name,species,class_name,subclass,level,current_hp,max_hp,temp_hp,armor_class,speed,initiative_bonus,strength,dexterity,constitution,intelligence,wisdom,charisma,active_conditions,concentration_spell,inspiration,death_saves_successes,death_saves_failures,avatar_url,hit_dice_spent,spell_slots,prepared_spells,known_spells,saving_throw_proficiencies,skill_proficiencies,class_resources,weapons,wildshape_active,wildshape_beast_name,wildshape_current_hp,wildshape_max_hp,active_buffs,inventory,exhaustion_level,feature_uses'
-    ).in('user_id', userIds).eq('campaign_id', campaignId);
+      'id,user_id,campaign_id,name,species,class_name,subclass,level,current_hp,max_hp,temp_hp,armor_class,speed,initiative_bonus,strength,dexterity,constitution,intelligence,wisdom,charisma,active_conditions,concentration_spell,inspiration,death_saves_successes,death_saves_failures,avatar_url,hit_dice_spent,spell_slots,prepared_spells,known_spells,saving_throw_proficiencies,skill_proficiencies,class_resources,weapons,wildshape_active,wildshape_beast_name,wildshape_current_hp,wildshape_max_hp,active_buffs,inventory,exhaustion_level,feature_uses,secondary_class,secondary_level,long_rest_clears_combat_conditions,concentration_rounds_remaining,concentration_slot_level,psionic_energy_revision,psionic_hit_dice_revision'
+    ).in('user_id', userIds).eq('campaign_id', campaignId).returns<Character[]>();
     setCharacters(chars ?? []);
     setLoading(false);
   }
@@ -756,6 +792,9 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+      {isOwner&&restMessage&&<p role="status" aria-label="Party rest status">{restMessage}</p>}
+      {isOwner&&restRetryIds.length>0&&<button className="btn-secondary" disabled={restSaving} onClick={()=>void partyLongRest(restRetryIds)}>Retry unconfirmed rests</button>}
+      {isOwner&&characters.map(c=><PsionicPartyRestRecovery key={c.id} characterId={c.id} name={c.name} onConfirmed={()=>{setRestMessage('Saved rest confirmed. Other party members were not rested again.');void loadCharacters();}}/>)}
       {/* Party summary */}
       <div style={{ display: 'flex', gap: 'var(--sp-4)', flexWrap: 'wrap', padding: 'var(--sp-3) var(--sp-4)', background: 'var(--c-card)', border: '1px solid var(--c-border)', borderRadius: 'var(--r-xl)' }}>
         <SummaryChip label="Party" value={characters.length} color="var(--t-1)" />
@@ -1054,10 +1093,11 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                     Long Rest
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--t-2)', lineHeight: 1.5 }}>
-                    Auto-applies to all party: full HP, all spell slots, half spent hit dice, conditions cleared, death saves reset, class resources restored.
+                    Restores party HP, spell slots, all spent Hit Point Dice and class resources. Resets death saves and reduces exhaustion by one.
                   </div>
                   <button
-                    onClick={partyLongRest}
+                    disabled={restSaving}
+                    onClick={()=>void partyLongRest()}
                     style={{
                       fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
                       border: '1px solid var(--c-gold-bdr)', background: 'var(--c-gold-bg)', color: 'var(--c-gold-l)',

@@ -1,3 +1,4 @@
+import type {PsionicEnhancementPersistence} from '../../lib/api/psionicTurns';
 import PsionicRestorationButton from './_shared/PsionicRestorationButton';
 import { abilityModifier } from '../../rules/abilities';
 import { useState, useMemo } from 'react';
@@ -11,6 +12,7 @@ import FeatsPanel from './FeatsPanel';
 import UnifiedActionRow, { ActionTypeBadge, PassiveTag, type ActionType } from './_shared/UnifiedActionRow';
 
 interface Props {
+ persistence?:PsionicEnhancementPersistence;
  character: Character;
  onUpdate: (u: Partial<Character>) => void;
 }
@@ -271,7 +273,7 @@ export function SubFeatureRow({ label, featureKey, rest, max, character, onUpdat
 // v2.265.0 — UseTracker (back-compat alias) and poolBtnStyle were
 // both unused after the class feature row refactor. Removed.
 
-export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
+export default function FeaturesAndTraitsPanel({ persistence, character, onUpdate }: Props) {
  const [filter, setFilter] = useState<Filter>('all');
  const [featAddOpen, setFeatAddOpen] = useState(false);
  const [featSearch, setFeatSearch] = useState('');
@@ -499,7 +501,7 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
  // v2.761 — the generic feature button only flashed Used! for Restoration.
  // Reuse the real meditation/resource path from Actions in this entry point too.
  const button = character.class_name === 'Psion' && feature.name === 'Psionic Restoration'
- ? <PsionicRestorationButton character={character} onUpdate={onUpdate}/>
+ ? <PsionicRestorationButton persistence={persistence} character={character} onUpdate={onUpdate}/>
  : useInline ? (
  <button
  onClick={(e) => { e.stopPropagation(); handleUseFeature(); }}

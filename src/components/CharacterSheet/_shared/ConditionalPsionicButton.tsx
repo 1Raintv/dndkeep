@@ -1,3 +1,4 @@
+import {payPsionicEnergy} from './payPsionicEnergy';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
 import {acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
 import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharacterRef';
@@ -15,9 +16,8 @@ import {useModal} from '../../shared/Modal';
 import {useToast} from '../../shared/Toast';
 import {logAction} from '../../shared/ActionLog';
 /** Rolls first, then asks for the tabletop outcome; dismissing never spends. */
-export default function ConditionalPsionicButton({persistence,character,discipline,onUpdate,campaignId}:{persistence?:PsionicEnhancementPersistence;character:Character;discipline:PsionDiscipline;onUpdate:(patch:Partial<Character>)=>void;campaignId?:string|null}) {
+export default function ConditionalPsionicButton({persistence,character,discipline,campaignId}:{persistence?:PsionicEnhancementPersistence;character:Character;discipline:PsionDiscipline;onUpdate:(patch:Partial<Character>)=>void;campaignId?:string|null}) {
  const latest=useOptimisticCharacterRef(character);
- const update=useRef(onUpdate);update.current=onUpdate;
  const mounted=useRef(true),busy=useRef(false);const [pending,setPending]=useState(false);
  const modal=useModal(),{showToast}=useToast();
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
@@ -55,8 +55,9 @@ export default function ConditionalPsionicButton({persistence,character,discipli
    const result=conditionalPsionicDie(current.level,current.class_resources?.['psionic-energy-dice'],roll,changed,enhancement);
    if(!result){showToast('Resources changed. Check your Psionic Energy Dice before resolving this bonus.','warn');return;}
    if(result.cost){
-    const patch={class_resources:{...current.class_resources,'psionic-energy-dice':result.remaining}};
-    latest.current={...current,...patch};update.current(patch);
+    if(!await payPsionicEnergy(persistence,latest,{requestId:crypto.randomUUID(),operation:'spend',count:1,rolls:[originalRoll],sourceFeature:discipline.name,
+     recoveryNote:`Confirmed that +${roll} changed the ${hit?'attack to a hit':'check to a success'}. The base die is spent; do not spend it again.`},
+     {active:()=>mounted.current&&latest.current.id===id,confirm:modal.confirm,warn:message=>showToast(message,'warn')}))return;
    }
    const notes=`${discipline.name}: +${roll} bonus. ${extraNote}${usedSurge&&!extraNote?' Psionic Surge: 1 Hit Point Die spent.':''} ${result.cost?'Confirmed changed outcome; spent 1 die.':'No die spent.'}`;
    showToast(notes,'success');

@@ -10,15 +10,12 @@
 // So the fixture stores the LEGACY name form on purpose — that is the shape
 // sitting in production on every Psion created before the fix. If the sheet
 // can render those, it can render the ids the pickers write now.
-import { execSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { gateDbSuite, signInAsSeedDm } from './helpers';
 
-const PSQL = `docker exec supabase_db_dndkeep psql -U postgres -d postgres -t -A -c`;
-const sql = (q: string): string => execSync(`${PSQL} "${q.replace(/"/g, '\\"')}"`, { encoding: 'utf8' }).trim();
-
-const SEED_DM = '11111111-1111-1111-1111-111111111111';
+const sql = (q: string): string => execFileSync('docker', ['exec', '-i', 'supabase_db_dndkeep', 'psql', '-U', 'postgres', '-d', 'postgres', '-t', '-A', '-v', 'ON_ERROR_STOP=1'], { input: q, encoding: 'utf8' }).trim();
 
 test.describe('psion disciplines (local stack)', () => {
   gateDbSuite();
@@ -29,48 +26,35 @@ test.describe('psion disciplines (local stack)', () => {
   // (globals.css) and stacks under 640px, so mobile asserts the same names
   // as desktop and the skip is gone.
 
-  // Per-project AND per-test id. The projects run in parallel against one
-  // database, and `fullyParallel` also hands the two tests in this file to
-  // different workers, so a row shared on EITHER axis has them racing each
-  // other's fixture writes and cleanup. Observed 2026-08-18 on a row keyed
-  // by project alone: the picker test's deliberately-incomplete 2-of-3
-  // fixture landed under the render test's assertions, which then failed
-  // looking for the third discipline. Hashing the worker's own identity
-  // into the id keeps each run on its own row without a shared counter.
-  let charId = '';
-
-  test.beforeEach(({}, testInfo) => {
-    const key = `${testInfo.project.name}|${testInfo.title}`;
-    charId = `44444444-4444-4444-4444-${createHash('sha1').update(key).digest('hex').slice(0, 12)}`;
-    // Psion is UA content — hidden from accounts without the flag.
-    sql(`update profiles set show_ua_content = true where id = '${SEED_DM}'`);
-    sql(
-      `insert into characters (id, user_id, name, species, class_name, background, subclass, level, class_resources) ` +
-      `values ('${charId}', '${SEED_DM}', 'Discipline Fixture', 'Human', 'Psion', 'Sage', 'Telepath', 5, ` +
-      `'{"psion-disciplines": ["Biofeedback", "Psionic Guards", "Inerrant Aim"], "psionic-energy-dice": 6}'::jsonb) ` +
-      // Idempotent: a crashed run used to leave the row behind and the
-      // next insert died on the primary key.
-      `on conflict (id) do update set level = excluded.level, ` +
-      `subclass = excluded.subclass, class_resources = excluded.class_resources`
-    );
+  let charId: string;
+  let userId: string;
+  let email: string;
+  test.beforeEach(() => {
+    charId = randomUUID(); userId = randomUUID();
+    email = 'psion-' + userId + '@dndkeep.local';
+    // v2.784: own disposable account, so shared seed users' slot limits and
+    // parallel suites cannot affect this fixture. Never alter their characters.
+    sql(`begin;
+      insert into auth.users (instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at,confirmation_token,recovery_token,email_change,email_change_token_new)
+      values ('00000000-0000-0000-0000-000000000000','${userId}','authenticated','authenticated','${email}',extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),now(),'{"provider":"email","providers":["email"]}','{"display_name":"Psion Fixture"}',now(),now(),'','','','');
+      insert into auth.identities (id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at)
+      values (gen_random_uuid(),'${userId}','${userId}','{"sub":"${userId}","email":"${email}"}','email',now(),now(),now());
+      update profiles set show_ua_content=true where id='${userId}';
+      insert into characters (id,user_id,name,species,class_name,background,subclass,level,class_resources)
+      values ('${charId}','${userId}','Discipline Fixture','Human','Psion','Sage','Telepath',5,'{"psion-disciplines":["Biofeedback","Psionic Guards","Inerrant Aim"],"psionic-energy-dice":6}');
+      commit;`);
   });
-
   test.afterEach(() => {
-    try {
-      // Only the row this test owns. show_ua_content is deliberately NOT
-      // reset here: the flag is on one shared seed profile, and clearing it
-      // between tests yanked UA content out from under the three siblings
-      // still running in other workers. Every test that needs it turns it
-      // on in beforeEach, so leaving it on is inert.
-      sql(`delete from characters where id = '${charId}'`);
-    } catch { /* best effort */ }
+    if (userId) sql(`delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
   });
+
+
 
   test('chosen disciplines render as usable abilities on the Actions tab', async ({ page }, testInfo) => {
     const errors: string[] = [];
     page.on('pageerror', e => errors.push(String(e)));
 
-    await signInAsSeedDm(page);
+    await signInAsSeedDm(page, email);
     await page.goto(`/character/${charId}`);
 
     // A level-5 Psion is owed exactly 3 disciplines, so the fixture seeds 3:
@@ -116,7 +100,7 @@ test.describe('psion disciplines (local stack)', () => {
     // still read as a display name rather than the raw id.
     sql(`update characters set class_resources = '{"psion-disciplines": ["Biofeedback", "Psionic Guards"]}'::jsonb where id = '${charId}'`);
 
-    await signInAsSeedDm(page);
+    await signInAsSeedDm(page, email);
     await page.goto(`/character/${charId}`);
 
     // Filter the list down to one row first — clicking a Choose button by

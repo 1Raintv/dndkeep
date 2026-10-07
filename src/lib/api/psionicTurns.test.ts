@@ -1,7 +1,9 @@
+import {createPsionicRestRequest} from '../psionicRestRequest';
+import type {Character} from '../../types';
 import {beforeEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({rpc:vi.fn()}));
 vi.mock('../supabase',()=>({supabase:{rpc:mocks.rpc}}));
-import {advancePsionicSoloTurn,getEnkindledTurn,spendEnkindledLifeForce} from './psionicTurns';
+import {completePsionicRest,settlePsionicEnergy,advancePsionicSoloTurn,getEnkindledTurn,spendEnkindledLifeForce} from './psionicTurns';
 const request={requestId:'stable',turn:{soloTurn:0},count:2,baseRolls:[1],extraRolls:[2,3],sourceFeature:'Biofeedback'};
 beforeEach(()=>vi.resetAllMocks());
 it('replays an ambiguous charge with the identical request and accepts its saved receipt',async()=>{
@@ -27,4 +29,43 @@ it('solo turn retries keep the expected turn and request identifier',async()=>{
 it('treats an incomplete success response as uncertain instead of clearing recovery',async()=>{
  mocks.rpc.mockResolvedValue({data:{requestId:'stable',hitDiceSpent:2},error:null});
  await expect(spendEnkindledLifeForce('hero',request)).rejects.toMatchObject({definitelyNotPaid:false});
+});
+
+const energyRequest={requestId:'energy',operation:'spend' as const,count:1,rolls:[3],sourceFeature:'Psionic Energy Dice'};
+const energyReceipt={requestId:'energy',remaining:5,restorationResource:null,restorationUsed:null,energyRevision:1,rolls:[3],replayed:false};
+it('Energy Dice retries retain the complete payment and original rolls',async()=>{
+ mocks.rpc.mockRejectedValueOnce(new Error('Lost response')).mockResolvedValueOnce({data:{...energyReceipt,replayed:true},error:null});
+ expect(await settlePsionicEnergy('hero',energyRequest)).toMatchObject({remaining:5,replayed:true});
+ expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[1]);
+ expect(mocks.rpc.mock.calls[0]).toEqual(['settle_psionic_energy',{p_character_id:'hero',p_request_id:'energy',p_operation:'spend',p_count:1,p_rolls:[3],p_source_feature:'Psionic Energy Dice'}]);
+});
+it('Restoration accepts an empty saved roll and both tracker representations',async()=>{
+ mocks.rpc.mockResolvedValue({data:{...energyReceipt,remaining:6,rolls:[],restorationResource:0,restorationUsed:1},error:null});
+ expect(await settlePsionicEnergy('hero',{...energyRequest,operation:'restore',count:0,rolls:[],sourceFeature:'Psionic Restoration'})).toMatchObject({remaining:6,restorationUsed:1});
+});
+it.each([{remaining:13},{remaining:-1},{remaining:1.5},{energyRevision:-1},{energyRevision:0.5},{rolls:[4]},{requestId:'other'},{restorationUsed:undefined},{restorationResource:'0'}])('keeps recovery when an Energy Dice receipt cannot be trusted: %j',async invalid=>{
+ mocks.rpc.mockResolvedValue({data:{...energyReceipt,...invalid},error:null});
+ await expect(settlePsionicEnergy('hero',energyRequest)).rejects.toMatchObject({definitelyNotPaid:false});
+});
+
+it('requires the saved Connection claim in a free-extension receipt',async()=>{
+ const connection={...energyRequest,operation:'connection' as const,count:0,sourceFeature:'Telepathic Connection'};
+ mocks.rpc.mockResolvedValueOnce({data:energyReceipt,error:null});await expect(settlePsionicEnergy('hero',connection)).rejects.toMatchObject({definitelyNotPaid:false});
+ mocks.rpc.mockResolvedValueOnce({data:{...energyReceipt,connectionUsed:1},error:null});expect(await settlePsionicEnergy('hero',connection)).toMatchObject({connectionUsed:1});
+});
+
+const restCharacter={id:'hero',class_name:'Psion',level:7,psionic_energy_revision:2,psionic_hit_dice_revision:0,class_resources:{'psionic-energy-dice':3},feature_uses:{},spell_slots:{}} as unknown as Character;
+const restRequest=createPsionicRestRequest(restCharacter,'short',{class_resources:{'psionic-energy-dice':4},feature_uses:{},spell_slots:{}},'rest');
+it('rest retries retain the captured expected state and recharge outcome',async()=>{
+ mocks.rpc.mockRejectedValueOnce(new Error('Lost rest response')).mockResolvedValueOnce({data:{requestId:'rest',character:restCharacter,replayed:true},error:null});
+ expect(await completePsionicRest('hero',restRequest)).toMatchObject({replayed:true,expected:restRequest.expected});
+ expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[1]);expect(mocks.rpc.mock.calls[0][0]).toBe('complete_psionic_rest');
+});
+it.each([{id:'other'},{psionic_energy_revision:undefined},{psionic_hit_dice_revision:-1},{class_resources:null},{feature_uses:[]},{spell_slots:undefined}])('keeps an invalid rest receipt uncertain: %j',async invalid=>{
+ const c={...restCharacter,...invalid};if(c.spell_slots===undefined)delete (c as Partial<Character>).spell_slots;
+ mocks.rpc.mockResolvedValue({data:{requestId:'rest',character:c,replayed:false},error:null});
+ await expect(completePsionicRest('hero',restRequest)).rejects.toMatchObject({definitelyNotPaid:false});
+});
+it('never sends an incomplete saved rest',async()=>{
+ await expect(completePsionicRest('hero',{...restRequest,updates:{}})).rejects.toMatchObject({definitelyNotPaid:true});expect(mocks.rpc).not.toHaveBeenCalled();
 });

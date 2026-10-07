@@ -54,5 +54,5 @@ export function useCharacterSaves(userId: string, characterId: string) {
     // Failed requests need an explicit retry, not a surprise replay on exit.
     if (!queue.getSnapshot().error) void queue.flush();
   }, [queue]);
-  return { queue, ...state };
+  return { queue, acknowledged:queue.getAcknowledged(), ...state };
 }

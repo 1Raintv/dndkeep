@@ -1,11 +1,15 @@
+import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
+import {payPsionicEnergy} from './payPsionicEnergy';
+import {useToast} from '../../shared/Toast';
+import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharacterRef';
 import {useEffect,useRef,useState} from 'react';
 import type {Character} from '../../../types';
 import {useModal} from '../../shared/Modal';
-import {psionicRestorationStatus,restorePsionicDice} from '../../../rules/psionicRestoration';
+import {psionicRestorationStatus} from '../../../rules/psionicRestoration';
 
-export default function PsionicRestorationButton({character,onUpdate}:{character:Character;onUpdate:(patch:Partial<Character>)=>void}) {
+export default function PsionicRestorationButton({persistence,character}:{persistence?:PsionicEnhancementPersistence;character:Character;onUpdate:(patch:Partial<Character>)=>void}) {
   const modal=useModal();
-  const current=useRef(character);current.current=character;
+  const current=useOptimisticCharacterRef(character);const {showToast}=useToast();
   const locked=useRef(false),mounted=useRef(true);
   const [pending,setPending]=useState(false);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
@@ -19,11 +23,9 @@ export default function PsionicRestorationButton({character,onUpdate}:{character
         message:'After your character completes a 1-minute meditation, restore all expended Psionic Energy Dice. This uses Psionic Restoration until your next Long Rest.',
         confirmLabel:'Complete meditation'});
       if(!completed || !mounted.current || current.current.id!==characterId)return;
-      const patch=restorePsionicDice(current.current);
-      if(!patch)return;
-      // Guard repeat events before the parent's updated props reach this button.
-      current.current={...current.current,...patch} as Character;
-      onUpdate(patch as Partial<Character>);
+      if(psionicRestorationStatus(current.current).reason)return;
+      await payPsionicEnergy(persistence,current,{requestId:crypto.randomUUID(),operation:'restore',count:0,rolls:[],sourceFeature:'Psionic Restoration',recoveryNote:'Completed the 1-minute meditation. Confirm this saved use; do not restore the dice a second time.'},
+       {active:()=>mounted.current&&current.current.id===characterId,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
     }finally{locked.current=false;if(mounted.current)setPending(false);}
   }
   return <button type="button" onClick={meditate} disabled={pending || !!status.reason}
