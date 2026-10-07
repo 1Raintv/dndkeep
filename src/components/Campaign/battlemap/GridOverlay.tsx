@@ -29,17 +29,24 @@ export function GridOverlay(props: {
   // destroyed Graphics threw an uncaught TypeError every map session.
   useEffect(()=>{const g=graphic.current;if(!g||g.destroyed)return;g.alpha=opacity;},[viewport,opacity]);
   useEffect(()=>{
-    const g=graphic.current;if(!g||g.destroyed)return;g.clear();
+    const g=graphic.current;if(!g||g.destroyed||!viewport)return;
+    let lastScale=NaN;
+    const draw=()=>{
+    if(g.destroyed||viewport.destroyed)return;
+    lastScale=viewport.scale.x;g.clear();
+    // v2.766 — keep strokes in screen pixels: zooming in should magnify map
+    // artwork and token detail, not turn a 1px grid into a 4px stripe.
+    const zoom=Number.isFinite(viewport.scale.x)&&viewport.scale.x>0?viewport.scale.x:1;
     const colors=gridColors(palette);
 
     const WW = widthCells * gridSizePx;
     const WH = heightCells * gridSizePx;
 
-    g.setStrokeStyle({ color: colors.edge, width: 2, alpha: 0.8 });
+    g.setStrokeStyle({ color: colors.edge, width: 2 / zoom, alpha: 0.8 });
     g.rect(0, 0, WW, WH);
     g.stroke();
 
-    g.setStrokeStyle({ color: colors.minor, width: 1, alpha: 0.6 });
+    g.setStrokeStyle({ color: colors.minor, width: 1 / zoom, alpha: 0.6 });
     for (let x = 0; x <= widthCells; x++) {
       const px = x * gridSizePx;
       g.moveTo(px, 0);
@@ -53,7 +60,7 @@ export function GridOverlay(props: {
     g.stroke();
 
     if(!majorLines)return;
-    g.setStrokeStyle({ color: colors.major, width: 1.5, alpha: 0.9 });
+    g.setStrokeStyle({ color: colors.major, width: 1.5 / zoom, alpha: 0.9 });
     for (let x = 0; x <= widthCells; x += 5) {
       const px = x * gridSizePx;
       g.moveTo(px, 0);
@@ -65,7 +72,12 @@ export function GridOverlay(props: {
       g.lineTo(WW, py);
     }
     g.stroke();
-
+    };
+    // setZoom() does not emit zoomed; frame-end covers toolbar and gesture zoom
+    // once per viewport frame, without redrawing on ordinary pan frames.
+    const refresh=()=>{if(viewport.scale.x!==lastScale)draw();};
+    draw();viewport.on('frame-end',refresh);
+    return ()=>{viewport.off('frame-end',refresh);};
   }, [viewport, widthCells, heightCells, gridSizePx, palette, majorLines]);
 
   return null;
