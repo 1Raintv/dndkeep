@@ -1,17 +1,20 @@
-import {offerPsionicSurge} from './offerPsionicSurge';
+import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharacterRef';
+import {offerPsionicRollEnhancements} from './offerPsionicRollEnhancements';
 import {useEffect,useRef,useState} from 'react';
 import type {Character} from '../../../types';
 import type {PsionDiscipline} from '../../../data/psionDisciplines';
 import {hasDiscipline} from '../../../data/psionDisciplines';
 import {conditionalPsionicDie} from '../../../rules/conditionalPsionicDie';
 import {psionicSurge} from '../../../rules/psionicSurge';
+import {enkindledCapacity} from '../../../rules/enkindledLifeForce';
+import {psionicRollNote} from '../../../rules/psionicEnhancedRoll';
 import {rollDie} from '../../../rules/dice';
 import {useModal} from '../../shared/Modal';
 import {useToast} from '../../shared/Toast';
 import {logAction} from '../../shared/ActionLog';
 /** Rolls first, then asks for the tabletop outcome; dismissing never spends. */
 export default function ConditionalPsionicButton({character,discipline,onUpdate,campaignId}:{character:Character;discipline:PsionDiscipline;onUpdate:(patch:Partial<Character>)=>void;campaignId?:string|null}) {
- const latest=useRef(character);latest.current=character;
+ const latest=useOptimisticCharacterRef(character);
  const update=useRef(onUpdate);update.current=onUpdate;
  const mounted=useRef(true),busy=useRef(false);const [pending,setPending]=useState(false);
  const modal=useModal(),{showToast}=useToast();
@@ -22,9 +25,9 @@ export default function ConditionalPsionicButton({character,discipline,onUpdate,
   const id=latest.current.id;
   try {
    const originalRoll=rollDie(state.sides);
-   let roll=originalRoll,usedSurge=false;
-   if(psionicSurge(latest.current,[roll])) {
-    const surged=await offerPsionicSurge({roll,sides:state.sides,feature:discipline.name,campaignId,
+   let roll=originalRoll,usedSurge=false;let enkindledRolls:number[]=[];
+   if(psionicSurge(latest.current,[roll])||enkindledCapacity(latest.current)) {
+    const surged=await offerPsionicRollEnhancements({roll,sides:state.sides,feature:discipline.name,campaignId,
      current:()=>latest.current,active:()=>mounted.current,
      eligible:current=>{
       const chosen=(current.class_resources as Record<string,unknown>|null)?.['psion-disciplines'];
@@ -32,27 +35,31 @@ export default function ConditionalPsionicButton({character,discipline,onUpdate,
        &&!!conditionalPsionicDie(current.level,current.class_resources?.['psionic-energy-dice'],originalRoll,false);
      },
      update:patch=>{latest.current={...latest.current,...patch};update.current(patch);},
-     confirm:modal.confirm,warn:message=>showToast(message,'warn')});
+     prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
     if(!surged)return;
-    roll=surged.roll;usedSurge=surged.usedSurge;
+    roll=surged.roll;usedSurge=surged.usedSurge;enkindledRolls=surged.enkindledRolls;
    }
+   if(!mounted.current||latest.current.id!==id)return;
+   const enhancement={originalRoll,surged:usedSurge,enkindledRolls};
+   const extraNote=enkindledRolls.length?psionicRollNote(roll,enhancement):'';
    const hit=discipline.conditionalOutcome==='hit';
    const changed=await modal.confirm({title:discipline.name,
-    message:`${discipline.description}\n\n${usedSurge?`Rolled ${originalRoll} on 1d${state.sides}; Psionic Surge treats it as ${roll} (1 Hit Point Die spent).`:`Rolled ${roll} on 1d${state.sides}.`} Add +${roll} to the ${hit?'missed attack':'ability check'}. Did this bonus turn it into ${hit?'a hit':'a success'}? Spend the die only if it changed the outcome. You can use only one Discipline each turn, once that turn, unless an option says otherwise.`,
+    message:`${discipline.description}\n\n${extraNote?extraNote:usedSurge?`Rolled ${originalRoll} on 1d${state.sides}; Psionic Surge treats it as ${roll} (1 Hit Point Die spent).`:`Rolled ${roll} on 1d${state.sides}.`} Add +${roll} to the ${hit?'missed attack':'ability check'}. Did this bonus turn it into ${hit?'a hit':'a success'}? Spend the die only if it changed the outcome. You can use only one Discipline each turn, once that turn, unless an option says otherwise.`,
     confirmLabel:hit?'Changed to hit · spend 1':'Changed to success · spend 1',cancelLabel:'Keep die'});
    if(!mounted.current||latest.current.id!==id)return;
    const current=latest.current;
    const chosen=(current.class_resources as Record<string,unknown>|null)?.['psion-disciplines'];
    if(current.class_name!=='Psion'||!Array.isArray(chosen)||!hasDiscipline(chosen.filter((v):v is string=>typeof v==='string'),discipline))return;
-   const result=conditionalPsionicDie(current.level,current.class_resources?.['psionic-energy-dice'],roll,changed);
+   const result=conditionalPsionicDie(current.level,current.class_resources?.['psionic-energy-dice'],roll,changed,enhancement);
    if(!result){showToast('Resources changed. Check your Psionic Energy Dice before resolving this bonus.','warn');return;}
    if(result.cost){
     const patch={class_resources:{...current.class_resources,'psionic-energy-dice':result.remaining}};
     latest.current={...current,...patch};update.current(patch);
    }
-   const notes=`${discipline.name}: +${roll} bonus.${usedSurge?' Psionic Surge: 1 Hit Point Die spent.':''} ${result.cost?'Confirmed changed outcome; spent 1 die.':'No die spent.'}`;
+   const notes=`${discipline.name}: +${roll} bonus. ${extraNote}${usedSurge&&!extraNote?' Psionic Surge: 1 Hit Point Die spent.':''} ${result.cost?'Confirmed changed outcome; spent 1 die.':'No die spent.'}`;
    showToast(notes,'success');
-   await logAction({campaignId:campaignId??null,characterId:current.id,characterName:current.name,actionType:'roll',actionName:discipline.name,total:roll,individualResults:[originalRoll],notes});
+   const warnLog=()=>showToast(`${discipline.name}: bonus ${roll} resolved, but its history could not be saved.`,'warn');
+   void logAction({campaignId:campaignId??null,characterId:current.id,characterName:current.name,actionType:'roll',actionName:discipline.name,total:roll,individualResults:[originalRoll,...enkindledRolls],notes}).then(result=>{if(result?.error)warnLog();}).catch(warnLog);
   }finally{busy.current=false;if(mounted.current)setPending(false);}
  }
  return <button className="btn-ghost" style={{fontSize:11,minHeight:36,padding:'4px 8px',color:'#c4b5fd'}} disabled={pending||!state} title="Roll a bonus; spend the die only if it changes the outcome" onClick={()=>void run()}>Roll bonus</button>;

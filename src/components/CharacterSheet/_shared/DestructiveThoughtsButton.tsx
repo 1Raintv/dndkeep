@@ -1,3 +1,4 @@
+import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharacterRef';
 import {Suspense,useEffect,useRef,useState} from 'react';
 import type {Character,CombatParticipant} from '../../../types';
 import {psionicDisciplineCapacity,psionicDisciplineTotal} from '../../../rules/psionicDisciplineRoll';
@@ -9,7 +10,7 @@ import {lazyWithRetry} from '../../../lib/lazyWithRetry';
 import {useModal} from '../../shared/Modal';
 import {useToast} from '../../shared/Toast';
 import {logAction} from '../../shared/ActionLog';
-import {offerPsionicSurge} from './offerPsionicSurge';
+import {offerPsionicRollEnhancements} from './offerPsionicRollEnhancements';
 const TargetPicker=lazyWithRetry(()=>import('../../Combat/TargetPickerModal'));
 const discipline=findDiscipline('destructive-thoughts')!;
 function capacity(c:Character){
@@ -21,7 +22,7 @@ interface PaidResult {requestId:string;characterId:string;characterName:string;a
 /** v2.777 — confirm the spell trigger, then spend/roll once. Retrying delivery
  * reuses the paid result and declaration ID; it never rolls or charges again. */
 export default function DestructiveThoughtsButton({character,onUpdate}:{character:Character;onUpdate:(patch:Partial<Character>)=>void}){
- const latest=useRef(character);latest.current=character;
+ const latest=useOptimisticCharacterRef(character);
  const update=useRef(onUpdate);update.current=onUpdate;
  const mounted=useRef(true),busy=useRef(false);const [pending,setPending]=useState(false);
  const [picker,setPicker]=useState<PsionicDamageContext|null>(null),[paid,setPaid]=useState<PaidResult|null>(null);
@@ -65,15 +66,15 @@ export default function DestructiveThoughtsButton({character,onUpdate}:{characte
    const intelligence=computeStats(current).modifiers.intelligence;
    const rolls=Array.from({length:count},()=>rollDie(now.sides));
    patch({class_resources:{...current.class_resources,'psionic-energy-dice':now.remaining-count}});
-   const surged=await offerPsionicSurge({roll:rolls[0],rolls,sides:now.sides,feature:'Destructive Thoughts',campaignId,
-    current:()=>latest.current,active:()=>mounted.current,eligible:c=>!!capacity(c),update:patch,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
+   const surged=await offerPsionicRollEnhancements({roll:rolls[0],rolls,sides:now.sides,feature:'Destructive Thoughts',campaignId,
+    current:()=>latest.current,active:()=>mounted.current,eligible:c=>!!capacity(c),update:patch,prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
    const amount=psionicDisciplineTotal(surged?.rolls??rolls,now.sides,intelligence)!;
    const result:PaidResult={requestId:crypto.randomUUID(),characterId:id,characterName:current.name,amount,targetName,target,context,queued:false};
    if(mounted.current&&latest.current.id===id)setPaid(result);
    const warnLog=()=>showToast('Damage rolled, but its log could not be saved. Keep the displayed result.','warn');
    void logAction({campaignId:campaignId??null,characterId:id,characterName:current.name,targetName,
-    actionType:'damage',actionName:'Destructive Thoughts',diceExpression:`${count}d${now.sides}`,individualResults:rolls,total:amount,
-    notes:`${amount} Psychic damage, regardless of the spell save. Spent ${count} Energy Dice.${surged?.usedSurge?' Psionic Surge: 1 Hit Point Die spent.':''} ${context?'For combat resolution; check the queue before applying manually.':'Apply at the table; no target HP changed.'}`
+    actionType:'damage',actionName:'Destructive Thoughts',diceExpression:`${(surged?.originalRolls??rolls).length}d${now.sides}`,individualResults:surged?.originalRolls??rolls,total:amount,
+    notes:`${amount} Psychic damage, regardless of the spell save. Spent ${count} Energy Dice.${surged?.usedSurge?' Psionic Surge: 1 Hit Point Die spent.':''}${surged?.enkindledRolls.length?` Enkindled Life Force: ${surged.enkindledRolls.length} Hit Point Dice spent; extra Energy Dice not expended.`:''} ${context?'For combat resolution; check the queue before applying manually.':'Apply at the table; no target HP changed.'}`
    }).then(result=>{if(result?.error)warnLog();}).catch(warnLog);
    if(!mounted.current||latest.current.id!==id)return;
    if(context)await deliver(result);else showToast(`${targetName}: ${amount} Psychic damage. Apply at the table; no target HP changed.`,'success');

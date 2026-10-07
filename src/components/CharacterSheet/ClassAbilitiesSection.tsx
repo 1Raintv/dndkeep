@@ -1,3 +1,5 @@
+import {useOptimisticCharacterRef} from '../../lib/hooks/useOptimisticCharacterRef';
+import PsionicDieRollButton from './_shared/PsionicDieRollButton';
 import DestructiveThoughtsButton from './_shared/DestructiveThoughtsButton';
 import BiofeedbackButton from './_shared/BiofeedbackButton';
 import { psionicPoolRemaining } from '../../rules/psionicRestoration';
@@ -13,7 +15,6 @@ import { findDiscipline } from '../../data/psionDisciplines';
 import { SPECIES } from '../../data/species';
 import { formatRange } from '../../lib/formatRange';
 import { logAction } from '../shared/ActionLog';
-import { rollDice } from '../../lib/spellParser';
 import { useToast } from '../shared/Toast';
 import { computeStats, classSaveDC } from '../../lib/gameUtils';
 // v2.443.0 — Lazy-load the resolve modal. The helper (formatOutcomesLog)
@@ -167,7 +168,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  const [manualPropel,setManualPropel]=useState<ClassAbility|null>(null);
  // v2.765 — deduplicate the same resolution, not unrelated powers while logs save.
  const settledPowerUses=useRef(new WeakSet<PsionicPowerUse>());
- const livePowerCharacter=useRef(character);livePowerCharacter.current=character;
+ const livePowerCharacter=useOptimisticCharacterRef(character);
  const [resolveModal, setResolveModal] = useState<{
  ability: ClassAbility; saveDC: number; cost?: number;
  } | null>(null);
@@ -269,9 +270,10 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
      livePowerCharacter.current={...livePowerCharacter.current,...result.patch} as Character;
      onUpdate(result.patch as Partial<Character>);
      showToast(result.notes,'success');
-     await logAction({campaignId:campaignId??null,characterId:character.id,characterName:character.name,
-       actionType:'roll',actionName:ability.name,total:use.roll,individualResults:use.roll?[use.originalRoll??use.roll]:undefined,
-       targetName:outcomes[0]?.participantName,notes:result.notes});
+     const warnLog=()=>showToast(`${ability.name} resolved, but its history could not be saved.`,'warn');
+     void logAction({campaignId:campaignId??null,characterId:character.id,characterName:character.name,
+       actionType:'roll',actionName:ability.name,total:use.roll,individualResults:use.roll?[use.originalRoll??use.roll,...(use.enkindledRolls??[])]:undefined,
+       targetName:outcomes[0]?.participantName,notes:result.notes}).then(result=>{if(result?.error)warnLog();}).catch(warnLog);
    return;
  }
  // v2.189.0 — Phase Q.0 pt 30: explicit Psionic Energy Die cost gate.
@@ -280,7 +282,6 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // rather than silently deducting and going negative. Pool deduction
  // happens here in one shot rather than in the legacy isPool branch
  // below (which always deducted exactly 1, regardless of cost).
- let remainingPsionicDice=psionicPoolRemaining(character.level,character.class_resources?.['psionic-energy-dice']);
  const pedCost = (ability as any).pedCost as number | undefined;
  if (typeof pedCost === 'number' && pedCost > 0) {
  const resources = (character.class_resources as Record<string, number> | null) ?? {};
@@ -296,7 +297,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  showToast(`Not enough Psionic Energy Dice. Need ${pedCost}, have ${currentDice}.`, 'warn');
  return;
  }
- remainingPsionicDice=currentDice-pedCost;
+ const remainingPsionicDice=currentDice-pedCost;
  const nextResources = { ...resources, 'psionic-energy-dice': remainingPsionicDice };
  onUpdate({ class_resources: nextResources });
  }
@@ -319,33 +320,8 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  feature_uses: { ...((character.feature_uses as Record<string, number>) ?? {}), [ability.name]: current + 1 }
  });
  }
- // v2.189.0 — Legacy isPool deduction: still fires for the
- // Psionic Energy Dice row itself (which has isPool but no
- // pedCost — clicking Spend Die on that row deducts exactly 1
- // and rolls). For abilities with pedCost set, we skip this
- // branch since deduction already happened above.
- // v2.367.0 — Fixed: when class_resources['psionic-energy-dice']
- // is undefined (newly created Psion, never spent before), the
- // pre-v2.367 guard `!== undefined` skipped the entire deduction
- // block and the user saw no change. Initialize from
- // getMaxUses(ability, character) when undefined so the very
- // first Spend correctly drops the pool from full → full-1.
- if (typeof pedCost !== 'number' && (ability.id === 'psionic-energy-dice' || (ability as any).isPool)) {
-  const resources = { ...(character.class_resources as Record<string, number> ?? {}) };
-  const current = psionicPoolRemaining(character.level,resources['psionic-energy-dice']);
-  if(current===null || current<1) {showToast('Check your Psionic Energy Dice before spending.','warn');return;}
-  remainingPsionicDice=current-1;
-  resources['psionic-energy-dice'] = remainingPsionicDice;
-  onUpdate({ class_resources: resources });
- }
- // For psionic energy dice — roll the die and show in action log
- let diceExpr: string | undefined;
- let rollResult: { total: number; rolls: number[] } | undefined;
- if ((ability as any).psionicDie) {
- const dieSize = getPsionicDieSize(character.level);
- diceExpr = `1${dieSize}`;
- rollResult = rollDice(diceExpr);
- }
+ // v2.780 — raw Energy Die rolls now live in PsionicDieRollButton.
+ // Other classes' ambient pool rows must not deduct Psionic Energy Dice.
  // Resolve description (may be a function)
  const desc = resolveDesc((ability as any).description ?? '', character);
  // v2.247.0 — when outcomes are present, the log notes summarize the
@@ -361,24 +337,12 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  campaignId: campaignId ?? null,
  characterId: character.id,
  characterName: character.name,
- actionType: (ability as any).psionicDie ? 'roll' : ability.actionType === 'action' ? 'spell' :
+ actionType: ability.actionType === 'action' ? 'spell' :
  ability.actionType === 'bonus' ? 'spell' :
  ability.actionType === 'reaction' ? 'save' : 'roll',
- actionName: (ability as any).psionicDie
- ? `Spent Psionic Energy Die (1${getPsionicDieSize(character.level)})`
- : `Used ${ability.name}`,
- diceExpression: diceExpr,
- individualResults: rollResult?.rolls,
- total: rollResult?.total ?? 0,
- notes: (ability as any).psionicDie
- ? `Rolled 1${getPsionicDieSize(character.level)} = ${rollResult?.total} · ${remainingPsionicDice} dice remaining`
- : outcomeNote ?? (desc.slice(0, 100) + (desc.length > 100 ? '…' : '')),
+ actionName: `Used ${ability.name}`,
+ notes: outcomeNote ?? (desc.slice(0, 100) + (desc.length > 100 ? '…' : '')),
  });
- // Store psionic roll for inline display
- if ((ability as any).psionicDie && rollResult) {
- const dieSize = getPsionicDieSize(character.level);
- setPsionicRollHistory(prev => [{ value: rollResult!.total, die: dieSize }, ...prev].slice(0, 5));
- }
  // Brief flash feedback
  setJustUsed(ability.name);
  setTimeout(() => setJustUsed(null), 2000);
@@ -810,7 +774,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  const target = e.target as HTMLElement;
  if (target.closest('button')) e.stopPropagation();
  }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'nowrap' as const, alignItems: 'center', width: '100%' }}>
- {conditionalDiscipline?.id==='destructive-thoughts' ? <DestructiveThoughtsButton character={character} onUpdate={onUpdate}/> : conditionalDiscipline?.id==='biofeedback' ? <BiofeedbackButton character={character} onUpdate={onUpdate}/> : conditionalDiscipline?.conditionalOutcome ? <ConditionalPsionicButton character={character} discipline={conditionalDiscipline} onUpdate={onUpdate} campaignId={campaignId}/> : (ability.name==='Telekinetic Propel'||ability.name==='Telepathic Connection') ? <PsionicPowerButton character={character} onUpdate={onUpdate} kind={ability.name==='Telekinetic Propel'?'propel':'connection'} onUse={async(use:PsionicPowerUse)=>{await handleUseAbility({...ability,psionicUse:use});}}/> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton character={character} onUpdate={onUpdate}/> : ability.actionType !== 'free' && (
+ {conditionalDiscipline?.id==='destructive-thoughts' ? <DestructiveThoughtsButton character={character} onUpdate={onUpdate}/> : conditionalDiscipline?.id==='biofeedback' ? <BiofeedbackButton character={character} onUpdate={onUpdate}/> : conditionalDiscipline?.conditionalOutcome ? <ConditionalPsionicButton character={character} discipline={conditionalDiscipline} onUpdate={onUpdate} campaignId={campaignId}/> : (ability.name==='Telekinetic Propel'||ability.name==='Telepathic Connection') ? <PsionicPowerButton character={character} onUpdate={onUpdate} kind={ability.name==='Telekinetic Propel'?'propel':'connection'} onUse={async(use:PsionicPowerUse)=>{await handleUseAbility({...ability,psionicUse:use});}}/> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton character={character} onUpdate={onUpdate}/> : ability.psionicDie && ability.actionType !== 'free' ? <PsionicDieRollButton character={character} onUpdate={onUpdate} feature={ability.name} label={restingLabel} onRolled={(value,sides)=>setPsionicRollHistory(prev=>[{value,die:`d${sides}`},...prev].slice(0,5))}/> : ability.actionType !== 'free' && (
  <button
  onClick={() => handleUseAbility(ability, maxUses !== undefined ? 1 : undefined)}
  disabled={isPedPoolRow && (psionicPoolRemaining(character.level,character.class_resources?.['psionic-energy-dice'])??0)<1}

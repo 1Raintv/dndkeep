@@ -60,9 +60,18 @@ it.each([NaN,Infinity,0,-1,5.5,21])('refuses invalid level %s for powers',level=
 });
 
 it('Surge adjusts distance but preserves the original power expenditure condition',()=>{
+ const eligible={...c,level:7,subclass:'Psi Warper'};
  const use={kind:'propel',mode:'powered',roll:4,originalRoll:1,surged:true} as const;
- expect(resolvePsionicPower(c,use,true)).toMatchObject({feet:20,cost:1});
- expect(resolvePsionicPower(c,use,false)).toMatchObject({feet:0,cost:0});
- expect(resolvePsionicPower(c,use,true)?.notes).toContain('1 treated as 4');
- expect(resolvePsionicPower(c,{kind:'connection',roll:4,originalRoll:1,surged:true,free:true})).toMatchObject({feet:70,cost:0});
+ expect(resolvePsionicPower(eligible,use,true)).toMatchObject({feet:20,cost:1});
+ expect(resolvePsionicPower(eligible,use,false)).toMatchObject({feet:0,cost:0});
+ expect(resolvePsionicPower(eligible,use,true)?.notes).toContain('1 treated as 4');
+ expect(resolvePsionicPower(eligible,{kind:'connection',roll:4,originalRoll:1,surged:true,free:true})).toMatchObject({feet:70,cost:0});
+});
+
+it('adds Enkindled dice to distance without spending them from the Energy pool',()=>{
+ const psion={...c,level:20};const use={kind:'propel',mode:'powered',roll:19,originalRoll:2,enkindledRolls:[6,9],surged:true} as const;
+ expect(resolvePsionicPower(psion,use,true)).toMatchObject({feet:95,cost:1,patch:{class_resources:{'psionic-energy-dice':2}}});
+ expect(resolvePsionicPower(psion,use,false)).toMatchObject({feet:0,cost:0});
+ expect(resolvePsionicPower(psion,{...use,kind:'connection',free:true})).toMatchObject({feet:250,cost:0});
+ expect(resolvePsionicPower({...psion,level:19},use,true)).toBeNull();
 });

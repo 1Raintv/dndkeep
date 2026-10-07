@@ -76,3 +76,12 @@ it('rechecks the pool before spending Surge after concurrent depletion',async()=
  await waitFor(()=>expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('Surge was not applied'),'warn'));
  expect(onUse).not.toHaveBeenCalled();expect(onUpdate).not.toHaveBeenCalled();
 });
+
+it('carries a capstone total above one die into power settlement',async()=>{
+ mocks.roll=6;const onUse=vi.fn().mockResolvedValue(undefined),onUpdate=vi.fn();
+ render(<ModalProvider><PsionicPowerButton character={{...character,level:20,hit_dice_spent:0}} onUpdate={onUpdate} kind="propel" onUse={onUse}/></ModalProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Powered (1 die)'}));await screen.findByRole('dialog',{name:'Enkindled Life Force'});
+ fireEvent.change(screen.getByRole('textbox'),{target:{value:'2'}});fireEvent.click(screen.getByRole('button',{name:'Continue'}));
+ await waitFor(()=>expect(onUse).toHaveBeenCalledWith({kind:'propel',mode:'powered',roll:18,originalRoll:6,enkindledRolls:[6,6]}));
+ expect(onUpdate).toHaveBeenCalledTimes(1);expect(onUpdate).toHaveBeenCalledWith({hit_dice_spent:2});
+});

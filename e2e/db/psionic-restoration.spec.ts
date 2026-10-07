@@ -114,11 +114,12 @@ test.describe('Psionic Restoration (local stack)', () => {
   test('Surge boosts base powers while preserving their separate Energy Die costs',async({page},info)=>{
     // A slow history insert must not discard the next independent power.
     let release!:()=>void;const pending=new Promise<void>(r=>release=r);
-    let delayed=false;
+    let delayed=false,heldConnection=false;
     await page.route('**/rest/v1/action_logs*',async route=>{
       if(!delayed && route.request().method()==='POST' && route.request().postDataJSON()?.action_name==='Telekinetic Propel') {
         delayed=true;await pending;
       }
+      if(route.request().method()==='POST' && route.request().postDataJSON()?.action_name==='Telepathic Connection'){heldConnection=true;await pending;}
       await route.continue();
     });
     try {
@@ -136,8 +137,8 @@ test.describe('Psionic Restoration (local stack)', () => {
     await button('Save passed').click();await expect(propel).toBeHidden();expect(resources()).toBe('1:2');
     await button('Extend (free)').click();await button('Extend telepathy').click();await button('Spend 1 Hit Point Die').click();
     await expect.poll(resources).toBe('2:2');await expect(button('Extend (1 die)')).toBeEnabled();
+    await expect.poll(()=>heldConnection).toBe(true);expect(delayed).toBe(true);release();
     await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Telepathic Connection' and notes like 'Telepathy range 100 ft%'`)).toBe('1');
-    expect(delayed).toBe(true);release();
     await button('Powered (1 die)').click();await button('Spend 1 Hit Point Die').click();
     await expect(propel).toBeVisible();await button('Cancel').click();await expect.poll(resources).toBe('3:2');
     await button('Extend (1 die)').click();await button('Extend telepathy').click();await button('Keep roll of 1').click();
