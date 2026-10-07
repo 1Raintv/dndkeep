@@ -1,5 +1,21 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Saving-throw accuracy, v2.752
+
+Standard saves now compare total against DC, including natural 1/20, per
+SRD 5.2.1 pp.6–7. Character natural-extreme house rules remain unchanged
+and are honored by class abilities, pending saves, concentration, aura,
+Topple and end-of-turn saves. Creature saves use standard rules.
+Telekinetic Propel no longer spends a die because of an invented automatic
+failure. Bonus overrides retain the target's preference; rolling waits for
+bonus loading. Manual pass/fail remains available. Regression tests cover
+Propel costs, conditions that force failure, concentration cleanup and failed
+preference reads without touching a database.
+
+Next: Psion spell-stat visibility, Psionic Reserves initiative recovery,
+remaining source-backed ability audit, then map interaction/presentation.
+
+
 
 ### 2026-10-06 — Psion subclass action eligibility, v2.751
 

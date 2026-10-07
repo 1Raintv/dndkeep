@@ -1,3 +1,4 @@
+import { savingThrowPassed } from '../rules/savingThrows';
 // v2.634.0 — Aura / proximity engine (2024 Emanation rules).
 //
 // RAW basis, verified against the 2024 rules glossary and the 2024
@@ -266,13 +267,13 @@ export async function resolveAuraSave(input: {
   await markUsedThisTurn(input.targetParticipantId, marker);
 
   const { getTargetSaveBonus, rollDiceExpr } = await import('./pendingAttack');
-  const { bonus, breakdown } = await getTargetSaveBonus(
+  const { bonus, breakdown, naturalExtremes } = await getTargetSaveBonus(
     input.targetParticipantId,
     aura.spec.saveAbility,
   );
   const d20 = rollDie(20);
   const total = d20 + bonus;
-  const passed = total >= aura.spec.saveDC;
+  const passed = savingThrowPassed(d20, total, aura.spec.saveDC, { naturalExtremes });
 
   let damage = 0;
   if (aura.spec.damageDice) {

@@ -1,3 +1,4 @@
+import { savingThrowPassed } from '../rules/savingThrows';
 // v2.445.0 — End-of-turn condition processing.
 //
 // Called by advanceTurn(encounterId) on the OUTGOING participant
@@ -82,10 +83,11 @@ export interface ProcessEndOfTurnConditionsResult {
 function rollSimpleSave(
   bonus: number,
   dc: number,
+  naturalExtremes = false,
 ): { d20: number; total: number; passed: boolean } {
   const d20 = rollDie(20);
   const total = d20 + bonus;
-  return { d20, total, passed: total >= dc };
+  return { d20, total, passed: savingThrowPassed(d20, total, dc, { naturalExtremes }) };
 }
 
 export async function processEndOfTurnConditions(
@@ -133,7 +135,7 @@ export async function processEndOfTurnConditions(
 
     const { ability, dc } = src.save_to_end;
     const sb = await getTargetSaveBonus(input.participantId, ability);
-    const { d20, total, passed } = rollSimpleSave(sb.bonus, dc);
+    const { d20, total, passed } = rollSimpleSave(sb.bonus, dc, sb.naturalExtremes);
 
     await emitCombatEvent({
       campaignId: input.campaignId,

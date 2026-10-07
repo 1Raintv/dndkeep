@@ -1,3 +1,5 @@
+import { savingThrowPassed } from '../rules/savingThrows';
+import { getCharacterSaveNaturalExtremes } from './api/characterSaveRules';
 // v2.97.0 — Phase E of the Combat Backbone
 //
 // Pending attack state machine. Every attack routes through this pipeline so
@@ -620,7 +622,7 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
 // because damage still needs to be rolled next. rollDamage reads save_result
 // to determine half / zero / full damage.
 //
-// Nat 20 auto-succeeds, nat 1 auto-fails per 2024 PHB.
+// v2.752 — use the target character's house rule; creatures use standard saves.
 export async function rollSave(
   attackId: string,
   saveBonus: number,
@@ -642,16 +644,20 @@ export async function rollSave(
   let targetConditions: string[] = [];
   let targetBuffs: ActiveBuff[] = [];
   let targetExhaustion = 0;
+  let naturalExtremes = false;
   if (atk.target_participant_id) {
     const { data: tRowRaw } = await (supabase as any)
       .from('combat_participants')
-      .select(', ' + JOINED_COMBATANT_FIELDS)
+      .select('entity_id, participant_type, ' + JOINED_COMBATANT_FIELDS)
       .eq('id', atk.target_participant_id)
       .maybeSingle();
   const tRow = tRowRaw ? normalizeParticipantRow(tRowRaw) : tRowRaw;
     targetConditions = ((tRow?.active_conditions as string[] | null) ?? []);
     targetBuffs = ((tRow?.active_buffs as ActiveBuff[] | null) ?? []);
     targetExhaustion = ((tRow?.exhaustion_level as number | null) ?? 0);
+    if (tRow?.participant_type === 'character' && tRow.entity_id) {
+      naturalExtremes = await getCharacterSaveNaturalExtremes(tRow.entity_id);
+    }
   }
   const ability = atk.save_ability ?? '';
   const autoFail = conditionsAutoFailSave(targetConditions, ability);
@@ -700,11 +706,7 @@ export async function rollSave(
   }
   const dc = atk.save_dc ?? 10;
 
-  let result: 'passed' | 'failed';
-  if (autoFail) result = 'failed';
-  else if (d20 === 20) result = 'passed';
-  else if (d20 === 1) result = 'failed';
-  else result = total >= dc ? 'passed' : 'failed';
+  const result = savingThrowPassed(d20, total, dc, { naturalExtremes, forceFailure: autoFail }) ? 'passed' : 'failed';
 
   // v2.139.0 — Phase M pt 2: Legendary Resistance decision point.
   // When a monster target has LR charges left AND the save failed, flip
@@ -1665,7 +1667,7 @@ export async function getActivePendingAttack(campaignId: string): Promise<Pendin
 export async function getTargetSaveBonus(
   participantId: string,
   ability: string,   // 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA'
-): Promise<{ bonus: number; breakdown: string; confidence?: 'high' | 'low' }> {
+): Promise<{ bonus: number; breakdown: string; confidence?: 'high' | 'low'; naturalExtremes?: boolean }> {
   const { data: part } = await supabase
     .from('combat_participants')
     .select('participant_type, entity_id, campaign_id')
@@ -1719,7 +1721,7 @@ export async function getTargetSaveBonus(
 
   const { data: c } = await supabase
     .from('characters')
-    .select('level, constitution, strength, dexterity, intelligence, wisdom, charisma, saving_throw_proficiencies')
+    .select('level, constitution, strength, dexterity, intelligence, wisdom, charisma, saving_throw_proficiencies, nat_1_20_saves')
     .eq('id', part.entity_id)
     .single();
   if (!c) return { bonus: 0, breakdown: '0 (no character)', confidence: 'low' };
@@ -1747,7 +1749,7 @@ export async function getTargetSaveBonus(
   const breakdown = hasProf
     ? `${mod >= 0 ? '+' : ''}${mod} (${ability}) + ${pb} (prof) = ${bonus >= 0 ? '+' : ''}${bonus}`
     : `${mod >= 0 ? '+' : ''}${mod} (${ability}) = ${bonus >= 0 ? '+' : ''}${bonus}`;
-  return { bonus, breakdown, confidence: 'high' };
+  return { bonus, breakdown, confidence: 'high', naturalExtremes: c.nat_1_20_saves !== false };
 }
 
 // ─── Concentration save on damage ────────────────────────────────
@@ -1777,7 +1779,7 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
 
   const { data: charRow } = await supabase
     .from('characters')
-    .select('id, concentration_spell, constitution, level, saving_throw_proficiencies, automation_overrides, advanced_automations_unlocked')
+    .select('id, concentration_spell, constitution, level, saving_throw_proficiencies, automation_overrides, advanced_automations_unlocked, nat_1_20_saves')
     .eq('id', part.entity_id)
     .single();
   if (!charRow) return;
@@ -1889,6 +1891,7 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
     concentrationSpell,
     dc,
     bonus,
+    naturalExtremes: charRow.nat_1_20_saves !== false,
     resolutionSource: 'player',   // 'auto' is effectively the player accepting by default
     automationSetting,
   });
@@ -1902,6 +1905,7 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
 // concentration + cleans up spell-sourced conditions and buffs.
 
 export interface PerformConcentrationSaveInput {
+  naturalExtremes?: boolean;
   ctx: ConcentrationSaveContext;
   charId: string;
   concentrationSpell: string;
@@ -1918,9 +1922,8 @@ export async function performConcentrationSave(
 
   const d20 = rollDie(20);
   const total = d20 + bonus;
-  const passed = total >= dc || d20 === 20;   // nat 20 always succeeds (RAW)
-  const autoFail = d20 === 1;                 // nat 1 always fails (RAW)
-  const saved = autoFail ? false : passed;
+  const naturalExtremes = input.naturalExtremes ?? await getCharacterSaveNaturalExtremes(charId);
+  const saved = savingThrowPassed(d20, total, dc, { naturalExtremes });
 
   await emitCombatEvent({
     campaignId: ctx.campaignId,
