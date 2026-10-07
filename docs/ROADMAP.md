@@ -1,5 +1,18 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Preserve sheet turn budgets on failed advance, v2.781
+
+End Turn now waits for a successful combat advance before resetting local action,
+bonus action, reaction and movement trackers. Returned failures and rejected
+requests retain those trackers and show a persistent warning to check combat
+before retrying. Repeated clicks are blocked while pending, and a late result
+cannot reset a different or closed character sheet. Independent tabletop resets
+remain available outside the character's active combat turn.
+
+This fixes the sheet's response handling; the existing multi-write combat
+advance itself is not transactional. Shared Psion turn claims remain unfinished.
+
+
 ### 2026-10-07 — Enkindled Life Force roll integration, v2.780
 
 Level-20 primary Psions can add one or two Energy Dice to their roll by spending
