@@ -209,7 +209,12 @@
       // The `refreshing` flag guards against reload loops.
       if ('serviceWorker' in navigator) {
         let refreshing = false;
+        // v2.771 — first installation claims the already-current page.
+        // Reload only when replacing a controller, never on that first claim.
+        let hadController = !!navigator.serviceWorker.controller;
         navigator.serviceWorker.addEventListener('controllerchange', () => {
+          if (!navigator.serviceWorker.controller) return;
+          if (!hadController) { hadController = true; return; }
           if (refreshing) return;
           refreshing = true;
           window.location.reload();
