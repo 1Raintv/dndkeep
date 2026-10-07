@@ -1,3 +1,4 @@
+import { TELEKINETIC_PROPEL_TEXT } from './psionFeatureDescriptions';
 /**
  * Class features for all 12 classes, levels 1-20 (2024 PHB)
  * Each entry: level gained, name, short description
@@ -340,7 +341,7 @@ export const CLASS_FEATURES: Record<string, ClassFeature[]> = {
   // ─── PSION (Unearthed Arcana 2025) ────────────────────────────────────────
   Psion: [
     { level: 1,  name: 'Spellcasting', description: 'Full INT-based spellcaster. Psionic Spellcasting: Psion spells require no Verbal or Material components (except material components consumed by the spell or with a specified GP cost). Somatic components are still required. Start with 2 cantrips and 4 prepared level-1 spells from the Psion list.' },
-    { level: 1,  name: 'Psionic Power', description: 'Gain Psionic Energy Dice (4d6 at level 1, scaling up to 12d12 at level 17). Spend dice to power Telekinetic Propel (Bonus Action: push/pull a creature 5 ft, or spend a die to move them die × 5 ft) and Telepathic Connection (Bonus Action: establish telepathy within 30 ft; spend a die to extend range by die × 10 ft for 1 hr). Regain all dice on Long Rest; regain 1 die per Short Rest.' },
+    { level: 1,  name: 'Psionic Power', description: `Gain Psionic Energy Dice (4d6 at level 1, scaling up to 12d12 at level 17). Regain all dice on a Long Rest; regain 1 die on a Short Rest.\n\nTelekinetic Propel. ${TELEKINETIC_PROPEL_TEXT}\n\nTelepathic Connection. Your base telepathy is always available within 30 feet. As a Bonus Action, roll a Psionic Energy Die to extend the range by 10 times the roll in feet for 1 hour. The first extension after each Long Rest does not expend the die; later extensions expend it.` },
     { level: 1,  name: 'Subtle Telekinesis', description: 'You always know the Mage Hand cantrip. Your Mage Hand is invisible and requires no somatic components to cast or control.' },
     { level: 2,  name: 'Psionic Disciplines', description: 'Choose 2 Psionic Disciplines that grant passive or active benefits. Options include: Biofeedback, Bolstering Precognition, Destructive Thoughts, Devilish Tongue, Expanded Awareness, Id Insinuation, Inerrant Aim, Observant Mind, Psionic Backlash, Psionic Guards, Sharpened Mind. Gain one more at levels 5, 10, 13, and 17.', isChoice: true } as any,
     { level: 3,  name: 'Psionic Archetype', description: 'Choose your Psionic Archetype: Metamorph (biological reshaping), Psi Warper (space-time distortion), Psykinetic (force and telekinesis), or Telepath (minds and emotions). Grants features at levels 3, 6, 10, and 14.', isSubclassFeature: true },

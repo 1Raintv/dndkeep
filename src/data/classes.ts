@@ -1,3 +1,4 @@
+import { WARP_PROPEL_TEXT } from './psionFeatureDescriptions';
 import type { ClassData } from '../types';
 import { SPELL_MAP } from './spells';
 
@@ -793,7 +794,7 @@ export const CLASSES: ClassData[] = [
         features: [
           { level: 3, name: 'Psi Warper Spells', description: "Always have Expeditious Retreat, Feather Fall, Misty Step, Shatter prepared. More spells at 5, 7, 9.", isChoice: false },
           { level: 3, name: 'Teleportation', description: "Cast Misty Step without expending a spell slot once per Long Rest. Restore this use by expending 1 Psionic Energy Die (no action required).", isChoice: false },
-          { level: 3, name: 'Warp Propel', description: "When a target fails the saving throw against Telekinetic Propel, you can teleport it to an unoccupied space within 30 ft instead of pushing it.", isChoice: false },
+          { level: 3, name: 'Warp Propel', description: WARP_PROPEL_TEXT, isChoice: false },
           { level: 6, name: 'Warp Space', description: "Cast Shatter and spend 1 Psionic Energy Die to expand radius to 20 ft — creatures that fail are pulled toward the center.", isChoice: false },
           { level: 6, name: 'Teleporter Combat', description: "After casting Misty Step, immediately cast a Psion cantrip (action casting time) as part of the same Bonus Action.", isChoice: false },
           { level: 10, name: 'Duplicitous Target', description: "Reaction: when a creature attacks you, spend 1 Psionic Energy Die to swap places with a willing ally within 30 ft — the attack hits them instead.", isChoice: false },
