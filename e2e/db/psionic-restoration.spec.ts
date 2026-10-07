@@ -46,7 +46,7 @@ test.describe('Psionic Restoration (local stack)', () => {
     await expect.poll(()=>sql(`select feature_uses->>'Telepathic Connection' from characters where id='${charId}'`)).toBe('1');
     expect(dice()).toBe('1');await page.reload();await expect(button('Extend (1 die)')).toBeEnabled();
     await button('Extend (1 die)').click();await button('Extend telepathy').click();await expect.poll(dice).toBe('0');
-    await expect(button('Powered (1 die)')).toBeDisabled();await expect(button('Extend (1 die)')).toBeDisabled();await expect(button('Free 5 ft')).toBeEnabled();
+    await expect(button('Powered (1 die)')).toBeDisabled();await expect(button('Extend (1 die)')).toBeDisabled();await expect(button('Spend Die (1d8)')).toBeDisabled();await expect(button('Free 5 ft')).toBeEnabled();
     await button('Free 5 ft').scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('psion-powers.png')});
     await page.getByRole('button',{name:/^Rest$/}).locator('visible=true').first().click();await page.getByTitle('End short rest',{exact:true}).click();
     await expect.poll(dice).toBe('1');await expect(button('Extend (1 die)')).toBeEnabled();
@@ -88,6 +88,27 @@ test.describe('Psionic Restoration (local stack)', () => {
     sql(`update characters set class_resources=class_resources || '{"psionic-energy-dice":5}'::jsonb where id='${charId}'`);
     await page.reload();if(view==='Features') await page.locator('button.tab').filter({hasText:/^Features$/}).click();await expect(meditate()).toBeEnabled();
     expect(errors).toEqual([]);
+  });
+
+  test('malformed saved dice cannot be spent and a Long Rest restores valid availability',async({page},info)=>{
+    sql(`update characters set class_resources=class_resources || '{"psionic-energy-dice":1.5}'::jsonb where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    const button=(name:string)=>page.getByRole('button',{name,exact:true}).locator('visible=true').first();
+    const warning=button('Check Psionic Energy Dice');
+    await expect(warning).toBeDisabled({timeout:20_000});
+    for(const label of ['Powered (1 die)','Extend (free)','Roll bonus','Free 5 ft','Spend Die (1d8)'])await expect(button(label)).toBeDisabled();
+    expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('1.5');
+    await warning.evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));
+    await page.screenshot({path:info.outputPath('invalid-psionic-pool.png')});
+    await page.getByRole('button',{name:/^Rest$/}).locator('visible=true').first().click();
+    await button('Take Long Rest').click();
+    await expect.poll(()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('6');
+    await expect(button('Powered (1 die)')).toBeEnabled();await expect(button('Extend (free)')).toBeEnabled();
+    await button('Spend Die (1d8)').click();
+    await expect.poll(()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('5');
+    await button('Spend Die (1d8)').click();
+    await expect.poll(()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('4');
+    await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and notes like '%4 dice remaining'`)).toBe('1');
   });
 
 });

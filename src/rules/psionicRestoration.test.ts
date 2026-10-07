@@ -1,5 +1,5 @@
 import {describe,expect,it} from 'vitest';
-import {psionicDieCount,psionicRestorationStatus,restorePsionicDice} from './psionicRestoration';
+import {psionicDieCount,psionicDieSides,psionicPoolRemaining,psionicRestorationStatus,restorePsionicDice} from './psionicRestoration';
 const character={class_name:'Psion',level:5,class_resources:{'psionic-energy-dice':2,'psion-disciplines':['test'],'other':3},feature_uses:{Other:2}};
 describe('Psionic Restoration',()=>{
   it.each([[5,6],[8,6],[9,8],[12,8],[13,10],[16,10],[17,12],[20,12]])('refills level %s to %s dice',(level,max)=>{
@@ -26,4 +26,27 @@ describe('Psionic Restoration',()=>{
     expect(restorePsionicDice({...character,...used,class_resources:{...used.class_resources,'psionic-energy-dice':3}})).toBeNull();
     expect(restorePsionicDice({...character,feature_uses:{},class_resources:{'psionic-restoration':1,'psionic-energy-dice':0}})).not.toBeNull();
   });
+});
+
+// Every row of the owner-provided UA Energy Dice table, not inferred tiers.
+it.each([
+ [1,4,6],[2,4,6],[3,4,6],[4,4,6],[5,6,8],[6,6,8],[7,6,8],[8,6,8],
+ [9,8,8],[10,8,8],[11,8,10],[12,8,10],[13,10,10],[14,10,10],[15,10,10],[16,10,10],
+ [17,12,12],[18,12,12],[19,12,12],[20,12,12],
+])('level %i has %i Energy Dice of d%i', (level,count,sides)=>{
+ expect(psionicDieCount(level)).toBe(count);expect(psionicDieSides(level)).toBe(sides);
+ expect(psionicPoolRemaining(level,undefined)).toBe(count);
+ expect(psionicPoolRemaining(level,count)).toBe(count);
+ expect(psionicPoolRemaining(level,count+1)).toBeNull();
+});
+it.each([NaN,Infinity,-1,1.5,'2',null,7])('does not restore a malformed level-five pool (%s)',pool=>{
+ const invalid={...character,class_resources:{'psionic-energy-dice':pool}};
+ expect(psionicPoolRemaining(5,pool)).toBeNull();
+ expect(restorePsionicDice(invalid)).toBeNull();
+ expect(psionicRestorationStatus(invalid).reason).toBe('Check Psionic Energy Dice');
+ expect(psionicRestorationStatus(invalid).recovered).toBe(0);
+});
+it.each([NaN,Infinity,0,-1,5.5,21])('rejects invalid Psion level %s',level=>{
+ expect(psionicPoolRemaining(level,2)).toBeNull();
+ expect(restorePsionicDice({...character,level})).toBeNull();
 });

@@ -6,6 +6,14 @@ export function psionicDieSides(level:number):number {
 export function psionicDieCount(level:number):number {
   return level>=17?12:level>=13?10:level>=9?8:level>=5?6:4;
 }
+/** v2.764 — missing legacy pools start full; malformed saved pools must not
+ * become free dice or be silently rewritten by a power resolution. */
+export function psionicPoolRemaining(level:number,pool:unknown):number|null {
+  if(!Number.isInteger(level)||level<1||level>20)return null;
+  const maximum=psionicDieCount(level);
+  if(pool===undefined)return maximum;
+  return typeof pool==='number'&&Number.isInteger(pool)&&pool>=0&&pool<=maximum?pool:null;
+}
 export interface PsionicRestorationState {
   class_name:string;
   level:number;
@@ -16,10 +24,11 @@ export function psionicRestorationStatus(character:PsionicRestorationState) {
   const resources=character.class_resources??{};
   const maximum=psionicDieCount(character.level);
   const raw=resources['psionic-energy-dice'];
-  const remaining=typeof raw==='number' && Number.isFinite(raw)?Math.max(0,Math.min(maximum,Math.floor(raw))):maximum;
+  const pool=psionicPoolRemaining(character.level,raw);
+  const remaining=pool??0;
   const used=(character.feature_uses?.['Psionic Restoration']??0)>0 || resources['psionic-restoration']===0;
-  const reason=character.class_name!=='Psion'||character.level<5?'Requires Psion level 5':used?'Used · Long Rest':remaining===maximum?'Dice full':null;
-  return {maximum,remaining,recovered:maximum-remaining,used,reason};
+  const reason=character.class_name!=='Psion'||!Number.isInteger(character.level)||character.level<5||character.level>20?'Requires Psion level 5':pool===null?'Check Psionic Energy Dice':used?'Used · Long Rest':remaining===maximum?'Dice full':null;
+  return {maximum,remaining,recovered:pool===null?0:maximum-remaining,used,reason};
 }
 export function restorePsionicDice(character:PsionicRestorationState) {
   const status=psionicRestorationStatus(character);

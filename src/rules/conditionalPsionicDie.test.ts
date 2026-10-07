@@ -16,3 +16,8 @@ it('rejects invalid rolls and unavailable level',()=>{
  for(const roll of [0,-1,1.5,NaN])expect(conditionalPsionicDie(5,3,roll,true)).toBeNull();
  expect(conditionalPsionicDie(1,4,1,true)).toBeNull();
 });
+
+it('rejects overfull pools and invalid class levels',()=>{
+ expect(conditionalPsionicDie(5,7,2,true)).toBeNull();
+ for(const level of [NaN,Infinity,0,-1,5.5,21])expect(conditionalPsionicDie(level,2,2,true)).toBeNull();
+});
