@@ -1,3 +1,4 @@
+import { TELEKINETIC_PROPEL_SUMMARY } from './psionFeatureDescriptions';
 /**
  * Level progression milestones for all 12 classes — 2024 PHB.
  * Used by the character creator to show what a character gains at each level.
@@ -364,7 +365,9 @@ export const CLASS_LEVEL_PROGRESSION: Record<string, LevelMilestone[]> = {
   Psion: [
     { level: 1,  features: [
         'Spellcasting (INT, no V/M components, prepared — start with 2 cantrips + 4 spells)',
-        'Psionic Power: 4d6 Psionic Energy Dice — Telekinetic Propel (BA: push/pull creature 5 ft or roll die × 5 ft) + Telepathic Connection (BA: telepathy 30 ft, roll die to extend range by die × 10 ft for 1 hr)',
+        'Psionic Power: 4d6 Psionic Energy Dice; regain 1 on a Short Rest, all on a Long Rest.',
+        `Telekinetic Propel: ${TELEKINETIC_PROPEL_SUMMARY}`,
+        'Telepathic Connection: always-on telepathy within 30 ft. Bonus Action: roll a Psionic Energy Die to extend range by die × 10 ft for 1 hour. First extension per Long Rest does not expend the die; later extensions do.',
         'Subtle Telekinesis: Mage Hand cantrip (invisible, no somatic components)',
       ] },
     // v2.659.0 — the once-per-turn limit was never recorded anywhere,

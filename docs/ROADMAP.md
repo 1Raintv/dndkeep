@@ -1,6 +1,25 @@
 # DNDKeep — Two-Track Roadmap
 
 
+### 2026-10-06 — Psion Propel reference correction, v2.750
+
+Owner-supplied Warp Propel text fixes the destination origin (within 30 ft of
+YOU, horizontal to you, visible and unoccupied), removes the invented prone
+rider and unsupported Mass Teleportation cross-reference. Actions and subclass
+Features now share one complete reference. Expanded Warp Propel includes the
+full prerequisite Telekinetic Propel rule: target restrictions, STR save,
+straight movement, optional die roll and expenditure only on a failed save.
+Base Features and creation milestones share the same text; corrected their
+old implication that base telepathy requires a Bonus Action.
+
+This is a text correction, not automated teleport placement. Private Psion
+access is unchanged; these owner-provided UA rules are not SRD-licensed.
+Remaining: audit other independently abbreviated Psion descriptions against
+v1 plus the v2 patch, and the previously queued subclass action visibility
+and Warp Propel resolution/placement work.
+
+
+
 ### 2026-10-06 — Audited spell details, v2.749
 
 Fifteen complete SRD 5.2.1 entries now override stale canonical database text

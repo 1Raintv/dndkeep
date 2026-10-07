@@ -1,3 +1,4 @@
+import { TELEKINETIC_PROPEL_TEXT, TELEKINETIC_PROPEL_SUMMARY, WARP_PROPEL_TEXT, WARP_PROPEL_SUMMARY } from './psionFeatureDescriptions';
 import type {PsionicPowerUse} from '../rules/psionicPowers';
 import { abilityModifier } from '../rules/abilities';
 import type { Character } from '../types';
@@ -1363,8 +1364,8 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     // v2.748 — UA v2 p.3: free and powered choices settle explicitly.
     {
       name: 'Telekinetic Propel', actionType: 'bonus', minLevel: 1, range: '30 ft',
-      description: 'One Large or smaller creature: STR save or move 5 ft toward/away. Roll a PED for die × 5 ft; spend it only on a failed save.',
-      descriptionLong: 'Choose one Large or smaller creature other than yourself that you can see within 30 ft. Both versions require a Strength saving throw. On failure, move the target straight toward or away from you: 5 ft for free, or 5 times a Psionic Energy Die roll. The powered die is spent only if the target fails. Psykinetics level 3+ can use a free d4 instead. Apply movement on the map after resolving the save.',
+      description: TELEKINETIC_PROPEL_SUMMARY,
+      descriptionLong: `${TELEKINETIC_PROPEL_TEXT}\n\nPsykinetic level 3+: your Telekinetic Techniques feature also offers a free d4. Apply movement on the map after resolving the save.`,
       save: { ability: 'STR', dc: 'spell', targetMode: 'any' },
     },
     {
@@ -1404,8 +1405,8 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Warp Propel',
       actionType: 'special',
-      description: 'When a target fails the save vs Telekinetic Propel, teleport it to an unoccupied space within 30 ft instead of pushing.',
-      descriptionLong: 'Modifies your Telekinetic Propel feature. When a target fails the saving throw against Telekinetic Propel, you can choose to teleport the target to an unoccupied space you can see within 30 ft of where it was, instead of pushing it. The teleported target lands prone.\n\nCombines with Mass Teleportation at level 14.',
+      description: WARP_PROPEL_SUMMARY,
+      descriptionLong: `${WARP_PROPEL_TEXT}\n\nTelekinetic Propel\n${TELEKINETIC_PROPEL_TEXT}`,
       minLevel: 3,
       range: '30 ft',
     },
