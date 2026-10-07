@@ -1,0 +1,67 @@
+import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { expect, test } from '@playwright/test';
+import { gateDbSuite, signInAsSeedDm } from './helpers';
+
+const sql = (q: string): string => execFileSync('docker', ['exec', '-i', 'supabase_db_dndkeep', 'psql', '-U', 'postgres', '-d', 'postgres', '-t', '-A', '-v', 'ON_ERROR_STOP=1'], { input: q, encoding: 'utf8' }).trim();
+
+test.describe('Psionic Restoration (local stack)', () => {
+  gateDbSuite();
+  let charId: string;
+  let userId: string;
+  let email: string;
+  test.beforeEach(() => {
+    charId = randomUUID(); userId = randomUUID();
+    email = 'psion-' + userId + '@dndkeep.local';
+    // v2.747: own disposable account, so shared seed users' slot limits and
+    // parallel suites cannot affect this fixture. Never alter their characters.
+    sql(`begin;
+      insert into auth.users (instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at,confirmation_token,recovery_token,email_change,email_change_token_new)
+      values ('00000000-0000-0000-0000-000000000000','${userId}','authenticated','authenticated','${email}',extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),now(),'{"provider":"email","providers":["email"]}','{"display_name":"Psion Fixture"}',now(),now(),'','','','');
+      insert into auth.identities (id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at)
+      values (gen_random_uuid(),'${userId}','${userId}','{"sub":"${userId}","email":"${email}"}','email',now(),now(),now());
+      update profiles set show_ua_content=true where id='${userId}';
+      insert into characters (id,user_id,name,species,class_name,background,subclass,level,class_resources)
+      values ('${charId}','${userId}','Restoration Fixture','Human','Psion','Sage','Telepath',5,'{"psion-disciplines":["Biofeedback","Psionic Guards","Inerrant Aim"],"psionic-energy-dice":2}');
+      commit;`);
+  });
+  test.afterEach(() => {
+    if (userId) sql(`delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
+  });
+
+  test('Psionic Restoration refills dice, persists and refreshes only after a Long Rest',async({page},info)=>{
+    const errors: string[] = [];
+    page.on('pageerror', error => errors.push(error.message));
+    page.on('response', response => { if(response.status() >= 400) errors.push(`${response.status()} ${response.url()}`); });
+    sql(`update characters set class_resources = class_resources || '{"psionic-energy-dice":2}'::jsonb, feature_uses='{}'::jsonb where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    const meditate=()=>page.getByRole('button',{name:'Meditate (1 min)',exact:true}).locator('visible=true').first();
+    await expect(meditate()).toBeVisible({timeout:20_000});
+    await meditate().scrollIntoViewIfNeeded();
+    await page.screenshot({path:info.outputPath('restoration-action.png')});
+    await meditate().click();
+    await expect(page.getByRole('dialog',{name:'Psionic Restoration'})).toBeVisible();
+    await page.screenshot({path:info.outputPath('psionic-restoration.png')});
+    await page.getByRole('button',{name:'Complete meditation',exact:true}).click();
+    await expect(page.getByRole('button',{name:'Used · Long Rest',exact:true}).locator('visible=true').first()).toBeDisabled();
+    await expect.poll(()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('6');
+    await expect.poll(()=>sql(`select feature_uses->>'Psionic Restoration' from characters where id='${charId}'`)).toBe('1');
+    await page.reload();
+    await expect(page.getByRole('button',{name:'Used · Long Rest',exact:true}).locator('visible=true').first()).toBeDisabled();
+    // Spend again, then exercise real rest handlers rather than resetting trackers by hand.
+    sql(`update characters set class_resources=class_resources || '{"psionic-energy-dice":2}'::jsonb where id='${charId}'`);
+    await page.reload();
+    await page.getByRole('button',{name:/^Rest$/}).locator('visible=true').first().click();
+    await page.getByTitle('End short rest', {exact:true}).click();
+    await expect.poll(()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('3');
+    await expect(page.getByRole('button',{name:'Used · Long Rest',exact:true}).locator('visible=true').first()).toBeDisabled();
+    await page.getByRole('button',{name:/^Rest$/}).locator('visible=true').first().click();
+    await page.getByRole('button',{name:'Take Long Rest',exact:true}).click();
+    await expect.poll(()=>sql(`select class_resources->>'psionic-restoration' from characters where id='${charId}'`)).toBe('1');
+    await expect(page.getByRole('button',{name:'Dice full',exact:true}).locator('visible=true').first()).toBeDisabled();
+    sql(`update characters set class_resources=class_resources || '{"psionic-energy-dice":5}'::jsonb where id='${charId}'`);
+    await page.reload();await expect(meditate()).toBeEnabled();
+    expect(errors).toEqual([]);
+  });
+
+});
