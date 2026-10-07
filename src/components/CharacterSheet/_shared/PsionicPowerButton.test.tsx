@@ -4,7 +4,7 @@ import {afterEach,expect,it,vi} from 'vitest';
 import PsionicPowerButton from './PsionicPowerButton';
 import {ModalProvider} from '../../shared/Modal';
 import type {Character} from '../../../types';
-const mocks=vi.hoisted(()=>({roll:4,log:vi.fn().mockResolvedValue(undefined),toast:vi.fn()}));
+const mocks=vi.hoisted(()=>({roll:4,log:vi.fn().mockResolvedValue(undefined).mockResolvedValue(undefined),toast:vi.fn()}));
 vi.mock('../../../rules/dice',()=>({rollDie:()=>mocks.roll}));
 vi.mock('../../shared/ActionLog',()=>({logAction:mocks.log}));
 vi.mock('../../shared/Toast',()=>({useToast:()=>({showToast:mocks.toast})}));

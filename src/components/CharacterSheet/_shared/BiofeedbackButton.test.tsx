@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-const mocks=vi.hoisted(()=>({roll:2,log:vi.fn(),toast:vi.fn()}));
+const mocks=vi.hoisted(()=>({roll:2,log:vi.fn().mockResolvedValue(undefined),toast:vi.fn()}));
 vi.mock('../../../rules/dice',()=>({rollDie:()=>mocks.roll}));
 vi.mock('../../../lib/gameUtils',()=>({computeStats:(c:{intelligence:number})=>({modifiers:{intelligence:Math.floor((c.intelligence-10)/2)}})}));
 vi.mock('../../shared/ActionLog',()=>({logAction:mocks.log}));

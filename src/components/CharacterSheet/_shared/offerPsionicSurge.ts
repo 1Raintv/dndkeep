@@ -26,8 +26,9 @@ export async function offerPsionicSurge(options:{
  const character=current(),surge=psionicSurge(character,rolls);
  if(!surge||!options.eligible(character)) {options.warn('Resources changed. Psionic Surge was not applied.');return null;}
  options.update({hit_dice_spent:surge.hit_dice_spent});
- await logAction({campaignId:options.campaignId??null,characterId:character.id,characterName:character.name,
+ // v2.773 — history delivery must not delay a paid ability result.
+ void logAction({campaignId:options.campaignId??null,characterId:character.id,characterName:character.name,
   actionType:'roll',actionName:'Psionic Surge',total:surge.total,individualResults:[...rolls],
-  notes:`${feature}: ${rolls.join(", ")} treated as ${surge.rolls.join(", ")}; spent 1 Hit Point Die. No healing or Energy Die expenditure.`});
+  notes:`${feature}: ${rolls.join(", ")} treated as ${surge.rolls.join(", ")}; spent 1 Hit Point Die. No healing or Energy Die expenditure.`}).catch(() => { options.warn('Psionic Surge applied, but its action log could not be saved.'); });
  return active()&&current().id===id?{roll:surge.rolls[0],rolls:surge.rolls,usedSurge:true}:null;
 }
