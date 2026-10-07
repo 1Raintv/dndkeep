@@ -28,6 +28,12 @@ saved roll; stale/legacy offers retire without touching current effects. Ten
 real database scenarios cover racing owner/DM clients, multiple offers, same-spell
 recasts, unrelated effects, natural-extreme preferences, authorization and full
 rollback when history fails. These migrations are local only.
+The local API recovery layer now saves a proposed d20 before network I/O,
+reuses it across failures/reloads, shares in-flight requests within a tab and
+accepts another client's authoritative receipt. Twelve isolated unit tests cover
+lost responses, malformed receipts/storage, denied access and storage failure.
+It is intentionally not wired yet: both prompt and automatic creation must
+capture casting revisions before replacing the existing resolver.
 Next: capture the revision when damage occurs; connect automatic/prompt paths to
 the transaction, preserve the proposed roll across unknown responses, and verify
 the real recovery UI before shipping. The current frontend still uses its old
