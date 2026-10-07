@@ -163,7 +163,8 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // `cost` argument forwarded into finalizeUse so the existing
  // tracker-deduction path runs identically after the modal confirms.
  const [manualPropel,setManualPropel]=useState<ClassAbility|null>(null);
- const settlingPower=useRef(false);
+ // v2.765 — deduplicate the same resolution, not unrelated powers while logs save.
+ const settledPowerUses=useRef(new WeakSet<PsionicPowerUse>());
  const livePowerCharacter=useRef(character);livePowerCharacter.current=character;
  const [resolveModal, setResolveModal] = useState<{
  ability: ClassAbility; saveDC: number; cost?: number;
@@ -257,20 +258,18 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  if (!canUseClassAbility(ability, character)) return;
  // v2.748: one resource patch after a resolved save; free powers never hit generic PED deduction.
  if(ability.psionicUse){
-   if(settlingPower.current)return;
    const use=ability.psionicUse;
+   if(settledPowerUses.current.has(use))return;
    if(use.kind==='propel'&&(outcomes.length!==1||outcomes[0].outcome==='pending'))return;
    const result=resolvePsionicPower(livePowerCharacter.current,use,use.kind==='propel'?outcomes[0].outcome!=='passed':undefined);
    if(!result){showToast('Resources changed. Choose the power again.','warn');return;}
-   settlingPower.current=true;
-   try {
+   settledPowerUses.current.add(use);
      livePowerCharacter.current={...livePowerCharacter.current,...result.patch} as Character;
      onUpdate(result.patch as Partial<Character>);
      showToast(result.notes,'success');
      await logAction({campaignId:campaignId??null,characterId:character.id,characterName:character.name,
-       actionType:'roll',actionName:ability.name,total:use.roll,individualResults:use.roll?[use.roll]:undefined,
+       actionType:'roll',actionName:ability.name,total:use.roll,individualResults:use.roll?[use.originalRoll??use.roll]:undefined,
        targetName:outcomes[0]?.participantName,notes:result.notes});
-   }finally{settlingPower.current=false;}
    return;
  }
  // v2.189.0 — Phase Q.0 pt 30: explicit Psionic Energy Die cost gate.
@@ -809,7 +808,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  const target = e.target as HTMLElement;
  if (target.closest('button')) e.stopPropagation();
  }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'nowrap' as const, alignItems: 'center', width: '100%' }}>
- {conditionalDiscipline?.conditionalOutcome ? <ConditionalPsionicButton character={character} discipline={conditionalDiscipline} onUpdate={onUpdate} campaignId={campaignId}/> : (ability.name==='Telekinetic Propel'||ability.name==='Telepathic Connection') ? <PsionicPowerButton character={character} kind={ability.name==='Telekinetic Propel'?'propel':'connection'} onUse={async(use:PsionicPowerUse)=>{await handleUseAbility({...ability,psionicUse:use});}}/> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton character={character} onUpdate={onUpdate}/> : ability.actionType !== 'free' && (
+ {conditionalDiscipline?.conditionalOutcome ? <ConditionalPsionicButton character={character} discipline={conditionalDiscipline} onUpdate={onUpdate} campaignId={campaignId}/> : (ability.name==='Telekinetic Propel'||ability.name==='Telepathic Connection') ? <PsionicPowerButton character={character} onUpdate={onUpdate} kind={ability.name==='Telekinetic Propel'?'propel':'connection'} onUse={async(use:PsionicPowerUse)=>{await handleUseAbility({...ability,psionicUse:use});}}/> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton character={character} onUpdate={onUpdate}/> : ability.actionType !== 'free' && (
  <button
  onClick={() => handleUseAbility(ability, maxUses !== undefined ? 1 : undefined)}
  disabled={isPedPoolRow && (psionicPoolRemaining(character.level,character.class_resources?.['psionic-energy-dice'])??0)<1}

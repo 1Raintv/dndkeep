@@ -10,7 +10,7 @@ export default function ManualPropelResolution({use,dc,onResolve,onClose}:{use:E
  return <ModalPortal><div className="modal-overlay" onClick={onClose}><div className="modal" ref={dialog} role="dialog" aria-modal="true" aria-label="Telekinetic Propel" style={{width:440,maxWidth:'calc(100vw - 32px)',padding:20}} onClick={e=>e.stopPropagation()}>
  <h3>Telekinetic Propel</h3>
  <p>Choose one Large or smaller creature other than yourself that you can see within 30 ft. Resolve its DC {dc} Strength save at the table.</p>
- <p>{use.mode==='free'?'Free push/pull: 5 ft.':`Rolled ${use.roll}: ${use.roll*5} ft on a failed save.`} Movement is straight toward or away from you.</p>
+ <p>{use.mode==='free'?'Free push/pull: 5 ft.':`${use.surged?`Psionic Surge treats ${use.originalRoll} as ${use.roll}`:`Rolled ${use.roll}`}: ${use.roll*5} ft on a failed save.`} Movement is straight toward or away from you.</p>
  <p>{use.mode==='powered'?'Spend 1 die only if the target fails.':'No die spent.'} Apply the movement on the map.</p>
  <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
  <button className="btn-ghost" onClick={onClose}>Cancel</button>

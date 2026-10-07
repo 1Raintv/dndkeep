@@ -1,5 +1,27 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Psionic Surge on base powers, v2.765
+
+Powered Telekinetic Propel and Telepathic Connection now offer Surge after a low
+Energy Die roll at Psion 7+. They share the existing conditional Discipline
+confirmation/cost flow through one helper. The Hit Point Die is spent immediately;
+passing the later STR save or cancelling target resolution does not refund it.
+Propel still spends its Energy Die only on a failed save, and Connection retains
+its first-free extension. Original rolls remain in history, with the adjusted
+result and distance explained. Resolution deduplication is per power use: a slow
+history insert no longer silently discards the next independent power. Character
+live updates now compare against a synchronously advanced snapshot and preserve
+queued local fields, preventing rapid echoes from leaving the sheet on stale
+resource values even when the database saved correctly. Free Psykinetic d4 and fixed 5-ft Propel do not
+qualify as Energy Die rolls. No automatic map movement is introduced.
+
+Validation: unit coverage for cost separation, declining Surge, concurrent pool
+changes and free-d4 exclusion; desktop/mobile local checks for save success,
+first-free/paid Connection, cancellation, reload and the level-six Telepath base
+range. Existing conditional Discipline/Surge regression remains covered. The
+TypeScript baseline drops from 212 to 211; 1,239 unit tests pass.
+
+
 ### 2026-10-07 — Consistent Psion resource validation, v2.764
 
 Restoration, base powers, direct spending and conditional Discipline bonuses share a pool

@@ -1,3 +1,4 @@
+import {reconcileCharacterUpdate} from '../../lib/characterRealtime';
 import { attacksPerAction } from '../../rules/extraAttack';
 import PsionCastingNote from './_shared/PsionCastingNote';
 import { useState, useCallback, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
@@ -292,7 +293,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // ── Sync external HP/condition changes (e.g. from BattleMap) ──────
  // Uses a ref to avoid stale closure — always reads current character value
  const characterRef = useRef(character);
- useEffect(() => { characterRef.current = character; });
+ characterRef.current = character;
 
  // Auto-add AND auto-prepare subclass always-prepared spells + class granted spells
  useEffect(() => {
@@ -375,32 +376,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }, payload => {
  const updated = payload.new as Record<string, unknown>;
  if (!updated) return;
- // v2.169.0 — Phase Q.0 pt 10: added inspiration + several resource
- // fields to the realtime-syncable allowlist. Previously these were
- // excluded, so DM-side updates like "Give Inspiration" or awarding
- // XP silently landed in the DB but never surfaced on the character
- // sheet until the player reloaded. This caused the inspiration
- // button to appear broken — it was a client-sync gap, not a write
- // failure.
- const externalFields = [
- 'current_hp', 'temp_hp', 'active_conditions', 'concentration_spell',
- 'concentration_rounds_remaining',
- 'spell_slots', 'death_saves_successes', 'death_saves_failures',
- // v2.169.0:
- 'inspiration',
- 'hit_dice_spent', 'class_resources', 'feature_uses',
- 'currency', 'inventory', 'experience_points',
- ] as const;
- const patch: Partial<Character> = {};
- const current = characterRef.current as Record<string, unknown>;
- for (const field of externalFields) {
- const newVal = updated[field];
- const curVal = current[field];
- // Apply if value actually changed (deep compare for arrays/objects)
- if (newVal !== undefined && JSON.stringify(newVal) !== JSON.stringify(curVal)) {
- (patch as Record<string, unknown>)[field] = newVal;
- }
- }
+ // v2.765 — compare against the last accepted event, not a stale React render.
+ const {previous,patch}=reconcileCharacterUpdate(characterRef,updated,saveQueue.getPending());
+ const current=previous as unknown as Record<string,unknown>;
  if (Object.keys(patch).length > 0) {
  // v2.47.0: Detect external concentration clear (DM-driven round tick,
  // BattleMap damage auto-drop, etc.). If the realtime patch clears
@@ -595,6 +573,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
     const events = describeCharacterChanges(character, partial, character.id, userId ?? '');
     if (events.length) logHistoryEvents(events);
   } catch { /* logging must never break the update path */ }
+  characterRef.current={...characterRef.current,...partial};
   setCharacter(prev => ({ ...prev, ...partial }));
   saveQueue.enqueue(partial);
   if (immediate) flushToSupabase();

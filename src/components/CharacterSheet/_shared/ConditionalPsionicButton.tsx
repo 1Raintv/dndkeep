@@ -1,3 +1,4 @@
+import {offerPsionicSurge} from './offerPsionicSurge';
 import {useEffect,useRef,useState} from 'react';
 import type {Character} from '../../../types';
 import type {PsionDiscipline} from '../../../data/psionDisciplines';
@@ -23,25 +24,17 @@ export default function ConditionalPsionicButton({character,discipline,onUpdate,
    const originalRoll=rollDie(state.sides);
    let roll=originalRoll,usedSurge=false;
    if(psionicSurge(latest.current,[roll])) {
-    const useSurge=await modal.confirm({title:'Psionic Surge',
-     message:`${discipline.name}: rolled ${roll} on 1d${state.sides}. Spend 1 Hit Point Die to treat this roll as 4? This does not heal you. The Hit Point Die is spent even if the bonus does not change the outcome; the Psionic Energy Die still follows the discipline's normal cost.`,
-     confirmLabel:'Spend 1 Hit Point Die',cancelLabel:`Keep roll of ${roll}`});
-    if(!mounted.current||latest.current.id!==id)return;
-    if(useSurge) {
-     const current=latest.current;
-     const chosen=(current.class_resources as Record<string,unknown>|null)?.['psion-disciplines'];
-     const surge=psionicSurge(current,[originalRoll]);
-     if(!surge||!Array.isArray(chosen)||!hasDiscipline(chosen.filter((v):v is string=>typeof v==='string'),discipline)||!conditionalPsionicDie(current.level,current.class_resources?.['psionic-energy-dice'],originalRoll,false)) {
-      showToast('Resources changed. Psionic Surge was not applied.','warn');return;
-     }
-     // Spend at the Surge decision, not at the later conditional-outcome decision.
-     // Keeping the Energy Die must never refund an already-used Hit Point Die.
-     const patch={hit_dice_spent:surge.hit_dice_spent};
-     latest.current={...current,...patch};update.current(patch);
-     roll=surge.rolls[0];usedSurge=true;
-     await logAction({campaignId:campaignId??null,characterId:current.id,characterName:current.name,actionType:'roll',actionName:'Psionic Surge',total:roll,individualResults:[originalRoll],notes:`${discipline.name}: ${originalRoll} treated as ${roll}; spent 1 Hit Point Die. No healing or Energy Die expenditure.`});
-     if(!mounted.current||latest.current.id!==id)return;
-    }
+    const surged=await offerPsionicSurge({roll,sides:state.sides,feature:discipline.name,campaignId,
+     current:()=>latest.current,active:()=>mounted.current,
+     eligible:current=>{
+      const chosen=(current.class_resources as Record<string,unknown>|null)?.['psion-disciplines'];
+      return Array.isArray(chosen)&&hasDiscipline(chosen.filter((v):v is string=>typeof v==='string'),discipline)
+       &&!!conditionalPsionicDie(current.level,current.class_resources?.['psionic-energy-dice'],originalRoll,false);
+     },
+     update:patch=>{latest.current={...latest.current,...patch};update.current(patch);},
+     confirm:modal.confirm,warn:message=>showToast(message,'warn')});
+    if(!surged)return;
+    roll=surged.roll;usedSurge=surged.usedSurge;
    }
    const hit=discipline.conditionalOutcome==='hit';
    const changed=await modal.confirm({title:discipline.name,
