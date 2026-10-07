@@ -1,6 +1,7 @@
 import type { SpellData } from '../types';
+import { applySrdSpellDetails } from './srdSpellDetails';
 
-export const SPELLS: SpellData[] = [
+const SPELL_ENTRIES: SpellData[] = [
   {
   id: "acid-splash",
   name: "Acid Splash",
@@ -6785,6 +6786,7 @@ export const SPELLS: SpellData[] = [
   },
 
 ];
+export const SPELLS: SpellData[] = SPELL_ENTRIES.map(spell => applySrdSpellDetails(spell, true));
 export const SPELL_MAP: Record<string, SpellData> = Object.fromEntries(SPELLS.map(s => [s.id, s]));
 
 export const SPELL_CLASSES: string[] = Array.from(new Set(SPELLS.flatMap(s => s.classes))).sort();

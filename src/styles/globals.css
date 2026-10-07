@@ -1550,3 +1550,10 @@ input[type=number] { -moz-appearance: textfield; }
     .arow-bar, .srow-bar { align-self: stretch; height: auto; }
   }
 }
+
+/* v2.749 — long spell rules need the full screen width on phones. */
+.spell-browser-layout { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: var(--sp-6); }
+.spell-browser-layout > * { min-width: 0; }
+@media (max-width: 800px) {
+  .spell-browser-layout { grid-template-columns: minmax(0, 1fr); }
+}

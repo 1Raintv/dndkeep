@@ -581,6 +581,8 @@ export interface ClassData {
 }
 
 export interface SpellData {
+  /** Present only on entries audited against this licensed source. */
+  rules_source?: { version: '5.2.1'; page: number };
   id: string;
   name: string;
   /** v2.692.0 — where the spell comes from, and therefore who may SEE it.

@@ -14,12 +14,14 @@ import { useEffect, useState } from 'react';
 import { supabase } from '../supabase';
 import { SPELLS, SPELL_MAP } from '../../data/spells';
 import type { SpellData } from '../../types';
+import { applySrdSpellDetails } from '../../data/srdSpellDetails';
 
 // ─── Module-scope cache (survives unmounts within a session) ────────
 let cachedSpells: SpellData[] | null = null;
 let pendingFetch: Promise<SpellData[]> | null = null;
 
 interface DbSpellRow {
+  owner_id: string | null;
   id: string;
   source: string | null;
   name: string;
@@ -46,7 +48,7 @@ interface DbSpellRow {
 }
 
 function rowToSpell(r: DbSpellRow): SpellData {
-  return {
+  return applySrdSpellDetails({
     id: r.id,
     // v2.692.0 — carried through so contentGates can hide gated-source spells.
     // Without it the browser listed every UA spell, in full, to accounts with
@@ -73,7 +75,7 @@ function rowToSpell(r: DbSpellRow): SpellData {
     ...(r.heal_dice ? { heal_dice: r.heal_dice } : {}),
     ...(r.heal_at_slot_level ? { heal_at_slot_level: r.heal_at_slot_level } : {}),
     ...(r.area_of_effect ? { area_of_effect: r.area_of_effect } : {}),
-  };
+  }, r.owner_id === null);
 }
 
 async function fetchSpellsFromDb(): Promise<SpellData[]> {
@@ -81,7 +83,7 @@ async function fetchSpellsFromDb(): Promise<SpellData[]> {
   // canonical (owner_id IS NULL), own homebrew, and public homebrew.
   const { data, error } = await supabase
     .from('spells')
-    .select('id, source, name, level, school, casting_time, range, components, duration, concentration, ritual, classes, description, higher_levels, save_type, attack_type, damage_dice, damage_type, damage_at_slot_level, damage_at_char_level, heal_dice, heal_at_slot_level, area_of_effect')
+    .select('id, owner_id, source, name, level, school, casting_time, range, components, duration, concentration, ritual, classes, description, higher_levels, save_type, attack_type, damage_dice, damage_type, damage_at_slot_level, damage_at_char_level, heal_dice, heal_at_slot_level, area_of_effect')
     .order('level', { ascending: true })
     .order('name', { ascending: true });
 

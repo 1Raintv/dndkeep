@@ -111,7 +111,7 @@ export default function SrdAttributionPage() {
             DNDKeep has adapted, reorganized, and presented SRD content in a digital interface format. Spell descriptions and monster stat blocks have been reformatted for screen display. Some content has been supplemented with additional game content not from the SRD (such as non-SRD subclasses, species, and backgrounds), which is either original content or sourced and noted separately.
           </p>
           <p style={{ fontSize: 14, color: 'var(--t-2)', lineHeight: 1.75, marginTop: 12 }}>
-            Non-SRD additions include: the Psion class, Ardling/Tabaxi/Aasimar species, and certain subclasses, feats, and backgrounds. Non-SRD official-rules content is implemented with original, paraphrased descriptions (game mechanics are not copyrightable); no PHB text is reproduced. These additions are original content created for DNDKeep and are not covered by the SRD license.
+            Spell entries marked with an SRD page link reproduce the audited SRD 5.2.1 text with line wrapping and paragraph formatting adapted for display, higher-level effects separated, and casting-time labels normalized. That label applies only to the identified entry. Homebrew, Unearthed Arcana, and other non-SRD material are not licensed by the SRD’s Creative Commons license; their rights and permissions must be considered separately.
           </p>
         </div>
 
