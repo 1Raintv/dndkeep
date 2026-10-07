@@ -11,7 +11,7 @@ import {ModalProvider} from '../../shared/Modal';
 import type {Character} from '../../../types';
 const character={id:'psion',name:'Psion',class_name:'Psion',level:5,intelligence:18,temp_hp:0,class_resources:{'psion-disciplines':['Biofeedback'],'psionic-energy-dice':6,other:9}} as unknown as Character;
 const ui=(c:Character,update:ReturnType<typeof vi.fn>)=><ModalProvider><BiofeedbackButton character={c} onUpdate={update}/></ModalProvider>;
-afterEach(cleanup);beforeEach(()=>{vi.clearAllMocks();mocks.roll=2;});
+afterEach(cleanup);beforeEach(()=>{vi.clearAllMocks();mocks.roll=2;mocks.log.mockResolvedValue(undefined);});
 async function choose(count:string){fireEvent.click(screen.getByRole('button',{name:'Gain temp HP'}));fireEvent.change(screen.getByRole('textbox'),{target:{value:count}});fireEvent.click(screen.getByRole('button',{name:'Spend and roll'}));}
 it('spends the chosen dice once, adds Intelligence once, and preserves other resources',async()=>{
  const update=vi.fn();render(ui(character,update));await choose('3');
@@ -53,4 +53,23 @@ it('still grants the paid original result if Hit Point Dice run out before Surge
  fireEvent.click(screen.getByRole('button',{name:'Spend 1 Hit Point Die'}));
  await waitFor(()=>expect(update).toHaveBeenLastCalledWith({temp_hp:8}));
  expect(update).toHaveBeenCalledTimes(2);
+});
+
+it('releases the ability after applying HP even when history delivery stalls',async()=>{
+ mocks.log.mockReturnValue(new Promise(()=>{}));const update=vi.fn();render(ui(character,update));await choose('2');
+ await waitFor(()=>expect(update).toHaveBeenLastCalledWith({temp_hp:8}));
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Gain temp HP'}) as HTMLButtonElement).disabled).toBe(false));
+});
+it('records paid dice for manual recovery if the sheet closes during Surge',async()=>{
+ const update=vi.fn();const view=render(ui({...character,level:7,hit_dice_spent:0},update));await choose('2');await screen.findByRole('dialog',{name:'Psionic Surge'});view.unmount();
+ await waitFor(()=>expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({actionName:'Biofeedback',total:8,notes:expect.stringContaining('Apply manually')})));
+ expect(update).toHaveBeenCalledTimes(1);
+});
+
+it.each(['rejection','error result'])('warns without undoing paid temporary HP after a history %s',async mode=>{
+ if(mode==='rejection')mocks.log.mockRejectedValue(new Error('offline'));else mocks.log.mockResolvedValue({error:{message:'offline'}});
+ const update=vi.fn();render(ui(character,update));await choose('2');
+ await waitFor(()=>expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('log could not be saved'),'warn'));
+ expect(update).toHaveBeenCalledTimes(2);expect(update).toHaveBeenLastCalledWith({temp_hp:8});
+ expect((screen.getByRole('button',{name:'Gain temp HP'}) as HTMLButtonElement).disabled).toBe(false);
 });

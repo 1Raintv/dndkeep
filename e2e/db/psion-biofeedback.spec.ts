@@ -44,7 +44,19 @@ test.describe('Psion Biofeedback', () => {
     expect(state().pool).toBe(level===5?6:2);
     await activate.click();await dialog.getByRole('textbox').fill(level===5?'3':'2');
     await page.screenshot({path:info.outputPath('biofeedback-cost.png')});
-    await dialog.getByRole('button',{name:'Spend and roll'}).click();
+    if(level===5){
+      // v2.779 — a held ability-history request must not leave the control busy.
+      let release!:()=>void;let held=false;const delivery=new Promise<void>(resolve=>{release=resolve;});
+      await page.route('**/rest/v1/action_logs*',async route=>{
+        if(route.request().method()==='POST' && route.request().postDataJSON()?.action_name==='Biofeedback'){held=true;await delivery;}
+        await route.continue();
+      });
+      try{
+        await dialog.getByRole('button',{name:'Spend and roll'}).click();
+        await expect.poll(()=>held).toBe(true);await expect.poll(()=>state().temp).toBe(7);
+        await expect(activate).toBeEnabled();
+      }finally{release();}
+    }else await dialog.getByRole('button',{name:'Spend and roll'}).click();
     if(level===7){
       const surge=page.getByRole('dialog',{name:'Psionic Surge'});await expect(surge).toContainText('rolled 1, 1 on 2d8');
       await expect.poll(()=>state().pool).toBe(0);

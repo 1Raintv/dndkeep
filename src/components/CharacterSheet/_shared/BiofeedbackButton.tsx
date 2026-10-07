@@ -37,13 +37,16 @@ export default function BiofeedbackButton({character,onUpdate}:{character:Charac
    const surged=await offerPsionicSurge({roll:rolls[0],rolls,sides:now.sides,feature:'Biofeedback',campaignId:current.campaign_id,
     current:()=>latest.current,active:()=>mounted.current,eligible:c=>!!capacity(c),update:patch,
     confirm:modal.confirm,warn:message=>showToast(message,'warn')});
-   if(!mounted.current||latest.current.id!==id)return;
-   const result=biofeedbackResult(surged?.rolls??rolls,now.sides,intelligence,latest.current.temp_hp??0);
+   // v2.779 — retain the paid roll in history if its sheet closes during Surge.
+   const active=mounted.current&&latest.current.id===id;
+   const result=biofeedbackResult(surged?.rolls??rolls,now.sides,intelligence,(active?latest.current:current).temp_hp??0);
    if(!result){showToast('Dice were spent. Check your temporary HP before applying Biofeedback.','warn');return;}
-   patch({temp_hp:result.tempHp});
-   const notes=`Spent ${count} Energy Dice. Biofeedback grants ${result.gained} temporary HP; current temporary HP ${result.tempHp} (does not stack).${surged?.usedSurge?' Psionic Surge: 1 Hit Point Die spent.':''}`;
-   showToast(notes,'success');
-   await logAction({campaignId:current.campaign_id??null,characterId:id,characterName:current.name,actionType:'roll',actionName:'Biofeedback',diceExpression:`${count}d${now.sides}`,individualResults:rolls,total:result.gained,notes});
+   if(active)patch({temp_hp:result.tempHp});
+   const notes=`Spent ${count} Energy Dice. Biofeedback grants ${result.gained} temporary HP. ${active?`Current temporary HP ${result.tempHp} (does not stack).`:'Sheet closed before applying temporary HP. Apply manually, keeping higher existing temporary HP; do not spend dice again.'}${surged?.usedSurge?' Psionic Surge: 1 Hit Point Die spent.':''}`;
+   if(active)showToast(notes,'success');
+   const warnLog=()=>showToast(`Biofeedback rolled ${result.gained} temporary HP, but its log could not be saved.${active?' Temporary HP was applied.':' Apply manually; do not spend dice again.'}`,'warn');
+   void logAction({campaignId:current.campaign_id??null,characterId:id,characterName:current.name,actionType:'roll',actionName:'Biofeedback',diceExpression:`${count}d${now.sides}`,individualResults:rolls,total:result.gained,notes})
+    .then(result=>{if(result?.error)warnLog();}).catch(warnLog);
   }finally{busy.current=false;if(mounted.current)setPending(false);}
  }
  return <button className="btn-ghost" style={{fontSize:11,minHeight:36,padding:'4px 8px',color:'#c4b5fd'}} disabled={pending||!state?.maxDice} onClick={()=>void run()}>Gain temp HP</button>;
