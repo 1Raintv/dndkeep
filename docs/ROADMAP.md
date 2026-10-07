@@ -1,5 +1,15 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Psion sheet spell numbers, v2.753
+
+The vitals strip now uses canonical computed spell attack/DC instead of a
+second hardcoded caster list and base-score formula. Psion stats are visible
+and equipment-adjusted ability scores are honored. Verified level 5 INT 18
+(+7/DC15) and level 17 INT 20 (+11/DC19) on desktop and mobile; regression
+fails without the fix. Shared overflow check found no spell-chip clipping
+(existing breadcrumb truncation and movement +/- clipping remain).
+
+
 ### 2026-10-07 — Saving-throw accuracy, v2.752
 
 Standard saves now compare total against DC, including natural 1/20, per
