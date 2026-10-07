@@ -1,5 +1,22 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Readable map party cards, v2.755
+
+Reproduced the mobile party panel clipping: its fixed 240px reserve plus an
+inline heading hid most of even the first character. The heading now stays
+above a scrolling card row, leaving one complete card visible on phones.
+HP bars, HP totals and AC have clearer contrast and consistent map styling.
+Native buttons provide keyboard access to existing pan-to-character behavior;
+collapse preference and noninteractive embedding remain supported.
+
+Navigation measures the party panel and reacts to collapse, resize, delayed
+loading and the initiative strip moving it. The panel reserves the dice-button
+lane and stays above combat controls. No map/token position writes changed.
+Validation: full gate (1125 tests, existing TS baseline 212), desktop/mobile
+party and broader map regressions, screenshot review, shared overflow probe
+(no new clipping), and old-component mutation failure.
+
+
 ### 2026-10-07 — Psionic Reserves initiative recovery, v2.754
 
 Owner UA update p.4: eighteen Psion levels, initiative restores expended dice
@@ -20,7 +37,7 @@ cover solo and real campaign roll orchestration, level boundaries, secondary
 class, unchanged other resources, repeated calls and unauthorized callers.
 Screenshots and shared overflow probe pass for the notice; browser regression
 fails with the solo hook removed. Migration applied and ledger verified locally;
-production migration must succeed through CI when this branch is merged.
+production migration applied through CI (run 37583840172, confirmed apply log).
 
 Next: map interaction and visual polish, then remaining Psion disciplines and
 subclass automation/source audit. Original v1 Psi Warper source remains missing.
