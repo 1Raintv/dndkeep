@@ -1,3 +1,4 @@
+import {setSpellSourcePrepared} from '../../rules/spellPreparation';
 import {addClassSpellSelection,removeClassSpellSelection} from '../../rules/classSpellSelection';
 import {createPsionicRestRequest} from '../../lib/psionicRestRequest';
 import {pendingPsionicPayments} from '../../lib/psionicPaymentRecovery';
@@ -60,7 +61,7 @@ import { BACKGROUNDS } from '../../data/backgrounds';
 import { CLASS_MAP, getSubclassSpellIds } from '../../data/classes';
 import { CONDITION_MAP } from '../../data/conditions';
 import { getCharacterResources, buildDefaultResources } from '../../data/classResources';
-import { canAddKnownSpell, canPrepareSpell, getSpellCounts, getMaxPrepared } from '../../lib/spellLimits';
+import { canAddKnownSpell, canPrepareSpell, getClassPreparedSpellIds, getSpellCounts, getMaxPrepared } from '../../lib/spellLimits';
 import { resolveResistances, resolveImmunities, resolveVulnerabilities, labelForDamageType, DAMAGE_TYPE_COLORS } from '../../lib/damageModifiers';
 import { parseSpellMechanics, parseDurationToRounds, formatRoundsRemaining, canUpcastSpell } from '../../lib/spellParser';
 import { describeCharacterChanges, logHistoryEvents, logHistoryEvent } from '../../lib/characterHistory';
@@ -2763,23 +2764,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  applyUpdate({known_spells:forgotten.known,spell_sources:forgotten.sources,prepared_spells:forgotten.prepared,spell_preparation_sources:forgotten.preparationSources},true);
  }}
  onTogglePrepared={id => {
- const is = character.prepared_spells.includes(id);
- if (is) {
- // Always allow unpreparing
- applyUpdate({ prepared_spells: character.prepared_spells.filter(x => x !== id) }, true);
- } else {
- // Use canonical enforcement — single source of truth (src/lib/spellLimits.ts)
- const check = canPrepareSpell(character, id);
- if (!check.allowed) {
- // v2.263.0 — was console.warn only, which left the player
- // thinking the prepare toggle was broken. Surface the reason
- // (from spellLimits.ts: "Prepared spell limit reached (16/17)",
- // "Already prepared", etc.) as a toast so the user knows why.
- toast.showToast(check.reason ?? 'Cannot prepare this spell', 'warn');
- return;
- }
- applyUpdate({ prepared_spells: [...character.prepared_spells, id] }, true);
- }
+ const is=getClassPreparedSpellIds(character).includes(id);
+ if(!is){const check=canPrepareSpell(character,id);if(!check.allowed){toast.showToast(check.reason??'Cannot prepare this spell','warn');return;}}
+ const result=setSpellSourcePrepared({id,source:`class:${character.class_name}`,ready:!is,sources:character.spell_sources??{},prepared:character.prepared_spells,preparationSources:character.spell_preparation_sources??{}});
+ if(!result.ok){toast.showToast(result.reason,'warn');return;}
+ applyUpdate({prepared_spells:result.prepared,spell_preparation_sources:result.preparationSources},true);
  }}
  onConcentrate={id => setConcentration(concentrationSpellId === id ? null : id)}
  onTogglePinned={id => {

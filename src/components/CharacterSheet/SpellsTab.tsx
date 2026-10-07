@@ -9,7 +9,7 @@ import { SPELLS } from '../../data/spells';
 import { getMaxSpellsKnown, isKnownCaster } from '../../data/spellSlots';
 import { parseSpellMechanics, canUpcastSpell } from '../../lib/spellParser';
 import { getGrantedSpellIds, type GrantedSpellEntry } from '../../lib/grantedSpells';
-import { getClassKnownSpellIds, getSpellCounts, getMaxPrepared, getMaxCantrips, getSpellAbilityMod } from '../../lib/spellLimits';
+import { getClassKnownSpellIds, getClassPreparedSpellIds, getSpellCounts, getMaxPrepared, getMaxCantrips, getSpellAbilityMod } from '../../lib/spellLimits';
 import { shortCastingTime } from '../../lib/spellDisplay';
 import LevelTab from './_shared/LevelTab';
 
@@ -95,6 +95,7 @@ export default function SpellsTab({
  const showUpcasts = false;
 
  const classKnownSpellIds=getClassKnownSpellIds(character);
+ const classPreparedSpellIds=getClassPreparedSpellIds(character);
  const isPreparer = PREPARER_CLASSES.includes(character.class_name);
  const isKnown = isKnownCaster(character.class_name);
  const knownMax = getMaxSpellsKnown(character.class_name, character.level);
@@ -487,7 +488,9 @@ export default function SpellsTab({
  effectiveLevel={spell.effectiveLevel}
  isUpcast={spell.isUpcast}
  isExpanded={expandedSpell === `${spell.id}-${spell.effectiveLevel}`}
- isPrepared={character.prepared_spells.includes(spell.id)}
+ isPrepared={classPreparedSpellIds.includes(spell.id)}
+ isAvailable={character.prepared_spells.includes(spell.id)}
+ preparationClass={character.class_name}
  isConcentrating={concentrationSpellId === spell.id}
  isPreparer={isPreparer && !isKnown}
  grantedReason={grantedReasonMap[spell.id]}
@@ -540,8 +543,9 @@ export default function SpellsTab({
 
 // ── Level tab button ─────────────────────────────────────────────────
 // ── Spell card ───────────────────────────────────────────────────────
-function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC, subtleTelekinesis, psionicCasting, pinnedSpells, onTogglePinned }: {
+function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, isAvailable, preparationClass, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC, subtleTelekinesis, psionicCasting, pinnedSpells, onTogglePinned }: {
  spell: SpellData; effectiveLevel?: number; isUpcast?: boolean;
+ isAvailable: boolean; preparationClass: string;
  isExpanded: boolean; isPrepared: boolean; isConcentrating: boolean;
  isPreparer: boolean; castButton: ReactNode; upcastButton?: ReactNode; grantedReason?: string;
  spellAttack?: number; saveDC?: number;
@@ -558,7 +562,7 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  onTogglePinned: (id: string) => void;
 }) {
  const schoolColor = SCHOOL_COLORS[spell.school] ?? '#94a3b8';
- const dimmed = isPreparer && spell.level > 0 && !isPrepared && !grantedReason; // isPreparer already false for known casters
+ const dimmed = isPreparer && spell.level > 0 && !isAvailable && !grantedReason; // isPreparer already false for known casters
  const displayLevel = effectiveLevel ?? spell.level; // for badges / labels that show the cast tier
  const effect = getEffectCategory(spell);
  const mechanics = parseSpellMechanics(spell.description, {
@@ -626,7 +630,7 @@ function SpellCard({ spell, effectiveLevel, isUpcast, isExpanded, isPrepared, is
  ) : (
  <button
  onClick={e => { e.stopPropagation(); onTogglePrepared(); }}
- title={isPrepared ? 'Prepared — click to unprepare' : 'Not prepared — click to prepare'}
+ title={isPrepared ? `Prepared through ${preparationClass} — click to unprepare` : `Not prepared through ${preparationClass} — click to prepare`}
  style={{
  cursor: 'pointer', borderRadius: 6, padding: '5px 10px', minHeight: 0,
  border: `1px solid ${isPrepared ? 'var(--c-gold-bdr)' : 'var(--c-border-m)'}`,

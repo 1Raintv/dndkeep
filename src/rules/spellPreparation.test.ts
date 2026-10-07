@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { reviewSpellPreparation, setSpellSourcePrepared } from './spellPreparation';
+import { reviewSpellPreparation, setSpellSourcePrepared, isSpellPreparedThrough } from './spellPreparation';
 import type { SpellSources } from './spellSources';
 
 const both: SpellSources = { armor: ['class:Psion', 'class:Wizard'] };
@@ -53,4 +53,14 @@ describe('independent spell preparation', () => {
     expect(prepared).toEqual(['armor']);
     expect(preparationSources.armor).toEqual(['class:Wizard']);
   });
+});
+
+it('reads reviewed readiness without inferring or mutating legacy ownership',()=>{
+ const input={id:'armor',source:'class:Psion' as const,prepared:['armor'],sources:both,preparationSources:{}};
+ expect(isSpellPreparedThrough(input)).toBe(true);
+ expect(isSpellPreparedThrough({...input,preparationSources:{armor:[]}})).toBe(false);
+ expect(isSpellPreparedThrough({...input,preparationSources:{armor:['class:Wizard']}})).toBe(false);
+ expect(isSpellPreparedThrough({...input,preparationSources:{armor:['class:Psion']}})).toBe(true);
+ expect(isSpellPreparedThrough({...input,sources:wizard})).toBe(false);
+ expect(input.preparationSources).toEqual({});
 });

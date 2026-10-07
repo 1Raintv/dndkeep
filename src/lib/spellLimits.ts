@@ -1,3 +1,4 @@
+import {isSpellPreparedThrough} from '../rules/spellPreparation';
 import {isSpellSources,spellSourceIncludesClass} from '../rules/spellSources';
 /**
  * Single source of truth for spellcasting limits and counts.
@@ -147,6 +148,13 @@ export function getClassKnownSpellIds(character:Character):string[]{
  return [...new Set(character.known_spells)].filter(id=>spellSourceIncludesClass(sources,id,character.class_name)!==false);
 }
 
+export function getClassPreparedSpellIds(character:Character):string[]{
+ const preparationSources=character.spell_preparation_sources??{};
+ const sources=character.spell_sources??{};
+ return [...new Set([...character.prepared_spells,...Object.keys(preparationSources)])].filter(id=>
+  isSpellPreparedThrough({id,source:`class:${character.class_name}`,prepared:character.prepared_spells,sources,preparationSources}));
+}
+
 export function getSpellCounts(character: Character): SpellCounts {
   const granted = getGrantedSpellIds(character);
   const grantedIds = new Set([...granted.grantedCantrips, ...granted.grantedPrepared]);
@@ -169,7 +177,7 @@ export function getSpellCounts(character: Character): SpellCounts {
     if (sp.level === 0) cantrips++;
     else known++;
   }
-  for (const id of new Set(character.prepared_spells)) {
+  for (const id of getClassPreparedSpellIds(character)) {
     if (!belongs(id)||grantedIds.has(id)) continue;
     const sp = SPELL_MAP[id];
     if (!sp || sp.level === 0) continue;
@@ -247,7 +255,9 @@ export function canAddKnownSpell(character: Character, spellId: string): AddChec
 
 /** Should we allow preparing this spell? */
 export function canPrepareSpell(character: Character, spellId: string): AddCheck {
-  if (character.prepared_spells.includes(spellId)) return { allowed: false, reason: 'Already prepared' };
+  if(!isSpellSources(character.spell_sources??{})||!isSpellSources(character.spell_preparation_sources??{}))return {allowed:false,reason:'Check spell sources before preparing a spell'};
+  if (getClassPreparedSpellIds(character).includes(spellId)) return { allowed: false, reason: 'Already prepared' };
+  if(spellSourceIncludesClass(character.spell_sources??{},spellId,character.class_name)===false)return {allowed:false,reason:'Learn this spell through your class before preparing it'};
   const sp = SPELL_MAP[spellId];
   if (!sp) return { allowed: false, reason: 'Unknown spell' };
   if (sp.level === 0) return { allowed: false, reason: 'Cantrips do not need preparing' };

@@ -183,6 +183,20 @@ test.describe('Psion spell replacement level-up', () => {
     await section.getByText('Review existing spell sources',{exact:true}).click();
     await expect(section.getByRole('checkbox',{name:'Hold Person: Wizard',exact:true})).toBeChecked();
   });
+  test('preparation toggles only the Psion copy and uses its own counter',async({page})=>{
+    sql(`update characters set level=5,secondary_class='Wizard',secondary_level=3,known_spells=ARRAY['mage-armor'],prepared_spells=ARRAY['mage-armor'],spell_sources='{"mage-armor":["class:Psion","class:Wizard"]}',spell_preparation_sources='{"mage-armor":["class:Wizard"]}',spell_slots='{"1":{"total":4,"used":0},"2":{"total":3,"used":0},"3":{"total":2,"used":0}}' where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+    await expect(page.getByTitle('9 more spells can be prepared',{exact:true})).toContainText('0/9');
+    await page.getByTitle('Not prepared through Psion — click to prepare',{exact:true}).click();
+    await expect.poll(()=>sql(`select (spell_preparation_sources->'mage-armor')::text from characters where id='${charId}'`)).toBe('["class:Wizard", "class:Psion"]');
+    await expect(page.getByTitle('8 more spells can be prepared',{exact:true})).toContainText('1/9');
+    await page.getByTitle('Prepared through Psion — click to unprepare',{exact:true}).click();
+    await expect.poll(()=>sql(`select (spell_preparation_sources->'mage-armor')::text from characters where id='${charId}'`)).toBe('["class:Wizard"]');
+    expect(sql(`select ('mage-armor'=any(prepared_spells))::text from characters where id='${charId}'`)).toBe('true');
+    await page.reload();await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+    await expect(page.getByTitle('9 more spells can be prepared',{exact:true})).toContainText('0/9');
+  });
   for(const wizardReady of [false,true]) test(`ordinary learning and removal preserve Wizard readiness=${wizardReady}`,async({page})=>{
     sql(`update characters set level=5,secondary_class='Wizard',secondary_level=3,known_spells=ARRAY['mage-armor'],prepared_spells='{}',spell_sources='{"mage-armor":["class:Wizard"]}',advanced_spell_edits_unlocked=true,spell_slots='{"1":{"total":4,"used":0},"2":{"total":3,"used":0},"3":{"total":2,"used":0}}' where id='${charId}'`);
     if(wizardReady) sql(`update characters set prepared_spells=ARRAY['mage-armor'],spell_preparation_sources='{"mage-armor":["class:Wizard"]}' where id='${charId}'`);

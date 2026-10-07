@@ -105,6 +105,20 @@ Full gate passes with 1,652 unit tests, TS 208/208 and 253 KB entry.
 Still local: ordinary preparation toggles/counts and automatic-grant source
 tracking must be integrated before the schema-first production release.
 
+Class preparation counts and ordinary toggles now read per-source readiness.
+A Wizard-prepared shared spell does not fill the Psion prepared counter, and
+preparing/unpreparing Psion keeps Wizard's copy ready. The card remains available
+when another source is prepared; its toggle title names the edited class.
+Both desktop/mobile toggle-and-reload regressions pass after correcting a test
+locator that mistook the sheet's counted level tab for the picker tab.
+
+New release prerequisite exposed by wiring the controls: legacy spells with
+unknown learned ownership need a source/readiness review on the ordinary spell
+sheet, not only in level-up. The older psion-spell-choices browser test must use
+that review path for legal Charm Person while still proving illegal imported
+choices are rejected; its old toggle titles also need updating. Do not deploy
+until this path, automatic grants and a combined browser run pass.
+
 Before release: source tracking for automatic grants and per-class prepared-state
 ownership. A spell learned through Psion and later removed must not accidentally
 prepare an originally unprepared copy retained by Wizard.

@@ -57,3 +57,17 @@ export function reviewSpellPreparation(input: {
   if (readySources.length) prepared.add(input.id); else prepared.delete(input.id);
   return { ok: true, prepared: [...prepared], preparationSources: { ...input.preparationSources, [input.id]: readySources } };
 }
+
+/** Reviewed readiness is authoritative, including []. Unreviewed legacy entries
+ * retain their global readiness only for classes not explicitly excluded by
+ * ownership; no read operation creates a source claim. */
+export function isSpellPreparedThrough(input: {
+  id: string; source: SpellSource; prepared: readonly string[];
+  sources: SpellSources; preparationSources: SpellPreparationSources;
+}): boolean {
+  if (!isSpellSources(input.sources) || !isSpellSources(input.preparationSources)) return false;
+  if (Object.prototype.hasOwnProperty.call(input.preparationSources, input.id))
+    return input.preparationSources[input.id].includes(input.source);
+  const owners = input.sources[input.id];
+  return input.prepared.includes(input.id) && (!owners?.length || owners.includes(input.source));
+}

@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import type {Character} from '../types';
-import {canAddKnownSpell,canPrepareSpell,getSpellCounts} from './spellLimits';
+import {canAddKnownSpell,canPrepareSpell,getSpellCounts,getClassPreparedSpellIds} from './spellLimits';
 const psion={class_name:'Psion',level:1,known_spells:[],prepared_spells:[],spell_slots:{'1':{total:2,used:0}},intelligence:16} as unknown as Character;
 it('rejects preparing off-list or unavailable imported spells',()=>{
  expect(canPrepareSpell({...psion,known_spells:['fireball']},'fireball').allowed).toBe(false);
@@ -51,4 +51,19 @@ it('can learn an eligible spell already known through Wizard, but cannot learn i
  const c={...psion,known_spells:['mage-armor'],spell_sources:{'mage-armor':['class:Wizard']}} as Character;
  expect(canAddKnownSpell(c,'mage-armor').allowed).toBe(true);
  expect(canAddKnownSpell({...c,spell_sources:{'mage-armor':['class:Wizard','class:Psion']}},'mage-armor').allowed).toBe(false);
+});
+
+it('counts readiness by class even when both classes learned the spell',()=>{
+ const c={...psion,known_spells:['mage-armor'],prepared_spells:['mage-armor'],spell_sources:{'mage-armor':['class:Psion','class:Wizard']},spell_preparation_sources:{'mage-armor':['class:Wizard']}} as Character;
+ expect(getSpellCounts(c)).toMatchObject({known:1,prepared:0});
+ expect(getClassPreparedSpellIds(c)).toEqual([]);
+ expect(getSpellCounts({...c,class_name:'Wizard'}).prepared).toBe(1);
+ expect(canPrepareSpell(c,'mage-armor').allowed).toBe(true);
+});
+it('an explicit empty readiness entry overrides a stale global prepared entry',()=>{
+ const c={...psion,known_spells:['mage-armor'],prepared_spells:['mage-armor'],spell_preparation_sources:{'mage-armor':[]}};
+ expect(getSpellCounts(c).prepared).toBe(0);
+});
+it('does not prepare a spell owned only by another class',()=>{
+ expect(canPrepareSpell({...psion,known_spells:['mage-armor'],spell_sources:{'mage-armor':['class:Wizard']}},'mage-armor').allowed).toBe(false);
 });
