@@ -8,7 +8,9 @@ vi.mock('../../../lib/api/psionicDamage',()=>({loadPsionicDamageContext:mocks.lo
 vi.mock('../../shared/ActionLog',()=>({logAction:mocks.log}));
 vi.mock('../../shared/Toast',()=>({useToast:()=>({showToast:mocks.toast})}));
 vi.mock('../../Combat/TargetPickerModal',()=>({default:({onPick}:{onPick:(p:unknown)=>void})=><button onClick={()=>onPick({id:'target',name:'Goblin',participant_type:'creature'})}>Pick Goblin</button>}));
-import DestructiveThoughtsButton from './DestructiveThoughtsButton';
+import RealDestructiveThoughtsButton from './DestructiveThoughtsButton';
+import {withTestPsionicPersistence} from './psionicPersistence.testSupport';
+const DestructiveThoughtsButton=withTestPsionicPersistence(RealDestructiveThoughtsButton);
 import {ModalProvider} from '../../shared/Modal';
 import type {Character} from '../../../types';
 const character={id:'psion',name:'Psion',class_name:'Psion',level:5,intelligence:18,class_resources:{'psion-disciplines':['Destructive Thoughts'],'psionic-energy-dice':6,other:9}} as unknown as Character;

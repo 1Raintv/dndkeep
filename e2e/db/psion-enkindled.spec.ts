@@ -48,20 +48,21 @@ test.describe('Psion Enkindled Life Force', () => {
       await choice.getByRole('button',{name:'Continue'}).click();
       if(surge)await page.getByRole('dialog',{name:'Psionic Surge'}).getByRole('button',{name:'Spend 1 Hit Point Die'}).click();
     };
-    // Each independent tabletop use represents a separate turn; the reminder
-    // is manual until shared turn-claim persistence is implemented.
+    let turn=0;
+    const nextTurn=async()=>{await page.getByRole('button',{name:/End Turn/}).locator('visible=true').first().click();turn++;await expect.poll(()=>sql(`select turn_number from psionic_solo_turns where character_id='${charId}'`)).toBe(String(turn));};
+    // Each independent tabletop use starts a persisted turn, like the real UI.
     await button('Gain temp HP').click();let dialog=page.getByRole('dialog',{name:'Biofeedback',exact:true});
-    await dialog.getByRole('textbox').fill('2');await dialog.getByRole('button',{name:'Spend and roll'}).click();await enhance();await check(10,3);
+    await dialog.getByRole('textbox').fill('2');await dialog.getByRole('button',{name:'Spend and roll'}).click();await enhance();await check(10,3);await nextTurn();
     await button('Roll damage').click();dialog=page.getByRole('dialog',{name:'Destructive Thoughts target'});
     await dialog.getByRole('textbox').fill('Tabletop Goblin');await dialog.getByRole('button',{name:'Choose target'}).click();
-    await page.getByRole('dialog',{name:'Destructive Thoughts',exact:true}).getByRole('button',{name:'Spend and roll'}).click();await enhance();await check(9,6);
+    await page.getByRole('dialog',{name:'Destructive Thoughts',exact:true}).getByRole('button',{name:'Spend and roll'}).click();await enhance();await check(9,6);await nextTurn();
     await expect(page.getByRole('status').filter({hasText:'16 Psychic ·'})).toContainText('Apply at the table');
-    await button('Roll bonus').click();await enhance();dialog=page.getByRole('dialog',{name:'Inerrant Aim'});await expect(dialog).toContainText('Add +12');await dialog.getByRole('button',{name:'Keep die'}).click();await check(9,9);
-    await button('Powered (1 die)').click();await enhance();dialog=page.getByRole('dialog',{name:'Telekinetic Propel'});await expect(dialog).toContainText('60 ft on a failed save');await dialog.getByRole('button',{name:'Save failed'}).click();await check(8,12);
-    await button('Extend (free)').click();await page.getByRole('dialog',{name:'Telepathic Connection'}).getByRole('button',{name:'Extend telepathy'}).click();await enhance();await check(8,15);
+    await button('Roll bonus').click();await enhance();dialog=page.getByRole('dialog',{name:'Inerrant Aim'});await expect(dialog).toContainText('Add +12');await dialog.getByRole('button',{name:'Keep die'}).click();await check(9,9);await nextTurn();
+    await button('Powered (1 die)').click();await enhance();dialog=page.getByRole('dialog',{name:'Telekinetic Propel'});await expect(dialog).toContainText('60 ft on a failed save');await dialog.getByRole('button',{name:'Save failed'}).click();await check(8,12);await nextTurn();
+    await button('Extend (free)').click();await page.getByRole('dialog',{name:'Telepathic Connection'}).getByRole('button',{name:'Extend telepathy'}).click();await enhance();await check(8,15);await nextTurn();
     await expect.poll(()=>sql(`select notes from action_logs where character_id='${charId}' and action_name='Telepathic Connection'`)).toContain('150 ft');
-    await button('Spend Die (1d12)').click();await enhance();await check(7,18);
-    await button('Spend Die (1d12)').click();await enhance(false);await check(6,20);await expect(page.getByRole('dialog',{name:'Psionic Surge'})).toHaveCount(0);
+    await button('Spend Die (1d12)').click();await enhance();await check(7,18);await nextTurn();
+    await button('Spend Die (1d12)').click();await enhance(false);await check(6,20);await nextTurn();await expect(page.getByRole('dialog',{name:'Psionic Surge'})).toHaveCount(0);
     await button('Spend Die (1d12)').click();await check(5,20);await expect(page.getByRole('dialog')).toHaveCount(0);
     await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Spent Psionic Energy Die (1d12)' and total in (12,3,1)`)).toBe('3');
     await page.reload();await expect(button('Spend Die (1d12)')).toBeEnabled();await check(5,20);expect(errors).toEqual([]);

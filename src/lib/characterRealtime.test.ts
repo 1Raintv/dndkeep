@@ -23,3 +23,14 @@ it('ignores non-syncable fields and unchanged objects; applies zero, null and em
  expect(reconcileCharacterUpdate(ref,{current_hp:0,concentration_rounds_remaining:null,active_conditions:[]},{}).patch)
   .toEqual({current_hp:0,concentration_rounds_remaining:null,active_conditions:[]});
 });
+
+it('ignores delayed Hit Point Dice receipts but accepts newer rest recovery',()=>{
+ const ref={current:{...character,hit_dice_spent:3,psionic_hit_dice_revision:2}};
+ expect(reconcileCharacterUpdate(ref,{hit_dice_spent:2,psionic_hit_dice_revision:1},{}).patch).toEqual({});
+ expect(reconcileCharacterUpdate(ref,{hit_dice_spent:0,psionic_hit_dice_revision:3},{}).patch).toEqual({hit_dice_spent:0,psionic_hit_dice_revision:3});
+ expect(reconcileCharacterUpdate(ref,{hit_dice_spent:3,psionic_hit_dice_revision:2},{}).patch).toEqual({});
+});
+it('keeps a queued local rest while recording the paid receipt revision',()=>{
+ const ref={current:{...character,psionic_hit_dice_revision:0}};
+ expect(reconcileCharacterUpdate(ref,{hit_dice_spent:3,psionic_hit_dice_revision:1},{hit_dice_spent:0}).patch).toEqual({hit_dice_spent:0,psionic_hit_dice_revision:1});
+});

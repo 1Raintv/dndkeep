@@ -61,11 +61,12 @@ test.describe('Psion Biofeedback', () => {
       const surge=page.getByRole('dialog',{name:'Psionic Surge'});await expect(surge).toContainText('rolled 1, 1 on 2d8');
       await expect.poll(()=>state().pool).toBe(0);
       await page.screenshot({path:info.outputPath('biofeedback-surge.png')});
-      // v2.773 — hold only history delivery; the paid ability must resolve.
+      // v2.782 — Surge history is transactional. Hold the separate final
+      // Biofeedback history delivery; applying temporary HP still must resolve.
       let release!:()=>void;let held=false;
       const delivery=new Promise<void>(resolve=>{release=resolve;});
       await page.route('**/rest/v1/action_logs*',async route=>{
-        if(route.request().method()==='POST' && route.request().postDataJSON()?.action_name==='Psionic Surge'){
+        if(route.request().method()==='POST' && route.request().postDataJSON()?.action_name==='Biofeedback'){
           held=true;await delivery;
         }
         await route.continue();

@@ -1,3 +1,5 @@
+import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
+import {acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
 import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharacterRef';
 import {Suspense,useEffect,useRef,useState} from 'react';
 import type {Character,CombatParticipant} from '../../../types';
@@ -21,7 +23,7 @@ function capacity(c:Character){
 interface PaidResult {requestId:string;characterId:string;characterName:string;amount:number;targetName:string;target:CombatParticipant|null;context:PsionicDamageContext|null;queued:boolean}
 /** v2.777 — confirm the spell trigger, then spend/roll once. Retrying delivery
  * reuses the paid result and declaration ID; it never rolls or charges again. */
-export default function DestructiveThoughtsButton({character,onUpdate}:{character:Character;onUpdate:(patch:Partial<Character>)=>void}){
+export default function DestructiveThoughtsButton({persistence,character,onUpdate}:{persistence?:PsionicEnhancementPersistence;character:Character;onUpdate:(patch:Partial<Character>)=>void}){
  const latest=useOptimisticCharacterRef(character);
  const update=useRef(onUpdate);update.current=onUpdate;
  const mounted=useRef(true),busy=useRef(false);const [pending,setPending]=useState(false);
@@ -66,8 +68,9 @@ export default function DestructiveThoughtsButton({character,onUpdate}:{characte
    const intelligence=computeStats(current).modifiers.intelligence;
    const rolls=Array.from({length:count},()=>rollDie(now.sides));
    patch({class_resources:{...current.class_resources,'psionic-energy-dice':now.remaining-count}});
-   const surged=await offerPsionicRollEnhancements({roll:rolls[0],rolls,sides:now.sides,feature:'Destructive Thoughts',campaignId,
-    current:()=>latest.current,active:()=>mounted.current,eligible:c=>!!capacity(c),update:patch,prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
+   const surged=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:rolls[0],rolls,sides:now.sides,feature:'Destructive Thoughts',campaignId,recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for Psychic damage (minimum 1) to ${targetName}. No damage was queued yet.`.slice(0,1000),
+    current:()=>latest.current,active:()=>mounted.current,eligible:c=>!!capacity(c),prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
+   if(surged?.unconfirmed)return;
    const amount=psionicDisciplineTotal(surged?.rolls??rolls,now.sides,intelligence)!;
    const result:PaidResult={requestId:crypto.randomUUID(),characterId:id,characterName:current.name,amount,targetName,target,context,queued:false};
    if(mounted.current&&latest.current.id===id)setPaid(result);

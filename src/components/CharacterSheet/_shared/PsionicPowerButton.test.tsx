@@ -1,7 +1,9 @@
 // @vitest-environment happy-dom
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
-import PsionicPowerButton from './PsionicPowerButton';
+import RealPsionicPowerButton from './PsionicPowerButton';
+import {withTestPsionicPersistence} from './psionicPersistence.testSupport';
+const PsionicPowerButton=withTestPsionicPersistence(RealPsionicPowerButton);
 import {ModalProvider} from '../../shared/Modal';
 import type {Character} from '../../../types';
 const mocks=vi.hoisted(()=>({roll:4,log:vi.fn().mockResolvedValue(undefined).mockResolvedValue(undefined),toast:vi.fn()}));
@@ -40,7 +42,7 @@ it('Surge spends a Hit Point Die before submitting powered Propel',async()=>{
  fireEvent.click(await screen.findByRole('button',{name:'Spend 1 Hit Point Die'}));
  await waitFor(()=>expect(onUse).toHaveBeenCalledWith({kind:'propel',mode:'powered',roll:4,originalRoll:1,surged:true}));
  expect(onUpdate).toHaveBeenCalledTimes(1);expect(onUpdate).toHaveBeenCalledWith({hit_dice_spent:1});
- expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({actionName:'Psionic Surge',individualResults:[1]}));
+ expect(mocks.log).not.toHaveBeenCalled(); // The server transaction owns Surge history.
 });
 it('offers Surge after the free Connection confirmation without spending an Energy Die',async()=>{
  mocks.roll=2;const onUse=vi.fn().mockResolvedValue(undefined),onUpdate=vi.fn();

@@ -1,5 +1,8 @@
+import PsionicPaymentRecoveryPanel from './_shared/PsionicPaymentRecoveryPanel';
+import {usePsionicEnhancements} from '../../lib/hooks/usePsionicEnhancements';
+import {useOptimisticCharacterRef} from '../../lib/hooks/useOptimisticCharacterRef';
 import {characterProficiencyBonus} from '../../rules/proficiency';
-import {reconcileCharacterUpdate} from '../../lib/characterRealtime';
+import {reconcileCharacterUpdate,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
 import { attacksPerAction } from '../../rules/extraAttack';
 import PsionCastingNote from './_shared/PsionCastingNote';
 import { useState, useCallback, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
@@ -293,8 +296,11 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  // ── Sync external HP/condition changes (e.g. from BattleMap) ──────
  // Uses a ref to avoid stale closure — always reads current character value
- const characterRef = useRef(character);
- characterRef.current = character;
+ const characterRef = useOptimisticCharacterRef(character);
+ const psionicPersistence=usePsionicEnhancements(character.id,saveQueue,receipt=>{
+  const {patch}=acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
+  if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
+ },frozen);
 
  // Auto-add AND auto-prepare subclass always-prepared spells + class granted spells
  useEffect(() => {
@@ -2174,6 +2180,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  return (
  <div style={{ marginBottom: 'var(--sp-3)' }}>
  <ActionEconomy
+ trackPsionicTurns={character.class_name==='Psion'&&character.level===20}
  speedFeet={effectiveSpeed}
  characterId={character.id}
  actionUsedExternal={spellCastThisTurn}
@@ -3126,8 +3133,10 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </span>
  </div>
  )}
- {(contentFilters.size === 0 || contentFilters.has('ability')) && (
+ {(contentFilters.size === 0 || contentFilters.has('ability')) && (<>
+ <PsionicPaymentRecoveryPanel characterId={character.id} persistence={psionicPersistence}/>
  <ClassAbilitiesSection
+ persistence={psionicPersistence}
  character={character}
  combatFilter={combatFilter}
  onUpdate={u => applyUpdate(u, true)}
@@ -3135,7 +3144,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  campaignId={character.campaign_id}
  campaign={activeCampaign}
  />
- )}
+ </>)}
 
  {/* v2.188.0 — Phase Q.0 pt 29: SPECIES section.
      Today only Tiefling has actionable per-species choices (Fiendish

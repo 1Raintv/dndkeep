@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-const mocks=vi.hoisted(()=>({advance:vi.fn(),toast:vi.fn(),encounter:null as null|{id:string;status:string},actor:null as null|{participant_type:string;entity_id:string}}));
+const mocks=vi.hoisted(()=>({advance:vi.fn(),turn:vi.fn(),solo:vi.fn(),toast:vi.fn(),encounter:null as null|{id:string;status:string},actor:null as null|{participant_type:string;entity_id:string}}));
 vi.mock('../../context/CombatContext',()=>({useCombatSelector:(select:(s:unknown)=>unknown)=>select({encounter:mocks.encounter}),useCombatCurrentActor:()=>mocks.actor}));
+vi.mock('../../lib/api/psionicTurns',()=>({getEnkindledTurn:mocks.turn,advancePsionicSoloTurn:mocks.solo,PsionicRequestError:class extends Error{definitelyNotPaid=true;}}));
 vi.mock('../../lib/combatEncounter',()=>({advanceTurn:mocks.advance}));
 vi.mock('../shared/Toast',()=>({useToast:()=>({showToast:mocks.toast})}));
 import ActionEconomy from './ActionEconomy';
@@ -32,4 +33,20 @@ it('does not reset a closed sheet after advancement completes',async()=>{
 });
 it('keeps the independent tabletop turn reset available outside combat',()=>{
  mocks.encounter=null;mocks.actor=null;const {reset}=mount();fireEvent.click(end());expect(reset).toHaveBeenCalledTimes(1);expect(mocks.advance).not.toHaveBeenCalled();
+});
+
+it('advances the saved tabletop turn before resetting an independent Psion',async()=>{
+ mocks.encounter=null;mocks.actor=null;mocks.turn.mockResolvedValue({turn:{soloTurn:3},used:null});mocks.solo.mockResolvedValue(4);const reset=vi.fn();
+ render(<ActionEconomy characterId="psion" speedFeet={30} trackPsionicTurns onNewTurn={reset}/>);fireEvent.click(end());
+ await waitFor(()=>expect(reset).toHaveBeenCalledTimes(1));expect(mocks.solo).toHaveBeenCalledWith('psion',expect.any(String),3);expect(mocks.advance).not.toHaveBeenCalled();
+});
+it('retries an uncertain tabletop advance with the same request, without resetting early',async()=>{
+ mocks.encounter=null;mocks.actor=null;mocks.turn.mockResolvedValue({turn:{soloTurn:0},used:null});mocks.solo.mockRejectedValueOnce(new Error('Lost response')).mockResolvedValueOnce(1);const reset=vi.fn();
+ render(<ActionEconomy characterId="psion" speedFeet={30} trackPsionicTurns actionUsedExternal onNewTurn={reset}/>);fireEvent.click(end());
+ await waitFor(()=>expect(mocks.toast).toHaveBeenCalled());expect(reset).not.toHaveBeenCalled();fireEvent.click(end());await waitFor(()=>expect(reset).toHaveBeenCalledTimes(1));
+ expect(mocks.solo.mock.calls[0]).toEqual(mocks.solo.mock.calls[1]);
+});
+it('does not reset the shared Psion turn while another combatant is acting',async()=>{
+ mocks.actor={participant_type:'creature',entity_id:'goblin'};mocks.turn.mockResolvedValue({turn:{encounterId:'fight',round:1,index:1,turnId:'turn'},used:null});const reset=vi.fn();
+ render(<ActionEconomy characterId="psion" speedFeet={30} trackPsionicTurns onNewTurn={reset}/>);fireEvent.click(end());await waitFor(()=>expect(reset).toHaveBeenCalledTimes(1));expect(mocks.solo).not.toHaveBeenCalled();expect(mocks.advance).not.toHaveBeenCalled();
 });

@@ -1,3 +1,5 @@
+import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
+import {acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
 import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharacterRef';
 import {offerPsionicRollEnhancements} from './offerPsionicRollEnhancements';
 import {useEffect,useRef,useState} from 'react';
@@ -13,7 +15,7 @@ import {useModal} from '../../shared/Modal';
 import {useToast} from '../../shared/Toast';
 import {logAction} from '../../shared/ActionLog';
 /** Rolls first, then asks for the tabletop outcome; dismissing never spends. */
-export default function ConditionalPsionicButton({character,discipline,onUpdate,campaignId}:{character:Character;discipline:PsionDiscipline;onUpdate:(patch:Partial<Character>)=>void;campaignId?:string|null}) {
+export default function ConditionalPsionicButton({persistence,character,discipline,onUpdate,campaignId}:{persistence?:PsionicEnhancementPersistence;character:Character;discipline:PsionDiscipline;onUpdate:(patch:Partial<Character>)=>void;campaignId?:string|null}) {
  const latest=useOptimisticCharacterRef(character);
  const update=useRef(onUpdate);update.current=onUpdate;
  const mounted=useRef(true),busy=useRef(false);const [pending,setPending]=useState(false);
@@ -27,16 +29,16 @@ export default function ConditionalPsionicButton({character,discipline,onUpdate,
    const originalRoll=rollDie(state.sides);
    let roll=originalRoll,usedSurge=false;let enkindledRolls:number[]=[];
    if(psionicSurge(latest.current,[roll])||enkindledCapacity(latest.current)) {
-    const surged=await offerPsionicRollEnhancements({roll,sides:state.sides,feature:discipline.name,campaignId,
+    const surged=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll,sides:state.sides,feature:discipline.name,campaignId,recoveryNote:'The bonus outcome is not resolved. Spend the base Energy Die only if it changes the outcome.',
      current:()=>latest.current,active:()=>mounted.current,
      eligible:current=>{
       const chosen=(current.class_resources as Record<string,unknown>|null)?.['psion-disciplines'];
       return Array.isArray(chosen)&&hasDiscipline(chosen.filter((v):v is string=>typeof v==='string'),discipline)
        &&!!conditionalPsionicDie(current.level,current.class_resources?.['psionic-energy-dice'],originalRoll,false);
      },
-     update:patch=>{latest.current={...latest.current,...patch};update.current(patch);},
+
      prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
-    if(!surged)return;
+    if(!surged||surged.unconfirmed)return;
     roll=surged.roll;usedSurge=surged.usedSurge;enkindledRolls=surged.enkindledRolls;
    }
    if(!mounted.current||latest.current.id!==id)return;

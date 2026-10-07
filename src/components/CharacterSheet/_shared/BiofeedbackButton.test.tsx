@@ -6,7 +6,9 @@ vi.mock('../../../rules/dice',()=>({rollDie:()=>mocks.roll}));
 vi.mock('../../../lib/gameUtils',()=>({computeStats:(c:{intelligence:number})=>({modifiers:{intelligence:Math.floor((c.intelligence-10)/2)}})}));
 vi.mock('../../shared/ActionLog',()=>({logAction:mocks.log}));
 vi.mock('../../shared/Toast',()=>({useToast:()=>({showToast:mocks.toast})}));
-import BiofeedbackButton from './BiofeedbackButton';
+import RealBiofeedbackButton from './BiofeedbackButton';
+import {withTestPsionicPersistence} from './psionicPersistence.testSupport';
+const BiofeedbackButton=withTestPsionicPersistence(RealBiofeedbackButton);
 import {ModalProvider} from '../../shared/Modal';
 import type {Character} from '../../../types';
 const character={id:'psion',name:'Psion',class_name:'Psion',level:5,intelligence:18,temp_hp:0,class_resources:{'psion-disciplines':['Biofeedback'],'psionic-energy-dice':6,other:9}} as unknown as Character;
@@ -43,7 +45,8 @@ it('Surge upgrades all low rolls for one Hit Point Die, even after the last Ener
  fireEvent.click(screen.getByRole('button',{name:'Spend 1 Hit Point Die'}));
  await waitFor(()=>expect(update).toHaveBeenCalledTimes(3));
  expect(update).toHaveBeenNthCalledWith(2,{hit_dice_spent:1});expect(update).toHaveBeenNthCalledWith(3,{temp_hp:12});
- expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({actionName:'Psionic Surge',individualResults:[2,2],total:8}));
+ expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({actionName:'Biofeedback',individualResults:[2,2],total:12}));
+ expect(mocks.log).toHaveBeenCalledTimes(1); // Surge history belongs to its server transaction.
 });
 
 it('still grants the paid original result if Hit Point Dice run out before Surge confirmation',async()=>{
