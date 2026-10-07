@@ -1,3 +1,4 @@
+import PsionicRestorationButton from './_shared/PsionicRestorationButton';
 import { abilityModifier } from '../../rules/abilities';
 import { useState, useMemo } from 'react';
 import type { Character } from '../../types';
@@ -495,7 +496,11 @@ export default function FeaturesAndTraitsPanel({ character, onUpdate }: Props) {
  setTimeout(() => setJustUsed(curr => curr === feature.name ? null : curr), 1800);
  };
 
- const button = useInline ? (
+ // v2.761 — the generic feature button only flashed Used! for Restoration.
+ // Reuse the real meditation/resource path from Actions in this entry point too.
+ const button = character.class_name === 'Psion' && feature.name === 'Psionic Restoration'
+ ? <PsionicRestorationButton character={character} onUpdate={onUpdate}/>
+ : useInline ? (
  <button
  onClick={(e) => { e.stopPropagation(); handleUseFeature(); }}
  disabled={featureDepleted}
