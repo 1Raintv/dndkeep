@@ -1,6 +1,21 @@
 # DNDKeep — Two-Track Roadmap
 
-### In progress — Psion spell replacements, planned v2.787
+### Verified locally — spell grant level validation, v2.788
+
+Automatic grants ignore orphaned secondary levels and invalid fractional,
+negative, missing or non-finite secondary levels. Species unlocks now use the
+same validated class levels as class grants. Nine regression cases cover the
+stale-data failure; full gate passes (1,695 unit tests, TS 208/208, entry 253 KB).
+No schema changes. Production release pending.
+
+### Released — Psion spell replacements, v2.787
+
+Production confirmed: PR #116 merged as `2e278076`; main CI 37675972052
+passed and public service worker reports 2.787.0. Schema PR #115 applied all
+four migrations in production (run 37674807253). Final verification: 1,686
+unit tests, 36 desktop/mobile browser cases, TS 208/208, entry 253 KB.
+The notes below record the implementation sequence; earlier local-only migration
+and verification counts are superseded by this released status.
 
 UA Psion Update p.3 (local supplied PDF) allows one cantrip and one prepared
 spell replacement when gaining a Psion level. Current Spell Book removal/addition

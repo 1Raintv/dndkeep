@@ -24,3 +24,17 @@ it('does not prune unknown legacy spells based only on subclass list membership'
  expect(patch.known_spells).toContain('teleport');
  expect(patch.spell_sources?.teleport).toBeUndefined();
 });
+
+it.each(['',null,undefined])('ignores orphaned secondary level when class is %s',secondary_class=>{
+ const grants=getAutomaticSpellGrants({...pc,secondary_class,secondary_level:3} as Character);
+ expect(grants.filter(grant=>grant.source==='grant:species').map(grant=>grant.id)).not.toContain('darkness');
+ expect(grants.map(grant=>grant.id)).not.toContain('hellish-rebuke');
+ expect(grants.map(grant=>grant.id)).not.toContain('divine-smite');
+ expect(grants.map(grant=>grant.id)).toContain('mage-hand');
+});
+it.each([null,undefined,-1,0,2.5,NaN])('ignores invalid secondary level %s for every grant',secondary_level=>{
+ const grants=getAutomaticSpellGrants({...pc,secondary_level} as Character);
+ expect(grants.map(grant=>grant.id)).not.toContain('hellish-rebuke');
+ expect(grants.map(grant=>grant.id)).not.toContain('divine-smite');
+ expect(grants.map(grant=>grant.id)).toContain('mage-hand');
+});
