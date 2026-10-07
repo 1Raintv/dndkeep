@@ -180,8 +180,9 @@ test.describe('Psion spell replacement level-up', () => {
     await section.getByText('Review existing spell sources',{exact:true}).click();
     await expect(section.getByRole('checkbox',{name:'Hold Person: Wizard',exact:true})).toBeChecked();
   });
-  test('ordinary learning and advanced removal change only the Psion copy',async({page})=>{
+  for(const wizardReady of [false,true]) test(`ordinary learning and removal preserve Wizard readiness=${wizardReady}`,async({page})=>{
     sql(`update characters set level=5,secondary_class='Wizard',secondary_level=3,known_spells=ARRAY['mage-armor'],prepared_spells='{}',spell_sources='{"mage-armor":["class:Wizard"]}',advanced_spell_edits_unlocked=true,spell_slots='{"1":{"total":4,"used":0},"2":{"total":3,"used":0},"3":{"total":2,"used":0}}' where id='${charId}'`);
+    if(wizardReady) sql(`update characters set prepared_spells=ARRAY['mage-armor'],spell_preparation_sources='{"mage-armor":["class:Wizard"]}' where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     await page.locator('button.tab').filter({hasText:/^Spells/}).click();
     await page.getByRole('button',{name:/Spell Book/}).click();
@@ -190,9 +191,12 @@ test.describe('Psion spell replacement level-up', () => {
     await page.getByRole('button',{name:'+ Add',exact:true}).click();
     await expect.poll(()=>sql(`select (spell_sources->'mage-armor')::text from characters where id='${charId}'`)).toBe('["class:Wizard", "class:Psion"]');
     expect(sql(`select ('mage-armor'=any(prepared_spells))::text from characters where id='${charId}'`)).toBe('true');
+    expect(JSON.parse(sql(`select spell_preparation_sources->'mage-armor' from characters where id='${charId}'`))).toEqual(wizardReady?['class:Wizard','class:Psion']:['class:Psion']);
     await page.getByRole('button',{name:'− Remove',exact:true}).click();
     await expect.poll(()=>sql(`select (spell_sources->'mage-armor')::text from characters where id='${charId}'`)).toBe('["class:Wizard"]');
     expect(sql(`select ('mage-armor'=any(known_spells))::text from characters where id='${charId}'`)).toBe('true');
+    expect(sql(`select ('mage-armor'=any(prepared_spells))::text from characters where id='${charId}'`)).toBe(String(wizardReady));
+    expect(JSON.parse(sql(`select spell_preparation_sources->'mage-armor' from characters where id='${charId}'`))).toEqual(wizardReady?['class:Wizard']:[]);
     await page.reload();await page.locator('button.tab').filter({hasText:/^Spells/}).click();
     await expect(page.getByTitle('9 more spells can be prepared',{exact:true})).toContainText('0/9');
   });

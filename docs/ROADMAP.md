@@ -83,6 +83,16 @@ changing the saved map. Both desktop/mobile database checks pass. The migration
 is applied only to Docker, and its ledger entry is verified. Ordinary learning,
 level-up replacement and source-review controls still need this field wired in.
 
+Ordinary learning/removal now uses one pure proposed change for learned sources
+and preparation sources. A rejected readiness change cannot partially save a new
+ownership claim. Seven additional unit cases cover shared copies, final removal,
+feature copies, malformed metadata and ambiguous legacy readiness. The actual
+picker is tested against both initially prepared and initially unprepared Wizard
+copies; adding then removing Psion restores the original readiness and ownership.
+Remaining integration: ordinary preparation toggles and per-class counts, level-up
+replacement, explicit readiness review and automatic grants. Until these paths
+are connected, the local release remains held.
+
 Before release: source tracking for automatic grants and per-class prepared-state
 ownership. A spell learned through Psion and later removed must not accidentally
 prepare an originally unprepared copy retained by Wizard.
