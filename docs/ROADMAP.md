@@ -65,6 +65,15 @@ chosen cantrip. New choices record their class source without inferring legacy
 ownership. Six helper cases and two real-wizard submission cases pass, including
 custom recommended and blank payloads; all 1,630 unit tests pass.
 
+Preparation domain foundation: a separate per-spell source list distinguishes
+reviewed unprepared copies (an explicit empty list) from unknown legacy readiness
+(a missing entry). Preparing/removing one source preserves independently prepared
+copies and refuses ambiguous legacy edits pending an explicit review. Twelve
+regressions cover the Psion→Wizard readiness leak, independent copies, malformed
+metadata, immutable input and review. This domain module is not yet connected
+to saved character data or UI; database shape, creation/learning/replacement
+integration, counts, review controls and real browser checks remain required.
+
 Before release: source tracking for automatic grants and per-class prepared-state
 ownership. A spell learned through Psion and later removed must not accidentally
 prepare an originally unprepared copy retained by Wizard.
