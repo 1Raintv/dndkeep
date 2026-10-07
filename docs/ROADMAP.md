@@ -1,6 +1,30 @@
 # DNDKeep — Two-Track Roadmap
 
-### In progress — Energy Dice persistence, planned v2.784
+### In progress — Character-sheet concentration correctness, v2.785
+
+The standalone sheet now reads the same effective Constitution/save proficiency
+as its ability tiles, uses the canonical dice/save helpers, and records saves
+under the character ID (previously the account ID, losing character history).
+Eight local desktop/mobile scenarios verify bonuses, standard natural extremes,
+the explicit natural-20 house rule, failed-save cleanup and persisted history.
+Failed saves now clear concentration immediately, before the dice animation.
+Only the notification is deferred, so later castings (including the same spell)
+survive old animation callbacks. Resolution and cleanup read the current sheet
+snapshot rather than a stale realtime-subscription closure. Four desktop/mobile
+frozen-clock scenarios pass twice each; the old implementation fails the same
+regression. This remains local follow-up work pending release.
+
+Remaining concentration audit: campaign save prompts use a separate resolver;
+active save bonuses,
+advantage and exhaustion need consistent handling across both paths. Do not
+claim concentration automation complete until these paths are reconciled.
+
+Release status: database PR #110 merged at 60499b3. Migration run 37642330605
+attempt 2 actually applied 20261007133000 to PROD after a GitHub runner outage.
+Client PR #111 merged at 2bf23f1; main CI 37642913067 and Vercel are green.
+The public service worker reports v2.784.0. Concentration follow-up remains local.
+
+### 2026-10-07 — Energy Dice persistence, v2.784
 
 A real two-tab browser regression reproduces the remaining base-pool race:
 two paid manual rolls from six dice leave five instead of four. The new local
@@ -10,7 +34,7 @@ resources, and returns ordered receipts. Fifteen real database scenarios cover
 concurrent requests, last-die contention, rollback, authorization, Restoration,
 malformed values and all 20 level boundaries. API/reconciliation tests pass.
 
-This remains local and unshipped. Manual rolls, Biofeedback, Destructive Thoughts,
+Merged in PR #111. Manual rolls, Biofeedback, Destructive Thoughts,
 conditional bonus costs, Propel/Connection settlement and Restoration (Actions and Features) now use the saved
 payment path. The original two-tab manual-roll regression passes on desktop and
 mobile, as does lost base-payment recovery across reload without a second cost or
@@ -61,7 +85,7 @@ Validation: all 134 selected Psion browser/database checks now pass across
 desktop/mobile (130 in the broad run, four legacy discipline checks rerun after
 replacing their capped shared-account fixture with disposable accounts).
 The full gate passes with 1,537 unit tests, TypeScript 208/208 and a 253 KB entry.
-Remaining release work: deploy the database endpoints before the updated app.
+Database endpoints and frontend v2.784 are verified live.
 Audit subclass spell-slot payments separately; do not invent an unsupported
 PED-to-slot feature. Ordinary saves now preserve transaction-owned keys;
 conditional spending, the free Connection extension and unrelated edits are tested.
