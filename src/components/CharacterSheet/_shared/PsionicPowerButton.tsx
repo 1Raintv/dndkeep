@@ -1,12 +1,16 @@
+import {offerPsionicSurge} from './offerPsionicSurge';
+import {useToast} from '../../shared/Toast';
 import {useEffect,useRef,useState} from 'react';
 import type {Character} from '../../../types';
 import {useModal} from '../../shared/Modal';
 import {rollDie} from '../../../rules/dice';
 import {psionicPowerState,type PsionicPowerUse} from '../../../rules/psionicPowers';
 const buttonStyle={padding:'6px 8px',fontSize:11,minHeight:36,borderRadius:6,color:'#c4b5fd',background:'rgba(167,139,250,0.15)',border:'1px solid rgba(167,139,250,0.45)'};
-export default function PsionicPowerButton({character,kind,onUse}:{character:Character;kind:'propel'|'connection';onUse:(use:PsionicPowerUse)=>Promise<void>}) {
+export default function PsionicPowerButton({character,kind,onUse,onUpdate}:{character:Character;onUpdate:(patch:Partial<Character>)=>void;kind:'propel'|'connection';onUse:(use:PsionicPowerUse)=>Promise<void>}) {
   const modal=useModal(),latest=useRef(character);latest.current=character;
   const callback=useRef(onUse);callback.current=onUse;
+  const update=useRef(onUpdate);update.current=onUpdate;
+  const {showToast}=useToast();
   const busy=useRef(false);const [pending,setPending]=useState(false);
   const mounted=useRef(true);useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const state=psionicPowerState(character);
@@ -22,8 +26,25 @@ export default function PsionicPowerButton({character,kind,onUse}:{character:Cha
       if((mode==='powered'||mode==='connection')&&now.dice<1)return;
       if(mode==='connection'&&now.connectionFree!==before.connectionFree)return;
       if(mode==='technique'&&!now.technique)return;
-      await callback.current(mode==='connection'?{kind:'connection',free:now.connectionFree,roll:rollDie(now.sides)}:
-        {kind:'propel',mode,roll:mode==='free'?0:rollDie(mode==='technique'?4:now.sides)});
+      const originalRoll=mode==='free'?0:rollDie(mode==='technique'?4:now.sides);
+      let roll=originalRoll,usedSurge=false;
+      // The free Psykinetic d4 is not a Psionic Energy Die (UA update p.9).
+      if(mode==='powered'||mode==='connection') {
+        const surged=await offerPsionicSurge({roll,sides:now.sides,
+          feature:mode==='connection'?'Telepathic Connection':'Telekinetic Propel',campaignId:latest.current.campaign_id,
+          current:()=>latest.current,active:()=>mounted.current,
+          eligible:c=>{const current=psionicPowerState(c);return current.valid&&current.dice>0&&(mode!=='connection'||current.connectionFree===now.connectionFree);},
+          update:patch=>{latest.current={...latest.current,...patch};update.current(patch);},
+          confirm:modal.confirm,warn:message=>showToast(message,'warn')});
+        if(!surged)return;
+        roll=surged.roll;usedSurge=surged.usedSurge;
+      }
+      if(!mounted.current||latest.current.id!==id)return;
+      const current=psionicPowerState(latest.current);
+      if(!current.valid||((mode==='powered'||mode==='connection')&&current.dice<1)||(mode==='connection'&&current.connectionFree!==now.connectionFree))return;
+      const metadata=usedSurge?{originalRoll,surged:true as const}:{};
+      await callback.current(mode==='connection'?{kind:'connection',free:now.connectionFree,roll,...metadata}:
+        {kind:'propel',mode,roll,...metadata});
     }finally{busy.current=false;if(mounted.current)setPending(false);}
   }
   return <div style={{display:'flex',gap:4,flexWrap:'wrap',justifyContent:'flex-end'}}>

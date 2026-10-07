@@ -111,4 +111,39 @@ test.describe('Psionic Restoration (local stack)', () => {
     await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and notes like '%4 dice remaining'`)).toBe('1');
   });
 
+  test('Surge boosts base powers while preserving their separate Energy Die costs',async({page},info)=>{
+    // A slow history insert must not discard the next independent power.
+    let release!:()=>void;const pending=new Promise<void>(r=>release=r);
+    let delayed=false;
+    await page.route('**/rest/v1/action_logs*',async route=>{
+      if(!delayed && route.request().method()==='POST' && route.request().postDataJSON()?.action_name==='Telekinetic Propel') {
+        delayed=true;await pending;
+      }
+      await route.continue();
+    });
+    try {
+    sql(`update characters set level=7,hit_dice_spent=0 where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    const button=(name:string)=>page.getByRole('button',{name,exact:true}).locator('visible=true').first();
+    await expect(button('Powered (1 die)')).toBeVisible({timeout:20_000});
+    await page.evaluate(()=>{Math.random=()=>0.01;});
+    const resources=()=>sql(`select hit_dice_spent||':'||(class_resources->>'psionic-energy-dice') from characters where id='${charId}'`);
+    await button('Powered (1 die)').click();await button('Spend 1 Hit Point Die').click();
+    const propel=page.getByRole('dialog',{name:'Telekinetic Propel'});
+    await expect(propel).toContainText('Psionic Surge treats 1 as 4: 20 ft');
+    await expect.poll(resources).toBe('1:2');
+    await page.screenshot({path:info.outputPath('surged-propel.png')});
+    await button('Save passed').click();await expect(propel).toBeHidden();expect(resources()).toBe('1:2');
+    await button('Extend (free)').click();await button('Extend telepathy').click();await button('Spend 1 Hit Point Die').click();
+    await expect.poll(resources).toBe('2:2');await expect(button('Extend (1 die)')).toBeEnabled();
+    await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Telepathic Connection' and notes like 'Telepathy range 100 ft%'`)).toBe('1');
+    expect(delayed).toBe(true);release();
+    await button('Powered (1 die)').click();await button('Spend 1 Hit Point Die').click();
+    await expect(propel).toBeVisible();await button('Cancel').click();await expect.poll(resources).toBe('3:2');
+    await button('Extend (1 die)').click();await button('Extend telepathy').click();await button('Keep roll of 1').click();
+    await expect.poll(resources).toBe('3:1');
+    await page.reload();await expect(button('Powered (1 die)')).toBeVisible();expect(resources()).toBe('3:1');
+    } finally {release();}
+  });
+
 });

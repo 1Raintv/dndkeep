@@ -3,7 +3,7 @@ export interface PsionicPowerCharacter {
   class_name:string; level:number; subclass?:string|null;
   class_resources?:Record<string,unknown>|null; feature_uses?:Record<string,number>|null;
 }
-export type PsionicPowerUse = {kind:'propel';mode:'free'|'powered'|'technique';roll:number} | {kind:'connection';roll:number;free:boolean};
+export type PsionicPowerUse = ({kind:'propel';mode:'free'|'powered'|'technique';roll:number} | {kind:'connection';roll:number;free:boolean}) & {originalRoll?:number;surged?:boolean};
 export const CONNECTION_USE='Telepathic Connection';
 export function psionicPowerState(c:PsionicPowerCharacter) {
   const raw=c.class_resources?.['psionic-energy-dice'];
@@ -34,5 +34,5 @@ export function resolvePsionicPower(c:PsionicPowerCharacter,use:PsionicPowerUse,
   const feet=use.kind==='connection'?state.telepathyRange+10*use.roll:failedSave?(use.mode==='free'?5:5*use.roll):0;
   const notes=use.kind==='connection'?`Telepathy range ${feet} ft for 1 hour. ${cost?'Spent 1 die.':'First extension after Long Rest: no die spent.'}`:
     `${failedSave?'Failed STR save':'Passed STR save'}: ${feet} ft movement. ${cost?'Spent 1 die.':'No die spent.'} Move straight toward or away from you; Large or smaller, within 30 ft.`;
-  return {patch,cost,feet,notes};
+  return {patch,cost,feet,notes:notes+(use.surged?` Psionic Surge: ${use.originalRoll} treated as ${use.roll}; 1 Hit Point Die already spent.`:'')};
 }

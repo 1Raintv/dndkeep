@@ -58,3 +58,11 @@ it.each([NaN,Infinity,-1,1.5,'2',null,7])('refuses to settle or rewrite malforme
 it.each([NaN,Infinity,0,-1,5.5,21])('refuses invalid level %s for powers',level=>{
  expect(resolvePsionicPower({...c,level},{kind:'connection',roll:2,free:true})).toBeNull();
 });
+
+it('Surge adjusts distance but preserves the original power expenditure condition',()=>{
+ const use={kind:'propel',mode:'powered',roll:4,originalRoll:1,surged:true} as const;
+ expect(resolvePsionicPower(c,use,true)).toMatchObject({feet:20,cost:1});
+ expect(resolvePsionicPower(c,use,false)).toMatchObject({feet:0,cost:0});
+ expect(resolvePsionicPower(c,use,true)?.notes).toContain('1 treated as 4');
+ expect(resolvePsionicPower(c,{kind:'connection',roll:4,originalRoll:1,surged:true,free:true})).toMatchObject({feet:70,cost:0});
+});
