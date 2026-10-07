@@ -49,7 +49,21 @@ test.describe('Psion Biofeedback', () => {
       const surge=page.getByRole('dialog',{name:'Psionic Surge'});await expect(surge).toContainText('rolled 1, 1 on 2d8');
       await expect.poll(()=>state().pool).toBe(0);
       await page.screenshot({path:info.outputPath('biofeedback-surge.png')});
-      await surge.getByRole('button',{name:'Spend 1 Hit Point Die'}).click();
+      // v2.773 — hold only history delivery; the paid ability must resolve.
+      let release!:()=>void;let held=false;
+      const delivery=new Promise<void>(resolve=>{release=resolve;});
+      await page.route('**/rest/v1/action_logs*',async route=>{
+        if(route.request().method()==='POST' && route.request().postDataJSON()?.action_name==='Psionic Surge'){
+          held=true;await delivery;
+        }
+        await route.continue();
+      });
+      try {
+        await surge.getByRole('button',{name:'Spend 1 Hit Point Die'}).click();
+        await expect.poll(()=>held).toBe(true);
+        await expect.poll(()=>state().temp).toBe(12);
+      } finally {release();}
+
     }
     await expect.poll(state).toEqual({pool:level===5?3:0,temp:level===5?7:12,spent:level===5?0:1,other:9});
     await page.reload();await expect(activate).toBeVisible();

@@ -1,5 +1,16 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Resolve Surge independently of history delivery, v2.773
+
+A confirmed Psionic Surge now returns its improved dice immediately after paying
+the Hit Point Die. Previously a slow action-log request held the result, and
+closing the ability while waiting could discard it after payment. History is
+sent independently; a rejected write reports that Surge applied but its log
+could not be saved. Focused tests hold or reject logging and verify the paid
+result still resolves. Desktop/mobile Biofeedback checks also hold the actual
+history request and verify temporary HP is saved before releasing it. This does
+not make character persistence transactional.
+
 ### 2026-10-07 — Background image lifecycle, v2.772
 
 Closing a map invalidates pending image loads and their retries, releasing stale

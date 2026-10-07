@@ -2,7 +2,7 @@
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 vi.mock('../../../rules/dice',()=>({rollDie:()=>mocks.roll}));
-const mocks=vi.hoisted(()=>({log:vi.fn(),toast:vi.fn(),roll:4}));
+const mocks=vi.hoisted(()=>({log:vi.fn().mockResolvedValue(undefined),toast:vi.fn(),roll:4}));
 vi.mock('../../shared/ActionLog',()=>({logAction:mocks.log}));
 vi.mock('../../shared/Toast',()=>({useToast:()=>({showToast:mocks.toast})}));
 import ConditionalPsionicButton from './ConditionalPsionicButton';
