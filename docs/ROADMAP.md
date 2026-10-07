@@ -174,7 +174,8 @@ review handles legacy records without inferred ownership. Spell management now
 remains available for casters with missing slot records, including secondary
 classes and unlocked casting subclasses; no slot values are invented. Seven
 workspace checks and the full gate pass (1,686 tests; TS 208/208; 253 KB entry).
-All 36 combined desktop/mobile browser checks passed together. Next: schema-only PR and confirmed
+All 36 combined desktop/mobile browser checks passed together. Schema PR #115
+(head 1e2dea8) is open and awaiting CI/deployment checks. Next: schema-only PR and confirmed
 production migration, followed by the versioned application PR, main CI and live
 service-worker version verification. Nothing from v2.787 is deployed yet.
 
