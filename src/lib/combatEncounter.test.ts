@@ -49,7 +49,7 @@ vi.mock('./api/checked', () => ({ checkedWrite: vi.fn(async () => ({ error: null
 
 import { recoverInitiativeResources } from './initiativeResources';
 vi.mock('./initiativeResources',()=>({recoverInitiativeResources:vi.fn(async()=>{})}));
-import { seedToRow, firstPerDefinition, startEncounter, endEncounter, addParticipantToEncounter, rollInitiativeForParticipant, type SeedSource } from './combatEncounter';
+import { characterToSeed, seedToRow, firstPerDefinition, startEncounter, endEncounter, addParticipantToEncounter, rollInitiativeForParticipant, type SeedSource } from './combatEncounter';
 
 const seed = (over: Partial<SeedSource>): SeedSource => ({
   type: 'creature', entityId: 'goblin-def', name: 'Goblin Scout',
@@ -202,4 +202,17 @@ describe('initiative resource recovery entry points',()=>{
   expect(await rollInitiativeForParticipant('pc',2)).toBeNull();
   expect(recoverInitiativeResources).not.toHaveBeenCalled();
  });
+});
+
+// v2.762 — regression for the nonexistent `class` field in encounter seeding.
+it.each([
+  ['Psion', 6, 'Metamorph', 2],
+  ['Psion', 20, 'Telepath', 1],
+  ['Fighter', 11, null, 3],
+  ['Monk', 5, null, 2],
+] as const)('seeds %s %i attack count into both encounter counters', (class_name, level, subclass, count) => {
+  const character = {id:'pc',name:'Fixture',class_name,level,subclass} as import('../types').Character;
+  const row = seedToRow(characterToSeed(character), ctx);
+  expect(row.attacks_per_action).toBe(count);
+  expect(row.attacks_remaining).toBe(count);
 });

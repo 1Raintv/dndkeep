@@ -12,6 +12,7 @@ import ModalPortal from '../shared/ModalPortal';
 
 interface WeaponsTrackerProps {
  weapons: WeaponItem[];
+ attacksPerAction: number;
  onUpdate: (weapons: WeaponItem[]) => void;
  /** LEGACY NAMING: in some call sites this is the auth user's id (not the
   * character row id). We preserve it as-is to avoid breaking existing
@@ -59,7 +60,7 @@ interface RollResult {
 
 export default function WeaponsTracker({
  weapons, onUpdate, characterId, characterName, historyCharacterId, userId, campaignId,
- activeConditions = [], activeBufss = [],
+ activeConditions = [], activeBufss = [], attacksPerAction,
 }: WeaponsTrackerProps) {
  const [showAdd, setShowAdd] = useState(false);
  const [editId, setEditId] = useState<string | null>(null);
@@ -295,8 +296,8 @@ export default function WeaponsTracker({
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 800, letterSpacing: '0.15em', textTransform: 'uppercase' as const, color: 'var(--t-3)' }}>
  WEAPON ATTACKS
  </span>
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 9, color: 'var(--t-3)' }}>
- Attacks per Action: 1
+ <span title="Attacks when taking the Attack action on your turn. Bonus attacks, reactions and temporary effects are separate." style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)' }}>
+ Attacks per Action: {attacksPerAction}
  </span>
  </div>
  {/* Table column headers — v2.371.0 unified 9-col template

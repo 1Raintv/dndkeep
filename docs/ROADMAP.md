@@ -1,5 +1,23 @@
 # DNDKeep — Two-Track Roadmap
 
+### 2026-10-07 — Correct character Attack action counts, v2.762
+
+Encounter seeding read a nonexistent `class` field, so real characters started
+with one attack. The weapon header also hardcoded one. Both now use a pure
+class-level helper: Metamorph gets two at Psion 6; Barbarian, Monk, Paladin and
+Ranger at 5; Fighter gets 2/3/4 at 5/11/20. Primary and secondary class levels
+are evaluated separately and the highest benefit wins, never summed.
+
+This corrects the sheet reference and newly seeded combat counters. Existing
+encounters are not rewritten. Bonus/reaction attacks, temporary effects,
+weapon-specific invocations, other subclass grants and Metamorph's cantrip
+replacement remain separate work; this does not claim automated turn enforcement.
+
+Validation: source audit against SRD 5.2.1 and private Psion update p.8, boundary
+and multiclass unit tests, real seed-to-row counter checks, desktop/mobile
+character-sheet regression and full release gate.
+
+
 ### 2026-10-07 — Restoration works from Features too, v2.761
 
 The Features-tab button matched the generic non-save handler, which merely

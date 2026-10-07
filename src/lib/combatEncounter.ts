@@ -1,3 +1,4 @@
+import { attacksPerAction } from '../rules/extraAttack';
 import { recoverInitiativeResources } from './initiativeResources';
 // v2.96.0 — Phase D of the Combat Backbone
 //
@@ -200,18 +201,6 @@ export function firstPerDefinition(seeds: SeedSource[]): SeedSource[] {
 }
 
 export function characterToSeed(c: Character): SeedSource {
-  // v2.399.0 — Extra Attack heuristic. Fighters/Paladins/Rangers/
-  // Barbarians get a second attack at L5; Fighter alone gets a third
-  // at L11 and a fourth at L20. We only model the L5 step here as
-  // a conservative starting point — the DM can bump live for higher
-  // tiers via the action panel. Multiclass with multiple martial
-  // classes uses the highest individual class level (RAW: Extra
-  // Attack doesn't stack across classes).
-  const klass = (c as any).class as string | undefined;
-  const klassLevel = (c as any).level as number | undefined;
-  const martialClasses = ['fighter', 'paladin', 'ranger', 'barbarian'];
-  const isMartial = klass && martialClasses.includes(klass.toLowerCase());
-  const attacksPerAction = (isMartial && (klassLevel ?? 0) >= 5) ? 2 : 1;
   return {
     type: 'character',
     entityId: c.id,
@@ -223,7 +212,7 @@ export function characterToSeed(c: Character): SeedSource {
     initiativeBonus: (c as any).initiative_bonus ?? 0,
     hiddenFromPlayers: false,
     maxSpeedFt: (c as any).speed ?? 30,
-    attacksPerAction,
+    attacksPerAction: attacksPerAction(c),
   };
 }
 
