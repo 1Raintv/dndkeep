@@ -3,6 +3,26 @@
 **Established:** July 2026 (chat 15)
 **Status:** Living document. Update as tracks progress.
 
+### 2026-10-06 — Psion base power costs, v2.748
+
+Telekinetic Propel now offers free 5 ft / powered die choices; both require
+one target's STR save. The die is rolled before the save and spent only on
+failure. Psykinetic level 3+ offers a free d4. Combat uses the existing save
+resolver with a single-target selector; solo use records the tabletop save.
+The dialog states the Large-or-smaller/30 ft/line-of-sight limits. Eligibility
+is still checked at the table; movement is applied manually on the map.
+
+Telepathic Connection now distinguishes always-on base telepathy from its
+one-hour extension: first extension per Long Rest is free, later ones cost
+one die. A die must remain available to roll. Range is calculated and logged,
+including the Telepath level-6 base range; repeated extensions do not add
+previous rolls. Short Rest preserves use count; Long Rest resets it.
+No new database migration or expansion of private content access.
+
+Source: owner's UA2025-Psion+Update.pdf pp.3, 9–10 under PSION_UA_SOURCES.md
+policy. Remaining: active telepathy expiration display, subclass-only rows,
+Psionic Reserves, discipline/surge automation and broader progression audit.
+
 ### 2026-10-06 — Psion automation: Psionic Restoration, v2.747
 
 The level-5 feature existed in reference/resource data but was absent from

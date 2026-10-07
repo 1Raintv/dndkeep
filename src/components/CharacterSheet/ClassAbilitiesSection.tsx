@@ -1,4 +1,4 @@
-import { useState, Fragment, Suspense } from 'react';
+import { useState, useRef, Fragment, Suspense } from 'react';
 // Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
 import { lazyWithRetry as lazy } from '../../lib/lazyWithRetry';
 
@@ -19,6 +19,9 @@ import { formatOutcomesLog, type TargetOutcome } from '../../lib/classAbilityOut
 import { supabase } from '../../lib/supabase';
 import SlotBoxes, { PALETTE_TEAL, PALETTE_PSI, type SlotBoxesPalette } from './_shared/SlotBoxes';
 import PsionicDicePool from './_shared/PsionicDicePool';
+import PsionicPowerButton from './_shared/PsionicPowerButton';
+import ManualPropelResolution from './_shared/ManualPropelResolution';
+import {resolvePsionicPower,type PsionicPowerUse} from '../../rules/psionicPowers';
 import PsionicRestorationButton from './_shared/PsionicRestorationButton';
 import {psionicDieCount as getPsionicDieCount} from '../../rules/psionicRestoration';
 
@@ -161,6 +164,9 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  // if the character's stats change while it's open. cost is the
  // `cost` argument forwarded into finalizeUse so the existing
  // tracker-deduction path runs identically after the modal confirms.
+ const [manualPropel,setManualPropel]=useState<ClassAbility|null>(null);
+ const settlingPower=useRef(false);
+ const livePowerCharacter=useRef(character);livePowerCharacter.current=character;
  const [resolveModal, setResolveModal] = useState<{
  ability: ClassAbility; saveDC: number; cost?: number;
  } | null>(null);
@@ -235,6 +241,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  }
  }
  }
+ if(ability.psionicUse?.kind==='propel'){setManualPropel(ability);return;}
  await finalizeAbilityUse(ability, cost, []);
  }
 
@@ -248,6 +255,24 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  cost?: number,
  outcomes: TargetOutcome[] = [],
  ) {
+ // v2.748: one resource patch after a resolved save; free powers never hit generic PED deduction.
+ if(ability.psionicUse){
+   if(settlingPower.current)return;
+   const use=ability.psionicUse;
+   if(use.kind==='propel'&&(outcomes.length!==1||outcomes[0].outcome==='pending'))return;
+   const result=resolvePsionicPower(livePowerCharacter.current,use,use.kind==='propel'?outcomes[0].outcome!=='passed':undefined);
+   if(!result){showToast('Resources changed. Choose the power again.','warn');return;}
+   settlingPower.current=true;
+   try {
+     livePowerCharacter.current={...livePowerCharacter.current,...result.patch} as Character;
+     onUpdate(result.patch as Partial<Character>);
+     showToast(result.notes,'success');
+     await logAction({campaignId:campaignId??null,characterId:character.id,characterName:character.name,
+       actionType:'roll',actionName:ability.name,total:use.roll,individualResults:use.roll?[use.roll]:undefined,
+       targetName:outcomes[0]?.participantName,notes:result.notes});
+   }finally{settlingPower.current=false;}
+   return;
+ }
  // v2.189.0 — Phase Q.0 pt 30: explicit Psionic Energy Die cost gate.
  // Abilities with `pedCost: N` (Warp Space=1, Mass Teleport=4, etc.)
  // require N dice in the pool; insufficient pool aborts with an alert
@@ -781,7 +806,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
  const target = e.target as HTMLElement;
  if (target.closest('button')) e.stopPropagation();
  }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'nowrap' as const, alignItems: 'center', width: '100%' }}>
- {ability.name==='Psionic Restoration' ? <PsionicRestorationButton character={character} onUpdate={onUpdate}/> : ability.actionType !== 'free' && (
+ {(ability.name==='Telekinetic Propel'||ability.name==='Telepathic Connection') ? <PsionicPowerButton character={character} kind={ability.name==='Telekinetic Propel'?'propel':'connection'} onUse={async(use:PsionicPowerUse)=>{await handleUseAbility({...ability,psionicUse:use});}}/> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton character={character} onUpdate={onUpdate}/> : ability.actionType !== 'free' && (
  <button
  onClick={() => handleUseAbility(ability, maxUses !== undefined ? 1 : undefined)}
  style={{
@@ -936,6 +961,7 @@ export default function ClassAbilitiesSection({ character, combatFilter, onUpdat
      the ability + DC into resolveModal. The portal lifts the modal
      out of any nested overflow:hidden so it covers the sheet
      properly. */}
+ {manualPropel?.psionicUse?.kind==='propel'&&<ManualPropelResolution use={manualPropel.psionicUse} dc={resolveSaveDC(manualPropel.save!,character)??0} onClose={()=>setManualPropel(null)} onResolve={failed=>{const ability=manualPropel;setManualPropel(null);void finalizeAbilityUse(ability,undefined,[{participantId:'manual',participantName:'Tabletop target',outcome:failed?'failed':'passed'}]);}}/>}
  {resolveModal && campaignId && (
  <Suspense fallback={null}>
  <ClassAbilityResolveModal
