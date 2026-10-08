@@ -39,6 +39,11 @@ test.describe('Psion Destructive Thoughts', () => {
     sql(`update characters set level=5,intelligence=18,class_resources='{"psion-disciplines":["Destructive Thoughts"],"psionic-energy-dice":6,"other":9}' where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     await assertFloatingToolsClear(page,false);
+    const navigation=page.getByRole('navigation',{name:'Character navigation'});
+    await navigation.getByRole('button',{name:'Join Campaign',exact:true}).click();
+    const invite=navigation.getByRole('textbox',{name:'Campaign invite code'});await expect(invite).toBeVisible();
+    await page.screenshot({path:info.outputPath('character-join-navigation.png')});await invite.press('Escape');
+    await expect(navigation.getByRole('button',{name:'Join Campaign',exact:true})).toBeVisible();
     await page.getByRole('button',{name:'Roll damage',exact:true}).locator('visible=true').first().click();
     const target=page.getByRole('dialog',{name:'Destructive Thoughts target'});
     await target.getByRole('textbox').fill('Tabletop Goblin');await target.getByRole('button',{name:'Choose target'}).click();
@@ -57,7 +62,7 @@ test.describe('Psion Destructive Thoughts', () => {
   for(const level of [7,20])test(`player ${level} queues paid enhanced damage once after a lost response; DM applies it`,async({page,browser},info)=>{
     test.setTimeout(90_000);const amount=level===20?20:12,spent=level===20?3:1;
     const dm=randomUUID(),camp=randomUUID(),enc=randomUUID(),self=randomUUID(),target=randomUUID(),hidden=randomUUID(),cbSelf=randomUUID(),cbTarget=randomUUID(),cbHidden=randomUUID();
-    const dmEmail=`psion-dm-${dm}@dndkeep.local`,campName=`Destructive ${camp.slice(0,8)}`;
+    const dmEmail=`psion-dm-${dm}@dndkeep.local`,campName=`Destructive Thoughts in the Kingdom of the Very Long Campaign Name ${camp.slice(0,8)}`;
     const dmContext=await browser.newContext({serviceWorkers:'block'});
     try{
       sql(`begin;
@@ -81,7 +86,15 @@ test.describe('Psion Destructive Thoughts', () => {
       const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
       await page.addInitScript(()=>{Math.random=()=>0.01;});
       await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+      const mapLink=page.getByRole('button',{name:'Battle Map',exact:true});
+      await expect(mapLink).toBeVisible();
+      await expect.poll(()=>mapLink.evaluate(el=>el.scrollWidth-el.clientWidth)).toBeLessThanOrEqual(1);
+      const navigation=page.getByRole('navigation',{name:'Character navigation'});
+      await expect.poll(()=>navigation.evaluate(el=>Array.from(el.querySelectorAll('button')).every(button=>{const r=button.getBoundingClientRect();return r.left>=0&&r.right<=innerWidth&&r.width>0;}))).toBe(true);
+      await expect.poll(()=>navigation.getByRole('button',{name:'Characters',exact:true}).evaluate(el=>el.scrollWidth-el.clientWidth)).toBeLessThanOrEqual(1);
+      if(page.viewportSize()!.width>=1100)await expect.poll(()=>navigation.evaluate(el=>{const map=el.querySelector('.character-map-button')!.getBoundingClientRect(),sync=el.querySelector('.character-sync-status')!.getBoundingClientRect();return Math.abs(map.top+map.height/2-sync.top-sync.height/2);})).toBeLessThanOrEqual(1);
       await assertFloatingToolsClear(page,true,name=>info.outputPath(name));
+      await page.screenshot({path:info.outputPath('character-navigation.png')});
       await page.screenshot({path:info.outputPath('combat-tools-clearance.png')});
       const originalViewport=page.viewportSize()!;await page.setViewportSize({width:650,height:450});await assertFloatingToolsClear(page,true);await page.setViewportSize(originalViewport);await assertFloatingToolsClear(page,true);
       await page.getByRole('button',{name:'Roll damage',exact:true}).locator('visible=true').first().click();
