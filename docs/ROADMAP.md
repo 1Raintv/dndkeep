@@ -1,5 +1,25 @@
 # DNDKeep — Two-Track Roadmap
 
+### In progress — typed damage resolution and Sharpened integration
+
+Local `src/rules/typedDamage.ts` work groups same-type components before resistance,
+keeps other types separate, applies explicit adjustments before defenses, and
+preserves immunity/vulnerability when Sharpened bypass applies. Sixteen focused
+cases cover these rules, source-sensitive rounding and unsafe numbers. Mixed-source
+half-damage allocation fails closed until adjustment provenance is available. This module is not connected to HP application and is not a shipped
+feature; do not infer completed Sharpened automation from these tests.
+Full local gate passes: 2,579 unit tests, TypeScript 200/200, hooks clean,
+production build and 255.1 KB entry budget.
+
+Remaining integration must preserve reaction/DM adjustment provenance, load target
+defenses from the actual character/creature definition, and settle HP plus the
+once-per-current-turn replacement without duplicate writes. `applyDamage` still
+uses separate writes and blanket-condition resistance; its reaction/HP side effects
+need the same transaction/recovery guarantees as the recorded damage roll. Saved
+Sharpened history also limits finalized rows to five, so automatic selection must
+query every currently valid activation rather than that history window. Resolve
+activation overlap explicitly instead of guessing the strongest/latest number.
+
 ### Migration release-tool recovery
 
 The v2.841 production workflow failed before connecting to the database: the
@@ -10,7 +30,9 @@ existing secret gate, dry run and pending-only production apply stay in place.
 Typed-defense integration work is retained locally while this rollout is repaired.
 
 Validation: full gate passes (2,563 units; TypeScript 200/200; 255.1 KB entry).
-Hosted setup and actual migration application remain to be verified after merge.
+Hosted workflow 37776787925 passed with the pinned action; its actual Apply
+pending migrations step applied 20261008120155_psionic_prerolled_damage.sql to
+production. Frontend deployment remains blocked by the separate Vercel rate limit.
 
 ### v2.841 — Destructive Thoughts retains actual damage dice
 
