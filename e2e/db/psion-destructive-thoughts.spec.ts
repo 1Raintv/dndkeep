@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
@@ -95,6 +96,8 @@ test.describe('Psion Destructive Thoughts', () => {
       await page.getByRole('button',{name:'Spend 1 Hit Point Die',exact:true}).click();
       await expect(page.getByRole('button',{name:'Retry queue',exact:true})).toBeVisible();
       await expect(page.getByRole('status').filter({hasText:`${amount} Psychic ·`})).toContainText('Not queued');
+      await page.reload();
+      await expect(page.getByRole('status').filter({hasText:`${amount} Psychic ·`})).toContainText('Not queued');
       await page.getByRole('button',{name:'Retry queue',exact:true}).click();
       await expect(page.getByRole('status').filter({hasText:`${amount} Psychic ·`})).toContainText('Queued in combat');
       expect(posts).toBe(1);
@@ -103,6 +106,7 @@ test.describe('Psion Destructive Thoughts', () => {
       const resources=()=>JSON.parse(sql(`select json_build_object('pool',class_resources->'psionic-energy-dice','spent',hit_dice_spent,'other',class_resources->'other') from characters where id='${charId}'`));
       await expect.poll(resources).toEqual({pool:0,spent,other:9});
       await page.getByRole('status').filter({hasText:`${amount} Psychic ·`}).scrollIntoViewIfNeeded();
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[aria-label=\"Psychic damage recovery\"], [aria-label=\"Psychic damage recovery\"] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped).toEqual([]);expect(layout.pastEdge).toEqual([]);}
       await page.screenshot({path:info.outputPath('destructive-queued.png')});
       const dmPage=await dmContext.newPage();dmPage.on('pageerror',e=>errors.push(e.message));
       await signInAsSeedDm(dmPage,dmEmail);await dmPage.goto('/campaigns');
