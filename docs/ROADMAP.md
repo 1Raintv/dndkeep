@@ -1,6 +1,46 @@
 # DNDKeep — Two-Track Roadmap
 
-### Backend candidate — paid spell declaration and safe slot settlement
+### Candidate — durable casting requests and retry-safe Counterspell prompts
+
+Migration `20261008043752_counterspell_offer_retries.sql` adds a narrowly
+caster/DM-authorized transaction. Retries lock the same declaration and reuse
+its prompts, preserving declined/expired responses and the original deadline.
+The caller supplies candidate IDs only; names, campaign, spell and expiry come
+from the stored cast/participants. Foreign encounters, self-targeting and stale
+caster links fail. Current preparation/source, available slots, reaction use,
+canonical HP/conditions and encounter status are checked before inserting.
+Existing map-distance candidate filtering remains a client responsibility;
+perceptible components and sight are still separate follow-up work.
+
+Repository APIs now capture a paid cast before sending, scope its durable request
+by account/character, reuse identical arguments after a lost response, validate
+receipts, and refuse to erase a newer or corrupt request. The server settlement
+API never infers a refund for an old declaration without a payment receipt.
+Prompt requests likewise coalesce/retry without loose insert fallbacks.
+**These new APIs are not connected to the casting UI yet.** The existing player
+flow is unchanged until backend production application is confirmed and the
+recovery/effect lifecycle is wired and browser-tested.
+
+Validation: 37 new request/API units; full gate 2,030 unit tests, TS 204/204,
+zero hook violations, RAW/coordinates/anchors/build/SW and 253.7 KB entry.
+All 50 local database cases passed across prompts, acceptance and settlement.
+The new 17 prompt cases cover concurrent retries, declined/expired offers,
+actual player visibility, foreign candidates, spent/incapacitated reactors,
+source/preparation changes, and rollback after a failed insert. Initial fixture
+failures were corrected to include actual campaign membership and avoid violating
+the existing unique-participant constraint. Local ledger has no pending entries;
+security advisors show only existing keep_warm/client_errors warnings.
+
+Next: connect the durable declaration/modal, remove its separate slot debit,
+route recorded Counterspell saves through settlement, and preserve post-cast
+choices without replaying summons/buffs after reload. Do not equate slot recovery
+with full spell-effect recovery or claim the whole Counterspell lifecycle done.
+
+### Backend applied — paid spell declaration and safe slot settlement
+
+PR139 merged at e70f928c. Production workflow 37728301600 explicitly applied
+20261008041620 and finished db push. Main CI 37728301590 and production Vercel
+passed; the browser remains v2.803 until the new paid-casting client is connected.
 
 Migration `20261008041620_declared_spell_slot_settlement.sql` adds two explicitly
 caster/DM-authorized private transactions behind invoker RPCs. A stable cast ID
@@ -26,16 +66,16 @@ Full gate passed: 1,993 units, TS 204/204, zero hook violations, RAW/coordinates
 anchors/build/SW and 253.7 KB entry. Local ledger has no pending entries. Security
 advisors show only the two existing keep_warm/client_errors warnings.
 
-This is an additive backend candidate. The next client change must capture a
+This is an additive backend rollout. The next client change must capture a
 stable declaration before queued saves, stop its separate slot debit, preserve
 wasted action use, settle through the RPC, and recover interrupted declarations.
 Component visibility, spell coverage, action-economy persistence and deferred
 spell effects after reload still need verification. No claim of full automation.
 
-### Merged — transactional Counterspell client, v2.803
+### Released — transactional Counterspell client, v2.803
 
 PR138 merged at 39fde16b after both hosted gates and preview passed.
-Main CI 37727083104 passed; public release verification pending.
+Main CI 37727083104 and production Vercel passed; public SW 2.803.0 confirmed.
 
 The reaction client now calls the deployed acceptance transaction instead of
 independently spending a slot/reaction, creating a save, linking another caster,
