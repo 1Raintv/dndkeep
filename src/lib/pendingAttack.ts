@@ -1,3 +1,4 @@
+import {recordPendingDamage} from './api/pendingDamage';
 import {damageRollComponent,readDamageComponents,type DamageDieKind} from '../rules/damageComponents';
 import {getPsionicGuardsSaveAdvantage} from './api/psionicDisciplines';
 import {settleCounterspellSave} from './api/counterspellSettlement';
@@ -30,8 +31,7 @@ import { offerReactionsFor } from './pendingReaction';
 import { abilityModifier, characterProficiencyBonus, crToProficiencyBonus } from './gameUtils';
 import { getAdvantageState, meleeAutoCritApplies, conditionsAutoFailSave, conditionsDisadvantageSave, conditionsResistAll } from './conditions';
 import {
-  getAttackRollBonuses, getSaveBonuses, getDamageRiders,
-  removeBuff,
+  getAttackRollBonuses, getSaveBonuses, getDamageRiders, removeBuff,
 } from './buffs';
 import type { ActiveBuff } from './buffs';
 import { surveyMasteryMarkers, consumeMasteryMarkers } from './masteryRiders';
@@ -881,20 +881,7 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
   // attack_roll path: only damage on hit/crit; miss/fumble skip damage → state shifts to applied=0
   if (atk.attack_kind === 'attack_roll') {
     if (atk.hit_result === 'miss' || atk.hit_result === 'fumble') {
-      const { data: updated,error:missWriteError } = await supabase
-        .from('pending_attacks')
-        .update({
-          damage_final: 0,
-          damage_raw: 0,
-          damage_components: {version:1,components:[]},
-          state: 'damage_rolled',
-        })
-        .eq('id', attackId)
-        .eq('state',atk.state)
-        .select()
-        .single();
-      if(missWriteError||!updated)throw new Error('Miss damage was not confirmed. Refresh the attack before continuing.');
-      return updated as PendingAttack;
+      return (await recordPendingDamage({attack:atk,rolls:[],raw:0,final:0,components:{version:1,components:[]},expectedBuffs:null})).attack;
     }
   }
 
@@ -998,6 +985,7 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
     buff: ActiveBuff; dice: string; rolls: number[]; total: number; modifier:number; damageType: string;
   }> = [];
   let riderTotal = 0;
+  let attackerBuffsSnapshot:unknown=null;
   const riderEligible =
     (atk.attack_kind === 'attack_roll' && (atk.hit_result === 'hit' || atk.hit_result === 'crit'))
     || (atk.attack_kind === 'save' && atk.save_result !== 'passed')
@@ -1012,6 +1000,7 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
   if(riderReadError||!aRowRaw)throw new Error('Attacker damage bonuses could not be loaded. Refresh before rolling damage.');
   const aRow = normalizeParticipantRow(aRowRaw);
     const attackerBuffs = ((aRow?.active_buffs as ActiveBuff[] | null) ?? []);
+    attackerBuffsSnapshot=structuredClone(attackerBuffs);
     const isMeleeDmg = (atk.attack_source ?? '').toLowerCase() !== 'ranged';
     const riders = getDamageRiders(attackerBuffs, {
       targetParticipantId: atk.target_participant_id ?? null,
@@ -1047,25 +1036,16 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
 
   // Riders add on top after save-reduction logic above (save-for-half
   // already halves the rider total to match).
-  finalDamage = finalDamage + riderTotal;
+  finalDamage = Math.max(0,finalDamage + riderTotal);
 
   // v2.838: keep typed raw dice even after final damage is reduced/overridden.
   const components=[damageRollComponent({key:'base',source:'base',label:atk.attack_name,damageType:atk.damage_type,expression:baseExpression,rolls,dieKinds:baseDieKinds,modifier,rawTotal:total}),
     ...rolledDamageRiders.map((r,i)=>damageRollComponent({key:`rider:${i}:${r.buff.key}`,source:'rider',label:r.buff.name,damageType:r.damageType,expression:r.dice,rolls:r.rolls,modifier:r.modifier,rawTotal:r.total}))];
-  const { data: updated,error:damageWriteError } = await supabase
-    .from('pending_attacks')
-    .update({
-      damage_components:asJsonb({version:1,components}),
-      damage_rolls: rolls,
-      damage_raw: total,
-      damage_final: finalDamage,
-      state: 'damage_rolled',
-    })
-    .eq('id', attackId)
-    .eq('state',atk.state)
-    .select()
-    .single();
-  if(damageWriteError||!updated)throw new Error('Damage roll was not confirmed. Refresh the attack before rolling again.');
+  const recorded=await recordPendingDamage({attack:atk,rolls,raw:total,final:finalDamage,components:{version:1,components},expectedBuffs:attackerBuffsSnapshot});
+  const updated=recorded.attack;
+  // A competing client or lost-response retry returns the winning record.
+  // Never log our discarded local dice or consume the bonus again.
+  if(recorded.replayed)return updated;
 
   await emitCombatEvent({
     campaignId: atk.campaign_id,
@@ -1126,23 +1106,7 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
     });
   }
 
-  // v2.114.0 — Phase H pt 5: consume single-use riders (e.g., Absorb
-  // Elements rider — +1d6 on next melee attack only). Must come after the
-  // contribution events so the log still shows the rider's final hurrah.
-  if (atk.attacker_participant_id) {
-    const singleUseKeys = rolledDamageRiders
-      .filter(r => r.buff.singleUse)
-      .map(r => r.buff.key);
-    for (const key of singleUseKeys) {
-      await removeBuff({
-        participantId: atk.attacker_participant_id,
-        key,
-        reason: 'consumed',
-        campaignId: atk.campaign_id,
-        encounterId: atk.encounter_id,
-      });
-    }
-  }
+  // v2.839: the server already consumed one-use riders with the dice record.
 
   // v2.99.0 — Phase E: offer post-damage reactions (Uncanny Dodge, Absorb
   // Elements) once damage is rolled but not yet applied. These can halve the

@@ -1,5 +1,26 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.839 — Damage rolls consume one-use bonuses atomically
+
+Damage recording now locks the attacker and commits the typed dice, attack state,
+and eligible one-use bonus removal together. Competing attacks cannot both spend
+the same bonus snapshot. Retries return the winning saved roll without consuming
+a newly reapplied bonus. Missing/changed attack state, invalid component totals,
+and unauthorized callers fail before committing; later transaction failures roll
+back all writes. Existing save rounding and critical-hit behavior are preserved.
+
+The application uses this transaction for normal damage and misses. Receipt
+validation compares component fields rather than JSON key order. This closes the
+bonus-consumption gap from v2.838; post-record event/reaction delivery still needs
+a recoverable workflow. It does not yet automate Sharpened damage replacement or
+resistance bypass. Typed defenses and verified Psion source identity remain next.
+
+Validation: full gate (2,538 units; TypeScript 200/200; hooks clean; 255.1 KB
+entry). Twenty-five local database/browser cases cover concurrent calls, competing
+attacks, rollback after consumption, permission failures, stale state, rider filters,
+misses, saves, critical dice and a committed response lost before client receipt.
+Local ledger is current; no advisor findings for the new function/private table.
+
 ### v2.838 — Typed damage dice survive recording
 
 Pending attacks now retain versioned base/rider components: damage type,

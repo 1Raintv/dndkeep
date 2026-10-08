@@ -6,7 +6,7 @@ const sql=(q:string)=>execFileSync('docker',['exec','-i','supabase_db_dndkeep','
 test.use({serviceWorkers:'block'});
 test.describe('Typed pending damage records',()=>{
  gateDbSuite();
- for(const crit of [false,true])test(crit?'fixed critical maximum stays distinct from actual base and rider dice':'attacker bonus query saves both psychic base and fire rider damage',async({page})=>{
+ for(const [crit,lost] of [[false,false],[true,false],[false,true]])test(lost?'committed damage survives a lost response without reusing a one-use rider':crit?'fixed critical maximum stays distinct from actual base and rider dice':'attacker bonus query saves both psychic base and fire rider damage',async({page})=>{
  const [user,campaign,char,cb,enc,cp,attack]=Array.from({length:7},()=>randomUUID()),email='typed-'+user+'@dndkeep.local';
  try{
   sql(`begin;
@@ -19,12 +19,16 @@ test.describe('Typed pending damage records',()=>{
    insert into combatants(id,campaign_id,owner_id,name,definition_type,definition_id,current_hp,max_hp) values('${cb}','${campaign}','${user}','Damage actor','character','${char}',20,20);
    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${enc}','${campaign}','active',1,0);
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,combatant_id) values('${cp}','${enc}','${campaign}','character','${char}','Damage actor',0,'${cb}');
-   update combatants set active_buffs='[{"key":"test-fire","name":"Fire rider","source":"test","damageRider":{"dice":"1d4+1","damageType":"fire"}}]' where id='${cb}';
+   update combatants set active_buffs='[{"key":"test-fire","name":"Fire rider","source":"test","singleUse":true,"damageRider":{"dice":"1d4+1","damageType":"fire"}}]' where id='${cb}';
    insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,attacker_name,attacker_type,target_name,attack_name,attack_kind,attack_source,hit_result,state,damage_dice,damage_type,chain_id)
     values('${attack}','${campaign}','${enc}','${cp}','Damage actor','character','Target','Psychic fixture','attack_roll','melee','${crit?'crit':'hit'}','attack_rolled','1d6+2','psychic','${randomUUID()}');commit;`);
   await page.addInitScript(()=>{Math.random=()=>0.1;});await signInAsSeedDm(page,email);
   await page.evaluate(()=>localStorage.setItem('dndkeep:houseRules','{"critRule":"max_plus_roll"}'));
+  let interrupted=false;
+  if(lost)await page.route('**/rest/v1/rpc/record_pending_damage',async route=>{if(interrupted){await route.continue();return;}interrupted=true;const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort('failed');});
   const result=await page.evaluate(async id=>{const path='/src/lib/pendingAttack.ts';const module=await import(path);return module.rollDamage(id);},attack);
+  if(lost)expect(interrupted).toBe(true);
+  expect(JSON.parse(sql(`select active_buffs from combatants where id='${cb}'`))).toEqual([]);
   expect(result.damage_final).toBe(crit?12:5);
   const record=JSON.parse(sql(`select damage_components from pending_attacks where id='${attack}'`));
   expect(record.components.map((c:{damageType:string})=>c.damageType)).toEqual(['psychic','fire']);
