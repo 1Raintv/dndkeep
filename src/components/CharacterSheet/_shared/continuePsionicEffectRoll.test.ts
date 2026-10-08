@@ -1,0 +1,20 @@
+// @vitest-environment happy-dom
+import {beforeEach,expect,it,vi} from 'vitest';
+import type {Character} from '../../../types';
+import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
+import {rememberPsionicPayment} from '../../../lib/psionicPaymentRecovery';
+const m=vi.hoisted(()=>({offer:vi.fn()}));vi.mock('./offerPsionicRollEnhancements',()=>({offerPsionicRollEnhancements:m.offer}));
+import {continuePsionicEffectRoll} from './continuePsionicEffectRoll';
+const id='00000000-0000-4000-8000-000000000009';
+const row={requestId:id,characterId:'hero',discipline:'destructive-thoughts' as const,context:{},modifier:4,sides:8,usedSurge:false,baseRolls:[2],enkindledRolls:[3],originalRolls:[2,3],rolls:[2,3],total:9,activatedAt:'2026-10-08T00:00:00Z',turn:{soloTurn:0},finalized:false,applied:false,expiredByLongRest:false};
+function setup(){const persistence={getEffectRolls:vi.fn(async()=>[row]),getDisciplineTurn:vi.fn(async()=>({turn:{soloTurn:0},uses:[],pending:[]})),finalizeEffectRoll:vi.fn(async()=>({...row,replayed:false}))} as unknown as PsionicEnhancementPersistence;return {persistence,current:()=>({id:'hero'} as Character),active:()=>true,eligible:()=>true,roll:2,sides:8,feature:'Destructive Thoughts',accept:vi.fn(),prompt:vi.fn(),confirm:vi.fn(),warn:vi.fn()};}
+beforeEach(()=>{localStorage.clear();vi.resetAllMocks();m.offer.mockResolvedValue(null);});
+it('resumes original paid dice, skips paid extras and finalizes from the server',async()=>{const o=setup();expect(await continuePsionicEffectRoll(id,o)).toMatchObject({total:9});expect(m.offer).toHaveBeenCalledWith(expect.objectContaining({effectRollId:id,rolls:[2,3],skipEnkindled:true,skipSurge:false}));expect(o.persistence.finalizeEffectRoll).toHaveBeenCalledWith(id);});
+it('does not offer new payments after the original turn ends',async()=>{const o=setup();vi.mocked(o.persistence.getDisciplineTurn!).mockResolvedValue({turn:{soloTurn:1},uses:[],pending:[]});await continuePsionicEffectRoll(id,o);expect(m.offer).not.toHaveBeenCalled();expect(o.warn).toHaveBeenCalled();expect(o.persistence.finalizeEffectRoll).toHaveBeenCalledWith(id);});
+it('does not reopen finalized choices',async()=>{const o=setup();vi.mocked(o.persistence.getEffectRolls!).mockResolvedValue([{...row,finalized:true}]);await continuePsionicEffectRoll(id,o);expect(m.offer).not.toHaveBeenCalled();expect(o.persistence.getDisciplineTurn).not.toHaveBeenCalled();});
+it('skips both paid choices when Surge is already recorded',async()=>{const o=setup();vi.mocked(o.persistence.getEffectRolls!).mockResolvedValue([{...row,usedSurge:true}]);await continuePsionicEffectRoll(id,o);expect(m.offer).toHaveBeenCalledWith(expect.objectContaining({skipEnkindled:true,skipSurge:true}));});
+it('blocks finalization while payment is uncertain',async()=>{const o=setup();rememberPsionicPayment('hero',{kind:'surge',request:{requestId:'pending',effectRollId:id,sourceFeature:'Destructive Thoughts',rolls:[2,3],hitDie:6}});await expect(continuePsionicEffectRoll(id,o)).rejects.toThrow(/Confirm the saved/);expect(o.persistence.getEffectRolls).not.toHaveBeenCalled();});
+it('leaves unknown enhancement results unfinished',async()=>{const o=setup();m.offer.mockResolvedValue({unconfirmed:true});expect(await continuePsionicEffectRoll(id,o)).toBeNull();expect(o.persistence.finalizeEffectRoll).not.toHaveBeenCalled();});
+it('does not finalize after the sheet changes during enhancement choices',async()=>{const o=setup();let active=true;o.active=()=>active;m.offer.mockImplementation(async()=>{active=false;return null;});expect(await continuePsionicEffectRoll(id,o)).toBeNull();expect(o.persistence.finalizeEffectRoll).not.toHaveBeenCalled();});
+
+it('does not offer or apply an expired Biofeedback benefit',async()=>{const o=setup();vi.mocked(o.persistence.getEffectRolls!).mockResolvedValue([{...row,discipline:'biofeedback',expiredByLongRest:true}]);await expect(continuePsionicEffectRoll(id,o)).rejects.toThrow(/Long Rest ended/);expect(m.offer).not.toHaveBeenCalled();expect(o.persistence.finalizeEffectRoll).not.toHaveBeenCalled();});

@@ -87,20 +87,23 @@ test.describe('Psion Destructive Thoughts', () => {
       const cost=page.getByRole('dialog',{name:'Destructive Thoughts',exact:true});
       await cost.getByRole('textbox').fill('2');await cost.getByRole('button',{name:'Spend and roll'}).click();
       let posts=0;
-      await page.route('**/rest/v1/pending_attacks*',async route=>{
+      await page.route('**/rest/v1/rpc/queue_destructive_thoughts_effect',async route=>{
         if(route.request().method()==='POST'){
-          posts++;const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort();
+          posts++;if(posts===1){const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort();}else await route.continue();
         }else await route.continue();
       });
-      if(level===20){const extra=page.getByRole('dialog',{name:'Enkindled Life Force'});await extra.getByRole('textbox').fill('2');await extra.getByRole('button',{name:'Continue'}).click();}
+      let finalizationAttempts=0;
+      if(level===7)await page.route('**/rest/v1/rpc/finalize_psionic_effect_roll',async route=>{finalizationAttempts++;await route.abort();});
+      if(level===20){await expect(page.getByRole('dialog',{name:'Enkindled Life Force'})).toBeVisible();await page.reload();await page.getByRole('button',{name:/Resume paid roll/}).scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('destructive-resume.png')});await page.getByRole('button',{name:/Resume paid roll/}).click();const extra=page.getByRole('dialog',{name:'Enkindled Life Force'});await extra.getByRole('textbox').fill('2');await extra.getByRole('button',{name:'Continue'}).click();}
       await page.getByRole('button',{name:'Spend 1 Hit Point Die',exact:true}).click();
+      if(level===7){await expect.poll(()=>finalizationAttempts).toBe(2);await page.unroute('**/rest/v1/rpc/finalize_psionic_effect_roll');await page.reload();await page.getByRole('button',{name:/Resume paid roll/}).scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('destructive-resume.png')});await page.getByRole('button',{name:/Resume paid roll/}).click();}
       await expect(page.getByRole('button',{name:'Retry queue',exact:true})).toBeVisible();
       await expect(page.getByRole('status').filter({hasText:`${amount} Psychic ·`})).toContainText('Not queued');
       await page.reload();
       await expect(page.getByRole('status').filter({hasText:`${amount} Psychic ·`})).toContainText('Not queued');
       await page.getByRole('button',{name:'Retry queue',exact:true}).click();
       await expect(page.getByRole('status').filter({hasText:`${amount} Psychic ·`})).toContainText('Queued in combat');
-      expect(posts).toBe(1);
+      expect(posts).toBe(2);
       expect(sql(`select count(*) from pending_attacks where campaign_id='${camp}'`)).toBe('1');
       expect(JSON.parse(sql(`select json_build_object('dice',damage_dice,'type',damage_type,'kind',attack_kind,'target',target_participant_id) from pending_attacks where campaign_id='${camp}'`))).toEqual({dice:String(amount),type:'Psychic',kind:'auto_hit',target});
       const resources=()=>JSON.parse(sql(`select json_build_object('pool',class_resources->'psionic-energy-dice','spent',hit_dice_spent,'other',class_resources->'other') from characters where id='${charId}'`));

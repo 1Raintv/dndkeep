@@ -1,4 +1,6 @@
-import {readPaidPsionicDamage,rememberPaidPsionicDamage,forgetPaidPsionicDamage,type PaidPsionicDamage} from '../../../lib/psionicDamageRecovery';
+import PsionicEffectRecoveryPanel from './PsionicEffectRecoveryPanel';
+import {continuePsionicEffectRoll} from './continuePsionicEffectRoll';
+import {readPaidPsionicDamage,rememberPaidPsionicDamage,forgetPaidPsionicDamage,psionicDamageEffectContext,paidDamageFromEffect,type PaidPsionicDamage} from '../../../lib/psionicDamageRecovery';
 import {psionProgression} from '../../../rules/psionProgression';
 import {prepareDiscipline,beginDiscipline} from './disciplinePayment';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
@@ -42,6 +44,7 @@ export default function DestructiveThoughtsButton({persistence,character}:{persi
   if(latest.current.id!==result.characterId||latest.current.campaign_id!==result.context.campaignId)throw new Error('The character or campaign changed. Keep this damage for manual resolution.');
   await queuePsionicDamage({...result,context:result.context,target:result.target});
   rememberPaidPsionicDamage({...result,queued:true});
+  window.dispatchEvent(new Event('dndkeep:psionic-effect-roll-changed'));
   if(mounted.current&&latest.current.id===result.characterId){setPaid({...result,queued:true});showToast(`${result.amount} Psychic damage queued for ${result.targetName}. Resolve it in combat.`,'success');}
  }
  async function retry(){
@@ -74,12 +77,16 @@ export default function DestructiveThoughtsButton({persistence,character}:{persi
    if(current.campaign_id!==campaignId||!Number.isInteger(count)||count<1||!now||count>now.maxDice){showToast('Check your target, Intelligence and available Psionic Energy Dice.','warn');return;}
    const intelligence=computeStats(current).modifiers.intelligence;
    const rolls=Array.from({length:count},()=>rollDie(now.sides));
-   if(!await beginDiscipline(persistence!,latest,prepared,'destructive-thoughts',rolls,count,{...options,recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for Psychic damage (minimum 1) to ${targetName}. No damage was queued yet.`}))return;
-   const surged=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:rolls[0],rolls,sides:now.sides,feature:'Destructive Thoughts',campaignId,recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for Psychic damage (minimum 1) to ${targetName}. No damage was queued yet.`.slice(0,1000),
-    current:()=>latest.current,active:options.active,eligible:c=>!!capacity(c),prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
+   const linked=!!persistence?.getEffectRolls&&!!persistence?.finalizeEffectRoll;
+   const claim=await beginDiscipline(persistence!,latest,prepared,'destructive-thoughts',rolls,count,{...options,...(linked?{effectContext:psionicDamageEffectContext(current.name,targetName,target,context)}:{}),recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for Psychic damage (minimum 1) to ${targetName}. No damage was queued yet.`});if(!claim)return;
+   const enhancementOptions={persistence,accept:(receipt:Parameters<typeof acceptPsionicHitDiceReceipt>[1])=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:rolls[0],rolls,sides:now.sides,feature:'Destructive Thoughts',campaignId,recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for Psychic damage (minimum 1) to ${targetName}. No damage was queued yet.`.slice(0,1000),
+    current:()=>latest.current,active:options.active,eligible:(c:Character)=>!!capacity(c),prompt:modal.prompt,confirm:modal.confirm,warn:(message:string)=>showToast(message,'warn')};
+   const finalized=linked?await continuePsionicEffectRoll(claim.requestId,enhancementOptions):null;
+   if(linked&&!finalized)return;
+   const surged=finalized?{...finalized,unconfirmed:false}:await offerPsionicRollEnhancements(enhancementOptions);
    if(surged?.unconfirmed)return;
    const amount=psionicDisciplineTotal(surged?.rolls??rolls,now.sides,intelligence)!;
-   const result:PaidResult={requestId:crypto.randomUUID(),characterId:id,characterName:current.name,amount,psionicDamageDice:{version:1,sides:now.sides,originalRolls:[...(surged?.originalRolls??rolls)],rolls:[...(surged?.rolls??rolls)],modifier:intelligence},targetName,target,context:context&&target?{...context,participants:[context.self,target]}:null,queued:false};
+   const result:PaidResult=finalized?paidDamageFromEffect(finalized):{requestId:crypto.randomUUID(),characterId:id,characterName:current.name,amount,psionicDamageDice:{version:1,sides:now.sides,originalRolls:[...(surged?.originalRolls??rolls)],rolls:[...(surged?.rolls??rolls)],modifier:intelligence},targetName,target,context:context&&target?{...context,participants:[context.self,target]}:null,queued:false};
    if(mounted.current&&latest.current.id===id)setPaid(result);
    const warnLog=()=>showToast('Damage rolled, but its log could not be saved. Keep the displayed result.','warn');
    void logAction({campaignId:campaignId??null,characterId:id,characterName:current.name,targetName,
@@ -92,6 +99,16 @@ export default function DestructiveThoughtsButton({persistence,character}:{persi
   }catch(error){showToast(error instanceof Error?error.message:'Could not complete Destructive Thoughts. Check the displayed result before retrying.','warn');}
   finally{busy.current=false;if(mounted.current)setPending(false);}
  }
+ async function resume(id:string){
+  if(busy.current||!persistence)return;const owner=latest.current.id;busy.current=true;setPending(true);
+  try{
+   const active=()=>mounted.current&&latest.current.id===owner;
+   const result=await continuePsionicEffectRoll(id,{persistence,current:()=>latest.current,active,eligible:c=>!!capacity(c),accept:receipt=>acceptPsionicHitDiceReceipt(latest,receipt),roll:1,sides:6,feature:'Destructive Thoughts',prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
+   if(!result||!active())return;const restored=paidDamageFromEffect(result);setPaid(restored);rememberPaidPsionicDamage(restored);
+   if(restored.context)await deliver(restored);else showToast(`${restored.targetName}: ${restored.amount} Psychic damage. Check whether you already applied this saved result at the table.`,'success');
+  }catch(error){if(mounted.current&&latest.current.id===owner)showToast(error instanceof Error?error.message:'Saved roll recovery failed.','warn');}
+  finally{busy.current=false;if(mounted.current&&latest.current.id===owner)setPending(false);}
+ }
  async function clearResult(){
   if(!paid||busy.current)return;
   if(paid.context&&!paid.queued&&!await modal.confirm({title:'Clear saved damage?',message:'This removes your local recovery copy. Check combat and record the damage for manual resolution first. It does not refund dice or cancel queued damage.',confirmLabel:'Clear saved result'}))return;
@@ -103,6 +120,7 @@ export default function DestructiveThoughtsButton({persistence,character}:{persi
    <button className="btn-ghost" style={{fontSize:11,minHeight:36,padding:'4px 8px',color:'#c4b5fd'}} disabled={pending||!state?.maxDice||!!(paid?.context&&!paid.queued)} onClick={()=>void run()}>{pending?'Working…':'Roll damage'}</button>
    {paid&&<div role="status" style={{fontSize:11,color:'var(--t-2)',textAlign:'right',overflowWrap:'anywhere'}}>{paid.amount} Psychic · {paid.targetName}<br/>{paid.context?(paid.queued?'Queued in combat':'Not queued — keep this result'):'Apply at the table'}</div>}
    {paid&&!pending&&<button className="btn-ghost" style={{fontSize:11,minHeight:30}} title="Clear this display only; does not refund dice or cancel queued damage" onClick={()=>void clearResult()}>Clear result</button>}
+   <PsionicEffectRecoveryPanel characterId={character.id} persistence={persistence} discipline="destructive-thoughts" currentResultId={paid?.requestId} disabled={pending} onResume={id=>void resume(id)}/>
    {paid?.context&&!paid.queued&&<button className="btn-ghost" disabled={pending} style={{fontSize:11,minHeight:36}} onClick={()=>void retry()}>Retry queue</button>}
   </div>
   {picker&&<Suspense fallback={null}><TargetPicker participants={picker.participants} fromParticipant={picker.self} allowSelfTarget campaignId={picker.campaignId} title="Destructive Thoughts target" subtitle="Choose the visible creature forced to save against your Psion Conjuration or Evocation spell." onPick={finishPick} onCancel={()=>finishPick(null)}/></Suspense>}

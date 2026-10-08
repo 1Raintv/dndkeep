@@ -54,3 +54,11 @@ it('Guards recovery acknowledges the original protection without reapplying an e
  persistence.beginDiscipline=vi.fn(async()=>{forgetPsionicPayment('hero','guard');return {...request,outcome:{spent:true}} as unknown as DisciplineReceipt;});
  render(ui(persistence));fireEvent.click(screen.getByRole('button',{name:'Confirm saved attempt'}));await screen.findByText(/Protection was applied with the original use; it may now have expired/);expect(screen.queryByText(/does not apply the feature effect/)).toBeNull();expect(persistence.beginDiscipline).toHaveBeenCalledWith(request);
 });
+
+it('directs linked enhancement recovery to the saved roll without a manual second effect',async()=>{
+ localStorage.clear();rememberPsionicPayment('hero',{...payment,request:{...payment.request,effectRollId:'00000000-0000-4000-8000-000000000001'}});render(ui(service()));fireEvent.click(screen.getByRole('button',{name:'Confirm dice cost'}));await screen.findByText(/Use Resume paid roll or Recover saved result/);expect(screen.queryByText(/before resolving it manually/)).toBeNull();
+});
+it('directs linked base payment recovery back to its original roll',async()=>{
+ localStorage.clear();const request={requestId:'attempt',sourceFeature:'Biofeedback',discipline:'biofeedback' as const,turn:{soloTurn:0},rolls:[3],count:1,modifier:4,effectContext:{},expected:{class_name:'Psion',level:5,secondary_class:null,secondary_level:0,intelligence:18,inventory:[],disciplines:['biofeedback']}};
+ rememberPsionicPayment('hero',{kind:'discipline-begin',request});const persistence=service();persistence.beginDiscipline=vi.fn(async()=>{forgetPsionicPayment('hero','attempt');return {...request,outcome:{spent:true}} as unknown as DisciplineReceipt;});render(ui(persistence));fireEvent.click(screen.getByRole('button',{name:'Confirm saved attempt'}));await screen.findByText(/Use Resume paid roll or Recover saved result/);expect(persistence.beginDiscipline).toHaveBeenCalledWith(request);
+});

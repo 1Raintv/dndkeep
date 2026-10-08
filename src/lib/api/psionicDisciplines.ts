@@ -43,7 +43,7 @@ function readReceipt(v:unknown,characterId:string,claim:DisciplineClaim):Discipl
 export async function beginPsionicDiscipline(characterId:string,input:DisciplineRequest):Promise<DisciplineReceipt>{
  const r=structuredClone(input);
  if(!validDisciplineRequest(r))throw new PsionicRequestError('Invalid saved discipline. No request was sent.',true);
- return readReceipt(await psionicRpc('begin_psionic_discipline',{p_character_id:characterId,p_request_id:r.requestId,p_turn:r.turn,
+ return readReceipt(await psionicRpc(r.effectContext===undefined?'begin_psionic_discipline':'begin_psionic_effect_roll',{...(r.effectContext===undefined?{}:{p_context:r.effectContext}),p_character_id:characterId,p_request_id:r.requestId,p_turn:r.turn,
   p_discipline:r.discipline,p_rolls:r.rolls,p_count:r.count,p_modifier:r.modifier,p_expected:r.expected},true),characterId,r);
 }
 export async function finishPsionicDiscipline(characterId:string,input:DisciplineOutcomeRequest):Promise<DisciplineReceipt>{

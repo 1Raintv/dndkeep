@@ -5,6 +5,8 @@ import {useModal} from '../../shared/Modal';
 /** Recovery confirms payment only. It must never replay a parent heal/damage
  * action whose outcome may already have been applied in another tab. */
 type PsionPayment=Exclude<PendingPsionicPayment,{kind:'healing'}>;
+const linkedEffect=(payment:PsionPayment)=>payment.kind==='discipline-begin'?payment.request.effectContext!==undefined:(payment.kind==='enkindled'||payment.kind==='surge')&&payment.request.effectRollId!==undefined;
+const resumeMessage='Payment confirmed. Use Resume paid roll or Recover saved result beside this feature to finish the saved roll. Do not apply it manually or pay again.';
 const readPending=(characterId:string,kindFilter?:PsionPayment['kind'])=>pendingPsionicPayments(characterId).filter((payment):payment is PsionPayment=>payment.kind!=='healing').filter(payment=>!kindFilter||payment.kind===kindFilter);
 export default function PsionicPaymentRecoveryPanel({characterId,persistence,kindFilter,label}:{characterId:string;persistence:PsionicEnhancementPersistence;kindFilter?:PsionPayment['kind'];label?:string}){
  const [pending,setPending]=useState(()=>readPending(characterId,kindFilter));
@@ -19,6 +21,7 @@ export default function PsionicPaymentRecoveryPanel({characterId,persistence,kin
     const result=payment.kind==='discipline-begin'
      ?await persistence.beginDiscipline?.(payment.request):await persistence.finishDiscipline?.(payment.request);
     if(!result)throw new Error('Discipline recovery is unavailable on this sheet.');
+    if(linkedEffect(payment)){if(mounted.current&&current.current===characterId)setMessage(resumeMessage);return;}
     if(result.discipline==='psionic-guards'){
      if(mounted.current&&current.current===characterId)setMessage('Psionic Guards confirmed. Protection was applied with the original use; it may now have expired. Check your current discipline status. Do not spend again.');
      return;
@@ -41,6 +44,7 @@ export default function PsionicPaymentRecoveryPanel({characterId,persistence,kin
   try{
    const receipt=payment.kind==='enkindled'?await persistence.spend(payment.request):payment.kind==='energy'?await persistence.energy(payment.request):await persistence.surge(payment.request);
    if(!mounted.current||current.current!==characterId)return;
+   if(linkedEffect(payment)){setMessage(resumeMessage);return;}
    const rolls='extraRolls' in receipt?receipt.extraRolls:receipt.rolls;
    if(payment.kind==='energy'&&['recover-die','refresh-misty-step','recover-misty-step'].includes(payment.request.operation)){
     setMessage(`${payment.request.sourceFeature}: resource recovery confirmed. Current resources are refreshed. This does not perform a spell or feature; do not repeat the recovery.`);return;
@@ -49,7 +53,7 @@ export default function PsionicPaymentRecoveryPanel({characterId,persistence,kin
     setMessage('Psionic Restoration confirmed. The saved meditation restored Energy Dice and consumed its once-per-Long-Rest use. Current resources are refreshed; do not restore them again.');return;
    }
    setMessage(`${payment.request.sourceFeature}: dice cost confirmed. ${original} ${payment.kind==='energy'?'':`${payment.kind==='enkindled'?'Extra rolls':'Surged rolls'}: ${rolls.join(', ')}.`} ${payment.request.recoveryNote??''} This notice did not apply the feature. Check your sheet, combat and History before resolving it manually; do not pay again.`);
-  }catch(error){if(mounted.current&&current.current===characterId)setMessage(`${error instanceof Error?error.message:'Dice cost is still unconfirmed.'} ${original} ${payment.request.recoveryNote??''} Check History before resolving the feature manually.`);}
+  }catch(error){if(mounted.current&&current.current===characterId)setMessage(`${error instanceof Error?error.message:'Dice cost is still unconfirmed.'} ${original} ${payment.request.recoveryNote??''} ${linkedEffect(payment)?'Confirm this payment before resuming the saved roll; do not apply it manually.':'Check History before resolving the feature manually.'}`);}
   finally{if(mounted.current&&current.current===characterId)setBusy(false);}
  }
  async function dismiss(payment:PsionPayment){

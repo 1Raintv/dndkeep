@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import type {Character} from '../types';
-import {validSharpenedEnhancementLink,createDisciplineRequest,validDisciplineRequest,validDisciplineOutcomeRequest,validPsionicTurn} from './psionicDisciplineRequest';
+import {validPsionicEnhancementLink,createDisciplineRequest,validDisciplineRequest,validDisciplineOutcomeRequest,validPsionicTurn} from './psionicDisciplineRequest';
 const c={class_name:'Psion',level:5,intelligence:18,inventory:[{name:'Headband'}],class_resources:{'psion-disciplines':['Biofeedback']}} as unknown as Character;
 it('freezes class, ability, inventory, learned picks, original rolls and turn',()=>{
  const hero=structuredClone(c),turn={soloTurn:2},rolls=[4,3];
@@ -27,7 +27,16 @@ it('requires a boolean outcome on a conditional discipline only',()=>{
 
 it('permits only Sharpened to link a distinct activation identity',()=>{
  const activationId='11111111-1111-4111-8111-111111111111';
- expect(validSharpenedEnhancementLink({sourceFeature:'Biofeedback'})).toBe(true);
- expect(validSharpenedEnhancementLink({activationId,sourceFeature:'Sharpened Mind',requestId:'other'})).toBe(true);
- for(const value of [{activationId:null},{activationId:''},{activationId,sourceFeature:'Other'},{activationId,sourceFeature:'Sharpened Mind',requestId:activationId}])expect(validSharpenedEnhancementLink(value)).toBe(false);
+ expect(validPsionicEnhancementLink({sourceFeature:'Biofeedback'})).toBe(true);
+ expect(validPsionicEnhancementLink({activationId,sourceFeature:'Sharpened Mind',requestId:'other'})).toBe(true);
+ for(const value of [{activationId:null},{activationId:''},{activationId,sourceFeature:'Other'},{activationId,sourceFeature:'Sharpened Mind',requestId:activationId}])expect(validPsionicEnhancementLink(value)).toBe(false);
+});
+
+it.each([null,[],{bad:NaN},{bad:undefined},{bad:()=>0},{large:'x'.repeat(8200)}])('rejects non-JSON or oversized effect context %j',effectContext=>{
+ const r=createDisciplineRequest(c,{soloTurn:0},'biofeedback',[2],1,4,'saved');expect(validDisciplineRequest({...r,effectContext})).toBe(false);
+});
+it('accepts a separate effect-roll link only for its two supported disciplines',()=>{
+ const effectRollId='00000000-0000-4000-8000-000000000009';
+ for(const sourceFeature of ['Biofeedback','Destructive Thoughts'])expect(validPsionicEnhancementLink({effectRollId,requestId:'payment',sourceFeature})).toBe(true);
+ expect(validPsionicEnhancementLink({effectRollId,requestId:effectRollId,sourceFeature:'Biofeedback'})).toBe(false);expect(validPsionicEnhancementLink({effectRollId,requestId:'payment',sourceFeature:'Sharpened Mind'})).toBe(false);
 });

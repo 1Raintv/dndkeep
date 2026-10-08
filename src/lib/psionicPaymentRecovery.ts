@@ -1,4 +1,4 @@
-import {validSharpenedEnhancementLink,validDisciplineRequest,validDisciplineOutcomeRequest,type DisciplineRequest,type DisciplineOutcomeRequest} from './psionicDisciplineRequest';
+import {validPsionicEnhancementLink,validDisciplineRequest,validDisciplineOutcomeRequest,type DisciplineRequest,type DisciplineOutcomeRequest} from './psionicDisciplineRequest';
 import {validHitDiceHealingRequest,type HitDiceHealingRequest} from './hitDiceHealingRequest';
 import {validPsionicRestRequest,type PsionicRestRequest} from './psionicRestRequest';
 import type {EnkindledRequest,SurgeRequest,EnergyRequest} from './api/psionicTurns';
@@ -16,9 +16,9 @@ function valid(value:unknown):value is PendingPsionicPayment{
  if(v.kind==='discipline-finish')return validDisciplineOutcomeRequest(r);
  if(v.kind==='healing')return validHitDiceHealingRequest(r);
  if(v.kind==='rest')return validPsionicRestRequest(r);
- if(!validSharpenedEnhancementLink(r))return false;
- if(r.activationId!==undefined&&v.kind!=='surge'&&v.kind!=='enkindled')return false;
- if(v.kind==='surge')return (r.activationId===undefined||r.hitDie!==undefined)&&dice(r.rolls,14)&&(r.hitDie===undefined||[6,8,10,12].includes(r.hitDie as number));
+ if(!validPsionicEnhancementLink(r))return false;
+ if((r.activationId!==undefined||r.effectRollId!==undefined)&&v.kind!=='surge'&&v.kind!=='enkindled')return false;
+ if(v.kind==='surge')return ((r.activationId===undefined&&r.effectRollId===undefined)||r.hitDie!==undefined)&&dice(r.rolls,14)&&(r.hitDie===undefined||[6,8,10,12].includes(r.hitDie as number));
  if(v.kind==='energy')return Array.isArray(r.rolls)&&(
   (r.operation==='recover-die'&&r.count===1&&r.rolls.length===0&&r.sourceFeature==='Manual Energy Die recovery')||
   ((r.operation==='refresh-misty-step'||r.operation==='use-misty-step'||r.operation==='recover-misty-step')&&r.count===(r.operation==='refresh-misty-step'?1:0)&&r.rolls.length===0&&r.sourceFeature==='Free Misty Step (Teleportation)')||

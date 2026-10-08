@@ -1,7 +1,7 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 import type {CombatParticipant} from '../../types';
-const mocks=vi.hoisted(()=>({from:vi.fn(),declare:vi.fn()}));
-vi.mock('../supabase',()=>({supabase:{from:mocks.from}}));
+const mocks=vi.hoisted(()=>({from:vi.fn(),rpc:vi.fn(),declare:vi.fn()}));
+vi.mock('../supabase',()=>({supabase:{from:mocks.from,rpc:mocks.rpc}}));
 vi.mock('../pendingAttack',()=>({declareAttack:mocks.declare}));
 import {loadPsionicDamageContext,queuePsionicDamage} from './psionicDamage';
 const self={id:'self',participant_type:'character',entity_id:'psion'} as CombatParticipant;
@@ -67,4 +67,16 @@ it('rejects a saved actor from another character before querying',async()=>{
 it('checks the returned declaration identity as well as an existing receipt',async()=>{
  mocks.from.mockReturnValueOnce(query(null)).mockReturnValueOnce(query({id:'enc'})).mockReturnValueOnce(query([self,target]));mocks.declare.mockResolvedValue({...existingAttack(),encounter_id:'other'});
  await expect(queuePsionicDamage(input)).rejects.toThrow(/differs/);
+});
+
+it('delivers linked rolls only through their immutable server record',async()=>{
+ mocks.rpc.mockResolvedValue({data:{effect:'destructive-thoughts',requestId:'paid',characterId:'psion',attackId:'paid',replayed:true},error:null});
+ await queuePsionicDamage({...input,effectRollId:'paid'});expect(mocks.rpc).toHaveBeenCalledWith('queue_destructive_thoughts_effect',{p_character_id:'psion',p_activation_id:'paid'});expect(mocks.from).not.toHaveBeenCalled();expect(mocks.declare).not.toHaveBeenCalled();
+});
+it('never substitutes a legacy declaration after a failed linked request',async()=>{
+ mocks.rpc.mockResolvedValue({data:null,error:new Error('connection lost')});await expect(queuePsionicDamage({...input,effectRollId:'paid'})).rejects.toThrow('connection lost');expect(mocks.declare).not.toHaveBeenCalled();
+});
+it('rejects mismatched effect identities and delivery receipts',async()=>{
+ await expect(queuePsionicDamage({...input,effectRollId:'other'})).rejects.toThrow('identity changed');expect(mocks.rpc).not.toHaveBeenCalled();
+ mocks.rpc.mockResolvedValue({data:{effect:'destructive-thoughts',requestId:'paid',characterId:'psion',attackId:'other',replayed:false},error:null});await expect(queuePsionicDamage({...input,effectRollId:'paid'})).rejects.toThrow('could not be confirmed');
 });

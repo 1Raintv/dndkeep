@@ -116,3 +116,14 @@ it('cannot overwrite an unknown paid outcome with a keep-die decision',async()=>
  await expect(hook.result.current.finishDiscipline!({...original,changedOutcome:false})).rejects.toMatchObject({definitelyNotPaid:false});
  expect(mocks.rpc).not.toHaveBeenCalled();expect(pendingPsionicPayments('hero')).toEqual([{kind:'discipline-finish',request:original}]);
 });
+
+it('flushes before Biofeedback application and acknowledges current HP without requeueing',async()=>{
+ const id='00000000-0000-4000-8000-000000000009',saves=queue(),accept=vi.fn();
+ const applied={effect:'biofeedback',requestId:id,characterId:'hero',granted:6,beforeTempHP:0,afterTempHP:6,replayed:true,character:{id:'hero',current_hp:5,max_hp:10,temp_hp:1,hit_point_revision:4}};
+ mocks.rpc.mockRejectedValueOnce(new Error('Lost response')).mockResolvedValueOnce({data:applied,error:null});const hook=renderHook(()=>usePsionicEnhancements('hero',saves,accept));
+ await hook.result.current.applyBiofeedback!(id);expect(saves.flush).toHaveBeenCalledTimes(1);expect(accept).toHaveBeenCalledWith(applied);expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[1]);expect(pendingPsionicPayments('hero')).toEqual([]);
+});
+it('does not apply Biofeedback while the sheet has unsaved edits or is frozen',async()=>{
+ const saves=queue();saves.getSnapshot.mockReturnValue({pending:true,error:null});const hook=renderHook(({frozen})=>usePsionicEnhancements('hero',saves,vi.fn(),frozen),{initialProps:{frozen:false}});
+ await expect(hook.result.current.applyBiofeedback!('00000000-0000-4000-8000-000000000009')).rejects.toThrow(/unsaved/);hook.rerender({frozen:true});await expect(hook.result.current.applyBiofeedback!('00000000-0000-4000-8000-000000000009')).rejects.toThrow(/Save your/);expect(mocks.rpc).not.toHaveBeenCalled();
+});

@@ -110,3 +110,12 @@ it('skips Guards lookups for other saves and uses the narrow protection RPC for 
 it.each([null,{},'true',1])('does not silently treat malformed Guards response %j as inactive',async value=>{
  mocks.rpc.mockResolvedValue({data:value,error:null});await expect(getPsionicGuardsSaveAdvantage('hero','INT')).rejects.toThrow('Protection could not be verified');
 });
+
+it('linked base retry freezes recovery context and routes to atomic base-plus-record saving',async()=>{
+ const r={...structuredClone(request),effectContext:{targetName:'Goblin'}};
+ mocks.rpc.mockImplementationOnce(async()=>{r.effectContext.targetName='Changed';throw new Error('lost');}).mockResolvedValueOnce({data:{...receipt,replayed:true},error:null});
+ await beginPsionicDiscipline('hero',r);expect(mocks.rpc.mock.calls[0][0]).toBe('begin_psionic_effect_roll');expect(mocks.rpc.mock.calls[0][1].p_context).toEqual({targetName:'Goblin'});expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[1]);
+});
+it('does not opt unrelated disciplines into linked effect recovery',async()=>{
+ await expect(beginPsionicDiscipline('hero',{...conditional,effectContext:{}})).rejects.toMatchObject({definitelyNotPaid:true});expect(mocks.rpc).not.toHaveBeenCalled();
+});

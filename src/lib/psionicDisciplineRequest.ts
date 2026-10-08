@@ -8,7 +8,7 @@ export interface DisciplineClaim {
  requestId:string;turn:PsionicTurn;discipline:DisciplineId;sourceFeature:string;rolls:number[];count:number;
 }
 export interface DisciplineRequest extends DisciplineClaim {
- modifier:number;expected:Record<string,unknown>;recoveryNote?:string;
+ modifier:number;expected:Record<string,unknown>;recoveryNote?:string;effectContext?:Record<string,unknown>;
 }
 export interface DisciplineOutcomeRequest extends DisciplineClaim {changedOutcome:boolean;recoveryNote?:string}
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -28,7 +28,7 @@ const expectedKeys=['class_name','level','secondary_class','secondary_level','in
 const note=(v:Record<string,unknown>)=>v.recoveryNote===undefined||(typeof v.recoveryNote==='string'&&v.recoveryNote.length<=1000);
 export function validDisciplineRequest(v:unknown):v is DisciplineRequest {
  if(!object(v)||!validDisciplineClaim(v)||!object(v.expected)||!Number.isInteger(v.modifier)||Number(v.modifier)<-5||Number(v.modifier)>20)return false;
- return expectedKeys.every(k=>Object.prototype.hasOwnProperty.call(v.expected,k))&&Object.keys(v.expected).length===expectedKeys.length&&note(v);
+ return expectedKeys.every(k=>Object.prototype.hasOwnProperty.call(v.expected,k))&&Object.keys(v.expected).length===expectedKeys.length&&note(v)&&(v.effectContext===undefined||(['destructive-thoughts','biofeedback'].includes(v.discipline)&&validEffectContext(v.effectContext)));
 }
 export function validDisciplineOutcomeRequest(v:unknown):v is DisciplineOutcomeRequest {
  return object(v)&&validDisciplineClaim(v)&&disciplineIsConditional(v.discipline)&&typeof v.changedOutcome==='boolean'&&note(v);
@@ -40,8 +40,15 @@ export function createDisciplineRequest(c:Character,turn:PsionicTurn,discipline:
  return request;
 }
 
-/** v2.830: legacy enhancements have no activation link; linked payments must
- * keep the exact Sharpened identity through browser recovery. */
-export function validSharpenedEnhancementLink(v:{activationId?:unknown;sourceFeature?:unknown;requestId?:unknown}){
- return v.activationId===undefined||(typeof v.activationId==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.activationId)&&v.activationId!==v.requestId&&v.sourceFeature==='Sharpened Mind');
+/** v2.852: linked enhancements preserve their parent through retries. Legacy
+ * generic payments remain valid, but cannot acquire a parent retroactively. */
+export function validPsionicEnhancementLink(v:{activationId?:unknown;effectRollId?:unknown;sourceFeature?:unknown;requestId?:unknown}){
+ const uuid=(id:unknown)=>typeof id==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)&&id!==v.requestId;
+ if(v.activationId!==undefined)return v.effectRollId===undefined&&uuid(v.activationId)&&v.sourceFeature==='Sharpened Mind';
+ return v.effectRollId===undefined||uuid(v.effectRollId)&&['Destructive Thoughts','Biofeedback'].includes(String(v.sourceFeature));
+}
+export function validEffectContext(value:unknown):value is Record<string,unknown>{
+ if(!object(value))return false;
+ const json=(v:unknown,depth=0):boolean=>depth<=12&&(v===null||typeof v==='string'||typeof v==='boolean'||typeof v==='number'&&Number.isFinite(v)||Array.isArray(v)&&v.every(n=>json(n,depth+1))||object(v)&&Object.values(v).every(n=>json(n,depth+1)));
+ try{return json(value)&&new TextEncoder().encode(JSON.stringify(value)).length<=8192;}catch{return false;}
 }

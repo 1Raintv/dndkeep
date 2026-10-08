@@ -355,7 +355,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  const castingBlocked=frozen||savedDeclaration.blocked||concentrationRecording.blocked||Object.prototype.hasOwnProperty.call(saveQueue.getPending(),'concentration_spell');
  const hitDieChoice=useHitDieChoice();
  const psionicPayments=usePsionicEnhancements(character.id,saveQueue,receipt=>{
-  const {patch}='discipline' in receipt?acceptSavedPsionicResources(characterRef,receipt.character,saveQueue.getPending()):'healing' in receipt?acceptSavedCharacterResources(characterRef,receipt.character,saveQueue.getPending()):'character' in receipt?acceptPsionicRestReceipt(characterRef,receipt,saveQueue.getPending()):'energyRevision' in receipt?acceptPsionicEnergyReceipt(characterRef,receipt,saveQueue.getPending()):acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
+  const {patch}='effect' in receipt?acceptSavedCharacterResources(characterRef,receipt.character,saveQueue.getPending()):'discipline' in receipt?acceptSavedPsionicResources(characterRef,receipt.character,saveQueue.getPending()):'healing' in receipt?acceptSavedCharacterResources(characterRef,receipt.character,saveQueue.getPending()):'character' in receipt?acceptPsionicRestReceipt(characterRef,receipt,saveQueue.getPending()):'energyRevision' in receipt?acceptPsionicEnergyReceipt(characterRef,receipt,saveQueue.getPending()):acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
   if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
  },frozen);
  const psionicPersistence={...psionicPayments,chooseHitDie:hitDieChoice.choose};

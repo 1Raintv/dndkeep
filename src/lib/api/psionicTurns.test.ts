@@ -151,3 +151,18 @@ it('rejects linked extra-die counts that disagree with the saved request',async(
 it.each([null,0,1.5,'1',-1])('keeps a malformed solo-turn confirmation recoverable: %j',async value=>{
  mocks.rpc.mockResolvedValue({data:value,error:null});await expect(advancePsionicSoloTurn('hero','next',0)).rejects.toMatchObject({definitelyNotPaid:false});
 });
+
+it('routes multi-die effect enhancements through their saved parent',async()=>{
+ const effectRollId='00000000-0000-4000-8000-000000000009';
+ mocks.rpc.mockResolvedValue({data:{requestId:'stable',activationId:effectRollId,kind:'enkindled',extraRolls:[2,3],hitDiceSpent:2,hitDiceRevision:1,replayed:true},error:null});
+ await spendEnkindledLifeForce('hero',{...request,effectRollId,baseRolls:[1,2,3]});expect(mocks.rpc.mock.calls[0]).toEqual(['enhance_psionic_effect_roll',{p_character_id:'hero',p_activation_id:effectRollId,p_request_id:'stable',p_kind:'enkindled',p_extra_rolls:[2,3],p_hit_die:null}]);
+ mocks.rpc.mockResolvedValue({data:{requestId:'surge',activationId:effectRollId,kind:'surge',rolls:[4,4,4,4,4],total:20,hitDiceSpent:3,hitDiceRevision:2,hitDiceSpentByType:null,replayed:true},error:null});
+ await spendPsionicSurge('hero',{effectRollId,requestId:'surge',sourceFeature:'Biofeedback',rolls:[1,2,3,2,3],hitDie:6});expect(mocks.rpc.mock.calls[1][0]).toBe('enhance_psionic_effect_roll');expect(mocks.rpc.mock.calls[1][1].p_activation_id).toBe(effectRollId);
+});
+it('cannot mix parent kinds, omit a linked Surge pool, or substitute another parent receipt',async()=>{
+ const effectRollId='00000000-0000-4000-8000-000000000009';
+ await expect(spendEnkindledLifeForce('hero',{...request,effectRollId,activationId:effectRollId})).rejects.toMatchObject({definitelyNotPaid:true});
+ await expect(spendPsionicSurge('hero',{effectRollId,requestId:'surge',sourceFeature:'Destructive Thoughts',rolls:[2]})).rejects.toMatchObject({definitelyNotPaid:true});expect(mocks.rpc).not.toHaveBeenCalled();
+ mocks.rpc.mockResolvedValue({data:{requestId:'stable',activationId:'another',kind:'enkindled',extraRolls:[2,3],hitDiceSpent:2,hitDiceRevision:1,replayed:true},error:null});
+ await expect(spendEnkindledLifeForce('hero',{...request,effectRollId})).rejects.toMatchObject({definitelyNotPaid:false});
+});

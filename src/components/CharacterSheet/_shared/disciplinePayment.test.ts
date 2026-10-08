@@ -40,3 +40,10 @@ it('finish reuses the attempt identity and preserves a keep-die outcome',async()
  vi.mocked(p.finishDiscipline!).mockResolvedValue({...use,outcome:{spent:false,energy:null},character:c,replayed:false});
  await finishDiscipline(p,latest,use,false,o);expect(p.finishDiscipline).toHaveBeenCalledWith(expect.objectContaining({requestId:'saved',rolls:[3],turn:{soloTurn:0},changedOutcome:false}));expect(p.energy).not.toHaveBeenCalled();
 });
+
+it('captures linked recovery context before a lost-response retry',async()=>{
+ const p=service(),o=options(),latest={current:c},context={targetName:'Goblin'};o.confirm.mockResolvedValueOnce(true);const prepared=await prepareDiscipline(p,latest,o);
+ vi.mocked(p.beginDiscipline!).mockImplementationOnce(async()=>{context.targetName='Changed';throw new Error('lost');}).mockImplementationOnce(async r=>({...r,conditional:false,energy:null,outcome:{spent:true},character:c,replayed:true}));
+ await beginDiscipline(p,latest,prepared!,'biofeedback',[3],1,{...o,effectContext:context});
+ expect(p.beginDiscipline).toHaveBeenCalledTimes(2);expect(vi.mocked(p.beginDiscipline!).mock.calls[0][0].effectContext).toEqual({targetName:'Goblin'});expect(vi.mocked(p.beginDiscipline!).mock.calls[0]).toEqual(vi.mocked(p.beginDiscipline!).mock.calls[1]);
+});
