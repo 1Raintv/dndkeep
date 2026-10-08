@@ -30,3 +30,11 @@ it('does not affect leveled spells, utility cantrips, or choose conditional dama
 it('does not advertise True Strike’s extra dice as its entire weapon attack',()=>{
  expect(cantripDamage(pc,{id:'true-strike',level:0,damage_at_char_level:{'1':'0','5':'1d6'}},null,4)).toEqual({dice:null,bonus:0,needsSourceReview:false});
 });
+
+it('applies Potent Thoughts only when the shared cantrip is cast through Psion',()=>{
+ const shared={...pc,spell_sources:{'mind-sliver':['class:Psion','class:Wizard']}};
+ expect(cantripDamage(shared,spell,'1d6',4)).toMatchObject({bonus:0,needsSourceReview:true});
+ expect(cantripDamage(shared,spell,'1d6',4,'Wizard')).toMatchObject({bonus:0,needsSourceReview:false});
+ expect(cantripDamage(shared,spell,'1d6',4,'Psion')).toMatchObject({bonus:4,needsSourceReview:false});
+ expect(cantripDamage({...pc,spell_sources:{'mind-sliver':['class:Psion','grant:class:Psion']}},spell,'1d6',4).bonus).toBe(4);
+});

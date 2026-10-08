@@ -9,7 +9,7 @@ interface Cantrip {id:string;level:number;damage_at_char_level?:Record<string,st
 /** v2.789 — use catalog tiers, not spell-slot level. Conditional expressions
  * such as Toll the Dead's d8/d12 choice remain unmodified until a choice is made.
  * UA Update p.10: Potent Thoughts belongs only to explicitly owned Psion cantrips. */
-export function cantripDamage(character:Caster,spell:Cantrip,baseDice:string|null,intelligenceModifier:number){
+export function cantripDamage(character:Caster,spell:Cantrip,baseDice:string|null,intelligenceModifier:number,castingClass?:string){
  const unchanged={dice:baseDice,bonus:0,needsSourceReview:false};
  // True Strike's table is only its weapon rider, not the attack's full damage.
  if(spell.level!==0||spell.id==='true-strike')return unchanged;
@@ -26,7 +26,10 @@ export function cantripDamage(character:Caster,spell:Cantrip,baseDice:string|nul
  if(!telepath)return {...unchanged,dice};
  const sources=character.spell_sources;
  if(!isSpellSources(sources)||!sources[spell.id]?.length)return {dice,bonus:0,needsSourceReview:true};
- const own=sources[spell.id].some(source=>source==='class:Psion'||source==='grant:class:Psion');
+ // v2.794 — owning a Psion copy does not enhance a cast through another class.
+ const owners=new Set(sources[spell.id].map(source=>source.replace(/^grant:/,'')));
+ if(!castingClass&&owners.size>1)return {dice,bonus:0,needsSourceReview:true};
+ const own=(!castingClass||castingClass==='Psion')&&owners.has('class:Psion');
  const bonus=own&&Number.isInteger(intelligenceModifier)?intelligenceModifier:0;
  return {dice,bonus,needsSourceReview:false};
 }

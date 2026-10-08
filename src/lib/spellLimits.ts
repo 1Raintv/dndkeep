@@ -1,3 +1,4 @@
+import {classCastingAbility} from '../rules/spellCasting';
 import {isSpellPreparedThrough} from '../rules/spellPreparation';
 import {isSpellSources,spellSourceIncludesClass} from '../rules/spellSources';
 /**
@@ -35,25 +36,8 @@ export function isKnownCaster(className: string): boolean {
 
 /** Spellcasting ability key for this class */
 export function getSpellAbility(className: string): 'intelligence' | 'wisdom' | 'charisma' {
-  switch (className) {
-    case 'Wizard':
-    case 'Artificer':
-    case 'Psion':
-    case 'Eldritch Knight':
-    case 'Arcane Trickster':
-      return 'intelligence';
-    case 'Cleric':
-    case 'Druid':
-    case 'Ranger':
-      return 'wisdom';
-    case 'Paladin':
-    case 'Warlock':
-    case 'Sorcerer':
-    case 'Bard':
-      return 'charisma';
-    default:
-      return 'intelligence';
-  }
+  // Legacy callers expect a key; source-aware casting uses nullable class abilities.
+  return classCastingAbility(className,null,20) ?? 'intelligence';
 }
 
 /** Ability modifier for the spellcasting ability */

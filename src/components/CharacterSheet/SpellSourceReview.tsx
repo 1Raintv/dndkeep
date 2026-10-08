@@ -6,15 +6,15 @@ import {psionSpellReplacementContext} from '../../lib/psionSpellReplacementConte
 
 /** v2.787 — Older records have no per-class provenance. Review is explicit and
  * stays a draft until saved; changing the selected spell discards its draft. */
-export default function SpellSourceReview({character,spells,onSave}:{character:Character;spells:SpellData[];onSave:(patch:Partial<Character>)=>void}){
- const [id,setId]=useState('');const [owners,setOwners]=useState<SpellSource[]>([]);const [ready,setReady]=useState<SpellSource[]>([]);
+export default function SpellSourceReview({character,spells,onSave,initialSpellId=''}:{character:Character;spells:SpellData[];initialSpellId?:string;onSave:(patch:Partial<Character>)=>void}){
+ const [id,setId]=useState(initialSpellId);const [owners,setOwners]=useState<SpellSource[]>([]);const [ready,setReady]=useState<SpellSource[]>([]);
  const [message,setMessage]=useState('');
  useEffect(()=>{setOwners(isSpellSources(character.spell_sources??{})?[...(character.spell_sources?.[id]??[])]:[]);setReady(isSpellSources(character.spell_preparation_sources??{})?[...(character.spell_preparation_sources?.[id]??[])]:[]);setMessage('');},[id,character.id,character.spell_sources,character.spell_preparation_sources]);
  const granted=psionSpellReplacementContext(character,character.level).granted;
  const reviewable=spells.filter(spell=>character.known_spells.includes(spell.id)&&!granted.includes(spell.id));
  const spell=reviewable.find(item=>item.id===id);
  const options=[...new Set<SpellSource>([`class:${character.class_name}`,...(character.secondary_class?[`class:${character.secondary_class}` as SpellSource]:[]),'feat','species','other'])];
- return <details style={{padding:12,border:'1px solid var(--c-border)',borderRadius:8}}>
+ return <details open={initialSpellId?true:undefined} style={{padding:12,border:'1px solid var(--c-border)',borderRadius:8}}>
   <summary>Review spell sources</summary>
   <p style={{fontSize:12}}>For older or imported spells, confirm how you learned each spell and which sources have it prepared. This does not learn additional spells.</p>
   <label>Spell to review<select aria-label="Spell to review" value={id} onChange={event=>setId(event.target.value)} style={{display:'block',width:'100%',marginTop:6}}>

@@ -1,7 +1,7 @@
 import type {Character} from '../types';
 const fields = [
  'spell_preparation_sources','spell_sources','known_spells','prepared_spells','combat_hp_sync_id','current_hp','temp_hp','active_conditions','concentration_spell','concentration_rounds_remaining',
- 'exhaustion_level','concentration_slot_level','spell_slots','death_saves_successes','death_saves_failures','inspiration',
+ 'exhaustion_level','concentration_revision','concentration_casting_context','concentration_slot_level','spell_slots','death_saves_successes','death_saves_failures','inspiration',
  'hit_dice_spent','psionic_hit_dice_revision','psionic_energy_revision','class_resources','feature_uses','currency','inventory','experience_points',
 ] as const;
 
@@ -16,7 +16,10 @@ export function reconcileCharacterUpdate(ref:{current:Character},incoming:Record
  const staleHitDice=typeof revision==='number'&&revision<(previous.psionic_hit_dice_revision??0);
  const energyRevision=incoming.psionic_energy_revision;
  const staleEnergy=typeof energyRevision==='number'&&energyRevision<(previous.psionic_energy_revision??0);
+ const concentrationRevision=incoming.concentration_revision;
+ const staleConcentration=typeof concentrationRevision==='number'&&concentrationRevision<(previous.concentration_revision??0);
  for(const field of fields) {
+  if(staleConcentration&&field.startsWith('concentration_'))continue;
   // v2.782 — late acknowledgements/events cannot refund a newer paid cost.
   if(staleHitDice&&(field==='hit_dice_spent'||field==='psionic_hit_dice_revision'))continue;
   if(staleEnergy&&field==='psionic_energy_revision')continue;
@@ -106,4 +109,12 @@ export function acceptSavedPsionicResources(ref:{current:Character},saved:Partia
 export function isCombatHpCarryover(previous: Record<string, unknown>, patch: Record<string, unknown>): boolean {
  return typeof patch.combat_hp_sync_id === 'string' && patch.combat_hp_sync_id.length > 0
   && patch.combat_hp_sync_id !== previous.combat_hp_sync_id;
+}
+
+/** v2.794 — apply only concentration fields from a confirmed cast/save receipt.
+ * A late acknowledgment cannot restore a casting superseded in another tab. */
+export function acceptConcentrationReceipt(ref:{current:Character},incoming:Partial<Character>,pending:Partial<Character>={}){
+ if(!Number.isSafeInteger(incoming.concentration_revision)||(incoming.concentration_revision??-1)<0)return {previous:ref.current,patch:{} as Partial<Character>};
+ const concentration=Object.fromEntries(Object.entries(incoming).filter(([field])=>field.startsWith('concentration_')));
+ return reconcileCharacterUpdate(ref,concentration,pending);
 }

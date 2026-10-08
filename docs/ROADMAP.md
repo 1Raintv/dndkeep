@@ -1,6 +1,39 @@
 # DNDKeep — Two-Track Roadmap
 
-### In progress — ruler scene teardown, planned v2.793
+### Release candidate — spell casting sources, v2.794
+
+[2024 multiclass rules](https://www.dndbeyond.com/sources/dnd/br-2024/creating-a-character)
+associate casting ability with the spell's class. Current card stats, cast buttons,
+and repeated concentration actions instead consume primary-class stats in separate
+places. Shared prepared copies require explicit source choice, even if their
+abilities match, because class-specific bonuses differ.
+
+The source picker now drives Actions and Spells stats, casts, healing and
+Psion-only cantrip bonuses. Missing ownership offers inline review; species,
+feat and other sources require the ability specified by that feature.
+Concentration records the chosen source/ability, and recurring effects use it.
+An exact request is persisted before any queue flush; retries never rebase over
+another cast or spend another slot. Corrupt local requests can be explicitly
+discarded without deleting a newer valid request.
+
+Schema PR #124 (`4e44062`) merged as `df3b9ca`; production migration
+`37713138646` and main CI `37713138771` passed. All 22 local schema/identity
+checks passed. Final full gate passed 1,816 tests, TS 207/207, entry 253.7 KB.
+Twelve desktop/mobile casting tests passed with both class orders, cross-tab
+choices, reload and lost-response retry; source/DC, slot count and remaining
+duration verified. Manual concentration also confirms without serializing display
+metadata into the durable request. Final desktop/mobile screenshots inspected. Eighteen existing
+concentration, ownership and preparation browser checks also passed.
+
+Two tests reproduced post-cast target pickers being unmounted by concentration
+saving. They now survive save locks and last-slot spending in both sheet modes;
+all four regressions pass. A late receipt cannot erase another tab's newer saved
+request. Existing old-spell summon/aura cleanup remains best-effort client work;
+server-atomic cleanup and atomic slot/effect settlement remain follow-up work.
+Do not claim those are guaranteed. App release CI/deployment still pending;
+public version remains 2.793.0 until verified after merge.
+
+### Released — ruler scene teardown, v2.793
 
 Two focused tests reproduced null-scale crashes when mounting against an already
 destroyed scene or receiving its final frame callback. Ruler mounting, pointer
@@ -8,10 +41,12 @@ conversion and redraw now skip destroyed viewports/display objects; cleanup
 still removes listeners. Replacement scenes retain the correct measured path.
 Both lifecycle tests and nine label-position tests pass. Full gate passed with
 1,769 unit tests, TS 207/207 and a 254 KB entry; all four desktop/mobile ruler
-zoom/edge checks passed. Mobile screenshot inspected. Release awaiting CI.
+zoom/edge checks passed. Mobile screenshot inspected. PR #123 (`e9fb07a`) passed both CI gates and
+preview deployment; merged as `5475e75`. Main CI `37712152903` passed and cache-busted public service worker confirms
+`2.793.0`.
 
 
-### Merged — Psion multiclass automation, v2.792
+### Released — Psion multiclass automation, v2.792
 
 Owner-provided UA Update p.2 grants features by Psion level, regardless of
 class order. The shared progression resolver now validates either position and
@@ -38,7 +73,8 @@ Psion meditation from Actions and Features, correct INT-save DCs, Surge costs,
 persistence, daily limits and party-rest recovery after unknown responses.
 Desktop/mobile screenshots inspected. The final versioned gate passed.
 App PR #122 (`778863b`) passed both CI gates and preview deployment; merged
-as `70b8f30`. Production deployment confirmation pending. Follow-up: per-spell multiclass casting ability/source
+as `70b8f30`. Main CI `37711552765` passed; cache-busted public service worker confirms
+`2.792.0`. Follow-up: per-spell multiclass casting ability/source
 selection and the general mixed-class Short Rest Hit Die chooser still need
 separate audits. Confirmed casting call sites: SpellsTab card stats and sheet
 manual/targeted spell paths still consume character-wide computed spell stats;

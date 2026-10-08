@@ -1,3 +1,4 @@
+import {acceptConcentrationReceipt} from './characterRealtime';
 import {expect,it} from 'vitest';
 import type {Character} from '../types';
 import {isCombatHpCarryover,preservePsionicResources,acceptSavedPsionicResources,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,reconcileCharacterUpdate} from './characterRealtime';
@@ -114,4 +115,13 @@ it('protects secondary Psion resources from stale ordinary edits and adopts paid
  const ref={current:c};const saved={...c,class_resources:{'psionic-energy-dice':1},psionic_energy_revision:10};
  acceptSavedPsionicResources(ref,saved);
  expect(ref.current.class_resources?.['psionic-energy-dice']).toBe(1);expect(ref.current.class_name).toBe('Fighter');
+});
+
+it('accepts casting context without replaying a save and ignores an older casting receipt',()=>{
+ const ref={current:{id:'hero',concentration_spell:'detect-magic',concentration_revision:3,concentration_casting_context:null} as Character};
+ const context={requestId:'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',spellId:'invisibility',slotLevel:2,rounds:100,source:'class:Psion' as const,ability:'intelligence' as const};
+ const result=acceptConcentrationReceipt(ref,{concentration_spell:'invisibility',concentration_revision:4,concentration_casting_context:context,concentration_slot_level:2,name:'Unrelated stale name'});
+ expect(result.patch).toMatchObject({concentration_spell:'invisibility',concentration_revision:4,concentration_casting_context:context});expect(result.patch.name).toBeUndefined();
+ expect(acceptConcentrationReceipt(ref,{concentration_spell:'detect-magic',concentration_revision:3,concentration_casting_context:null}).patch).toEqual({});
+ expect(ref.current.concentration_casting_context).toEqual(context);
 });

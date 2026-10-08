@@ -1,3 +1,7 @@
+import type {ConcentrationCastSource} from '../../rules/concentrationCasting';
+import SpellSourceReview from './SpellSourceReview';
+import {useSpellCasting,type SpellCastingState} from './SpellCastingContext';
+import {SpellCastingChoice} from './SpellCastingChoice';
 import {cantripDamage} from '../../rules/cantripDamage';
 import {addDiceModifier,rollDiceGroups} from '../../rules/dice';
 import { SpellDescription } from '../shared/SpellDescription';
@@ -10,7 +14,7 @@ import { AURA_SPELLS } from '../../lib/auras';
 import SummonFormPickerModal from './SummonFormPickerModal';
 const AuraCastModal = lazy(() => import('./AuraCastModal'));
 import { createPortal } from 'react-dom';
-import type { Character, SpellSlots, AbilityKey } from '../../types';
+import type { Character, SpellSlots } from '../../types';
 import type { SpellData } from '../../types';
 import { logAction } from '../shared/ActionLog';
 import { parseSpellMechanics, parseUpcastScaling, computeUpcastDice, canUpcastSpell } from '../../lib/spellParser';
@@ -42,6 +46,7 @@ interface SpellCastButtonProps {
  userId: string;
  campaignId?: string | null;
  onUpdateSlots: (slots: SpellSlots) => void;
+ onReviewSpellSources?: (patch:Partial<Character>)=>void;
  compact?: boolean;
  spellLockedOut?: boolean; // true when a leveled spell was already cast this turn
  onLeveledSpellCast?: (isBonusAction?: boolean) => void; // called when a leveled spell is successfully cast
@@ -52,7 +57,8 @@ interface SpellCastButtonProps {
  // The parent should set character.concentration_spell = spell.id.
  // v2.605.0 — receives the slot level the spell was cast at (undefined
  // for cantrips) so the parent can persist it for upcast dice scaling.
- onConcentrationCast?: (slotLevel?: number) => void;
+ onConcentrationCast?: (slotLevel?: number,source?:ConcentrationCastSource) => void;
+ castingBlocked?:boolean;
  // v2.49.0: Renders a single "↑ Upcast" button that opens the slot picker modal directly.
  // Used in spell description panels so the user can deliberately choose a higher slot
  // instead of just casting at base level.
@@ -71,10 +77,18 @@ const DAMAGE_COLORS: Record<string, string> = {
  Force: '#c084fc',
 };
 
-export default function SpellCastButton({
+export default function SpellCastButton(props:SpellCastButtonProps){
+ const casting=useSpellCasting(props.character,props.spell,computeStats(props.character));
+ const [review,setReview]=useState(false);
+ return <><SpellCastingChoice casting={casting} name={props.spell.name}/>{casting.needsSourceReview&&props.onReviewSpellSources&&<div onClick={event=>event.stopPropagation()}>
+  <button type="button" className="btn btn-secondary" onClick={()=>setReview(current=>!current)}>{review?'Close source review':'Review spell source'}</button>
+  {review&&<SpellSourceReview character={props.character} spells={[props.spell]} initialSpellId={props.spell.id} onSave={patch=>{props.onReviewSpellSources?.(patch);setReview(false);}}/>}
+ </div>}{casting.selected&&<ResolvedSpellCastButton key={casting.selected.key} {...props} casting={casting.selected}/>}</>;
+}
+function ResolvedSpellCastButton({
  spell, character, campaignId, onUpdateSlots, compact = false,
- spellLockedOut = false, onLeveledSpellCast, forceSlotLevel, onConcentrationCast, upcastTrigger,
-}: SpellCastButtonProps) {
+ spellLockedOut = false, onLeveledSpellCast, forceSlotLevel, onConcentrationCast, upcastTrigger, casting, castingBlocked,
+}: SpellCastButtonProps & {casting:NonNullable<SpellCastingState['selected']>}) {
  const isBonusActionCast = /bonus action/i.test(spell.casting_time);
  const [showModal, setShowModal] = useState(false);
  // v2.34: if a specific upcast slot is forced by the parent row, start with it
@@ -153,7 +167,7 @@ export default function SpellCastButton({
  // v2.37.0: if this spell requires concentration, notify the parent so it can
  // set character.concentration_spell. Fires for cantrips + leveled alike.
  if (spell.concentration) {
- onConcentrationCast?.(isCantrip ? undefined : slotLevel);
+ onConcentrationCast?.(isCantrip ? undefined : slotLevel,{source:casting.source,ability:casting.ability});
  }
  // v2.115.0 — Phase H pt 6: auto-open the buff target picker if this spell
  // is in the registry AND we have a campaign context. The modal itself
@@ -233,20 +247,11 @@ export default function SpellCastButton({
  }
  const canCast = isCantrip || availableSlots.length > 0;
 
- // Spell modifier
- const spellAbilityMap: Record<string, AbilityKey> = {
- Wizard: 'intelligence', Artificer: 'intelligence', Psion: 'intelligence',
- Cleric: 'wisdom', Druid: 'wisdom', Ranger: 'wisdom',
- Paladin: 'charisma', Bard: 'charisma', Sorcerer: 'charisma', Warlock: 'charisma',
- };
- const key = spellAbilityMap[character.class_name] ?? 'intelligence';
- // v2.775 — casting must use the same effective scores and total-level PB as the sheet.
+ // v2.794 — source choice governs every targeted/manual/healing casting path.
  const stats = computeStats(character);
- const spellMod = stats.modifiers[key];
- const profBonus = stats.proficiency_bonus;
- const spellAttack = spellMod + profBonus;
- const saveDC = 8 + spellAttack;
- const damageProfile=cantripDamage(character,spell,mechanics.damageDice,stats.modifiers.intelligence);
+ const key=casting.ability,spellMod=casting.modifier,profBonus=stats.proficiency_bonus;
+ const spellAttack=casting.attack,saveDC=casting.saveDC;
+ const damageProfile=cantripDamage(character,spell,mechanics.damageDice,stats.modifiers.intelligence,casting.className??'other');
  mechanics.damageDice=damageProfile.dice?addDiceModifier(damageProfile.dice,damageProfile.bonus):null;
  const previewHeal=resolveHealDice(spell.heal_at_slot_level?.[String(selectedSlot)]??mechanics.healDice,spellMod);
  const healingPreview=previewHeal&&<p style={{fontSize:12,color:'#6ee7b7',margin:'8px 0'}}>
@@ -439,6 +444,48 @@ export default function SpellCastButton({
  }
 
  // ──────────────────────────────────────────────────────────────────
+ // v2.794: post-cast choices survive save locks, last-slot use, and both tabs.
+ const postCastChoices=<Suspense fallback={null}>
+ {summonFormPickerFor && campaignId && SUMMON_TOKEN_SPELLS[summonFormPickerFor]?.creature && (
+ <SummonFormPickerModal
+ title={`${SUMMON_TOKEN_SPELLS[summonFormPickerFor].label} — choose a form`}
+ formIds={SUMMON_TOKEN_SPELLS[summonFormPickerFor]!.creature!.forms}
+ onPick={(monsterId) => {
+ placeSummonToken({
+ campaignId,
+ casterCharacterId: character.id,
+ casterName: character.name,
+ spellId: summonFormPickerFor,
+ monsterId,
+ }).then(res => {
+ if (res !== 'placed') console.info('[SpellCastButton] creature summon not placed:', res);
+ });
+ }}
+ onClose={() => setSummonFormPickerFor(null)}
+ />
+ )}
+ {auraCastSlot !== null && campaignId && AURA_SPELLS[spell.id] && (
+ <AuraCastModal
+ campaignId={campaignId}
+ casterCharacterId={character.id}
+ spellId={spell.id}
+ saveDC={saveDC}
+ slotLevel={auraCastSlot}
+ onClose={() => setAuraCastSlot(null)}
+ />
+ )}
+ {buffPickerOpen && campaignId && (
+ <BuffTargetPickerModal
+ campaignId={campaignId}
+ casterCharacterId={character.id}
+ spellName={spell.name}
+ castSlotLevel={buffPickerSlot}
+ onClose={() => setBuffPickerOpen(false)}
+ />
+ )}
+ </Suspense>;
+ function renderCastControls(){
+ if(castingBlocked)return <button type="button" disabled>Confirm concentration first</button>;
  // No slots available for leveled spell
  if (!canCast && !isCantrip) {
  return (
@@ -690,7 +737,6 @@ export default function SpellCastButton({
        if (!isCantrip) spendSlot(aoePicker.slotLevel);
        flashCast(aoePicker.slotLevel);
        onLeveledSpellCast?.(isBonusActionCast);
-       if (spell.concentration) onConcentrationCast?.();
        }}
        />
        )}
@@ -709,7 +755,6 @@ export default function SpellCastButton({
        if (!isCantrip) spendSlot(multiAttackPicker.slotLevel);
        flashCast(multiAttackPicker.slotLevel);
        onLeveledSpellCast?.(isBonusActionCast);
-       if (spell.concentration) onConcentrationCast?.();
        }}
        />
        )}
@@ -728,7 +773,6 @@ export default function SpellCastButton({
        if (!isCantrip) spendSlot(healPicker.slotLevel);
        flashCast(healPicker.slotLevel);
        onLeveledSpellCast?.(isBonusActionCast);
-       if (spell.concentration) onConcentrationCast?.();
        }}
        />
        )}
@@ -1408,43 +1452,6 @@ export default function SpellCastButton({
      fallback simple and centralizes the loading fade. */}
  <Suspense fallback={null}>
  {/* v2.115.0 — Phase H pt 6: buff target picker for registry spells */}
- {summonFormPickerFor && campaignId && SUMMON_TOKEN_SPELLS[summonFormPickerFor]?.creature && (
- <SummonFormPickerModal
- title={`${SUMMON_TOKEN_SPELLS[summonFormPickerFor].label} — choose a form`}
- formIds={SUMMON_TOKEN_SPELLS[summonFormPickerFor]!.creature!.forms}
- onPick={(monsterId) => {
- placeSummonToken({
- campaignId,
- casterCharacterId: character.id,
- casterName: character.name,
- spellId: summonFormPickerFor,
- monsterId,
- }).then(res => {
- if (res !== 'placed') console.info('[SpellCastButton] creature summon not placed:', res);
- });
- }}
- onClose={() => setSummonFormPickerFor(null)}
- />
- )}
- {auraCastSlot !== null && campaignId && AURA_SPELLS[spell.id] && (
- <AuraCastModal
- campaignId={campaignId}
- casterCharacterId={character.id}
- spellId={spell.id}
- saveDC={saveDC}
- slotLevel={auraCastSlot}
- onClose={() => setAuraCastSlot(null)}
- />
- )}
- {buffPickerOpen && campaignId && (
- <BuffTargetPickerModal
- campaignId={campaignId}
- casterCharacterId={character.id}
- spellName={spell.name}
- castSlotLevel={buffPickerSlot}
- onClose={() => setBuffPickerOpen(false)}
- />
- )}
  {/* v2.124.0 — Phase J: Counterspell pre-cast window */}
  {declarePending && campaignId && (
  <DeclareSpellCastModal
@@ -1485,4 +1492,6 @@ export default function SpellCastButton({
  </Suspense>
  </>
  );
+}
+ return <>{renderCastControls()}{postCastChoices}</>;
 }

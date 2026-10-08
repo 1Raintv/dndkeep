@@ -1,3 +1,4 @@
+import type {ConcentrationCastingContext} from '../rules/concentrationCasting';
 import type {SpellPreparationSources} from '../rules/spellPreparation';
 import type {SpellSources} from '../rules/psionSpellChoices';
 // =============================================================
@@ -273,6 +274,8 @@ export interface Character {
   wildshape_max_hp: number | null;
   combat_hp_sync_id?: string | null;
   concentration_spell: string | null;
+  concentration_revision?: number;
+  concentration_casting_context?: ConcentrationCastingContext | null;
  // v2.38.0: Rounds remaining on current concentration. NULL = no timer (instantaneous
  // / until dispelled / missing duration info). 0 = expired. One combat round = 6 seconds.
  concentration_rounds_remaining: number | null;
