@@ -10,6 +10,19 @@ sheet snapshots from the response. Eleven local database cases pass; changed
 functions have no advisor findings. This is an integration checkpoint, not a
 shipped HP transaction or a new automation claim.
 
+Local migration `20261008130309_pending_damage_pool_settlement.sql` now adds a
+private pool-write/receipt stage. All app roles are denied execution: this is not
+a standalone damage endpoint. It locks and rechecks captured state, blocks offered
+reactions and unresolved rolls, spends temp HP before HP, and returns the same
+receipt on exact retry. Saved receipts survive target removal. Sixteen local DB
+cases pass, including competing duplicate/distinct hits, stale snapshots, failed
+receipt insertion, outer-transaction rollback and permission denial. Full gate
+passes (2,587 units, TypeScript 200/200, 255.1 KB entry); no stage advisor findings.
+The current app still uses the old apply path. Keep both local migrations off
+main until the outer transaction includes the remaining side effects and marks
+the attack applied. Character-sheet HP/revision and suppression markers must be
+synchronized in that same outer transaction; the private stage only writes CB pools.
+
 Next implementation must replace `pendingAttack.applyDamage` separate writes
 with one idempotent settlement receipt. Preserve original damage components;
 record reaction/DM adjustments explicitly before recomputing typed totals.
