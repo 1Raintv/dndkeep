@@ -1,5 +1,38 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.818 — Guards status and sheet Intelligence saves
+
+The sheet shows a verified active Guards effect even on another creature's turn
+with no current discipline use. It clears the badge on expiry or a failed refresh,
+and refreshes when another device changes the Psion resource revision. Malformed
+effect identities are rejected; older servers may omit the new effect metadata.
+
+The main saving-throw tiles read protection at roll time. Intelligence saves use
+two physical d20s and keep the higher while Guards is active, then return to one
+die after expiry. Both dice and the effective modifier are logged. Browser verification exposed
+that the physical renderer ignored Advantage flags and summed all dice. The
+canonical dice module now prepares two d20s, selects the appropriate face,
+cancels Advantage/Disadvantage, and preserves bonus dice. The result display
+strikes the discarded die and shows the combined modifier. Failed reads
+prevent an unverified roll; duplicate clicks and responses arriving after a
+character switch/unmount cannot start extra rolls.
+
+Remaining integration: the separate DM save-request banner and campaign pending-
+attack save resolver still need this benefit. Activation/recovery wording must
+be revised when all save paths are integrated. Sharpened Mind remains manual.
+This is not yet a claim of complete Guards save automation.
+
+The renderer also removes its imperative labels during effect cleanup; a
+StrictMode replay no longer leaves a stale Rolling indicator behind the result.
+
+Validation: full gate passes (2,315 unit tests; TypeScript ratcheted to 202;
+255.1 KB entry). Real desktop/phone rolls verify two dice, keep-highest plus +7,
+normal saves after expiry, and no stale Rolling indicator. Screenshots inspected;
+scoped discipline overflow checks pass. Guards database migration 20261008081935
+is applied in production. Frontend production releases remain subject to the
+Vercel deployment quota.
+
+
 ### v2.817 candidate — durable Psionic Guards protection groundwork
 
 New Guards activations record a lasting effect in the existing discipline ledger.

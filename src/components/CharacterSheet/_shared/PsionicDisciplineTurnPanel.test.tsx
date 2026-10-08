@@ -76,3 +76,29 @@ it('keeps an earlier outcome locked while a remote turn changes during confirmat
  await act(async()=>resolve({...use,outcome:{spent:false,energy:null}} as DisciplineReceipt));
  await screen.findByText(/Energy Die kept/);expect(persistence.finishDiscipline).toHaveBeenCalledTimes(1);
 });
+
+it('keeps active Guards visible on another turn with no current discipline use, then clears expiry',async()=>{
+ const persistence=service(),guards={requestId:'guard',startToken:'start'};
+ persistence.getDisciplineTurn.mockResolvedValue({...turn,pending:[],guards});
+ render(ui(persistence));await screen.findByRole('status',{name:'Psionic Guards protection'});
+ expect(screen.getByText(/Roll Intelligence saves with Advantage/)).toBeTruthy();
+ persistence.getDisciplineTurn.mockResolvedValue({...turn,pending:[],guards:null});
+ await act(async()=>window.dispatchEvent(new Event('focus')));
+ await waitFor(()=>expect(screen.queryByRole('status',{name:'Psionic Guards protection'})).toBeNull());
+});
+it('does not retain an active-protection claim after its refresh fails',async()=>{
+ const persistence=service();persistence.getDisciplineTurn.mockResolvedValue({...turn,pending:[],guards:{requestId:'guard',startToken:'start'}});
+ render(ui(persistence));await screen.findByRole('status',{name:'Psionic Guards protection'});
+ persistence.getDisciplineTurn.mockRejectedValue(new Error('Unable to confirm protection'));
+ await act(async()=>window.dispatchEvent(new Event('focus')));await screen.findByRole('alert');
+ expect(screen.queryByRole('status',{name:'Psionic Guards protection'})).toBeNull();
+});
+
+it('refreshes protection when another device commits a resource recovery',async()=>{
+ const persistence=service();persistence.getDisciplineTurn.mockResolvedValue({...turn,pending:[],guards:{requestId:'guard',startToken:'start'}});
+ const result=render(<PsionicDisciplineTurnPanel characterId="hero" persistence={persistence} resourceRevision={1}/>);
+ await screen.findByRole('status',{name:'Psionic Guards protection'});
+ persistence.getDisciplineTurn.mockResolvedValue({...turn,pending:[],guards:null});
+ result.rerender(<PsionicDisciplineTurnPanel characterId="hero" persistence={persistence} resourceRevision={2}/>);
+ await waitFor(()=>expect(screen.queryByRole('status',{name:'Psionic Guards protection'})).toBeNull());
+});

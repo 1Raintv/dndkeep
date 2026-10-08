@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {expect,test} from '@playwright/test';
@@ -33,6 +34,7 @@ test.describe('Psionic Discipline activation controls',()=>{
  for(const [discipline,label] of cases)test(`${discipline} records its first attempt and rejects a second`,async({page},info)=>{
   test.setTimeout(90000);await page.addInitScript(()=>{Math.random=()=>0.25;});
   sql(`update characters set level=5,intelligence=18,class_resources='{"psion-disciplines":["${discipline}"],"psionic-energy-dice":6}' where id='${charId}'`);
+  if(discipline==='psionic-guards')sql(`update characters set saving_throw_proficiencies=array['intelligence'] where id='${charId}'`);
   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
   const button=page.getByRole('button',{name:label,exact:true}).locator('visible=true').first();
   const activate=async()=>{
@@ -50,6 +52,29 @@ test.describe('Psionic Discipline activation controls',()=>{
   await expect(button).toBeEnabled();await activate();
   await expect(page.getByText('This discipline was already used this turn', {exact:true})).toBeVisible();
   expect(pool()).toBe(label==='Roll bonus'?'6':'5');expect(sql(`select count(*) from dndkeep_private.psionic_discipline_uses where character_id='${charId}'`)).toBe('1');
+  if(discipline==='psionic-guards'){
+   const protection=page.getByRole('status',{name:'Psionic Guards protection'});await expect(protection).toContainText('Psionic Guards active');
+   await page.reload();await expect(protection).toBeVisible();await protection.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('guards-active.png')});
+   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
+    const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');
+    const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
+    const layout=await page.evaluate('('+body+'\n})()');expect(layout.sideways).toBe(false);
+    await info.attach('guards-sheet-layout',{body:JSON.stringify(layout),contentType:'application/json'});
+    const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[aria-label=\"Psionic Discipline record\"], [aria-label=\"Psionic Discipline record\"] *')");
+    const local=await page.evaluate('('+scoped+'\n})()');expect(local.clipped).toEqual([]);expect(local.pastEdge).toEqual([]);
+   }
+   await page.getByRole('button',{name:/^intelligence saving throw/}).locator('visible=true').first().click();
+   await expect.poll(()=>sql(`select count(*) from roll_logs where character_id='${charId}' and label='Intelligence Save (Advantage · Psionic Guards)'`),{timeout:20000}).toBe('1');
+   const guarded=JSON.parse(sql(`select jsonb_build_object('dice',individual_results,'total',total,'modifier',modifier) from roll_logs where character_id='${charId}' and label='Intelligence Save (Advantage · Psionic Guards)'`));
+   expect(guarded.dice).toHaveLength(2);expect(guarded.modifier).toBe(7);expect(guarded.total).toBe(Math.max(...guarded.dice)+7);
+   await expect(page.getByText('Rolling...', {exact:true})).not.toBeVisible();
+   await page.screenshot({path:info.outputPath('guards-save.png')});
+   await page.reload();await page.getByRole('button',{name:/End Turn/}).locator('visible=true').first().click();await expect(protection).toHaveCount(0);
+   await page.getByRole('button',{name:/^intelligence saving throw/}).locator('visible=true').first().click();
+   await expect.poll(()=>sql(`select count(*) from roll_logs where character_id='${charId}' and label='Intelligence Save'`),{timeout:20000}).toBe('1');
+   const normal=JSON.parse(sql(`select jsonb_build_object('dice',individual_results,'total',total) from roll_logs where character_id='${charId}' and label='Intelligence Save'`));
+   expect(normal.dice).toHaveLength(1);expect(normal.total).toBe(normal.dice[0]+7);
+  }
   if(discipline==='psionic-guards'||discipline==='inerrant-aim')await page.screenshot({path:info.outputPath(discipline+'-used.png')});
  });
  test('secondary Psion uses the original class snapshot instead of the display projection',async({page})=>{

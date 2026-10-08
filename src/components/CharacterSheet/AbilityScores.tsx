@@ -1,3 +1,5 @@
+import {useEffect,useRef,useState} from 'react';
+import {getPsionicGuardsSaveAdvantage} from '../../lib/api/psionicDisciplines';
 import { supabase } from '../../lib/supabase';
 import { checkedWrite } from '../../lib/api/checked';
 import type { Character, ComputedStats, AbilityKey } from '../../types';
@@ -41,6 +43,9 @@ const SIGHT_LIKELY_ABILITIES = new Set<AbilityKey>(['dexterity', 'intelligence',
 
 export default function AbilityScores({ character, computed }: AbilityScoresProps) {
  const { triggerRoll } = useDiceRoll();
+ const working=useRef(false),generation=useRef(0),currentId=useRef(character.id);currentId.current=character.id;
+ const [checkingSave,setCheckingSave]=useState(false),[saveError,setSaveError]=useState('');
+ useEffect(()=>{working.current=false;setCheckingSave(false);setSaveError('');return()=>{generation.current++;};},[character.id]);
  const isBlinded = (character.active_conditions ?? []).includes('Blinded');
  // v2.82.0: attach history-logging hook to every triggerRoll call so ability
  // checks and saves surface in character history alongside HP/condition/slot
@@ -87,7 +92,10 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  void d20; // d20 captured for parity with skill rolls; auto-fail is label-level
  }
 
- function rollSave(ability: AbilityKey) {
+ async function rollSave(ability: AbilityKey) {
+ if(working.current)return;working.current=true;setCheckingSave(true);setSaveError('');
+ const issued=generation.current;
+ try {
  const isProficient = character.saving_throw_proficiencies?.includes(ability);
  const abilityMod = computed.modifiers[ability];
  const saveMod = abilityMod + (isProficient ? computed.proficiency_bonus : 0);
@@ -96,17 +104,25 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  triggerRoll({ result: 1, dieType: 20, modifier: saveMod, total: 1 + saveMod, label: `${ability.charAt(0).toUpperCase() + ability.slice(1)} Save (Auto-Fail)`, logHistory });
  return;
  }
- const label = `${ability.charAt(0).toUpperCase() + ability.slice(1)} Save`;
- triggerRoll({ result: 0, dieType: 20, modifier: saveMod, label, logHistory,
- onResult: (_dice, physTotal) => {
- const physRoll = physTotal - saveMod;
- void checkedWrite('roll_logs.insert saving-throw', { characterId: character.id }, supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: '1d20', individual_results: [physRoll], total: physTotal, modifier: saveMod }));
+ const advantage=await getPsionicGuardsSaveAdvantage(character.id,ability);
+ if(issued!==generation.current||currentId.current!==character.id)return;
+ const label = `${ability.charAt(0).toUpperCase() + ability.slice(1)} Save${advantage?' (Advantage · Psionic Guards)':''}`;
+ triggerRoll({ result: 0, dieType: 20, modifier: saveMod, label, logHistory, advantage,
+ onResult: (dice, physTotal) => {
+ void checkedWrite('roll_logs.insert saving-throw', { characterId: character.id }, supabase.from('roll_logs').insert({ user_id: character.user_id, character_id: character.id, campaign_id: character.campaign_id ?? null, label, dice_expression: advantage?'2d20kh1':'1d20', individual_results: dice.filter(d=>d.die===20).map(d=>d.value), total: physTotal, modifier: saveMod }));
  },
  });
+ } catch(error) {
+ if(issued===generation.current&&currentId.current===character.id)setSaveError(error instanceof Error?error.message:'Could not confirm protection. Try the save again.');
+ } finally {
+ if(issued===generation.current&&currentId.current===character.id){working.current=false;setCheckingSave(false);}
+ }
  }
 
  return (
  <section className="ability-scores-section">
+ {checkingSave&&<p role="status" style={{fontSize:12}}>Checking saving throw…</p>}
+ {saveError&&<p role="alert" style={{fontSize:12}}>{saveError}</p>}
 
  {/* ── Saving Throws — prominent, full-size cards ── */}
  <div>
@@ -138,8 +154,10 @@ export default function AbilityScores({ character, computed }: AbilityScoresProp
  key={ability}
  className="stat-box stagger-item"
  role="button"
- tabIndex={0}
- onClick={() => rollSave(ability)}
+ tabIndex={checkingSave?-1:0}
+ aria-disabled={checkingSave}
+ aria-busy={checkingSave}
+ onClick={() => void rollSave(ability)}
  onKeyDown={e => e.key === 'Enter' && rollSave(ability)}
  title={titleParts.join(' ')}
  aria-label={`${ability} saving throw${isProficient ? ', proficient' : ''}${override ? `, ${override.sourceName} sets score to ${override.value}` : ''}, modifier ${formatModifier(saveMod)}`}

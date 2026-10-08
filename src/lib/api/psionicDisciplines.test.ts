@@ -3,7 +3,7 @@ import type {Character} from '../../types';
 import {createDisciplineRequest} from '../psionicDisciplineRequest';
 const mocks=vi.hoisted(()=>({rpc:vi.fn()}));
 vi.mock('../supabase',()=>({supabase:{rpc:mocks.rpc}}));
-import {beginPsionicDiscipline,finishPsionicDiscipline,getPsionicDisciplineTurn} from './psionicDisciplines';
+import {beginPsionicDiscipline,finishPsionicDiscipline,getPsionicDisciplineTurn,getPsionicGuardsSaveAdvantage} from './psionicDisciplines';
 const hero={id:'hero',class_name:'Psion',level:5,intelligence:18,inventory:[],class_resources:{'psionic-energy-dice':6,'psion-disciplines':['biofeedback','inerrant-aim']},feature_uses:{},psionic_energy_revision:0} as unknown as Character;
 const request=createDisciplineRequest(hero,{soloTurn:0},'biofeedback',[3,4],2,4,'saved');
 const energy={requestId:'saved',remaining:4,energyRevision:1,restorationResource:null,restorationUsed:null,rolls:[3,4],replayed:false};
@@ -85,4 +85,26 @@ it.each([
 it('accepts the same current pending claim in both lists',async()=>{
  mocks.rpc.mockResolvedValue({data:{turn:{soloTurn:0},uses:[bonus],pending:[bonus]},error:null});
  expect(await getPsionicDisciplineTurn('hero')).toMatchObject({uses:[{requestId:'bonus'}],pending:[{requestId:'bonus'}]});
+});
+
+it('accepts an active Guards identity even after its activation turn',async()=>{
+ const guards={requestId:'11111111-1111-4111-8111-111111111111',startToken:'22222222-2222-4222-8222-222222222222'};
+ mocks.rpc.mockResolvedValue({data:{turn:{soloTurn:1},uses:[],pending:[],guards},error:null});
+ expect((await getPsionicDisciplineTurn('hero')).guards).toEqual(guards);
+});
+it.each([{},true,{requestId:'not-an-id',startToken:'bad'},{requestId:'11111111-1111-4111-8111-111111111111'}])('rejects an unverifiable Guards effect %j',async guards=>{
+ mocks.rpc.mockResolvedValue({data:{turn:{soloTurn:0},uses:[],pending:[],guards},error:null});
+ await expect(getPsionicDisciplineTurn('hero')).rejects.toMatchObject({definitelyNotPaid:false});
+});
+it('accepts an explicitly expired Guards effect',async()=>{
+ mocks.rpc.mockResolvedValue({data:{turn:{soloTurn:1},uses:[],pending:[],guards:null},error:null});
+ expect((await getPsionicDisciplineTurn('hero')).guards).toBeNull();
+});
+
+it('skips Guards lookups for other saves and reads current protection for INT',async()=>{
+ expect(await getPsionicGuardsSaveAdvantage('hero','wisdom')).toBe(false);expect(mocks.rpc).not.toHaveBeenCalled();
+ mocks.rpc.mockResolvedValue({data:{turn:{soloTurn:0},uses:[],pending:[],guards:{requestId:'11111111-1111-4111-8111-111111111111',startToken:'22222222-2222-4222-8222-222222222222'}},error:null});
+ expect(await getPsionicGuardsSaveAdvantage('hero','INT')).toBe(true);
+ mocks.rpc.mockResolvedValue({data:{turn:{soloTurn:1},uses:[],pending:[],guards:null},error:null});
+ expect(await getPsionicGuardsSaveAdvantage('hero','intelligence')).toBe(false);
 });

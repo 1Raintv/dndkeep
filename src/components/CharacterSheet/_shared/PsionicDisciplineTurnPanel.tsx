@@ -5,7 +5,7 @@ import type {DisciplineTurn,DisciplineUse} from '../../../lib/api/psionicDiscipl
 import {pendingPsionicPayments,PSIONIC_PAYMENT_CHANGED} from '../../../lib/psionicPaymentRecovery';
 /** v2.813 — pending outcomes live on the server, including earlier turns.
  * Confirming one settles its die cost only, never replays its tabletop effect. */
-export default function PsionicDisciplineTurnPanel({characterId,persistence,frozen=false}:{characterId:string;persistence:PsionicEnhancementPersistence;frozen?:boolean}){
+export default function PsionicDisciplineTurnPanel({characterId,persistence,frozen=false,resourceRevision=0}:{characterId:string;persistence:PsionicEnhancementPersistence;frozen?:boolean;resourceRevision?:number}){
  const [state,setState]=useState<{id:string;data:DisciplineTurn|null;error:string}>({id:characterId,data:null,error:''});
  const [busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[saved,setSaved]=useState<string[]>([]);
  const current=useRef(characterId),mounted=useRef(true),generation=useRef(0),scope=useRef(0),working=useRef(false);current.current=characterId;
@@ -17,7 +17,7 @@ export default function PsionicDisciplineTurnPanel({characterId,persistence,froz
   s.encounter?.current_turn_index,s.encounter?.psionic_turn_id,
   s.participants.some(p=>p.participant_type==='character'&&p.entity_id===characterId),
  ]));
- const previousCombatTurn=useRef(combatTurn);
+ const previousCombatTurn=useRef(combatTurn),previousResourceRevision=useRef(resourceRevision);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;generation.current++;};},[]);
  const refresh=useCallback(async()=>{
   if(!read)return;const ticket=++generation.current;
@@ -35,6 +35,10 @@ export default function PsionicDisciplineTurnPanel({characterId,persistence,froz
   previousCombatTurn.current=combatTurn;void refresh();
   // A turn transition must not cancel an in-flight outcome from an earlier turn.
  },[combatTurn,refresh]);
+ useEffect(()=>{
+  if(previousResourceRevision.current===resourceRevision)return;
+  previousResourceRevision.current=resourceRevision;void refresh();
+ },[resourceRevision,refresh]);
  async function finish(use:DisciplineUse,changedOutcome:boolean){
   if(frozen||working.current||saved.includes(use.requestId)||!persistence.finishDiscipline)return;
   const issued=scope.current;working.current=true;setBusy(true);setNotice('');
@@ -45,11 +49,15 @@ export default function PsionicDisciplineTurnPanel({characterId,persistence,froz
   finally{if(mounted.current&&current.current===characterId&&scope.current===issued){working.current=false;setBusy(false);}}
  }
  const data=state.id===characterId?state.data:null,error=state.id===characterId?state.error:'';
- if(!read||(!error&&!data?.uses.length&&!data?.pending.length&&!notice))return null;
+ if(!read||(!error&&!data?.uses.length&&!data?.pending.length&&!data?.guards&&!notice))return null;
  return <section aria-label="Psionic Discipline record" style={{padding:12,marginBottom:12,border:'1px solid #a78bfa',borderRadius:10,overflowWrap:'anywhere'}}>
   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8}}><strong>Discipline record</strong><button className="btn-ghost" style={{minHeight:44}} disabled={busy} onClick={()=>void refresh()}>Refresh record</button></div>
   {error&&<p role="alert">{error}</p>}
   {data&&<p style={{fontSize:12}}>Recorded this turn: {data.uses.map(u=>u.sourceFeature).join(', ')||'none'}.</p>}
+  {data?.guards&&<div role="status" aria-label="Psionic Guards protection" style={{padding:10,borderRadius:8,background:'rgba(167,139,250,0.10)',marginTop:8}}>
+   <strong>Psionic Guards active</strong>
+   <p style={{fontSize:12,marginBottom:0}}>Immune to Charmed and Frightened until your next turn. Roll Intelligence saves with Advantage.</p>
+  </div>}
   {data?.pending.map(use=><div key={use.requestId} style={{marginTop:12,paddingTop:8,borderTop:'1px solid var(--c-border)'}}>
    <strong>{use.sourceFeature} · outcome pending</strong>
    <p style={{fontSize:12}}>Original base roll: {use.rolls.join(', ')}. Check History for any Surge or Enkindled rolls. Did the final bonus change the check to a success or attack to a hit?</p>

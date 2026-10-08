@@ -5,7 +5,9 @@ export interface DisciplineUse extends DisciplineClaim {
  conditional:boolean;energy:EnergyReceipt|null;outcome:{spent:boolean;energy?:EnergyReceipt|null}|null;
 }
 export interface DisciplineReceipt extends DisciplineUse {character:Character;replayed:boolean}
-export interface DisciplineTurn {turn:PsionicTurn;uses:DisciplineUse[];pending:DisciplineUse[]}
+export interface GuardsEffect {requestId:string;startToken:string}
+export interface DisciplineTurn {turn:PsionicTurn;uses:DisciplineUse[];pending:DisciplineUse[];guards?:GuardsEffect|null}
+const uuid=(v:unknown)=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const natural=(v:unknown)=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0;
 const sameTurn=(a:PsionicTurn,b:PsionicTurn)=>'soloTurn' in a&&'soloTurn' in b?a.soloTurn===b.soloTurn:
@@ -54,6 +56,7 @@ export async function finishPsionicDiscipline(characterId:string,input:Disciplin
 export async function getPsionicDisciplineTurn(characterId:string):Promise<DisciplineTurn>{
  const v=await psionicRpc('get_psionic_discipline_turn',{p_character_id:characterId});
  if(!object(v)||!validPsionicTurn(v.turn)||!Array.isArray(v.uses)||!Array.isArray(v.pending)
+  ||(v.guards!==undefined&&v.guards!==null&&(!object(v.guards)||!uuid(v.guards.requestId)||!uuid(v.guards.startToken)))
   ||!v.uses.every(u=>validUse(u)&&sameTurn(u.turn,v.turn as PsionicTurn))
   ||!v.pending.every(u=>validUse(u)&&u.conditional&&u.outcome===null))return invalid();
  const unique=(values:DisciplineUse[])=>new Set(values.map(u=>u.requestId)).size===values.length;
@@ -66,4 +69,11 @@ export async function getPsionicDisciplineTurn(characterId:string):Promise<Disci
  }
  if((v.uses as DisciplineUse[]).some(u=>u.conditional&&u.outcome===null&&!(v.pending as DisciplineUse[]).some(p=>p.requestId===u.requestId)))return invalid();
  return v as unknown as DisciplineTurn;
+}
+
+/** v2.818 — read at roll time; a cached badge is not proof of active protection.
+ * Missing effect metadata is compatible with servers awaiting this migration. */
+export async function getPsionicGuardsSaveAdvantage(characterId:string,ability:string):Promise<boolean>{
+ if(!['int','intelligence'].includes(ability.trim().toLowerCase()))return false;
+ return !!(await getPsionicDisciplineTurn(characterId)).guards;
 }
