@@ -323,7 +323,8 @@ export interface Character {
   max_hp: number;
   current_hp: number;
   temp_hp: number;
-  hit_dice_spent: number;  // number spent since last long rest; max = level
+  hit_dice_spent: number;  // number spent since last long rest; max = total class levels
+  hit_dice_spent_by_type?: Record<string,number>|null; // null = legacy allocation unknown
   /** v2.782 — server ordering for paid Psion costs and rest recovery. */
   psionic_hit_dice_revision?: number;
   psionic_energy_revision?: number;

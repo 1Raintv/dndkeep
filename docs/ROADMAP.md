@@ -1,6 +1,52 @@
 # DNDKeep — Two-Track Roadmap
 
-### Release candidate — Short Rest healing numbers, v2.795
+### Release candidate — mixed-class Hit Dice, v2.796
+
+Hit Dice now pool by size across both classes. The Rest controls display every
+pool, let the player choose its die size, and use the same allocation as Psionic
+Surge. Healing uses current effective CON and the 2024 minimum of 1 HP per die.
+An exhausted selected size stays selected and disabled; the app never silently
+charges a different pool. Equal-sized classes share one pool.
+
+Old partly spent mixed-class totals cannot identify the original sizes. A review
+panel asks the player to allocate the already-spent total, preserving total/HP,
+with revision checks and visible stale-save errors. Unknown allocation blocks
+new healing/Surge instead of guessing. Empty/full/single-size totals are inferable.
+Surge keeps its selected size in durable saved requests, charges it atomically,
+and retains compatibility with old pending requests. Receipts update allocation
+and aggregate together and reject stale revisions. Long Rest clears allocation;
+Enkindled's pure-Psion pool remains inferable after its legacy receipt.
+
+Schema PR #127 (`c8eff72`, merge `a0aced9`) is live: production migration run
+37717155626 actually applied 20261008020231, and main CI 37717155571 passed.
+Real healing checks exposed an invoker permission gap in the revision trigger.
+Follow-up PR #128 (`45fd20f`) keeps invoker/RLS behavior and moves pure validation
+into the existing private schema, with revoked public forwarding helpers. It is
+applied locally as 20261008022337, with no pending migrations. All 14 allocation
+DB cases passed; security advisors report only the existing keep_warm path and
+telemetry insert warnings. PR #128 passed both CI gates and its preview, then merged as `d00b2f8`.
+Production run 37718318834 actually applied the permission migration; app release
+remains separate. Main CI 37718318850 passed.
+
+Final versioned gate passed 1,877 unit tests, TS 206/206, zero hook violations,
+rules, coordinates, anchors, build/SW-version and 253.7 KB entry budget. The
+unused old roll shim is removed; TS_BASELINE is ratcheted to 206. All 42 desktop/mobile and database cases passed across the final desktop and
+corrected mobile runs: both class orders, review, cancellation, chosen
+Surge/healing, reload, Long Rest, single-class healing and Enkindled. Screenshots
+inspected for mobile chooser and mixed rest controls. The mobile check exposed
+a real last-action obstruction: .app-content padding did not apply to the sheet.
+Phone sheet clearance now reserves navigation plus dice/history-button space,
+and the browser test verifies the action receives clicks. Four final versioned
+desktop/mobile tests passed after strict Surge receipt validation. Saved requests
+retain their selected die size. App changes are not live.
+
+Next: replace ordinary queued Short Rest healing writes with an idempotent
+transaction covering chosen pool, HP and history. Existing absolute-value saves
+still can race another tab's payment; this release does not claim to solve that
+broader settlement problem. Bind retries to the original rolls/snapshot and
+protect delayed receipts from restoring newer HP/resource state.
+
+### Released — Short Rest healing numbers, v2.795
 
 The [2024 Short Rest rule](https://www.dndbeyond.com/sources/dnd/br-2024/rules-glossary/)
 applies Constitution and the 1 HP minimum to each spent die. Batch healing
@@ -17,7 +63,7 @@ spending with Surge/Enkindled Life Force need separate persisted tracking; that
 larger follow-up is not solved by this arithmetic correction. Existing rest
 writes also remain separate from all related healing/history effects.
 
-### Release candidate — spell casting sources, v2.794
+### Released — spell casting sources, v2.794
 
 [2024 multiclass rules](https://www.dndbeyond.com/sources/dnd/br-2024/creating-a-character)
 associate casting ability with the spell's class. Current card stats, cast buttons,
@@ -47,8 +93,11 @@ saving. They now survive save locks and last-slot spending in both sheet modes;
 all four regressions pass. A late receipt cannot erase another tab's newer saved
 request. Existing old-spell summon/aura cleanup remains best-effort client work;
 server-atomic cleanup and atomic slot/effect settlement remain follow-up work.
-Do not claim those are guaranteed. App release CI/deployment still pending;
-public version remains 2.793.0 until verified after merge.
+Do not claim those are guaranteed. PR #125 final head `1936d92` passed both
+CI gates and preview, merged as `9c18559`. Main CI `37715637542` passed;
+public service worker confirmed 2.794.0. PR #126 (`bddbdad`) passed both gates
+and preview, merged as `273b915`; main CI `37716010939` passed. Public service
+worker now confirms 2.795.0, including both casting and rest corrections.
 
 ### Released — ruler scene teardown, v2.793
 
