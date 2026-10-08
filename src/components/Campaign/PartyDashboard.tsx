@@ -204,7 +204,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
   const [aoeDamageType, setAoeDamageType] = useState<string | null>(null);
   const [aoeApplied, setAoeApplied] = useState<{
     name: string; took: number; concentration: boolean;
-    modifier: DamageModifier; // 'none' | 'resistant' | 'vulnerable' | 'immune' | 'cancelled'
+    modifier: DamageModifier; // 'none' | 'resistant' | 'vulnerable' | 'immune' | 'resistant-vulnerable'
   }[] | null>(null);
   // Passive perception
   const [perceptionDC, setPerceptionDC] = useState('');
@@ -659,7 +659,8 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
       // to decrement per RAW; previously cast as (c as any) and silently
       // fell through to 0). Without these, the DM-side rest path silently
       // no-ops on charge recharge and exhaustion reduction.
-      'id,user_id,campaign_id,name,species,class_name,subclass,level,current_hp,max_hp,temp_hp,armor_class,speed,initiative_bonus,strength,dexterity,constitution,intelligence,wisdom,charisma,active_conditions,concentration_spell,inspiration,death_saves_successes,death_saves_failures,avatar_url,hit_dice_spent,spell_slots,prepared_spells,known_spells,saving_throw_proficiencies,skill_proficiencies,class_resources,weapons,wildshape_active,wildshape_beast_name,wildshape_current_hp,wildshape_max_hp,active_buffs,inventory,exhaustion_level,feature_uses,secondary_class,secondary_level,long_rest_clears_combat_conditions,concentration_rounds_remaining,concentration_slot_level,psionic_energy_revision,psionic_hit_dice_revision'
+      // v2.824: AoE must load stored affinities; omitted columns silently ignored them.
+      'damage_resistances,damage_vulnerabilities,damage_immunities,id,user_id,campaign_id,name,species,class_name,subclass,level,current_hp,max_hp,temp_hp,armor_class,speed,initiative_bonus,strength,dexterity,constitution,intelligence,wisdom,charisma,active_conditions,concentration_spell,inspiration,death_saves_successes,death_saves_failures,avatar_url,hit_dice_spent,spell_slots,prepared_spells,known_spells,saving_throw_proficiencies,skill_proficiencies,class_resources,weapons,wildshape_active,wildshape_beast_name,wildshape_current_hp,wildshape_max_hp,active_buffs,inventory,exhaustion_level,feature_uses,secondary_class,secondary_level,long_rest_clears_combat_conditions,concentration_rounds_remaining,concentration_slot_level,psionic_energy_revision,psionic_hit_dice_revision'
     ).in('user_id', userIds).eq('campaign_id', campaignId).returns<Character[]>();
     setCharacters(chars ?? []);
     setLoading(false);
@@ -902,7 +903,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
               inactive panels prevents stray clicks bleeding through
               their inputs. */}
           {/* ── AoE DAMAGE PANEL ── */}
-          <div style={{ ...DM_PANEL_STYLE, ...panelLayoutStyle(dmPanel === 'aoe'), padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div role="region" aria-label="Party area damage" style={{ ...DM_PANEL_STYLE, ...panelLayoutStyle(dmPanel === 'aoe'), padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#f87171' }}>
                 AoE / Mass Damage — select targets, enter damage, apply
               </div>
@@ -997,11 +998,11 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                     const modBadge = modifier === 'resistant' ? ' ½' :
                                      modifier === 'vulnerable' ? ' ×2' :
                                      modifier === 'immune' ? ' ⊘' :
-                                     modifier === 'cancelled' ? ' ⇄' : '';
+                                     modifier === 'resistant-vulnerable' ? ' ½ then ×2' : '';
                     const modColor = modifier === 'resistant' ? '#60a5fa' :
                                      modifier === 'vulnerable' ? '#f87171' :
                                      modifier === 'immune' ? '#86efac' :
-                                     modifier === 'cancelled' ? '#fbbf24' : undefined;
+                                     modifier === 'resistant-vulnerable' ? '#fbbf24' : undefined;
                     return (
                       <span key={id} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999,
                         background: newHP <= 0 ? 'rgba(220,38,38,0.12)' : 'rgba(248,113,113,0.08)',
@@ -1029,12 +1030,12 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                       r.modifier === 'resistant'  ? 'resistant'  :
                       r.modifier === 'vulnerable' ? 'vulnerable' :
                       r.modifier === 'immune'     ? 'immune'     :
-                      r.modifier === 'cancelled'  ? 'res+vuln cancel' : null;
+                      r.modifier === 'resistant-vulnerable'  ? 'resistance then vulnerability' : null;
                     const modColor =
                       r.modifier === 'resistant'  ? '#60a5fa' :
                       r.modifier === 'vulnerable' ? '#f87171' :
                       r.modifier === 'immune'     ? '#86efac' :
-                      r.modifier === 'cancelled'  ? '#fbbf24' : 'var(--t-3)';
+                      r.modifier === 'resistant-vulnerable'  ? '#fbbf24' : 'var(--t-3)';
                     return (
                       <div key={i} style={{ fontSize: 11, color: 'var(--t-2)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         <span>{r.name} took {r.took} damage</span>
@@ -1571,7 +1572,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
           With DM Controls expanded, cards simply grow taller inside the
           2-column layout rather than jumping to full row width (the
           v2.169 gridColumn: 1/-1 hack was too disruptive). */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 'var(--sp-3)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 420px), 1fr))', gap: 'var(--sp-3)' }}>
         {characters.map(char => (
           <PlayerCard
             key={char.id}
