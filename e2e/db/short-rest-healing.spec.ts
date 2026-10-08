@@ -49,4 +49,26 @@ test.describe('Short Rest healing (local stack)', () => {
     await roll.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('short-rest-healing.png')});
     expect(errors).toEqual([]);
   });
+  test('an open rest follows remote maximum HP changes without a reload',async({page})=>{
+    sql(`update characters set constitution=10,current_hp=10,max_hp=20,hit_dice_spent=0 where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await page.getByRole('button',{name:'Rest',exact:true}).locator('visible=true').first().click();
+    const roll=page.getByRole('button',{name:'Roll Hit Dice (d6+0)',exact:true});
+    await expect(roll).toBeEnabled();
+    // Wait for the actual subscription, avoiding a setup race before the write.
+    await expect.poll(()=>page.evaluate(async id=>{
+      const path='/src/lib/supabase.ts';const {supabase}=await import(/* @vite-ignore */ path);
+      return supabase.getChannels().some((channel:{topic:string;state:string})=>channel.topic.endsWith(`char-self-${id}`)&&channel.state==='joined');
+    },charId)).toBe(true);
+    sql(`update characters set max_hp=10 where id='${charId}'`);
+    await expect(roll).toBeDisabled();
+    expect(sql(`select hit_dice_spent from characters where id='${charId}'`)).toBe('0');
+    sql(`update characters set max_hp=11 where id='${charId}'`);
+    await expect(roll).toBeEnabled();await page.evaluate(()=>{Math.random=()=>0.999;});
+    await roll.click();
+    await expect.poll(()=>sql(`select current_hp||','||max_hp||','||hit_dice_spent from characters where id='${charId}'`)).toBe('11,11,1');
+    await expect(roll).toBeDisabled();
+    await expect(page.getByText('+1 HP recovered this rest',{exact:true})).toBeVisible();
+  });
+
 });

@@ -37,8 +37,8 @@ test.describe('Psion saved payment recovery', () => {
     test.setTimeout(90_000);await page.addInitScript(()=>{Math.random=()=>0.01;});
     sql(`update characters set intelligence=18,temp_hp=0,hit_dice_spent=0,class_resources='{"psion-disciplines":["Biofeedback"],"psionic-energy-dice":12}' where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
-    const endpoint=kind==='energy'?'**/rest/v1/rpc/settle_psionic_energy':kind==='enkindled'?'**/rest/v1/rpc/spend_enkindled_life_force':'**/rest/v1/rpc/spend_psionic_surge';
-    const spent=kind==='energy'?0:kind==='enkindled'?2:3;let calls=0;await page.route(endpoint,async route=>{calls++;const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort();});
+    const endpoint=kind==='energy'?'**/rest/v1/rpc/settle_psionic_energy':kind==='enkindled'?'**/rest/v1/rpc/spend_enkindled_life_force':'**/rest/v1/rpc/spend_psionic_surge_from_pool';
+    const spent=kind==='energy'?0:kind==='enkindled'?2:3;let calls=0;await page.route(endpoint,async route=>{calls++;if(kind==='surge')expect(route.request().postDataJSON().p_hit_die).toBe(6);const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort();});
     await page.getByRole('button',{name:'Gain temp HP',exact:true}).locator('visible=true').first().click();
     const base=page.getByRole('dialog',{name:'Biofeedback',exact:true});await base.getByRole('textbox').fill('2');await base.getByRole('button',{name:'Spend and roll'}).click();
     if(kind!=='energy'){const extra=page.getByRole('dialog',{name:'Enkindled Life Force'});await extra.getByRole('textbox').fill('2');await extra.getByRole('button',{name:'Continue'}).click();}
@@ -94,7 +94,7 @@ test.describe('Psion saved payment recovery', () => {
     }));
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     let release!:()=>void;const delivery=new Promise<void>(resolve=>{release=resolve;});let held=false;
-    await page.route('**/rest/v1/rpc/spend_psionic_surge',async route=>{const response=await route.fetch();expect(response.ok()).toBe(true);held=true;await delivery;await route.fulfill({response});});
+    await page.route('**/rest/v1/rpc/spend_psionic_surge_from_pool',async route=>{const response=await route.fetch();expect(response.ok()).toBe(true);held=true;await delivery;await route.fulfill({response});});
     const roll=(p:typeof page)=>p.getByRole('button',{name:'Spend Die (1d8)',exact:true}).locator('visible=true').first();
     const second=await context.newPage();
     try{

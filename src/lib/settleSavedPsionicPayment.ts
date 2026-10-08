@@ -9,7 +9,12 @@ export async function settleSavedPsionicPayment<T>(characterId:string,payment:Pe
   try{rememberPsionicPayment(characterId,payment);}catch{throw new PsionicRequestError('Browser recovery storage is unavailable. No new request was sent.',!saved);}
   let receipt:T;
   try{receipt=await send();}catch(error){
-   if(error instanceof PsionicRequestError&&error.definitelyNotPaid)forgetPsionicPayment(characterId,payment.request.requestId);
+   if(error instanceof PsionicRequestError&&error.definitelyNotPaid){
+    // A new rejection cannot establish what happened before a lost response
+    // (for example, the character's ownership changed before confirmation).
+    if(saved)throw new PsionicRequestError(error.message,false);
+    forgetPsionicPayment(characterId,payment.request.requestId);
+   }
    throw error;
   }
   forgetPsionicPayment(characterId,payment.request.requestId);

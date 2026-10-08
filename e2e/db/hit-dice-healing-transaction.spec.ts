@@ -105,4 +105,13 @@ test.describe('Atomic Hit Dice healing (local stack)',()=>{
   }finally{sql(`delete from characters where id='${fresh}'`);}
  });
 
+ test('rest snapshots with revisions reject intervening HP changes even after HP returns',()=>{
+  const c=row(),fields=['spell_slots','class_resources','feature_uses','class_name','level','secondary_class','secondary_level','max_hp','long_rest_clears_combat_conditions','hit_point_revision','psionic_hit_dice_revision','psionic_energy_revision'];
+  const expected=Object.fromEntries(fields.map(key=>[key,c[key]??null]));
+  const updates={spell_slots:c.spell_slots,class_resources:c.class_resources??{},feature_uses:c.feature_uses??{}};
+  const q=`select complete_psionic_rest('${character}','${randomUUID()}','short','${JSON.stringify(expected)}','${JSON.stringify(updates)}')`;
+  sql(`update characters set current_hp=2 where id='${character}';update characters set current_hp=1 where id='${character}'`);
+  expect(()=>sql(auth(owner,q))).toThrow(/Character changed/);expect(sql(`select count(*) from psionic_energy_uses where character_id='${character}'`)).toBe('0');
+ });
+
 });

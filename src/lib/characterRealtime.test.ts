@@ -1,4 +1,4 @@
-import {acceptConcentrationReceipt} from './characterRealtime';
+import {acceptSavedCharacterResources,acceptHitPointReceipt,acceptConcentrationReceipt} from './characterRealtime';
 import {expect,it} from 'vitest';
 import type {Character} from '../types';
 import {acceptPsionicHitDiceReceipt,isCombatHpCarryover,preservePsionicResources,acceptSavedPsionicResources,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,reconcileCharacterUpdate} from './characterRealtime';
@@ -147,4 +147,47 @@ it('Long Rest receipts clear per-size spending with the aggregate',()=>{
  const ref={current:{...character,hit_dice_spent_by_type:{'6':2},psionic_hit_dice_revision:1}};
  acceptPsionicRestReceipt(ref,{character:{...ref.current,hit_dice_spent:0,hit_dice_spent_by_type:{},psionic_hit_dice_revision:2},expected:{hit_dice_spent:2}});
  expect(ref.current).toMatchObject({hit_dice_spent:0,hit_dice_spent_by_type:{},psionic_hit_dice_revision:2});
+});
+
+it('synchronizes maximum HP with remote damage and healing before the next render',()=>{
+ const ref={current:{...character,max_hp:30}};
+ expect(reconcileCharacterUpdate(ref,{current_hp:12,max_hp:24},{}).patch).toEqual({current_hp:12,max_hp:24});
+ expect(ref.current).toMatchObject({current_hp:12,max_hp:24});
+ expect(reconcileCharacterUpdate(ref,{current_hp:35,max_hp:40},{}).patch).toEqual({current_hp:35,max_hp:40});
+ expect(ref.current).toMatchObject({current_hp:35,max_hp:40});
+});
+it('keeps a pending maximum HP edit while accepting remote damage',()=>{
+ const ref={current:{...character,max_hp:30}};
+ expect(reconcileCharacterUpdate(ref,{current_hp:12,max_hp:24},{max_hp:32}).patch).toEqual({current_hp:12,max_hp:32});
+ expect(ref.current).toMatchObject({current_hp:12,max_hp:32});
+});
+
+it('an older healing receipt cannot restore HP after more recent damage',()=>{
+ const ref={current:{...character,current_hp:3,max_hp:30,temp_hp:2,hit_point_revision:4}};
+ expect(acceptHitPointReceipt(ref,{id:'pc',current_hp:15,max_hp:30,temp_hp:0,hit_point_revision:3}).patch).toEqual({});
+ expect(ref.current.current_hp).toBe(3);
+ expect(acceptHitPointReceipt(ref,{id:'pc',current_hp:8,max_hp:32,temp_hp:0,hit_point_revision:5}).patch).toEqual({current_hp:8,max_hp:32,temp_hp:0,hit_point_revision:5});
+});
+it('ordered HP receipts preserve newer local edits and reject malformed or unrelated receipts',()=>{
+ const ref={current:{...character,max_hp:30,temp_hp:0,hit_point_revision:1}};
+ const saved={id:'pc',current_hp:15,max_hp:30,temp_hp:0,hit_point_revision:2};
+ expect(acceptHitPointReceipt(ref,saved,{current_hp:12}).patch).toEqual({current_hp:12,hit_point_revision:2});
+ for(const invalid of [{...saved,id:'other'},{...saved,hit_point_revision:-1},{...saved,hit_point_revision:undefined},{...saved,current_hp:NaN},{...saved,temp_hp:undefined}])expect(acceptHitPointReceipt(ref,invalid).patch).toEqual({});
+});
+it('a delayed Long Rest cannot restore HP even if damage returned to its captured value',()=>{
+ const ref={current:{...character,current_hp:20,max_hp:30,temp_hp:0,hit_point_revision:5}};
+ acceptPsionicRestReceipt(ref,{character:{...ref.current,current_hp:30,hit_point_revision:3},expected:{current_hp:20,temp_hp:0}});
+ expect(ref.current).toMatchObject({current_hp:20,hit_point_revision:5});
+});
+it('stale realtime HP does not discard unrelated current resource changes',()=>{
+ const ref={current:{...character,current_hp:5,max_hp:30,temp_hp:0,hit_point_revision:3}};
+ expect(reconcileCharacterUpdate(ref,{current_hp:20,max_hp:40,temp_hp:9,hit_point_revision:2,inspiration:true},{}).patch).toEqual({inspiration:true});
+});
+
+it('ordinary save acknowledgments synchronize HP and Hit Dice without restoring older resources',()=>{
+ const ref={current:{...character,current_hp:5,max_hp:30,temp_hp:0,hit_point_revision:4,hit_dice_spent:3,hit_dice_spent_by_type:{'6':3},psionic_hit_dice_revision:4}};
+ const saved={...ref.current,current_hp:15,hit_point_revision:3,hit_dice_spent:2,hit_dice_spent_by_type:{'6':2},psionic_hit_dice_revision:3};
+ expect(acceptSavedCharacterResources(ref,saved).patch).toEqual({});
+ expect(acceptSavedCharacterResources(ref,{...saved,id:'other',hit_point_revision:8,psionic_hit_dice_revision:8}).patch).toEqual({});
+ expect(acceptSavedCharacterResources(ref,{...saved,current_hp:7,hit_point_revision:5,hit_dice_spent:4,hit_dice_spent_by_type:{'6':4},psionic_hit_dice_revision:5}).patch).toMatchObject({current_hp:7,hit_point_revision:5,hit_dice_spent:4,hit_dice_spent_by_type:{'6':4},psionic_hit_dice_revision:5});
 });

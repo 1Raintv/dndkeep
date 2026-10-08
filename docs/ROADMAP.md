@@ -1,6 +1,48 @@
 # DNDKeep — Two-Track Roadmap
 
-### Backend candidate — atomic Hit Dice healing
+### Release candidate — recoverable Short Rest healing, v2.798
+
+Hit Dice healing now uses the deployed transaction for every class. The sheet
+flushes prior edits, captures the selected size, rolls and effective CON once,
+and accepts ordered HP/Hit Dice receipts without another absolute-value write.
+The database owns both history entries; the dice animation does not duplicate
+logging. New realtime/saved acknowledgments also keep maximum HP current and
+cannot replace newer damage with an older healing response.
+
+An uncertain result survives reload in Rest with Confirm saved healing. New
+healing, allocation review and finishing/taking another rest stay disabled until
+confirmation or explicit dismissal. Confirmation uses the identical request and
+refreshes current counters; it never rolls again or reapplies the original heal.
+A later rejection cannot prove that an earlier lost response was unpaid, so it
+retains recovery. This also tightens existing Psion payment recovery.
+
+New Psion rest snapshots capture available HP, Hit Dice and Energy Dice revisions,
+rejecting intervening changes even when a value returned to its original number.
+Legacy saved rest requests remain valid and are retried exactly. A local database
+case verifies the revision guard; no additional migration is needed.
+
+Before the final versioned gate, 20 desktop/mobile existing recovery/rest checks,
+10 integrated mixed-class/rest checks, and 10 new interrupted-healing checks
+passed. The new cases cover Psion/Fighter, lost responses, a later rejection,
+reload, later damage, delayed acknowledgments and exactly one history event on
+each read surface. Phone saved/confirmed screenshots were inspected. An old
+Surge recovery harness intercepted the superseded endpoint; it now intercepts
+the selected-pool endpoint and verifies the selected die in the request.
+Final v2.798 gate passed 1,942 unit tests, TS 206/206, zero hook violations,
+rules/coordinates/anchors/build/SW-version and 253.7 KB entry. New files have
+no lint findings. All 30 versioned recovery/rest browser checks passed. Final
+review found that campaign History would show the transaction's legacy mirror
+and a vague unified entry. A dedicated formatter now shows original faces, CON,
+selected size and actual HP change; only the exact verified request-id mirror
+is hidden. Fallback legacy history remains when unified history is unavailable.
+Two additional desktop/mobile History checks passed and the unobstructed phone
+screenshot was inspected. No history rows were deleted or rewritten.
+
+Remaining boundary: manual absolute HP edits, non-Psion full-rest writes and old
+clients still need broader transaction consolidation. New healing requests are
+atomic and ordered; do not describe every character mutation as concurrency-safe.
+
+### Backend applied — atomic Hit Dice healing
 
 Migration 20261008025100 adds a server-owned HP revision and spend_rest_hit_dice.
 The new endpoint locks an owner/DM-authorized character, checks the captured HP,
@@ -29,13 +71,14 @@ returning to its old value, changed and concurrent retries, last-die competition
 zero/full HP, per-die minimum, capped healing, malformed rolls, protected ledger,
 server-owned revisions and rollback when history fails.
 
-Client integration is still required: freeze and persist requests, confirm saved
-healing after a lost response, accept only ordered HP/dice receipts, omit the old
-separate history write and serialize against ordinary edits/rests. Old clients
-and direct absolute-value patches retain their existing behavior; this additive
-backend alone does not fix those races. Release the backend before enabling UI.
-The verified max-HP realtime prerequisite is preserved on
-codex/atomic-hit-dice-healing (`e9ab60b`) for that integration.
+PR #131 (`67c7b56`) passed both CI gates and preview, then merged as `208fd84`.
+Production migration run 37720583173 actually applied 20261008025100. Main CI
+37720583102 passed; production deployment 2wWSrY5R7Dg5VkoPm71Dife7YzTV succeeded.
+
+The client release is tracked above. Ordinary absolute-value edits and older
+clients retain their existing save behavior; the new transaction does not make
+all HP writers atomic. Consolidating manual HP changes and non-Psion full-rest
+writes remains a follow-up.
 
 ### Released — preserve magic-item ability effects, v2.797
 
@@ -105,11 +148,9 @@ Main CI 37718957422 passed; Vercel production deployment
 9JkCWPbBKdzavDpA4stZxNQoKdeD succeeded, and the public service worker reports
 2.796.0. The controls are live.
 
-Next: replace ordinary queued Short Rest healing writes with an idempotent
-transaction covering chosen pool, HP and history. Existing absolute-value saves
-still can race another tab's payment; this release does not claim to solve that
-broader settlement problem. Bind retries to the original rolls/snapshot and
-protect delayed receipts from restoring newer HP/resource state.
+The chosen-pool healing transaction and original-roll recovery are implemented
+in the v2.798 candidate above. Broader ordinary HP edits and non-Psion full-rest
+writes remain queued; those paths still need transaction consolidation.
 
 ### Released — Short Rest healing numbers, v2.795
 

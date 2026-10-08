@@ -1,3 +1,5 @@
+import {shortRestHealing} from '../../rules/restRecovery';
+import {validHitDiceHealingRequest,type HitDiceHealingRequest} from '../hitDiceHealingRequest';
 import {isHitDiceAllocation,type HitDie} from '../../rules/hitDice';
 import type {Character} from '../../types';
 import {validPsionicRestRequest,type PsionicRestRequest} from '../psionicRestRequest';
@@ -12,6 +14,7 @@ export interface SurgeReceipt {hitDiceSpentByType?:Record<string,number>|null;re
 /** Injected into roll controls so a paid server result can refresh the sheet
  * without being enqueued as another optimistic absolute-value write. */
 export interface PsionicEnhancementPersistence {
+ heal?:(request:HitDiceHealingRequest)=>Promise<HitDiceHealingReceipt>;
  chooseHitDie?:(character:Character,message:string)=>Promise<HitDie|null>;
  rest?:(request:PsionicRestRequest)=>Promise<PsionicRestReceipt>;
  energy:(request:EnergyRequest)=>Promise<EnergyReceipt>;
@@ -37,7 +40,7 @@ async function rpc(name:string,args:Record<string,unknown>,idempotent=false):Pro
    // new ID after an ambiguous payment. The server owns deduplication.
    const code=error&&typeof error==='object'&&'code' in error?String(error.code):'';
    const rejected=['P0001','42501','23505','22023'].includes(code);
-   if(!idempotent||attempt>0||rejected)throw failure(error,rejected);
+   if(!idempotent||attempt>0||rejected)throw failure(error,rejected&&attempt===0);
   }
  }
 }
@@ -104,4 +107,28 @@ export async function completePsionicRest(characterId:string,request:PsionicRest
   ||Object.keys(request.updates).some(key=>!Object.prototype.hasOwnProperty.call(c,key)))
   throw new PsionicRequestError('The rest response could not be verified. Keep the saved request.',false);
  return {...result,expected:request.expected} as PsionicRestReceipt;
+}
+
+export interface HitDiceHealingReceipt {
+ requestId:string;character:Character;replayed:boolean;hitDie:HitDie;rolls:number[];
+ constitutionModifier:number;healing:number;gained:number;
+}
+/** v2.798 — validate both the immutable roll result and current ordered counters.
+ * An unverifiable success stays recoverable; it must never invite a fresh roll. */
+export async function spendRestHitDice(characterId:string,request:HitDiceHealingRequest):Promise<HitDiceHealingReceipt>{
+ if(!validHitDiceHealingRequest(request))throw new PsionicRequestError('Invalid saved healing. No request was sent.',true);
+ const data=await rpc('spend_rest_hit_dice',{p_character_id:characterId,p_request_id:request.requestId,
+  p_hit_die:request.hitDie,p_rolls:request.rolls,p_constitution_modifier:request.constitutionModifier,p_expected:request.expected},true);
+ const r=data as Partial<HitDiceHealingReceipt>|null,c=r?.character;
+ const healing=shortRestHealing(request.rolls,request.constitutionModifier)!;
+ const validCounter=(n:unknown)=>typeof n==='number'&&Number.isSafeInteger(n)&&n>=0;
+ if(!r||r.requestId!==request.requestId||r.hitDie!==request.hitDie||r.constitutionModifier!==request.constitutionModifier
+  ||JSON.stringify(r.rolls)!==JSON.stringify(request.rolls)||r.healing!==healing
+  ||r.gained!==Math.min(Number(request.expected.max_hp)-Number(request.expected.current_hp),healing)||typeof r.replayed!=='boolean'
+  ||!c||c.id!==characterId||![c.current_hp,c.max_hp,c.temp_hp,c.hit_point_revision,c.psionic_hit_dice_revision,c.hit_dice_spent].every(validCounter)
+  ||c.hit_dice_spent>20||Number(c.hit_point_revision)<=Number(request.expected.hit_point_revision)
+  ||Number(c.psionic_hit_dice_revision)<=Number(request.expected.psionic_hit_dice_revision)
+  ||(c.hit_dice_spent_by_type!==null&&!isHitDiceAllocation(c.hit_dice_spent_by_type,c.hit_dice_spent)))
+  throw new PsionicRequestError('The healing response could not be verified. Keep the saved request.',false);
+ return r as HitDiceHealingReceipt;
 }

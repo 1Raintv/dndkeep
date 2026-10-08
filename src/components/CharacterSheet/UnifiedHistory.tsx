@@ -1,3 +1,4 @@
+import {formatHitDiceHealingEvent,mirroredHitDiceHealingRequests} from './_shared/hitDiceHealingHistory';
 // src/components/CharacterSheet/UnifiedHistory.tsx
 //
 // v2.176.0 — Phase Q.0 pt 17: unified character history / timeline.
@@ -267,6 +268,8 @@ function normalizeCombatEvent(row: any): TimelineEvent {
     case 'ability_check_rolled':
     case 'spell_cast':
     case 'standard_action_taken': {
+      const healing=et==='healing_applied'?formatHitDiceHealingEvent(p):null;
+      if(healing){title=healing.title;detail=healing.detail;break;}
       title = p.action_name ?? et.replace(/_/g, ' ');
       const bits: string[] = [];
       // total comes through as 0 for things like spell_cast where there's
@@ -375,7 +378,8 @@ export default function UnifiedHistory({ characterId, campaignId, maxHeight = 56
       if (cancelled) return;
       const merged: TimelineEvent[] = [];
 
-      (hr.data ?? []).forEach(row => merged.push(normalizeHistory(row)));
+      const healingMirrors=mirroredHitDiceHealingRequests(cr.data??[]);
+      (hr.data ?? []).filter(row=>!healingMirrors.has(row.id)).forEach(row => merged.push(normalizeHistory(row)));
       (cr.data ?? []).forEach(row => merged.push(normalizeCombatEvent(row)));
 
       // v2.273.0 — Targeted DM prompts. The DM may aim a check_prompt /

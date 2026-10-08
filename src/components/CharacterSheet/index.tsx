@@ -1,6 +1,6 @@
+import {useHitDiceHealing} from '../../lib/hooks/useHitDiceHealing';
+import {HitDiceHealingRecovery} from './_shared/HitDiceHealingRecovery';
 import {HitDiceRestControls} from './_shared/HitDiceRestControls';
-import {characterHitDice} from '../../lib/characterHitDice';
-import {spendHitDice,type HitDie} from '../../rules/hitDice';
 import {HitDiceReview} from './_shared/HitDiceReview';
 import {reviewHitDice} from '../../lib/api/hitDice';
 import {useHitDieChoice} from './_shared/useHitDieChoice';
@@ -16,11 +16,11 @@ import {addClassSpellSelection,removeClassSpellSelection} from '../../rules/clas
 import {createPsionicRestRequest} from '../../lib/psionicRestRequest';
 import {pendingPsionicPayments} from '../../lib/psionicPaymentRecovery';
 import {savingThrowPassed} from '../../rules/savingThrows';
-import {longRestHitDice,shortRestHealing} from '../../rules/restRecovery';
+import {longRestHitDice} from '../../rules/restRecovery';
 import PsionicPaymentRecoveryPanel from './_shared/PsionicPaymentRecoveryPanel';
 import {usePsionicEnhancements} from '../../lib/hooks/usePsionicEnhancements';
 import {useOptimisticCharacterRef} from '../../lib/hooks/useOptimisticCharacterRef';
-import {acceptConcentrationReceipt,isCombatHpCarryover,preservePsionicResources,acceptSavedPsionicResources,reconcileCharacterUpdate,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
+import {acceptConcentrationReceipt,isCombatHpCarryover,preservePsionicResources,acceptSavedCharacterResources,reconcileCharacterUpdate,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
 import { attacksPerAction } from '../../rules/extraAttack';
 import PsionCastingNote from './_shared/PsionCastingNote';
 import { useState, useCallback, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
@@ -321,9 +321,8 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  const acceptedSave=useRef<typeof acknowledged>(null);
  useEffect(()=>{
   if(!acknowledged||acceptedSave.current===acknowledged)return;acceptedSave.current=acknowledged;
-  const {patch}=acceptSavedPsionicResources(characterRef,acknowledged,saveQueue.getPending());
-  const concentration=acceptConcentrationReceipt(characterRef,acknowledged,saveQueue.getPending()).patch;
-  if(Object.keys(patch).length||Object.keys(concentration).length)setCharacter(previous=>({...previous,...patch,...concentration}));
+  const {patch}=acceptSavedCharacterResources(characterRef,acknowledged,saveQueue.getPending());
+  if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
  },[acknowledged,characterRef,saveQueue]);
  const concentrationRecording=useConcentrationRecording(characterRef,saveQueue,(receipt,request)=>{
   if(receipt.concentration_revision<(characterRef.current.concentration_revision??0))return;
@@ -334,7 +333,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  const castingBlocked=frozen||concentrationRecording.blocked||Object.prototype.hasOwnProperty.call(saveQueue.getPending(),'concentration_spell');
  const hitDieChoice=useHitDieChoice();
  const psionicPayments=usePsionicEnhancements(character.id,saveQueue,receipt=>{
-  const {patch}='character' in receipt?acceptPsionicRestReceipt(characterRef,receipt,saveQueue.getPending()):'energyRevision' in receipt?acceptPsionicEnergyReceipt(characterRef,receipt,saveQueue.getPending()):acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
+  const {patch}='healing' in receipt?acceptSavedCharacterResources(characterRef,receipt.character,saveQueue.getPending()):'character' in receipt?acceptPsionicRestReceipt(characterRef,receipt,saveQueue.getPending()):'energyRevision' in receipt?acceptPsionicEnergyReceipt(characterRef,receipt,saveQueue.getPending()):acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
   if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
  },frozen);
  const psionicPersistence={...psionicPayments,chooseHitDie:hitDieChoice.choose};
@@ -861,55 +860,14 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  // v2.206.0 — Phase Q.0 pt 46: removed the now-dead useState declaration
  // (no readers, no setters anywhere in the file). Pure hygiene cleanup.
 
- // v2.170.0 — Phase Q.0 pt 11: roll multiple hit dice at once.
- // Previously only rolled one die per click, which is fine RAW but
- // slow at the table (a level-10 fighter recovering from near-zero
- // might spend all 10 hit dice — 10 clicks). New UX: DM or player
- // picks how many to spend, then clicks once and all rolls animate
- // together in the 3D tray (via allDice). The strategic element
- // (gamble fewer dice hoping for high rolls vs bank all your dice)
- // is preserved — the count input is user-controlled.
- function rollHitDice(count: number,hitDie:HitDie) {
- const live=characterRef.current;
- if (live.id!==character.id || frozen || live.current_hp<1 || live.current_hp>=live.max_hp) return;
- const state=characterHitDice(live),allocation=spendHitDice(state,hitDie,count);
- if(!allocation||state.status!=='ready')return;
- const conMod=computeStats(live).modifiers.constitution;
- const spent=state.spent,useCount=count;
- // Roll `useCount` physical dice
- const dice: { die: number; value: number }[] = [];
- let diceSum = 0;
- for (let i = 0; i < useCount; i++) {
- const r = rollDie(hitDie);
- dice.push({ die: hitDie, value: r });
- diceSum += r;
- }
- // RAW: CON mod applies per die spent, not once per rest. Minimum
- // total HP recovered is 1 per die even if dice + CON would round
- // below zero (important for low-CON characters).
- const total = shortRestHealing(dice.map(d=>d.value),conMod);
- if(total===null)return;
- const newHp = Math.min(live.max_hp, live.current_hp + total);
- const gained = newHp - live.current_hp;
- const newSpent = spent + useCount;
- setShortRestHpGained(prev => prev + gained);
- applyUpdate({ current_hp: newHp, hit_dice_spent: newSpent,hit_dice_spent_by_type:allocation }, true);
- // Animate via 3D tray
- triggerRoll({
- result: diceSum, dieType: hitDie,
- allDice: dice,
- flatBonus: conMod * useCount,
- total,
- expression: `${useCount}d${hitDie}${conMod >= 0 ? '+' : ''}${conMod * useCount}`,
- label: `Hit Dice — ${useCount}d${hitDie}`,
- logHistory: { characterId: character.id, userId },
- });
- }
-
  const restBusy=useRef(false);
  const [restSaving,setRestSaving]=useState(false);
+ const hitDiceHealing=useHitDiceHealing({characterRef,queue:saveQueue,persistence:psionicPersistence,disabled:frozen||restSaving,
+  acceptSaved:saved=>{const {patch}=acceptSavedCharacterResources(characterRef,saved,saveQueue.getPending());if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));},
+  animate:triggerRoll,onGained:hp=>{if(showRest)setShortRestHpGained(previous=>previous+hp);}});
  async function persistRest(kind:'short'|'long',updates:Partial<Character>){
   if(restBusy.current||frozen)return false;
+  if(hitDiceHealing.isBlocked()){toast.showToast('Confirm saved healing before finishing or taking another rest.','warn');return false;}
   if(character.class_name!=='Psion'&&character.secondary_class!=='Psion'){applyUpdate(updates,true);return true;}
   if(pendingPsionicPayments(character.id).some(payment=>payment.kind==='rest')){
    toast.showToast('Confirm your saved rest in Actions before taking another rest.','warn');return false;
@@ -1914,7 +1872,8 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  <div className="panel">
  <h4 style={{ marginBottom: 'var(--sp-3)' }}>Short Rest</h4>
 
- <HitDiceReview character={character} disabled={frozen||restSaving} onReview={async(revision,counts,spent)=>{
+ <HitDiceHealingRecovery busy={hitDiceHealing.busy} disabled={frozen||restSaving} pending={hitDiceHealing.pending} message={hitDiceHealing.message} onRecover={hitDiceHealing.recover} onDismiss={hitDiceHealing.dismiss}/>
+ <HitDiceReview character={character} disabled={frozen||restSaving||hitDiceHealing.blocked} onReview={async(revision,counts,spent)=>{
   const id=character.id;await saveQueue.flush();
   const queued=saveQueue.getSnapshot();
   if(queued.pending||queued.error)throw new Error('Save your pending character changes before reviewing Hit Dice.');
@@ -1924,7 +1883,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
   const {patch}=acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
   if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
  }}/>
- <HitDiceRestControls key={character.id} character={character} conModifier={computed.modifiers.constitution} disabled={frozen} restSaving={restSaving} gained={shortRestHpGained} onRoll={rollHitDice} onDone={finishShortRest}/>
+ <HitDiceRestControls key={character.id} character={character} conModifier={computed.modifiers.constitution} disabled={frozen} restSaving={restSaving||hitDiceHealing.blocked} gained={shortRestHpGained} onRoll={hitDiceHealing.roll} onDone={finishShortRest}/>
 
  </div>
 
@@ -1935,7 +1894,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  8+ hours. Regain all HP, all spell slots, and all spent Hit Point Dice.
  Removes one level of Exhaustion.
  </p>
- <button className="btn-gold" disabled={restSaving} onClick={doLongRest} style={{ width: '100%', justifyContent: 'center' }}>
+ <button className="btn-gold" disabled={restSaving||hitDiceHealing.blocked} onClick={doLongRest} style={{ width: '100%', justifyContent: 'center' }}>
  Take Long Rest
  </button>
  </div>

@@ -1,6 +1,8 @@
+import {createHitDiceHealingRequest} from './hitDiceHealingRequest';
+import type {Character} from '../types';
 // @vitest-environment happy-dom
 import {beforeEach,expect,it,vi} from 'vitest';
-import {forgetPsionicPayment,pendingPsionicPayments,rememberPsionicPayment,PSIONIC_PAYMENT_CHANGED} from './psionicPaymentRecovery';
+import {setPsionicPaymentActive,forgetPsionicPayment,pendingPsionicPayments,rememberPsionicPayment,PSIONIC_PAYMENT_CHANGED} from './psionicPaymentRecovery';
 const payment={kind:'surge' as const,request:{requestId:'saved',rolls:[1,3,6],sourceFeature:'Biofeedback'}};
 beforeEach(()=>{localStorage.clear();vi.restoreAllMocks();});
 it('persists the exact request for its character across reads and notifies the same tab',()=>{
@@ -42,4 +44,12 @@ it('retains a chosen Hit Die in saved Surge recovery and rejects invalid sizes',
   localStorage.setItem('dndkeep:psionic-payment:hero:saved',JSON.stringify({...payment,request:{...payment.request,hitDie}}));
   expect(pendingPsionicPayments('hero')).toEqual([]);
  }
+});
+
+it('retains healing snapshots and lets mutation guards see active requests',()=>{
+ const request=createHitDiceHealingRequest({current_hp:1,max_hp:20,hit_point_revision:0,psionic_hit_dice_revision:0,constitution:10,inventory:[]} as unknown as Character,6,[3],0,'11111111-1111-4111-8111-111111111111');
+ const payment={kind:'healing' as const,request};rememberPsionicPayment('hero',payment);setPsionicPaymentActive('hero',request.requestId,true);
+ try{expect(pendingPsionicPayments('hero')).toEqual([]);expect(pendingPsionicPayments('hero',true)).toEqual([payment]);}
+ finally{setPsionicPaymentActive('hero',request.requestId,false);}
+ expect(pendingPsionicPayments('hero')).toEqual([payment]);
 });

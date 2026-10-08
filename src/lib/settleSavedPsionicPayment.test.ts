@@ -10,11 +10,17 @@ it('hides active requests and clears only an acknowledged result',async()=>{
  const send=vi.fn(async()=>{expect(pendingPsionicPayments('hero')).toEqual([]);expect(localStorage.length).toBe(1);return {paid:true};});
  expect(await settleSavedPsionicPayment('hero',payment,send)).toEqual({paid:true});expect(pendingPsionicPayments('hero')).toEqual([]);expect(localStorage.length).toBe(0);
 });
-it('keeps an unknown outcome visible but removes a definitive rejection',async()=>{
+it('keeps an unknown outcome visible after a later rejection',async()=>{
  await expect(settleSavedPsionicPayment('hero',payment,async()=>{throw new Error('Lost response');})).rejects.toThrow('Lost response');expect(pendingPsionicPayments('hero')).toEqual([payment]);
- await expect(settleSavedPsionicPayment('hero',payment,async()=>{throw new PsionicRequestError('Rejected',true);})).rejects.toThrow('Rejected');expect(pendingPsionicPayments('hero')).toEqual([]);
+ await expect(settleSavedPsionicPayment('hero',payment,async()=>{throw new PsionicRequestError('Rejected',true);})).rejects.toMatchObject({message:'Rejected',definitelyNotPaid:false});expect(pendingPsionicPayments('hero')).toEqual([payment]);
+ expect(await settleSavedPsionicPayment('hero',payment,async()=>({paid:true}))).toEqual({paid:true});expect(pendingPsionicPayments('hero')).toEqual([]);
 });
 it.each([false,true])('storage failure never sends and preserves certainty of an earlier request: %s',async saved=>{
  if(saved)rememberPsionicPayment('hero',payment);vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw new Error('Quota');});const send=vi.fn();
  await expect(settleSavedPsionicPayment('hero',payment,send)).rejects.toMatchObject({definitelyNotPaid:!saved});expect(send).not.toHaveBeenCalled();expect(pendingPsionicPayments('hero')).toEqual(saved?[payment]:[]);
+});
+
+it('removes a fresh request that was definitively rejected before any ambiguity',async()=>{
+ await expect(settleSavedPsionicPayment('hero',payment,async()=>{throw new PsionicRequestError('Rejected',true);})).rejects.toMatchObject({definitelyNotPaid:true});
+ expect(pendingPsionicPayments('hero')).toEqual([]);
 });
