@@ -1,5 +1,31 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.812 Psion candidate — recover silent resource requests
+
+Psion RPCs now stop waiting after 15 seconds per attempt. A silent response is
+classified as an unknown payment, never proof that dice were not charged. The
+existing saved-roll/rest recovery remains visible, explicit retry keeps the
+original request, and a late success cannot acknowledge or discard that saved
+request. Enkindled turn reads also stop waiting, so a stalled check does not
+leave the roll flow locked indefinitely. Payment functions clone their input
+before awaiting, keeping retries and receipt validation bound to the original
+rolls, turn and resource snapshot.
+
+Validation: 44 focused API/recovery cases; real desktop/phone Restoration tests
+hold a successful server response until after the deadline, release it late,
+reload and confirm exactly one recorded Restoration use. Full gate passed
+2,206 units, TS 203/203, hooks/RAW/coordinates/anchors/build/SW and 254 KB entry.
+
+Release checkpoint: PR151 merged at 5f0f9b49, main CI 37741304466 succeeded,
+but production Vercel rejected the build for its rate limit. PR152 hosted gates
+passed; its preview hit the same limit. No hosting plan change was made.
+
+Remaining Psion audit: the general one-Discipline-per-turn limit is currently
+a reminder, not a shared persisted claim. Its Psionic Guards/Sharpened Mind
+exceptions and conditional free-roll attempts need source-backed ordering and
+end-to-end enforcement; Energy Dice accounting alone does not prove that rule.
+
+
 ### v2.811 map candidate — preview HP adjustments before applying
 
 The token panel previews exact remaining HP and temporary HP before a DM applies
