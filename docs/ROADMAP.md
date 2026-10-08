@@ -1,5 +1,23 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.843 — Keep creature damage defenses through import and editing
+
+Catalog import now copies resistance, immunity and vulnerability lists into
+the campaign creature. The editor preserves conditional wording and distinguishes
+unrecorded legacy fields from explicit empty lists. Existing copies are not
+backfilled from their catalog source because users may have customized them.
+The form stacks on narrow screens; the creature library now wraps its fixed
+folder sidebar so relationship badges cannot cover tappable creature names.
+
+Validation: eight focused cases; full gate (2,587 units, TypeScript 200/200,
+hooks clean, 255.1 KB entry); desktop/phone import, edit, save and reopen tests,
+with screenshots and overflow checks. Removing the import field makes the
+browser regression fail on missing Psychic resistance; restoring it passes.
+Local migration applied; advisors add no findings compared with the preceding
+run (existing creature-table policy performance warnings remain). These saved
+defenses are not yet wired into pending-attack HP settlement.
+
+
 ### v2.842 — Preserve active Sharpened records
 
 The existing saved-roll lookup now retains every duration/condition-tracked
@@ -13,6 +31,8 @@ incapacitation and missing tracking. Restoring the old lookup makes the new
 regression fail (five records instead of seven); restoring the fix passes.
 Full gate: 2,579 units, TypeScript 200/200, hooks clean, entry 255.1 KB.
 The changed function has no advisor findings; local migration applied.
+PR #186 merged as 3bf7964; production workflow 37778702287 applied
+20261008123448_preserve_active_sharpened_rolls.sql successfully.
 
 
 ### In progress — typed damage resolution and Sharpened integration
@@ -30,7 +50,7 @@ Remaining integration must preserve reaction/DM adjustment provenance, load targ
 defenses from the actual character/creature definition, and settle HP plus the
 once-per-current-turn replacement without duplicate writes. `applyDamage` still
 uses separate writes and blanket-condition resistance; its reaction/HP side effects
-need the same transaction/recovery guarantees as the recorded damage roll. The pending v2.842 lookup keeps all tracked, unexpired Sharpened activations
+need the same transaction/recovery guarantees as the recorded damage roll. The v2.842 lookup keeps all tracked, unexpired Sharpened activations
 plus unfinished recovery and five inactive finalized records. Resolve
 activation overlap explicitly instead of guessing the strongest/latest number.
 

@@ -68,7 +68,7 @@ export default function CreatureFormModal({
   return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div
-        className="modal"
+        className="modal" role="dialog" aria-modal="true" aria-label="Creature editor"
         style={{
           maxWidth: 1100, width: '94vw',
           maxHeight: '90vh',
@@ -102,10 +102,10 @@ export default function CreatureFormModal({
         <div style={{
           flex: 1, overflowY: 'auto',
           padding: '20px 24px',
-          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-6)',
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 360px), 1fr))', gap: 'var(--sp-6)',
         }}>
           {/* === LEFT: Combat stats === */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', minWidth:0 }}>
             <div className="section-header" style={{ marginTop: 0 }}>Combat</div>
 
             <div>
@@ -148,7 +148,7 @@ export default function CreatureFormModal({
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 'var(--sp-2)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(60px, 1fr))', gap: 'var(--sp-2)' }}>
               {(['str', 'dex', 'con', 'int', 'wis', 'cha'] as const).map(ab => (
                 <div key={ab}>
                   <label style={{ textTransform: 'uppercase' }}>{ab}</label>
@@ -161,6 +161,18 @@ export default function CreatureFormModal({
                 </div>
               ))}
             </div>
+
+            <fieldset style={{border:'1px solid var(--c-border)',borderRadius:8,padding:12,minWidth:0}}>
+              <legend>Damage defenses</legend>
+              <p style={{fontSize:12}}>One entry per line. Keep conditions with the damage type. These are saved details; automatic combat damage is not connected yet.</p>
+              {(['damage_resistances','damage_immunities','damage_vulnerabilities'] as const).map(field=><label key={field} style={{display:'block',marginTop:8}}>
+                {field==='damage_resistances'?'Resistances':field==='damage_immunities'?'Immunities':'Vulnerabilities'}
+                <textarea rows={2} value={creature[field]?.join('\n')??''}
+                  onChange={e=>set(field,e.target.value.split('\n'))}
+                  placeholder="e.g. psychic" style={{width:'100%',boxSizing:'border-box',resize:'vertical'}} />
+                {creature[field]==null?<span style={{fontSize:12}}>Not recorded. <button type="button" className="btn-ghost btn-sm" onClick={()=>set(field,[])}>Mark none</button></span>:creature[field]!.every(v=>!v.trim())&&<span style={{fontSize:12}}>None recorded.</span>}
+              </label>)}
+            </fieldset>
 
             <div>
               <label>Primary Attack</label>
@@ -198,7 +210,7 @@ export default function CreatureFormModal({
           </div>
 
           {/* === RIGHT: Story / organization === */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', minWidth:0 }}>
             <div className="section-header" style={{ marginTop: 0 }}>Story & Organization</div>
 
             <div>

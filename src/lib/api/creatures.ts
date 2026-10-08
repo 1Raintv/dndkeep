@@ -12,6 +12,7 @@
 // This is the one creature API now.
 
 import { supabase } from '../supabase';
+import {normalizeCreatureDefenses} from '../../rules/creatureDamageDefenses';
 
 export interface CreatureRow {
   id: string;
@@ -44,6 +45,9 @@ export interface CreatureRow {
   attack_damage: string | null;
   xp: number | null;
   initiative: number | null;
+  damage_resistances?: string[] | null;
+  damage_immunities?: string[] | null;
+  damage_vulnerabilities?: string[] | null;
   // Story fields
   description: string | null;
   notes: string | null;
@@ -132,6 +136,9 @@ export async function createCreature(input: Partial<CreatureRow> & { name: strin
       attack_bonus: input.attack_bonus ?? null,
       attack_damage: input.attack_damage ?? null,
       xp: input.xp ?? 0,
+      damage_resistances: normalizeCreatureDefenses(input.damage_resistances),
+      damage_immunities: normalizeCreatureDefenses(input.damage_immunities),
+      damage_vulnerabilities: normalizeCreatureDefenses(input.damage_vulnerabilities),
       campaign_id: input.campaign_id ?? null,
       folder_id: input.folder_id ?? null,
       source_monster_id: input.source_monster_id ?? null,
@@ -164,6 +171,9 @@ export async function updateCreature(id: string, patch: Partial<CreatureRow>): P
   // Strip fields that shouldn't be touched on update.
   const { id: _id, created_at: _ca, user_id: _uid, owner_id: _oid, ...safe } = patch;
   void _id; void _ca; void _uid; void _oid;
+  for(const field of ['damage_resistances','damage_immunities','damage_vulnerabilities'] as const){
+    if(Object.prototype.hasOwnProperty.call(safe,field))safe[field]=normalizeCreatureDefenses(safe[field]);
+  }
   const { error } = await supabase
     .from('homebrew_monsters')
     .update(safe)
@@ -221,6 +231,9 @@ export async function importFromCatalog(input: {
     attack_name: (c.attack_name as string) ?? null,
     attack_bonus: (c.attack_bonus as number) ?? null,
     attack_damage: (c.attack_damage as string) ?? null,
+    damage_resistances: normalizeCreatureDefenses(c.damage_resistances ?? []),
+    damage_immunities: normalizeCreatureDefenses(c.damage_immunities ?? []),
+    damage_vulnerabilities: normalizeCreatureDefenses(c.damage_vulnerabilities ?? []),
     source_monster_id: input.catalogMonsterId,
     campaign_id: input.campaignId ?? null,
     folder_id: input.folderId ?? null,

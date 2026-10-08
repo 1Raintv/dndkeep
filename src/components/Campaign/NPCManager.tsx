@@ -534,14 +534,14 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
     // v2.354.0 — Outer flex-row with folder browser sidebar on the
     // left, existing column on the right. The sidebar uses fixed
     // 220px width via its own internal styles; the right side flexes.
-    <div style={{ display: 'flex', gap: 'var(--sp-4)', alignItems: 'flex-start' }}>
+    <div role="region" aria-label="Creature library" style={{ display: 'flex', flexWrap:'wrap', gap: 'var(--sp-4)', alignItems: 'flex-start' }}>
       <CreatureFolderBrowser
         campaignId={campaignId}
         selectedFolderId={selectedFolderId}
         onSelect={setSelectedFolderId}
         isOwner={isOwner}
       />
-      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+      <div style={{ flex: '1 1 320px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
       {/* Controls */}
       <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap', alignItems: 'center' }}>
         <input
@@ -611,7 +611,7 @@ export default function NPCManager({ campaignId, isOwner }: NPCManagerProps) {
                     {/* Name + meta */}
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
-                        <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 600, fontSize: 'var(--fs-sm)', color: npc.is_alive ? 'var(--t-1)' : 'var(--t-2)' }}>
+                        <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 600, overflowWrap:'anywhere', fontSize: 'var(--fs-sm)', color: npc.is_alive ? 'var(--t-1)' : 'var(--t-2)' }}>
                           {npc.name}
                           {!npc.is_alive && ' '}
                         </span>
