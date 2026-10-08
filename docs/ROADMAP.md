@@ -1,6 +1,34 @@
 # DNDKeep — Two-Track Roadmap
 
-### Backend candidate — atomic Counterspell acceptance
+### Release candidate — transactional Counterspell client, v2.803
+
+The reaction client now calls the deployed acceptance transaction instead of
+independently spending a slot/reaction, creating a save, linking another caster,
+and updating the offer. The canonical offer supplies the cast identity; a
+caller payload cannot substitute it. One captured source/modifier/stat/item/slot
+snapshot is reused for a transport retry. Identical in-flight requests coalesce;
+changed choices and mismatched receipts fail, and there is no loose-write fallback.
+The surrounding reaction engine does not overwrite the accepted receipt afterward.
+
+A real browser assertion first reproduced the old paid-but-unlinked spell
+(state remained declared after the reaction was accepted). It passes through
+the transaction on desktop and phone. Four final browser cases passed, including
+aborting the first response after the server committed, then verifying identical
+retry arguments, one paid slot, one receipt/reaction event, and a linked cast.
+Phone UI inspected. All 19 focused client/delegation tests passed. Final v2.803
+gate passed: 1,993 units, TS 204/204, zero hook violations, RAW/coordinates/anchors,
+build/SW version, and 253.7 KB entry. New API files are lint-clean.
+The required backend migration is confirmed applied before this client release.
+
+Original caster slot retention and final settlement still require follow-up.
+Also preserve the wasted action when countered, review the one-slot-per-turn
+limit when no slot was actually expended, and recover deferred casts after a
+reload/closed dialog. Full Counterspell spell coverage is not yet certified.
+
+### Backend applied — atomic Counterspell acceptance
+
+PR137 merged at 61df07c. Production workflow 37726373833 explicitly applied
+20261008040058 and completed db push successfully; this was not a secret-gate skip.
 
 Migration `20261008040058_atomic_counterspell_acceptance.sql` adds an invoker
 RPC backed by a private, explicitly owner/DM-authorized transaction. One locked
@@ -25,8 +53,8 @@ RAW/coordinates/anchors/build/SW and 253.7 KB entry). Local migration ledger has
 no pending entries. Security advisors report only the pre-existing keep_warm
 search-path and client_errors insert-policy warnings.
 
-This is an additive backend rollout; the app still uses its previous acceptance
-path until the next client change. Original-caster slot retention/settlement,
+This was an additive backend rollout; v2.803 above connects the client only
+after the production apply was confirmed. Original-caster slot retention/settlement,
 perceptible-component eligibility, and broader spell-declaration coverage remain
 active follow-up work. Existing older absolute slot writers remain a concurrency
 boundary outside this transaction.

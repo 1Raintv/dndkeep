@@ -23,6 +23,7 @@ import { supabase } from './supabase';
 import { checkedWrite } from './api/checked';
 import { asJsonb } from './jsonbCast';
 import {counterspellCasting,selectedCounterspellCasting} from './counterspellCasting';
+import {acceptCounterspellAtomic} from './api/counterspell';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import type { PendingAttack, PendingReaction, Character } from '../types';
 
@@ -531,105 +532,11 @@ REACTION_REGISTRY.push({
     return false;
   },
   async onAccept(ctx) {
-    const { offer, reactorCharacter } = ctx;
-    const decisionPayload = (ctx.decisionPayload ?? {}) as Record<string, unknown>;
-    const spellCastId = decisionPayload.spell_cast_id as string | undefined;
-    const levelUsed = (decisionPayload.spell_level_used as number)
-      ?? lowestCounterspellSlot(reactorCharacter)
-      ?? 3;
-
-    // Validate all choices before spending. A missing/stale shared-source choice
-    // must never fall through to the primary class or the offer's old save_dc.
-    if (!spellCastId || !reactorCharacter) throw new Error('Counterspell is unavailable.');
-    const sourceKey = typeof decisionPayload.casting_source === 'string' ? decisionPayload.casting_source : undefined;
-    const casting = selectedCounterspellCasting(reactorCharacter, sourceKey);
-    if (!casting) throw new Error('Choose a prepared Counterspell source.');
-    const slots = { ...reactorCharacter.spell_slots } as Record<string, { total: number; used: number }>;
-    const slot = slots[String(levelUsed)];
-    if (!Number.isInteger(levelUsed) || levelUsed < 3 || levelUsed > 9 || !slot || slot.used >= slot.total) {
-      throw new Error('That Counterspell slot is no longer available.');
-    }
-    const { data: pscRow, error: castError } = await supabase
-      .from('pending_spell_casts').select('*').eq('id', spellCastId).maybeSingle();
-    if (castError) throw castError;
-    if (!pscRow || pscRow.state !== 'declared') throw new Error('That spell is no longer awaiting Counterspell.');
-    const saveDC = casting.saveDC;
-    const targetSpellLevel = pscRow.spell_level as number;
-
-    slots[String(levelUsed)] = { total: slot.total, used: slot.used + 1 };
-    await checkedWrite('characters.update reaction-spell-slots', { characterId: reactorCharacter.id },
-      supabase.from('characters').update({ spell_slots: slots }).eq('id', reactorCharacter.id));
-    await checkedWrite('combat_participants.update counterspell reaction', { participantId: offer.reactor_participant_id },
-      supabase.from('combat_participants').update({ reaction_used: true }).eq('id', offer.reactor_participant_id));
-
-    // Target participant for the save
-    let targetName = pscRow.caster_name as string;
-    let targetType: 'character' | 'monster' | 'npc' = 'character';
-    if (pscRow.caster_participant_id) {
-      const { data: cp } = await supabase
-        .from('combat_participants')
-        .select('name, participant_type')
-        .eq('id', pscRow.caster_participant_id)
-        .maybeSingle();
-      if (cp) {
-        targetName = cp.name as string;
-        targetType = (cp.participant_type as any) ?? 'character';
-      }
-    }
-
-    // Create a save-type counter-attack (no damage, effect = spell-fate)
-    const { declareAttack } = await import('./pendingAttack');
-    const counterAttack = await declareAttack({
-      campaignId: pscRow.campaign_id as string,
-      encounterId: pscRow.encounter_id as string | null,
-      attackerParticipantId: offer.reactor_participant_id,
-      attackerName: offer.reactor_name,
-      attackerType: 'character',
-      targetParticipantId: pscRow.caster_participant_id as string | null,
-      targetName,
-      targetType,
-      attackSource: 'spell',
-      attackName: `Counterspell vs ${pscRow.spell_name}${levelUsed > 3 ? ` (L${levelUsed})` : ''}`,
-      attackKind: 'save',
-      saveDC,
-      saveAbility: 'CON',
-      saveSuccessEffect: 'none',       // no damage either way — outcome is spell-fate only
-      damageDice: '',
-      damageType: '',
-    });
-
-    // Link the counterspell attack back to the pending_spell_cast so the
-    // resolver (future v2.123 code) can flip state to 'countered' vs
-    // 'resolved' based on the save outcome.
-    await supabase
-      .from('pending_spell_casts')
-      .update({
-        state: 'counterspell_offered',
-        counterspell_attack_id: counterAttack?.id ?? null,
-      })
-      .eq('id', spellCastId);
-
-    await emitCombatEvent({
-      campaignId: pscRow.campaign_id as string,
-      encounterId: pscRow.encounter_id as string | null,
-      chainId: pscRow.chain_id as string,
-      sequence: 70,
-      actorType: 'player',
-      actorName: offer.reactor_name,
-      targetType,
-      targetName,
-      eventType: 'reaction_used',
-      payload: {
-        reaction: 'Counterspell',
-        spell_level_used: levelUsed,
-        target_spell: pscRow.spell_name,
-        target_spell_level: targetSpellLevel,
-        save_dc: saveDC,
-        save_ability: 'CON',
-        counter_attack_id: counterAttack?.id ?? null,
-        spell_cast_id: spellCastId,
-      },
-    });
+    if (!ctx.reactorCharacter) throw new Error('Counterspell is unavailable.');
+    const decision = ctx.decisionPayload ?? {};
+    const slot = typeof decision.spell_level_used === 'number' ? decision.spell_level_used : lowestCounterspellSlot(ctx.reactorCharacter);
+    const source = typeof decision.casting_source === 'string' ? decision.casting_source : undefined;
+    await acceptCounterspellAtomic(ctx.offer, ctx.reactorCharacter, slot ?? 3, source);
   },
 });
 
@@ -982,6 +889,9 @@ export async function acceptReaction(
     reactorCharacter: reactorChar,
     decisionPayload: decisionPayload ?? null,
   });
+
+  // v2.803: the transaction already accepts the offer and preserves its receipt.
+  if (offer.reaction_key === 'counterspell') return;
 
   await supabase
     .from('pending_reactions')
