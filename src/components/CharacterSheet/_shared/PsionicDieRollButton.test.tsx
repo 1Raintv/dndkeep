@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+vi.mock('../../../lib/supabase',()=>({supabase:{}}));
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({roll:vi.fn(()=>2),log:vi.fn(),toast:vi.fn()}));

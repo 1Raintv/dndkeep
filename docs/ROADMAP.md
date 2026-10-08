@@ -25,6 +25,11 @@ and interrupted payment/rest recovery. Earlier tests now advance a real solo
 turn between repeated discipline uses. Full gate: 2,286 units, TS 203/203,
 hooks/RAW/coordinates/anchors/build/SW, 254.3 KB entry. Screenshots inspected.
 
+CI follow-up: four discipline component suites now explicitly mock the database
+client imported through the item-bonus helper. All 46 focused cases pass with
+intentionally invalid database credentials; the full gate passes unchanged.
+This prevents local environment files from masking missing test isolation.
+
 Remaining: Guards condition removal/immunities/INT-save Advantage and Sharpened
 Mind's lasting effects are still manual; activation messages say so. Spell
 trigger/visibility and exact start-of-turn timing are tabletop declarations.
