@@ -818,6 +818,8 @@ export interface LairActionEntry {
 
 export interface CombatEncounter {
   id: string;
+  /** v2.815 — changes on each turn transition, including a rewind. */
+  psionic_turn_id?: string;
   campaign_id: string;
   name: string | null;
   status: 'setup' | 'active' | 'ended';

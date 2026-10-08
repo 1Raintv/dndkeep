@@ -9,10 +9,13 @@
  * edits: the hook API is the contract, the carrier is an implementation
  * detail. Unit rule: no database — the mock below is the entire backend.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { CombatProvider, useCombat } from './CombatContext';
 
+const subscriptions:Array<{config:{event:string;table:string;filter?:string};callback:(payload:{old:{id:string}})=>void}>=[];
+let reads=0;
+afterEach(cleanup);
 const fixtures: { encounter: unknown; participants: unknown[] } = { encounter: null, participants: [] };
 
 vi.mock('../lib/supabase', () => {
@@ -27,8 +30,8 @@ vi.mock('../lib/supabase', () => {
   };
   return {
     supabase: {
-      from: () => makeChain(),
-      channel: () => { const ch: Record<string, unknown> = {}; ch.on = () => ch; ch.subscribe = () => ch; return ch; },
+      from: () => {reads++;return makeChain();},
+      channel: () => { const ch: Record<string, unknown> = {}; ch.on = (_kind:unknown,config:typeof subscriptions[number]['config'],callback:typeof subscriptions[number]['callback']) => {subscriptions.push({config,callback});return ch;}; ch.subscribe = () => ch; return ch; },
       removeChannel: vi.fn(),
     },
   };
@@ -40,7 +43,7 @@ function Probe() {
   return null;
 }
 
-beforeEach(() => { seen = null; fixtures.encounter = null; fixtures.participants = []; });
+beforeEach(() => { seen = null; reads=0;subscriptions.length=0;fixtures.encounter = null; fixtures.participants = []; });
 
 describe('useCombat contract', () => {
   it('no active encounter → null encounter, empty participants, null actor, loading resolves', async () => {
@@ -80,4 +83,16 @@ describe('useCombat contract', () => {
     expect(seen?.encounter).toBeNull();
     expect(seen?.participants).toEqual([]);
   });
+});
+
+it('reloads deleted visible participants using their key, ignoring unrelated deletions',async()=>{
+ fixtures.encounter={id:'enc',status:'active',campaign_id:'c1',current_turn_index:0};
+ fixtures.participants=[{id:'visible',participant_type:'character',entity_id:'hero',combatant_id:'cb',combatants:{current_hp:10}}];
+ render(<CombatProvider campaignId="c1"><Probe /></CombatProvider>);
+ await waitFor(()=>expect(seen?.participants.length).toBe(1));
+ const deletion=subscriptions.find(s=>s.config.table==='combat_participants'&&s.config.event==='DELETE');
+ expect(deletion).toBeTruthy();expect(deletion?.config.filter).toBeUndefined();
+ const before=reads;await act(async()=>deletion!.callback({old:{id:'unrelated'}}));expect(reads).toBe(before);
+ fixtures.participants=[];await act(async()=>deletion!.callback({old:{id:'visible'}}));
+ await waitFor(()=>expect(seen?.participants).toEqual([]));expect(reads).toBeGreaterThan(before);
 });

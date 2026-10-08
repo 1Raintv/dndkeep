@@ -29,6 +29,42 @@ test.describe('Discipline outcome recovery on the sheet',()=>{
 
 
 
+ test('a remote combat turn refreshes the record and preserves earlier pending outcomes',async({page})=>{
+  test.setTimeout(90000);const camp=randomUUID(),enc=randomUUID(),cb=randomUUID(),participant=randomUUID(),attempt=randomUUID();
+  try{
+   sql(`begin;
+    insert into campaigns(id,owner_id,name) values('${camp}','${userId}','Discipline turns fixture');
+    update characters set campaign_id='${camp}' where id='${charId}';
+    insert into combatants(id,campaign_id,owner_id,name,definition_type,definition_id,current_hp,max_hp)
+     values('${cb}','${camp}','${userId}','Psion','character','${charId}',20,20);
+    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${enc}','${camp}','active',1,0);
+    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,initiative,combatant_id)
+     values('${participant}','${enc}','${camp}','character','${charId}','Psion',0,15,'${cb}');
+    set local role authenticated;set local request.jwt.claims='{"sub":"${userId}","role":"authenticated"}';
+    select begin_psionic_discipline(c.id,'${attempt}',jsonb_build_object('encounterId',e.id,'round',e.round_number,'index',e.current_turn_index,'turnId',e.psionic_turn_id),'inerrant-aim',array[3],1,0,
+     jsonb_build_object('class_name',c.class_name,'level',c.level,'secondary_class',c.secondary_class,'secondary_level',c.secondary_level,'intelligence',c.intelligence,'inventory',c.inventory,'disciplines',c.class_resources->'psion-disciplines'))
+     from characters c,combat_encounters e where c.id='${charId}' and e.id='${enc}';commit;`);
+   const seen:Array<{soloTurn?:number;round?:number;turnId?:string}>=[];
+   page.on('response',async response=>{if(response.url().endsWith('/rpc/get_psionic_discipline_turn')&&response.ok())seen.push((await response.json()).turn);});
+   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+   const panel=page.getByRole('region',{name:'Psionic Discipline record'});
+   await expect(panel).toContainText('Recorded this turn: Inerrant Aim.');
+   const first=sql(`select psionic_turn_id from combat_encounters where id='${enc}'`);
+   sql(`update combat_encounters set round_number=2 where id='${enc}'`);
+   await expect(panel).toContainText('Recorded this turn: none.',{timeout:15000});
+   await expect(panel).toContainText('Inerrant Aim · outcome pending');
+   sql(`update combat_encounters set round_number=1 where id='${enc}'`);
+   const rewound=sql(`select psionic_turn_id from combat_encounters where id='${enc}'`);expect(rewound).not.toBe(first);
+   await expect.poll(()=>seen.some(turn=>turn.turnId===rewound),{timeout:15000}).toBe(true);
+   await expect(panel).toContainText('Recorded this turn: none.');
+   sql(`delete from combat_participants where id='${participant}'`);
+   await expect.poll(()=>seen.some(turn=>turn.soloTurn===0),{timeout:15000}).toBe(true);
+   await expect(panel).toContainText('Inerrant Aim · outcome pending');
+  }finally{
+   sql(`update characters set campaign_id=null where id='${charId}';delete from combat_participants where campaign_id='${camp}';delete from combat_encounters where id='${enc}';delete from combatants where id='${cb}';delete from campaigns where id='${camp}';`);
+  }
+ });
+
  test('an interrupted paid outcome survives reload with the original decision and one charge',async({page},info)=>{
   test.setTimeout(90000);const id=randomUUID(),errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   sql(`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${userId}","role":"authenticated"}';

@@ -1,5 +1,29 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.815 candidate — keep discipline records current during shared combat
+
+The discipline record follows the existing scoped combat subscription, including
+turn rewinds, encounter changes and character participation. HP-only changes do
+not request another ledger read. A remote turn change preserves an in-flight
+outcome confirmation from the earlier turn rather than unlocking its buttons.
+
+A real browser test also found that the campaign-filtered participant listener
+missed deletions containing only the primary key. The provider now handles those
+notifications by matching already-visible participant IDs; unrelated deletions
+do not reload the campaign. No additional database privileges or schema changes.
+
+Validation: 13 focused unit tests cover transitions, rewinds, membership, ignored
+HP/name changes, pending confirmations and deletion scoping. Desktop and phone
+browser scenarios verify remote advancement/rewind/removal and interrupted
+payment recovery (four browser cases). Both desktop/phone combat lifecycle cases
+also pass after isolating their fixture from shared seed campaign-slot limits.
+Full gate: 2,290 units, TS 203/203, hooks/RAW/coordinates/anchors/build/SW, 254.3 KB
+entry. Guards and Sharpened Mind lasting effects remain the next Psion priority.
+
+PR157 merged at 9c3ca2d with both hosted gates green. Its production deployment
+was explicitly rate-limited for 24 hours; deployment is not claimed.
+
+
 ### v2.814 candidate — connect all discipline activation controls
 
 All eleven discipline controls now capture the shared turn before rolling and
