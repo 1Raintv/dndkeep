@@ -1,6 +1,25 @@
 # DNDKeep — Two-Track Roadmap
 
-### v2.849 candidate — Sharpened Mind in Destructive Thoughts resolution
+### v2.850 candidate — Paid damage delivery identity checks
+
+Before submitting a paid Destructive Thoughts roll, the client now rechecks the
+original actor and target participant, entity, type and combatant identity. A
+rename is allowed; replacing/repointing a roster entry requires manual review.
+Receipt recovery checks campaign, encounter and attack source/types as well as
+original dice. It still recovers an existing result after its encounter ends.
+
+Validation: 20 focused cases, 2,683 unit tests, all release gates, and three real paid-damage browser flows pass. An initial unrelated dialog timeout passed in isolation and on the complete gate rerun.
+
+This is client preflight and receipt validation, not an atomic payment/delivery
+transaction. Roster changes between the final read and declaration remain a
+server-side follow-up, along with reload recovery and qualifying-spell linkage.
+
+### v2.849 — Sharpened Mind in Destructive Thoughts resolution
+
+Merged PR #193 (`409751d`). Production migration run `37802483124` applied
+`20261008145514` at 2026-10-08 15:39 UTC. Frontend deployment is still pending.
+Advisor changes are expected: private RLS ledger without client policies, two
+DM-authorized security-definer endpoints, and newly unused FK indexes.
 
 The DM damage dialog now previews Psychic defenses, immediate Sharpened resistance
 bypass, and an optional replacement of one saved damage die. It uses an active
