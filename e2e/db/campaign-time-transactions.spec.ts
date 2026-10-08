@@ -78,6 +78,18 @@ test.describe('Atomic campaign time',()=>{
   // Regardless of which transaction wins the lock, no array overwrite loses the new rider.
   expect(readBuffs().find((b:{id:string})=>b.id==='new')).toBeTruthy();expect(clock()).toBe(10);
  });
+ test('canceling first fences delayed requests without advancing anything',()=>{
+  const cancel=call().replace('advance_campaign_time','cancel_campaign_time');expect(run(cancel).canceled).toBe(true);expect(run(cancel).canceled).toBe(true);
+  expect(()=>run()).toThrow(/canceled/);expect(clock()).toBe(0);expect(readBuffs()).toEqual(JSON.parse(buffs));
+ });
+ test('canceling after commit keeps the applied clock and original receipt',()=>{
+  const first=run();expect(run(call().replace('advance_campaign_time','cancel_campaign_time')).canceled).toBe(false);expect(run()).toEqual({...first,replayed:true});expect(clock()).toBe(10);
+ });
+ test('cancel and advance races cannot leave an unfenced late request',async()=>{
+  const results=await Promise.all([parallel(auth(dm,call())),parallel(auth(dm,call().replace('advance_campaign_time','cancel_campaign_time')))]);
+  const canceled=JSON.parse(results[1].out).canceled;
+  if(canceled){expect(clock()).toBe(0);expect(()=>run()).toThrow(/canceled/);}else{expect(clock()).toBe(10);expect(run().replayed).toBe(true);}
+ });
  test('clock overflow rolls back the entire request',()=>{
   sql(`update campaigns set combat_rounds_elapsed=2147483647 where id='${campaign}'`);
   expect(()=>run()).toThrow(/clock limit reached/);expect(readBuffs()).toEqual(JSON.parse(buffs));

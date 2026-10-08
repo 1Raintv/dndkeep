@@ -1,6 +1,6 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({rpc:vi.fn()}));vi.mock('../supabase',()=>({supabase:{rpc:mocks.rpc}}));
-import {advanceCampaignTime} from './campaignTime';
+import {advanceCampaignTime,cancelCampaignTime} from './campaignTime';
 const request={requestId:'11111111-1111-4111-8111-111111111111',campaignId:'22222222-2222-4222-8222-222222222222',unit:'seconds' as const,amount:60,scale:6};
 const receipt={requestId:request.requestId,campaignId:request.campaignId,beforeRounds:5,afterRounds:15,advancedRounds:10,secondsPerRound:6,replayed:false};
 beforeEach(()=>vi.resetAllMocks());
@@ -21,4 +21,9 @@ it.each([{requestId:'wrong'},{campaignId:'wrong'},{beforeRounds:-1},{beforeRound
 it('does not retry a definite server rejection or mutate caller data',async()=>{
  mocks.rpc.mockResolvedValue({data:null,error:{code:'P0001',message:'Campaign time scale changed'}});
  await expect(advanceCampaignTime(Object.freeze({...request}))).rejects.toMatchObject({definitelyNotPaid:true});expect(mocks.rpc).toHaveBeenCalledTimes(1);
+});
+
+it('verifies cancellation identity before discarding recovery',async()=>{
+ mocks.rpc.mockResolvedValue({data:{requestId:request.requestId,campaignId:request.campaignId,canceled:true},error:null});expect(await cancelCampaignTime(request)).toBe(true);
+ mocks.rpc.mockResolvedValue({data:{requestId:'wrong',campaignId:request.campaignId,canceled:true},error:null});await expect(cancelCampaignTime(request)).rejects.toThrow(/could not be confirmed/);
 });
