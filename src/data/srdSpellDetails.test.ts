@@ -5,7 +5,7 @@ import { parseSpellMechanics } from '../lib/spellParser';
 
 describe('audited SRD 5.2.1 spell details', () => {
   it('covers exactly the reviewed batch with traceable sources', () => {
-    expect(Object.keys(SRD_SPELL_DETAILS)).toHaveLength(15);
+    expect(Object.keys(SRD_SPELL_DETAILS)).toHaveLength(18);
     for (const [id, entry] of Object.entries(SRD_SPELL_DETAILS)) {
       expect(SPELL_MAP[id].description).toBe(entry.description);
       expect(entry.rules_source?.page).toBeGreaterThanOrEqual(107);
@@ -55,4 +55,25 @@ describe('audited SRD 5.2.1 spell details', () => {
     expect(parseSpellMechanics(SPELL_MAP.sleep.description, SPELL_MAP.sleep)).toMatchObject({ saveType: 'WIS', damageDice: null });
     expect(parseSpellMechanics(SPELL_MAP.counterspell.description, SPELL_MAP.counterspell).saveType).toBe('CON');
   });
+});
+
+it('keeps both Detect Thoughts modes, next-turn probing, eligibility and escape DC',()=>{
+ const spell=SPELL_MAP['detect-thoughts'];
+ for(const detail of ['Sense Thoughts.','Read Thoughts.','know languages or are telepathic','As a Magic action on your next turn','Intelligence (Arcana) check against your spell save DC','Either way, the target knows','Wisdom saving throw'])expect(spell.description).toContain(detail);
+ expect(spell.description).not.toMatch(/Intelligence of 3|contested by your Intelligence/);
+ expect(spell.save_type).toBe('WIS');expect(spell.components).toBe('V, S, M (1 Copper Piece)');
+ expect(spell.damage_dice).toBeUndefined();expect(spell.rules_source).toEqual({version:'5.2.1',page:123});
+});
+it.each(['detect-magic','detect-poison-and-disease','detect-thoughts'])('repairs stale canonical %s while preserving owned/gated variants',id=>{
+ const old={...SPELL_MAP[id],description:'Old barriers',damage_dice:'3d6',higher_levels:'Invented scaling'};
+ const fixed=applySrdSpellDetails(old,true);
+ expect(fixed.description).toContain('1 foot of stone, dirt, or wood; 1 inch of metal; or a thin sheet of lead');
+ expect(fixed.description).toContain('30 feet');expect(fixed.description).not.toContain('Old barriers');expect(fixed.damage_dice).toBeUndefined();expect(fixed.higher_levels).toBeUndefined();
+ expect(applySrdSpellDetails(old,false)).toBe(old);
+ const privateSpell={...old,source:'ua' as const};expect(applySrdSpellDetails(privateSpell,true)).toBe(privateSpell);
+});
+it('distinguishes magical effects and contagions while keeping ritual casting',()=>{
+ expect(SPELL_MAP['detect-magic'].description).toContain('if an effect was created by a spell');
+ expect(SPELL_MAP['detect-poison-and-disease'].description).toContain('poisonous or venomous creatures, and magical contagions');
+ expect(SPELL_MAP['detect-magic'].ritual).toBe(true);expect(SPELL_MAP['detect-poison-and-disease'].ritual).toBe(true);expect(SPELL_MAP['detect-thoughts'].ritual).toBe(false);
 });

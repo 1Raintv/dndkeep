@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { gateDbSuite, signInAsSeedDm } from './helpers';
 
@@ -30,6 +31,33 @@ test.describe('complete SRD spell details', () => {
     await page.screenshot({ path: info.outputPath('bless.png'), fullPage: true });
     expect(errors).toEqual([]);
   });
+  test('detection spell details retain current eligibility, barriers, timing and escape',async({page},info)=>{
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
+    await signInAsSeedDm(page);await page.goto('/spells');const search=page.getByPlaceholder('Search name or description...');
+    for(const name of ['Detect Magic','Detect Poison and Disease','Detect Thoughts']){
+      await search.fill(name);await page.getByRole('button',{name:new RegExp('^'+name+'\\s')}).click();
+      const barrier=page.getByText(/1 foot of stone, dirt, or wood; 1 inch of metal; or a thin sheet of lead/);
+      await expect(barrier).toBeVisible();await expect(page.getByRole('link',{name:'SRD 5.2.1 · p. 123'})).toHaveAttribute('href',/#page=123$/);
+      if(name==='Detect Thoughts'){
+        await expect(page.getByText(/know languages or are telepathic/)).toBeVisible();
+        await expect(page.getByText(/As a Magic action on your next turn/)).toBeVisible();
+        await expect(page.getByText(/Intelligence \(Arcana\) check against your spell save DC/)).toBeVisible();
+        await expect(page.getByText(/Intelligence of 3 or lower/)).toHaveCount(0);
+      }
+      if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
+        const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
+        // SpellDescription owns the source links and every paragraph above them.
+        const scoped=body.replace("document.querySelectorAll('*')","document.querySelector('a[href$=\"#page=123\"]')?.parentElement?.parentElement?.querySelectorAll('*') ?? []");
+        const report=await page.evaluate('('+scoped+'\n})()');expect(report.sideways).toBe(false);expect(report.clipped).toEqual([]);expect(report.pastEdge).toEqual([]);
+      }
+      await page.screenshot({path:info.outputPath(name.toLowerCase().replaceAll(' ','-')+'.png'),fullPage:true});
+      // Full-page screenshots pin the mobile navigation over off-screen text.
+      // Also inspect the actual reading viewport after normal scrolling.
+      await barrier.evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));
+      await page.screenshot({path:info.outputPath(name.toLowerCase().replaceAll(' ','-')+'-reading.png')});
+    }
+    expect(errors).toEqual([]);
+  });
   test('stale canonical DB text is repaired without replacing homebrew', async ({ page }) => {
     let sawOwnerColumn = false;
     await page.route(/\/rest\/v1\/spells\?/, async route => {
@@ -53,6 +81,6 @@ test.describe('complete SRD spell details', () => {
     await page.getByRole('button', { name: /^Bless\s/ }).click();
     await expect(page.getByText('Personal blessing with custom limits')).toBeVisible();
     await expect(page.getByText(/Custom extra targets/)).toBeVisible();
-    await expect(page.getByRole('link', { name: /SRD 5.2.1 � p\./ })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /SRD 5.2.1 · p\./ })).toHaveCount(0);
   });
 });

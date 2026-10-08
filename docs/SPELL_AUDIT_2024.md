@@ -37,6 +37,23 @@ no slots. The picker now follows this rule, including non-scaling spells and
 exhausted lower tiers. This eligibility correction does not complete the queued
 current-turn slot ledger or the remaining durable casting paths.
 
+## Detection spells — verified v2.859
+
+Detect Magic, Detect Poison and Disease, and Detect Thoughts now use the complete
+SRD 5.2.1 p.123 descriptions through the canonical detail layer, including older
+canonical database rows. Owned/homebrew and gated-source records keep their text.
+
+- All three: correct 30-foot sensing and barrier limits (1 foot stone/dirt/wood,
+  1 inch metal, thin lead).
+- Detect Magic: school identification applies to effects created by spells.
+- Detect Poison and Disease: poisons, poisonous/venomous creatures, magical
+  contagions and their kinds.
+- Detect Thoughts: both modes, language-or-telepathy eligibility, next-turn deeper
+  probing, Wisdom save, target awareness, and Arcana-versus-spell-DC escape.
+
+This is a description/metadata correction, not automatic mind reading, barrier
+ray tracing, or adjudication of knowledge. Per-spell links retain SRD attribution.
+
 ## Tier 1 — Most-cast spells (priority)
 
 | Spell | Level | Status | 2024 Version | Notes |
@@ -103,7 +120,7 @@ Verified against 2024 PHB sources (Roll20, aidedd.org, dndbeyond.com, dndlounge.
 **Tier 2a total: 22 spells fixed/verified this version + 2 dup entries removed.**
 
 ## Tier 2b — remaining L1 spells (v2.92.0, pending)
-~45 L1 spells to verify against 2024 PHB (Alarm, Animal Friendship, Armor of Agathys, Arms of Hadar, Bane, Chaos Bolt, Charm Person, Chromatic Orb, Color Spray, Command, Comprehend Languages, Create or Destroy Water, Detect Evil and Good, Detect Magic, Detect Poison and Disease, Disguise Self, Dissonant Whispers, Entangle, Faerie Fire, Feather Fall, Find Familiar, Fog Cloud, Goodberry, Grease, Hellish Rebuke, Heroism, Hunter's Mark, Identify, Illusory Script, Mage Armor, Protection from Evil and Good, Ray of Sickness, Sanctuary, Searing Smite, Silent Image, Sleep, Speak with Animals, Thunderous Smite, Thunderwave, Unseen Servant, Witch Bolt, Wrathful Smite).
+~45 L1 spells to verify against 2024 PHB (Alarm, Animal Friendship, Armor of Agathys, Arms of Hadar, Bane, Chaos Bolt, Charm Person, Chromatic Orb, Color Spray, Command, Comprehend Languages, Create or Destroy Water, Detect Evil and Good, Disguise Self, Dissonant Whispers, Entangle, Faerie Fire, Feather Fall, Find Familiar, Fog Cloud, Goodberry, Grease, Hellish Rebuke, Heroism, Hunter's Mark, Identify, Illusory Script, Mage Armor, Protection from Evil and Good, Ray of Sickness, Sanctuary, Searing Smite, Silent Image, Sleep, Speak with Animals, Thunderous Smite, Thunderwave, Unseen Servant, Witch Bolt, Wrathful Smite).
 
 ## Tier 2c — unchanged cantrips needing verification comments only (v2.92.0)
 Ray of Frost, Fire Bolt, Mage Hand, Message, Minor Illusion, Light, Dancing Lights, Druidcraft, Prestidigitation, Produce Flame, Thaumaturgy, Shocking Grasp, Vicious Mockery, Mind Sliver, Frostbite, Toll the Dead, Word of Radiance — mechanically unchanged in 2024 but haven't yet had their inline verification comment added.
