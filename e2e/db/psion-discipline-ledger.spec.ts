@@ -20,6 +20,42 @@ test.describe('Shared Psionic Discipline turns',()=>{
  const finish=(id:string,changed:boolean)=>`select finish_psionic_discipline('${char}','${id}',${changed})`;
  const pool=()=>Number(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${char}'`));
  const state=()=>run(`select get_psionic_discipline_turn('${char}')`);
+ // v2.822: share only protection, never private discipline history.
+ const guards=(u=owner)=>sql(auth(u,`select get_psionic_guards_active('${char}')`));
+ test('Guards-only read returns a boolean, tracks expiry and never changes the turn',()=>{
+  expect(guards()).toBe('f');run(begin('psionic-guards',randomUUID(),'{"soloTurn":0}',1,'array[]'));
+  const before=sql(`select to_jsonb(t) from dndkeep_private.psionic_turn_starts t where character_id='${char}'`);
+  expect(guards()).toBe('t');expect(sql(`select to_jsonb(t) from dndkeep_private.psionic_turn_starts t where character_id='${char}'`)).toBe(before);
+  run(`select advance_psionic_solo_turn('${char}','${randomUUID()}',0)`);expect(guards()).toBe('f');expect(pool()).toBe(5);
+ });
+ test('campaign member reads protection but cannot read or spend the private ledger',()=>{
+  const campaign=randomUUID();
+  try{
+   sql(`insert into campaigns(id,owner_id,name) values('${campaign}','${owner}','Shared protection');update characters set campaign_id='${campaign}' where id='${char}';insert into campaign_members(campaign_id,user_id) values('${campaign}','${other}')`);
+   run(begin('psionic-guards',randomUUID(),'{"soloTurn":0}',1,'array[]'));expect(guards(other)).toBe('t');
+   expect(()=>run(`select get_psionic_discipline_turn('${char}')`,other)).toThrow(/Character is unavailable/);
+   expect(()=>run(begin('biofeedback'),other)).toThrow(/Character is unavailable/);expect(pool()).toBe(5);
+   sql(`delete from campaign_members where campaign_id='${campaign}' and user_id='${other}'`);expect(()=>guards(other)).toThrow(/protection is unavailable/);
+  }finally{sql(`delete from campaigns where id='${campaign}'`);}
+ });
+ test('current DM can read protection without a membership row',()=>{
+  const campaign=randomUUID();try{
+   sql(`insert into campaigns(id,owner_id,name) values('${campaign}','${other}','DM protection');update characters set campaign_id='${campaign}' where id='${char}'`);
+   expect(guards(other)).toBe('f');run(begin('psionic-guards',randomUUID(),'{"soloTurn":0}',1,'array[]'));expect(guards(other)).toBe('t');
+  }finally{sql(`delete from campaigns where id='${campaign}'`);}
+ });
+ test('unrelated, anonymous and missing-target reads cannot enumerate protection',()=>{
+  expect(()=>guards(other)).toThrow(/protection is unavailable/);
+  expect(()=>sql(`begin;set local role anon;select public.get_psionic_guards_active('${char}');commit;`)).toThrow(/permission denied/);
+  expect(()=>run(`select get_psionic_guards_active('${randomUUID()}')`)).toThrow(/protection is unavailable/);
+  expect(()=>run(`select get_psionic_guards_active(null)`)).toThrow(/protection is unavailable/);
+ });
+ test('leaving a campaign revokes a former members protection access',()=>{
+  const campaign=randomUUID();try{
+   sql(`insert into campaigns(id,owner_id,name) values('${campaign}','${owner}','Former campaign');update characters set campaign_id='${campaign}' where id='${char}';insert into campaign_members(campaign_id,user_id) values('${campaign}','${other}')`);
+   expect(guards(other)).toBe('f');sql(`update characters set campaign_id=null where id='${char}'`);expect(()=>guards(other)).toThrow(/protection is unavailable/);expect(guards()).toBe('f');
+  }finally{sql(`delete from campaigns where id='${campaign}'`);}
+ });
  // v2.816 — real combat order, with a separate creature before the Psion.
  function withCombat(check:(fixture:{encounter:string;creature:string;creatureParticipant:string;hero:string})=>void){
   const campaign=randomUUID(),encounter=randomUUID(),hero=randomUUID(),creature=randomUUID(),creatureParticipant=randomUUID();
