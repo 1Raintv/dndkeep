@@ -1,5 +1,28 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.837 — Sharpened damage rules distinguish the two benefits
+
+Rechecked the supplied UA2025 Psion Update pp.4-5: psychic-resistance bypass is
+limited to weapon attacks, Psion spells and Psion features. Attack Mode is broader:
+it replaces one die when dealing psychic damage, including other-class sources.
+The pure damage rules preserve immunity/vulnerability, distinguish unknown spell
+provenance, replace rather than add the recorded value, allow a value above the
+damage die size, and apply a shared-roll replacement before per-target reductions.
+The private Psion roll panel now explains these distinctions and its manual status.
+
+These are rule/preview primitives, not automatic damage application. Pending attacks
+currently combine differently typed riders before defenses, and store no reliable
+Psion spell provenance. Add typed damage components, authoritative active-effect
+selection and a once-per-current-turn receipt before integrating. Overlapping UA
+activations need an explicit rule decision; do not import the 2014 same-feature
+stacking rule by assuming the 2024 spell-only text covers every feature.
+
+Validation: full gate (2,509 units; TypeScript 200/200; hooks clean; 255.1 KB
+entry), desktop/mobile expanded guidance and recovery checks with overflow probes.
+The lost-response browser test now interrupts only Surge, avoiding a race with
+the preceding Enkindled request. Replacements require actual psychic damage,
+not a miss or damage entirely prevented by target defenses.
+
 ### v2.836 — Atomic combat clock boundary
 
 A guarded DM transaction now commits the turn position, campaign round clock,
