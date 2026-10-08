@@ -80,3 +80,10 @@ export async function readDeclaredSpell(request:SpellDeclarationRequest):Promise
  if(!save.data)throw new Error('The Counterspell save could not be loaded.');
  return {cast,readyToSettle:['passed','failed'].includes(save.data.save_result??'')&&!save.data.pending_lr_decision};
 }
+
+export async function declarationParticipant(characterId:string,campaignId:string):Promise<string|null>{
+ const encounter=await supabase.from('combat_encounters').select('id').eq('campaign_id',campaignId).eq('status','active').maybeSingle();
+ if(encounter.error)throw new Error(encounter.error.message);if(!encounter.data)return null;
+ const participant=await supabase.from('combat_participants').select('id').eq('encounter_id',encounter.data.id).eq('entity_id',characterId).eq('participant_type','character').maybeSingle();
+ if(participant.error)throw new Error(participant.error.message);return participant.data?.id??null;
+}

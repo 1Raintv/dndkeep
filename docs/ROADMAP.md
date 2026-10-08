@@ -1,30 +1,32 @@
 # DNDKeep — Two-Track Roadmap
 
-### In progress — connect paid spell declaration recovery
+### In progress — paid casting UI verified locally; cancellation required before release
 
-Local client work now routes existing Counterspell candidate lists through the
-deployed offer transaction and surfaces failed participant/character reads.
-A new controller reuses the captured cast ID, confirms payment before offering,
-observes the recorded save (including pending Legendary Resistance), and releases
-an outcome only after a verified settlement receipt. Retry does not announce a
-second action in the same controller. It stops overlapping polls, times out a
-hung confirmation after 15 seconds, and ignores late/obsolete results. Saved
-requests remain available after errors; no optimistic slot writer was added.
+The sheet now owns durable casting recovery independently of spell rows. It
+captures source/ability/DC and request identity before sending, flushes queued
+character saves, and lets the declaration transaction own the slot payment.
+Closing/reloading, spending the last slot, or removing preparation no longer
+hides recovery. The modal only displays controller state; recorded Counterspell
+saves settle through the payment transaction, including the original-slot refund.
 
-Focused validation: 40 controller/read/delegation tests passed. Full gate passed
-at 2,055 units, TS 204/204, no hook violations, RAW/coordinates/anchors/build/SW
-and 253.7 KB entry. This is a local integration checkpoint, **not a deployed
-casting-screen change**. The controller is not mounted by the current modal yet.
+Deferred effects share the normal casting choices. A browser lock and durable
+started marker prevent replay after an interrupted application; ambiguous partial
+effects require explicit review. This is not yet atomic cross-device effect
+application. Turn/action persistence, broader declaration coverage (attack/heal,
+compact mode and cantrips), and sight/component eligibility remain follow-ups.
 
-Remaining before release: replace the old modal declaration/timer writes; stop
-SpellCastButton's separate slot burn; flush pending character edits before the
-transaction; make recovery accessible after reload/last-slot use/source changes;
-settle recorded Counterspell saves without old direct outcome writes; retain
-wasted action use and avoid replaying deferred buffs/summons/concentration.
-The old modal currently creates declarations in a mount effect (StrictMode can
-repeat it), and the old UI wrongly says countered slots stay spent. These are
-still defects, not resolved by the repository API tests. Verify the real UI on
-desktop/phone, including lost responses and reload, before release.
+Validation: full gate passed at 2,079 units, TS 203/203 (baseline ratcheted), zero
+hook violations, RAW/coordinates/anchors/build/SW and 254.0 KB entry. Four local
+browser cases passed across desktop/phone: lost declaration response, reload,
+last-slot recovery, removed preparation, and the real client save/settlement path.
+Phone dialogs were visually checked and padding corrected. Three initial unit
+failures were stale expectations for the renamed blocked-casting button.
+
+**Not shipped:** production remains v2.803. An unpaid request rejected because
+its slot/source changed must have a safe cancellation path before releasing this
+UI. Clearing local storage alone is unsafe: an outstanding request could still
+pay later. Add a server cancellation receipt/tombstone coordinated with declaration,
+verify concurrent cancellation/payment, then wire explicit cancel/retry recovery.
 
 ### Backend applied — durable casting requests and retry-safe Counterspell prompts
 

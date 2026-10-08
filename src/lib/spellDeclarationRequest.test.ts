@@ -23,3 +23,9 @@ it('rejects exhausted slots and a foreign-shaped source',()=>{
  const request=createSpellDeclarationRequest(character,spell,uuid,uuid,3,source,'',uuid);
  expect(isSpellDeclarationRequest({...request,context:{...request.context,source:'unknown'}})).toBe(false);
 });
+
+it('captures the selected source DC for deferred effect choices',()=>{
+ const request=createSpellDeclarationRequest(character,spell,uuid,uuid,3,{...source,saveDC:15},'',uuid);
+ expect(request.context.saveDC).toBe(15);expect(isSpellDeclarationRequest(request)).toBe(true);
+ expect(isSpellDeclarationRequest({...request,context:{...request.context,saveDC:NaN}})).toBe(false);
+});

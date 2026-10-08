@@ -1,3 +1,6 @@
+import {createSpellDeclarationRequest} from '../../lib/spellDeclarationRequest';
+import {declarationParticipant,saveSpellDeclaration} from '../../lib/api/declaredSpells';
+import {useSpellEffects} from './useSpellEffects';
 import type {ConcentrationCastSource} from '../../rules/concentrationCasting';
 import SpellSourceReview from './SpellSourceReview';
 import {useSpellCasting,type SpellCastingState} from './SpellCastingContext';
@@ -5,14 +8,10 @@ import {SpellCastingChoice} from './SpellCastingChoice';
 import {cantripDamage} from '../../rules/cantripDamage';
 import {addDiceModifier,rollDiceGroups} from '../../rules/dice';
 import { SpellDescription } from '../shared/SpellDescription';
-import { useState, Suspense } from 'react';
+import { useRef, useState, Suspense } from 'react';
 // Chunk-retry lazy (v2.330) — same swap App.tsx uses; see lazyWithRetry.ts.
 import { lazyWithRetry as lazy } from '../../lib/lazyWithRetry';
 
-import { SUMMON_TOKEN_SPELLS, placeSummonToken } from '../../lib/summonTokens';
-import { AURA_SPELLS } from '../../lib/auras';
-import SummonFormPickerModal from './SummonFormPickerModal';
-const AuraCastModal = lazy(() => import('./AuraCastModal'));
 import { createPortal } from 'react-dom';
 import type { Character, SpellSlots } from '../../types';
 import type { SpellData } from '../../types';
@@ -22,7 +21,6 @@ import { useDiceRoll } from '../../context/DiceRollContext';
 import { CONDITION_MAP } from '../../data/conditions';
 import { rollDie, computeStats } from '../../lib/gameUtils';
 import { parseRangeToFt } from '../../lib/rangeParse';
-import { supabase } from '../../lib/supabase';
 import PlayerAttackButton from '../Combat/PlayerAttackButton';
 // v2.443.0 — Lazy-load all five spell-cast modals. They open
 // conditionally based on spell type (buff / declare / AoE save /
@@ -31,14 +29,11 @@ import PlayerAttackButton from '../Combat/PlayerAttackButton';
 // code into every character sheet's first paint. Suspense fallback
 // is a tiny inline spinner — the user explicitly clicked Cast and
 // expects a brief beat before the picker appears.
-const BuffTargetPickerModal = lazy(() => import('../Combat/BuffTargetPickerModal'));
-const DeclareSpellCastModal = lazy(() => import('../Combat/DeclareSpellCastModal'));
 const SpellTargetPickerModal = lazy(() => import('../Combat/SpellTargetPickerModal'));
 const MultiAttackPickerModal = lazy(() => import('../Combat/MultiAttackPickerModal'));
 const SpellHealPickerModal = lazy(() => import('../Combat/SpellHealPickerModal'));
 import { findMultiAttackSpell, computeDefaultAttackCount } from '../../lib/multiAttackSpells';
 import { findHealSpell, resolveHealDice, rollResolvedHeal, type HealSpellDef } from '../../lib/healSpells';
-import { BUFF_SPELL_REGISTRY } from '../../lib/buffs';
 
 interface SpellCastButtonProps {
  spell: SpellData;
@@ -86,7 +81,7 @@ export default function SpellCastButton(props:SpellCastButtonProps){
  </div>}{casting.selected&&<ResolvedSpellCastButton key={casting.selected.key} {...props} casting={casting.selected}/>}</>;
 }
 function ResolvedSpellCastButton({
- spell, character, campaignId, onUpdateSlots, compact = false,
+ spell, character, userId, campaignId, onUpdateSlots, compact = false,
  spellLockedOut = false, onLeveledSpellCast, forceSlotLevel, onConcentrationCast, upcastTrigger, casting, castingBlocked,
 }: SpellCastButtonProps & {casting:NonNullable<SpellCastingState['selected']>}) {
  const isBonusActionCast = /bonus action/i.test(spell.casting_time);
@@ -100,31 +95,9 @@ function ResolvedSpellCastButton({
  forceSlotLevel ?? (upcastTrigger ? spell.level + 1 : spell.level)
  );
  const [target, setTarget] = useState('');
- // v2.34.2: flash "Cast!" on the button for ~900ms after firing so users see confirmation
- const [recentlyCast, setRecentlyCast] = useState<string | null>(null);
  const { triggerRoll } = useDiceRoll();
- // v2.115.0 — Phase H pt 6: open target picker after casting a registry
- // buff spell (Bless, Hunter's Mark, Hex, Divine Favor) while in combat.
- const [buffPickerOpen, setBuffPickerOpen] = useState(false);
- // v2.615.0 — creature-summon form picker (Find Familiar): holds the
- // spell id whose spec.creature.forms the modal should list.
- const [summonFormPickerFor, setSummonFormPickerFor] = useState<string | null>(null);
- // v2.607.0 — slot level captured at cast time so the buff picker can
- // scale slot-dependent buffs (Armor of Agathys 5×slot).
- const [buffPickerSlot, setBuffPickerSlot] = useState<number | undefined>(undefined);
- // v2.635.0 — aura cast modal (Spirit Guardians). Holds the slot the
- // spell was cast at so the AuraSpec scales its dice; null = closed.
- const [auraCastSlot, setAuraCastSlot] = useState<number | null>(null);
- // v2.124.0 — Phase J: when set, opens the Counterspell pre-cast window.
- // Payload carries the slot level the player wanted to cast at so we can
- // resume after the window resolves. encounterId + casterParticipantId are
- // resolved asynchronously when the Declare button is clicked.
- const [declarePending, setDeclarePending] = useState<{
-   slotLevel: number;
-   target: string;
-   encounterId: string;
-   casterParticipantId: string;
- } | null>(null);
+ const declaring=useRef(false);
+ const [declarationError,setDeclarationError]=useState('');
 
  // v2.148.0 — Phase O pt 1: multi-target save spell picker. When set,
  // opens SpellTargetPickerModal which routes the cast through
@@ -156,61 +129,6 @@ function ResolvedSpellCastButton({
    def: HealSpellDef;
  } | null>(null);
 
- function flashCast(slotLevel: number) {
- // v2.84.0: Flash is now more prominent + longer. Was a pastel green tint
- // for 900ms; now solid green background (matches Psion "Used!" styling)
- // for 1800ms so the feedback is unmissable — users were clicking Cast
- // and wondering if anything happened.
- const label = isCantrip ? 'Cast!' : `Cast Lvl ${slotLevel} ✓`;
- setRecentlyCast(label);
- window.setTimeout(() => setRecentlyCast(curr => curr === label ? null : curr), 1800);
- // v2.37.0: if this spell requires concentration, notify the parent so it can
- // set character.concentration_spell. Fires for cantrips + leveled alike.
- if (spell.concentration) {
- onConcentrationCast?.(isCantrip ? undefined : slotLevel,{source:casting.source,ability:casting.ability});
- }
- // v2.115.0 — Phase H pt 6: auto-open the buff target picker if this spell
- // is in the registry AND we have a campaign context. The modal itself
- // checks for active-encounter and resolves caster participant id —
- // silently no-ops if no encounter is active.
- const registryEntry = BUFF_SPELL_REGISTRY[spell.name.trim().toLowerCase()];
- if (registryEntry && campaignId) {
- setBuffPickerSlot(isCantrip ? undefined : slotLevel);
- setBuffPickerOpen(true);
- }
- // v2.599.0 — summon token on cast (automation arc ship 3). For
- // registered summon spells (Flaming Sphere, Spiritual Weapon, ...)
- // with a campaign context, drop a labeled effect token next to the
- // caster on the live battle map. Fire-and-forget: a missing scene
- // or RLS denial degrades silently (result logged), never blocking
- // the cast itself.
- // v2.635.0 — aura spells (Spirit Guardians). Opens the Emanation
- // modal so the player can designate unaffected creatures and pick
- // the damage type, both cast-time choices per RAW. The modal
- // resolves the active encounter itself and closes silently when
- // there isn't one, so no combat check is needed here.
- if (campaignId && AURA_SPELLS[spell.id]) {
- setAuraCastSlot(isCantrip ? spell.level : slotLevel);
- }
- if (campaignId && SUMMON_TOKEN_SPELLS[spell.id]) {
- const summonSpec = SUMMON_TOKEN_SPELLS[spell.id];
- if (summonSpec.creature) {
- // v2.615.0 — Phase B1: creature-backed summons (Find Familiar)
- // need a form choice first. The modal lists ONLY the spell's
- // RAW-allowed forms; placement happens on pick.
- setSummonFormPickerFor(spell.id);
- } else {
- placeSummonToken({
- campaignId,
- casterCharacterId: character.id,
- casterName: character.name,
- spellId: spell.id,
- }).then(res => {
- if (res !== 'placed') console.info('[SpellCastButton] summon token not placed:', res);
- });
- }
- }
- }
 
  const isCantrip = spell.level === 0;
  const mechanics = parseSpellMechanics(spell.description, {
@@ -251,6 +169,7 @@ function ResolvedSpellCastButton({
  const stats = computeStats(character);
  const key=casting.ability,spellMod=casting.modifier,profBonus=stats.proficiency_bonus;
  const spellAttack=casting.attack,saveDC=casting.saveDC;
+ const {flashCast,recentlyCast,postCastChoices}=useSpellEffects({spell,character,campaignId,casting,saveDC,onConcentrationCast});
  const damageProfile=cantripDamage(character,spell,mechanics.damageDice,stats.modifiers.intelligence,casting.className??'other');
  mechanics.damageDice=damageProfile.dice?addDiceModifier(damageProfile.dice,damageProfile.bonus):null;
  const previewHeal=resolveHealDice(spell.heal_at_slot_level?.[String(selectedSlot)]??mechanics.healDice,spellMod);
@@ -366,8 +285,8 @@ function ResolvedSpellCastButton({
  /** v2.125.0 — Phase J: burn the spell slot (and fire action-economy hook)
   *  without applying the spell effect. For cantrips: just consumes the
   *  action (no slot to burn). Separated from applyEffect so Counterspell's
-  *  RAW 2024 slot-on-declare can work — the slot is spent when the cast is
-  *  announced, before the counterspell window opens. */
+  *  immediate casts can share this helper. Declared casts pay through their
+  *  server transaction and return the original slot if Counterspell interrupts. */
  function burnSlot(slotLevel: number) {
  if (!isCantrip && slotLevel > 0) {
  spendSlot(slotLevel);
@@ -396,42 +315,19 @@ function ResolvedSpellCastButton({
  await applyEffect(slotLevel, targetName);
  }
 
- /** v2.124.0 — Phase J: open the Counterspell pre-cast window. Looks up the
-  *  active encounter + this character's participant row, then stages the
-  *  DeclareSpellCastModal. If no active encounter exists (out-of-combat
-  *  casting), falls through to a normal immediate cast.
-  *
-  *  v2.125.0 update: burns the slot IMMEDIATELY on declare per 2024 PHB
-  *  p.250 — the slot is spent when the spell is announced regardless of
-  *  whether it's countered. Only the visible effect is deferred to the
-  *  onResolved callback. */
- async function openDeclareCast(slotLevel: number, targetName: string) {
- if (!campaignId) { await castUtility(slotLevel, targetName); return; }
- // Find the active encounter for this campaign
- const { data: enc } = await supabase
- .from('combat_encounters')
- .select('id')
- .eq('campaign_id', campaignId)
- .eq('status', 'active')
- .maybeSingle();
- if (!enc?.id) { await castUtility(slotLevel, targetName); return; }
- // Find this character's participant row in that encounter
- const { data: part } = await supabase
- .from('combat_participants')
- .select('id')
- .eq('encounter_id', enc.id)
- .eq('entity_id', character.id)
- .maybeSingle();
- if (!part?.id) { await castUtility(slotLevel, targetName); return; }
- // v2.125.0 — RAW slot-on-declare: burn the slot now, before the
- // counterspell window opens. Effect is deferred to onResolved.
- burnSlot(slotLevel);
- setDeclarePending({
- slotLevel,
- target: targetName,
- encounterId: enc.id as string,
- casterParticipantId: part.id as string,
- });
+ /** v2.804: capture the selected cast before lookup/saves. The sheet-level
+  * recovery host owns payment and the window, even after the last slot disappears. */
+ async function openDeclareCast(slotLevel:number,targetName:string){
+  if(declaring.current||castingBlocked)return;
+  declaring.current=true;setDeclarationError('');
+  const captured=structuredClone(character),source={source:casting.source,ability:casting.ability,saveDC:casting.saveDC},castId=crypto.randomUUID();
+  try{
+   if(!campaignId){await castUtility(slotLevel,targetName);return;}
+   const participant=await declarationParticipant(captured.id,campaignId);
+   if(!participant){await castUtility(slotLevel,targetName);return;}
+   saveSpellDeclaration(createSpellDeclarationRequest(captured,spell,participant,userId,slotLevel,source,targetName,castId));
+  }catch(error){setDeclarationError(error instanceof Error?error.message:'The casting could not be started.');}
+  finally{declaring.current=false;}
  }
 
  /** Log save DC to party */
@@ -445,47 +341,9 @@ function ResolvedSpellCastButton({
 
  // ──────────────────────────────────────────────────────────────────
  // v2.794: post-cast choices survive save locks, last-slot use, and both tabs.
- const postCastChoices=<Suspense fallback={null}>
- {summonFormPickerFor && campaignId && SUMMON_TOKEN_SPELLS[summonFormPickerFor]?.creature && (
- <SummonFormPickerModal
- title={`${SUMMON_TOKEN_SPELLS[summonFormPickerFor].label} — choose a form`}
- formIds={SUMMON_TOKEN_SPELLS[summonFormPickerFor]!.creature!.forms}
- onPick={(monsterId) => {
- placeSummonToken({
- campaignId,
- casterCharacterId: character.id,
- casterName: character.name,
- spellId: summonFormPickerFor,
- monsterId,
- }).then(res => {
- if (res !== 'placed') console.info('[SpellCastButton] creature summon not placed:', res);
- });
- }}
- onClose={() => setSummonFormPickerFor(null)}
- />
- )}
- {auraCastSlot !== null && campaignId && AURA_SPELLS[spell.id] && (
- <AuraCastModal
- campaignId={campaignId}
- casterCharacterId={character.id}
- spellId={spell.id}
- saveDC={saveDC}
- slotLevel={auraCastSlot}
- onClose={() => setAuraCastSlot(null)}
- />
- )}
- {buffPickerOpen && campaignId && (
- <BuffTargetPickerModal
- campaignId={campaignId}
- casterCharacterId={character.id}
- spellName={spell.name}
- castSlotLevel={buffPickerSlot}
- onClose={() => setBuffPickerOpen(false)}
- />
- )}
- </Suspense>;
+
  function renderCastControls(){
- if(castingBlocked)return <button type="button" disabled>Confirm concentration first</button>;
+ if(castingBlocked)return <button type="button" disabled>Finish pending casting first</button>;
  // No slots available for leveled spell
  if (!canCast && !isCantrip) {
  return (
@@ -1428,8 +1286,8 @@ function ResolvedSpellCastButton({
  </button>
  )}
  {/* v2.124.0 — Phase J: Declare Cast opens the Counterspell pre-cast
-     window. Only shown for leveled spells (cantrips bypass counterspell
-     windows per RAW — Counterspell 2024 targets leveled casts). */}
+     window. Only shown for leveled spells (cantrip and attack/healing coverage remains follow-up work;
+     Counterspell can also interrupt cantrips). */}
  {mechanics.isUtility && !isCantrip && selectedSlot > 0 && campaignId && (
  <button onClick={() => { openDeclareCast(selectedSlot, target); setShowModal(false); setTarget(''); }}
  title="Declare the cast through the Counterspell reaction window (30s) before resolving the effect. Use when an enemy spellcaster might counterspell you."
@@ -1452,29 +1310,6 @@ function ResolvedSpellCastButton({
  <Suspense fallback={null}>
  {/* v2.115.0 — Phase H pt 6: buff target picker for registry spells */}
  {/* v2.124.0 — Phase J: Counterspell pre-cast window */}
- {declarePending && campaignId && (
- <DeclareSpellCastModal
- campaignId={campaignId}
- encounterId={declarePending.encounterId}
- casterParticipantId={declarePending.casterParticipantId}
- casterCharacterId={character.id}
- casterName={character.name}
- spellName={spell.name}
- spellLevel={declarePending.slotLevel}
- onResolved={(outcome) => {
-   if (outcome === 'went_off' || outcome === 'saved_through') {
-     // Counterspell window closed without a counter (or caster saved).
-     // Slot was already burned in openDeclareCast (v2.125 RAW compliance),
-     // so only apply the visible effect here.
-     applyEffect(declarePending.slotLevel, declarePending.target);
-   }
-   // 'countered': spell fails. Slot was burned on declare per 2024 PHB p.250
-   // and stays spent — no effect applied.
-   // 'canceled': user aborted after declaring. Slot already spent; no effect.
- }}
- onClose={() => setDeclarePending(null)}
- />
- )}
  {/* v2.148.0 — Phase O pt 1: multi-target save spell picker. Opens when
      the AoE save button is clicked. onDeclared burns the slot + sets
      concentration; picker cancel leaves slot unspent. */}
@@ -1492,5 +1327,5 @@ function ResolvedSpellCastButton({
  </>
  );
 }
- return <>{renderCastControls()}{postCastChoices}</>;
+ return <>{declarationError&&<p role="alert">{declarationError}</p>}{renderCastControls()}{postCastChoices}</>;
 }

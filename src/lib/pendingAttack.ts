@@ -1,3 +1,4 @@
+import {settleCounterspellSave} from './api/counterspellSettlement';
 import {createConcentrationOffer,resolveConcentrationSave} from './api/concentrationSaves';
 import {log} from './log';
 import { savingThrowPassed } from '../rules/savingThrows';
@@ -648,7 +649,7 @@ export async function rollSave(
   const atk = row as PendingAttack;
 
   if (atk.attack_kind !== 'save') return atk;
-  if (atk.save_result) return atk;   // already rolled
+  if (atk.save_result) { await settleCounterspellSave(atk); return atk; } // retry settlement without rerolling
 
   // v2.111.0 — Phase H pt 2: look up target's active conditions for save
   // modifications. Auto-fail wins over disadvantage (e.g., Paralyzed target
@@ -746,7 +747,7 @@ export async function rollSave(
     }
   }
 
-  const { data: updated } = await supabase
+  const { data: updated, error: saveError } = await supabase
     .from('pending_attacks')
     .update({
       save_d20: d20,
@@ -757,6 +758,8 @@ export async function rollSave(
     .eq('id', attackId)
     .select()
     .single();
+
+  if (saveError || !updated) throw new Error(saveError?.message ?? 'The saving throw was not recorded.');
 
   if (coverSaveBonus > 0) {
     await emitCombatEvent({
@@ -841,47 +844,7 @@ export async function rollSave(
     });
   }
 
-  // v2.124.0 — Phase J: if this is a Counterspell save, propagate the outcome
-  // back to the pending_spell_casts row. attack_name convention is
-  // 'Counterspell vs ${spell}' or 'Counterspell vs ${spell} (L{n})'.
-  if ((atk.attack_name ?? '').startsWith('Counterspell')) {
-    const { data: psc } = await supabase
-      .from('pending_spell_casts')
-      .select('id, state')
-      .eq('counterspell_attack_id', atk.id)
-      .maybeSingle();
-    if (psc && psc.state === 'counterspell_offered') {
-      // result is already defined above — scope it
-      const caster_saved = result === 'passed';
-      await supabase
-        .from('pending_spell_casts')
-        .update({
-          state: caster_saved ? 'resolved' : 'countered',
-          outcome: caster_saved ? 'saved_through' : 'countered',
-          resolved_at: new Date().toISOString(),
-        })
-        .eq('id', psc.id);
-
-      await emitCombatEvent({
-        campaignId: atk.campaign_id,
-        encounterId: atk.encounter_id,
-        chainId: atk.chain_id,
-        sequence: 71,
-        actorType: 'system',
-        actorName: 'System',
-        targetType: atk.target_type,
-        targetName: atk.target_name,
-        eventType: 'spell_counterspell_resolved',
-        payload: {
-          spell_cast_id: psc.id,
-          target_saved: caster_saved,
-          outcome: caster_saved ? 'saved_through' : 'countered',
-          save_d20: d20,
-          save_total: total,
-        },
-      });
-    }
-  }
+  await settleCounterspellSave(updated as PendingAttack);
 
   return (updated as PendingAttack) ?? null;
 }

@@ -50,6 +50,7 @@ it('does not create offers for an already expired window',async()=>{
 it('ignores an obsolete declaration result after switching requests',async()=>{
  let finish!:(row:PendingSpellCast)=>void;vi.mocked(declarePaidSpell).mockReturnValueOnce(new Promise(resolve=>{finish=resolve;}));
  const view=renderHook(({value})=>useSpellDeclaration(value,vi.fn()),{initialProps:{value:request}});
+ await act(async()=>{});
  const second={...request,castId:'second'},next={...cast,id:'second'};vi.mocked(declarePaidSpell).mockResolvedValue(next);vi.mocked(readDeclaredSpell).mockResolvedValue({cast:next,readyToSettle:false});
  view.rerender({value:second});expect(view.result.current.cast).toBeNull();await waitFor(()=>expect(view.result.current.cast?.id).toBe('second'));await act(async()=>finish(cast));expect(view.result.current.cast?.id).toBe('second');
  expect(offerCounterspell).toHaveBeenCalledTimes(1);
@@ -66,4 +67,17 @@ it('times out a hung confirmation and ignores its eventual result until retry',a
  const view=renderHook(()=>useSpellDeclaration(request,declared));await act(async()=>{vi.advanceTimersByTime(15_000);});
  expect(view.result.current.error).toContain('taking too long');await act(async()=>finish(cast));expect(view.result.current.cast).toBeNull();expect(declared).not.toHaveBeenCalled();
  act(()=>view.result.current.retry());await act(async()=>{});expect(view.result.current.cast?.id).toBe('cast');expect(declared).toHaveBeenCalledTimes(1);
+});
+
+it('does not send a payment before pending character saves finish',async()=>{
+ let flush!:()=>void;const prepare=vi.fn(()=>new Promise<void>(resolve=>{flush=resolve;}));const view=renderHook(()=>useSpellDeclaration(request,vi.fn(),prepare));
+ expect(declarePaidSpell).not.toHaveBeenCalled();await act(async()=>flush());await waitFor(()=>expect(view.result.current.loading).toBe(false));expect(declarePaidSpell).toHaveBeenCalledTimes(1);
+});
+it('retains failed character saves instead of sending a payment',async()=>{
+ const view=renderHook(()=>useSpellDeclaration(request,vi.fn(),async()=>{throw new Error('Save failed');}));
+ await waitFor(()=>expect(view.result.current.error).toBe('Save failed'));expect(declarePaidSpell).not.toHaveBeenCalled();
+});
+it('does not start payment if the dialog unmounts while saves are flushing',async()=>{
+ let flush!:()=>void;const view=renderHook(()=>useSpellDeclaration(request,vi.fn(),()=>new Promise<void>(resolve=>{flush=resolve;})));
+ view.unmount();await act(async()=>flush());expect(declarePaidSpell).not.toHaveBeenCalled();
 });

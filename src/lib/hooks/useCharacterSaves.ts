@@ -56,3 +56,11 @@ export function useCharacterSaves(userId: string, characterId: string) {
   }, [queue]);
   return { queue, acknowledged:queue.getAcknowledged(), ...state };
 }
+
+/** v2.804: paid casting must not race an older queued absolute slot write. */
+export async function flushCharacterSaves(userId:string,characterId:string){
+ const queue=getQueue(userId,characterId);
+ if(queue.getSnapshot().error)throw new Error('Retry the failed character save before declaring this spell.');
+ await queue.flush();
+ if(queue.getSnapshot().pending||queue.getSnapshot().error)throw new Error('Save pending character changes before declaring this spell.');
+}

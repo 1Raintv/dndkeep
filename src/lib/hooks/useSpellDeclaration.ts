@@ -7,10 +7,10 @@ interface State {requestKey:string;cast:PendingSpellCast|null;offers:number|null
 /** v2.804: reopening and StrictMode reuse the disk-backed cast ID. Observing a
  * terminal row is insufficient: only the settlement receipt releases effects.
  * No slot writes or effects occur here, so retries never replay those actions. */
-export function useSpellDeclaration(request:SpellDeclarationRequest,onDeclared:()=>void){
+export function useSpellDeclaration(request:SpellDeclarationRequest,onDeclared:()=>void,beforeDeclare?:()=>Promise<void>){
  const requestKey=JSON.stringify(request),[attempt,setAttempt]=useState(0);
  const empty:State={requestKey,cast:null,offers:null,receipt:null,loading:true,error:''};
- const [state,setState]=useState<State>(empty),callback=useRef(onDeclared),announced=useRef(new Set<string>());callback.current=onDeclared;
+ const [state,setState]=useState<State>(empty),callback=useRef(onDeclared),announced=useRef(new Set<string>()),prepare=useRef(beforeDeclare);callback.current=onDeclared;prepare.current=beforeDeclare;
  useEffect(()=>{
   const captured=JSON.parse(requestKey) as SpellDeclarationRequest;
   let stopped=false,running=false,halted=false,confirmed=false,offered=false,timedOut=false,startedAt=0;
@@ -20,6 +20,7 @@ export function useSpellDeclaration(request:SpellDeclarationRequest,onDeclared:(
    if(stopped||running||halted)return;running=true;startedAt=Date.now();
    try{
     if(!confirmed){
+     await prepare.current?.();if(stopped||timedOut)return;
      const cast=await declarePaidSpell(captured);if(stopped||timedOut)return;confirmed=true;patch({cast});
      if(!announced.current.has(captured.castId)){announced.current.add(captured.castId);callback.current();}
      if(cast.state!=='declared')offered=true;

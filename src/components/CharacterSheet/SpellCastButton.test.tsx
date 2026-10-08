@@ -103,14 +103,14 @@ it('records a concentration utility cast once with its actual source and slot',a
 });
 it('blocks another cast while a concentration recording needs confirmation',()=>{
  render(<SpellCastButton spell={spell} character={character} userId="owner" onUpdateSlots={vi.fn()} castingBlocked/>);
- expect((screen.getByRole('button',{name:'Confirm concentration first'}) as HTMLButtonElement).disabled).toBe(true);expect(mocks.attack).not.toHaveBeenCalled();
+ expect((screen.getByRole('button',{name:'Finish pending casting first'}) as HTMLButtonElement).disabled).toBe(true);expect(mocks.attack).not.toHaveBeenCalled();
 });
 
 it.each([true,false])('keeps post-cast targets open while concentration saves in compact=%s',async compact=>{
  function Sheet(){const [blocked,setBlocked]=useState(false);return <SpellCastButton spell={{...spell,id:'mage-hand',name:'Mage Hand',save_type:undefined,damage_at_char_level:undefined,concentration:true}} character={character} userId="owner" campaignId="campaign" compact={compact} onUpdateSlots={vi.fn()} onConcentrationCast={()=>setBlocked(true)} castingBlocked={blocked}/>;}
  render(<Sheet/>);fireEvent.click(screen.getByRole('button',{name:'Cast'}));
  await waitFor(()=>expect(screen.getByRole('dialog').textContent).toBe('Choose buff targets'));
- expect((screen.getByRole('button',{name:'Confirm concentration first'}) as HTMLButtonElement).disabled).toBe(true);
+ expect((screen.getByRole('button',{name:'Finish pending casting first'}) as HTMLButtonElement).disabled).toBe(true);
 });
 
 it.each([true,false])('keeps post-cast choices when the final slot is spent in compact=%s',async compact=>{

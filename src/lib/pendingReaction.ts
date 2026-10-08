@@ -25,7 +25,7 @@ import { asJsonb } from './jsonbCast';
 import {counterspellCasting} from './counterspellCasting';
 import {offerCounterspellOnce} from './api/counterspellOffers';
 import {acceptCounterspellAtomic} from './api/counterspell';
-import { emitCombatEvent, newChainId } from './combatEvents';
+import { emitCombatEvent } from './combatEvents';
 import type { PendingAttack, PendingReaction, Character } from '../types';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
@@ -506,7 +506,7 @@ REACTION_REGISTRY.push({
 // ─── Counterspell ────────────────────────────────────────────────
 // v2.122.0 — Phase J pt 2: pre-cast Counterspell window.
 //
-// Triggered by declareSpellCast() — fundamentally different from other
+// Triggered by the paid spell declaration controller — fundamentally different from other
 // reactions because the "attack" hasn't happened yet. We parallel the
 // pattern by using pending_reactions rows with pending_attack_id=NULL and
 // decision_payload carrying the spell_cast_id.
@@ -552,90 +552,8 @@ function lowestCounterspellSlot(c: Character | null | undefined): number | null 
 }
 
 // ─── Spell cast declaration + counterspell offers ────────────────
-// v2.122.0 — Phase J pt 2: declareSpellCast() creates a pending_spell_casts
-// row with a 30s reaction window, then offerCounterspell() iterates the
-// encounter for eligible counterspellers and creates pending_reactions
-// rows. The v2.123 UI will add a DeclareSpellCastModal + timer resolution.
-
-export interface DeclareSpellCastInput {
-  campaignId: string;
-  encounterId: string | null;
-  chainId?: string;                 // optional — new one generated if omitted
-  casterParticipantId: string | null;
-  casterCharacterId: string | null;
-  casterName: string;
-  spellName: string;
-  spellLevel: number;               // slot level (0 = cantrip)
-  isCantrip?: boolean;
-  reactionWindowSeconds?: number;   // default 30
-}
-
-export async function declareSpellCast(
-  input: DeclareSpellCastInput,
-): Promise<{ pendingSpellCastId: string; chainId: string; offersCreated: number } | null> {
-  const chainId = input.chainId ?? newChainId();
-  const windowSecs = input.reactionWindowSeconds ?? 30;
-  const declaredAt = new Date();
-  const expiresAt = new Date(declaredAt.getTime() + windowSecs * 1000);
-
-  const { data: inserted, error } = await supabase
-    .from('pending_spell_casts')
-    .insert({
-      campaign_id: input.campaignId,
-      encounter_id: input.encounterId,
-      chain_id: chainId,
-      caster_participant_id: input.casterParticipantId,
-      caster_character_id: input.casterCharacterId,
-      caster_name: input.casterName,
-      spell_name: input.spellName,
-      spell_level: input.spellLevel,
-      is_cantrip: input.isCantrip ?? (input.spellLevel === 0),
-      state: 'declared',
-      declared_at: declaredAt.toISOString(),
-      expires_at: expiresAt.toISOString(),
-    })
-    .select()
-    .single();
-  if (error || !inserted) {
-    console.warn('[declareSpellCast] insert failed', error);
-    return null;
-  }
-
-  await emitCombatEvent({
-    campaignId: input.campaignId,
-    encounterId: input.encounterId,
-    chainId,
-    sequence: 0,
-    actorType: 'player',
-    actorName: input.casterName,
-    targetType: 'self',
-    targetName: input.casterName,
-    eventType: 'spell_declared',
-    payload: {
-      spell_name: input.spellName,
-      spell_level: input.spellLevel,
-      is_cantrip: input.isCantrip ?? (input.spellLevel === 0),
-      reaction_window_seconds: windowSecs,
-    },
-  });
-
-  const offersCreated = await offerCounterspell({
-    pendingSpellCastId: inserted.id as string,
-    campaignId: input.campaignId,
-    encounterId: input.encounterId,
-    casterParticipantId: input.casterParticipantId,
-    casterName: input.casterName,
-    spellName: input.spellName,
-    spellLevel: input.spellLevel,
-    reactionWindowSeconds: windowSecs,
-  });
-
-  return {
-    pendingSpellCastId: inserted.id as string,
-    chainId,
-    offersCreated,
-  };
-}
+// v2.804: declarations/payments belong to the atomic RPC. This pass finds
+// eligible map candidates; the authorized offer RPC creates each prompt once.
 
 export interface OfferCounterspellInput {
   pendingSpellCastId: string;
