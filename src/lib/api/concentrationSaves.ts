@@ -1,8 +1,8 @@
 import {supabase} from '../supabase';
 import {rollDie} from '../../rules/dice';
 export type ConcentrationResolutionSource='player'|'timeout';
-export interface SavedConcentrationRoll {characterId:string;pendingId:string;d20:number;source:ConcentrationResolutionSource}
-export interface ConcentrationReceipt {pendingId:string;outcome:'passed'|'failed'|'obsolete';d20:number|null;total:number|null;replayed:boolean}
+export interface SavedConcentrationRoll {characterId:string;pendingId:string;d20:number;source:ConcentrationResolutionSource;advantage?:boolean;secondD20?:number}
+export interface ConcentrationReceipt {pendingId:string;outcome:'passed'|'failed'|'obsolete';d20:number|null;total:number|null;replayed:boolean;rolls?:number[]|null;advantage?:boolean}
 export const CONCENTRATION_ROLL_CHANGED='dndkeep:concentration-roll-changed';
 const prefix=(id:string)=>`dndkeep:concentration-roll:${id}:`;
 const active=new Map<string,Promise<ConcentrationReceipt>>();
@@ -10,7 +10,8 @@ const die=(n:unknown)=>Number.isInteger(n)&&Number(n)>=1&&Number(n)<=20;
 function valid(v:unknown):v is SavedConcentrationRoll{
  if(!v||typeof v!=='object')return false;
  const r=v as Partial<SavedConcentrationRoll>;
- return typeof r.characterId==='string'&&!!r.characterId&&typeof r.pendingId==='string'&&!!r.pendingId&&die(r.d20)&&(r.source==='player'||r.source==='timeout');
+ return typeof r.characterId==='string'&&!!r.characterId&&typeof r.pendingId==='string'&&!!r.pendingId&&die(r.d20)&&(r.source==='player'||r.source==='timeout')
+  &&(r.advantage===undefined?r.secondD20===undefined:typeof r.advantage==='boolean'&&(r.advantage?die(r.secondD20):r.secondD20===undefined));
 }
 function changed(){window.dispatchEvent(new Event(CONCENTRATION_ROLL_CHANGED));}
 export function savedConcentrationRolls(characterId:string):SavedConcentrationRoll[]{
@@ -27,6 +28,8 @@ function verify(value:unknown,pendingId:string):asserts value is ConcentrationRe
   (r.outcome==='obsolete'?r.d20!==null||r.total!==null:
    !['passed','failed'].includes(r.outcome??'')||!die(r.d20)||!Number.isSafeInteger(r.total)))
   throw new Error('The concentration result could not be verified. Keep the saved roll and confirm again.');
+ if(r.rolls!=null&&(!Array.isArray(r.rolls)||r.rolls.length!==(r.advantage?2:1)||!r.rolls.every(die)||r.d20!==Math.max(...r.rolls)))
+  throw new Error('The concentration dice could not be verified. Keep the saved roll and confirm again.');
 }
 async function settle(characterId:string,pendingId:string,source:ConcentrationResolutionSource):Promise<ConcentrationReceipt>{
  const key=prefix(characterId)+pendingId;
@@ -37,17 +40,26 @@ async function settle(characterId:string,pendingId:string,source:ConcentrationRe
   if(!valid(existing)||existing.characterId!==characterId||existing.pendingId!==pendingId)throw new Error('The saved concentration roll does not match this offer.');
   request=existing;
  }else{
-  request={characterId,pendingId,source,d20:rollDie(20)};
+  request={characterId,pendingId,source,d20:0}; // no dice until the offer is readable
+ }
+ if(request.advantage===undefined){
+  // v2.808 — eligibility belongs to the damage-time offer, not current feats.
+  // Upgrade an older saved first die without rerolling it. Store the pair before
+  // any settlement call so reloads, timeout and network retries share both dice.
+  const {data,error}=await supabase.from('pending_concentration_saves').select('id,character_id,has_advantage').eq('id',pendingId).single();
+  const context=data as unknown as {id:string;character_id:string;has_advantage:boolean}|null;
+  if(error)throw error;
+  if(!context||context.id!==pendingId||context.character_id!==characterId||typeof context.has_advantage!=='boolean')
+   throw new Error('The concentration roll settings could not be verified. No new roll was sent.');
+  request={...request,d20:raw===null?rollDie(20):request.d20,advantage:context.has_advantage,
+   ...(context.has_advantage?{secondD20:rollDie(20)}:{})};
   if(!valid(request))throw new Error('Invalid concentration request');
-  // v2.786 — durable before network I/O: reload or a lost response must never
-  // turn confirmation into a new roll. Server receipts may contain another
-  // client's winning roll, which is authoritative for this shared offer.
   localStorage.setItem(key,JSON.stringify(request));changed();
  }
  for(let attempt=0;;attempt++){
   let data:unknown;
   try{
-   const result=await (supabase as any).rpc('settle_pending_concentration_save',{p_pending_id:pendingId,p_d20:request.d20,p_source:request.source});
+   const result=await (supabase as any).rpc('settle_pending_concentration_save',{p_pending_id:pendingId,p_d20:request.d20,p_source:request.source,...(request.advantage?{p_second_d20:request.secondD20}:{})});
    if(result.error)throw result.error;data=result.data;
   }catch(error){
    const code=error&&typeof error==='object'&&'code' in error?String(error.code):'';

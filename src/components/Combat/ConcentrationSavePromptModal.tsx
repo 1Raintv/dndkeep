@@ -24,6 +24,7 @@ interface PendingRow {
   damage: number;
   dc: number;
   con_bonus: number;
+  has_advantage?: boolean;
   state: 'offered' | 'resolved' | 'expired';
   expires_at: string;
   offered_at: string;
@@ -77,7 +78,7 @@ export default function ConcentrationSavePromptModal({ characterId }: Props) {
   },[urgent,now,busy,error,saved,submit]);
   const recovery=(saved.length||error||notice)?<section role="status" aria-label="Concentration recovery" style={{padding:12,border:'1px solid var(--c-border)',borderRadius:8,marginBottom:12}}>
     {saved.map(roll=><div key={roll.pendingId} style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-      <span>Saved concentration roll: {roll.d20}. Result awaiting confirmation.</span>
+      <span>Saved concentration {roll.advantage?'dice':'roll'}: {roll.d20}{roll.advantage?` and ${roll.secondD20} (keep the higher)`:''}. Result awaiting confirmation.</span>
       {roll.pendingId!==urgent?.id&&<button className="btn-secondary" disabled={busy} onClick={()=>void submit(roll.pendingId,roll.source)}>Confirm saved save</button>}
     </div>)}
     {error&&<p role="alert">{error}</p>}{notice&&<p>{notice} <button className="btn-secondary" onClick={()=>setNotice('')}>Dismiss</button></p>}
@@ -153,7 +154,7 @@ export default function ConcentrationSavePromptModal({ characterId }: Props) {
           }}>
             You took <strong style={{ color: '#f87171' }}>{urgent.damage}</strong> damage while concentrating on <strong style={{ color: 'var(--t-1)' }}>{spellName}</strong>.
             Roll a <strong style={{ color: '#60a5fa' }}>DC {urgent.dc}</strong> CON save
-            (1d20 {bonusStr}) to maintain concentration.
+            ({urgent.has_advantage?'2d20, keep the higher':'1d20'} {bonusStr}) to maintain concentration.
           </div>
           <div style={{ fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5 }}>
             If the timer runs out, the save will be rolled automatically.

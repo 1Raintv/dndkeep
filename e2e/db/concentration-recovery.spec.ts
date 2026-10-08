@@ -48,6 +48,28 @@ test.describe('Campaign concentration recovery (local stack)', () => {
     await expect(page.getByRole('status',{name:'Concentration recovery'})).toContainText('Concentration broken: saved roll 1, total 1');
     await expect.poll(spell).toBe('');expect(sql(`select count(*) from combat_events where chain_id='${chain}' and event_type='save_rolled'`)).toBe('1');
   });
+  test('War Caster preserves two dice across a lost response and reload',async({page},info)=>{
+    sql(`update characters set gained_feats=array['War Caster'] where id='${charId}';
+      delete from pending_concentration_saves where id='${pending}';
+      insert into pending_concentration_saves(id,campaign_id,encounter_id,chain_id,participant_id,character_id,spell_name,damage,dc,con_bonus,has_con_prof,expires_at,concentration_revision)
+       select '${pending}','${campaign}','${encounter}','${chain}','${participant}',id,concentration_spell,5,10,0,false,now()+interval '2 minutes',concentration_revision from characters where id='${charId}'`);
+    await page.addInitScript(()=>{Math.random=()=>0.8;});await signInAsSeedDm(page,email);
+    // Upgrade an old saved first die rather than silently rerolling it.
+    await page.evaluate(({charId,pending})=>localStorage.setItem(`dndkeep:concentration-roll:${charId}:${pending}`,JSON.stringify({characterId:charId,pendingId:pending,d20:3,source:'player'})),{charId,pending});
+    const requests:unknown[]=[];const endpoint='**/rest/v1/rpc/settle_pending_concentration_save';
+    await page.route(endpoint,async route=>{requests.push(route.request().postDataJSON());const result=await route.fetch();expect(result.ok()).toBe(true);await route.abort();});
+    await page.goto(`/character/${charId}`);const dialog=page.getByRole('dialog',{name:'Concentration save',exact:true});
+    await expect(dialog).toContainText('2d20, keep the higher');await page.screenshot({path:info.outputPath('war-caster-prompt.png')});
+    await dialog.getByRole('button',{name:'Confirm saved save'}).click();
+    const recovery=page.getByRole('status',{name:'Concentration recovery'});
+    await expect(recovery).toContainText('Saved concentration dice: 3 and 17');await expect.poll(()=>requests.length).toBe(2);
+    expect(requests[0]).toEqual(requests[1]);expect(requests[0]).toMatchObject({p_d20:3,p_second_d20:17});
+    await page.unroute(endpoint);sql(`update characters set gained_feats=array[]::text[] where id='${charId}'`);await page.reload();
+    await expect(recovery).toContainText('3 and 17');await recovery.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('war-caster-recovery.png')});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+    await recovery.getByRole('button',{name:'Confirm saved save'}).click();await expect(recovery).toContainText('Earlier save confirmed: passed (roll 17');
+    expect(spell()).toBe('detect-magic');expect(sql(`select count(*) from combat_events where chain_id='${chain}' and event_type='save_rolled'`)).toBe('1');
+  });
   test('lost response survives reload and confirmation preserves a later casting',async({page},info)=>{
     await page.addInitScript(()=>{Math.random=()=>0.001;});let calls=0;
     const endpoint='**/rest/v1/rpc/settle_pending_concentration_save';await page.route(endpoint,async route=>{calls++;const result=await route.fetch();expect(result.ok()).toBe(true);await route.abort();});

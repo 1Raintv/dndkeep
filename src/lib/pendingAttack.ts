@@ -1733,11 +1733,11 @@ export async function getTargetSaveBonus(
 
 // ─── Concentration save on damage ────────────────────────────────
 // 2024 PHB: when a concentrating caster takes damage, they must succeed on a
-// CON save (DC = max(10, floor(damage/2))) or lose concentration. Auto-rolled
+// CON save (DC = min(30, max(10, floor(damage/2)))) or lose concentration. Auto-rolled
 // per Phase I 'Concentration save on damage' automation (default ON).
 //
-// Rider: War Caster feat gives advantage — we treat that as a passthrough for
-// now and revisit in Phase H when the buff pipeline lands.
+// v2.808 — the database snapshots War Caster when creating the offer; the
+// shared resolver saves both dice before settling its advantage roll.
 export interface ConcentrationSaveContext {
   campaignId: string;
   encounterId: string | null;

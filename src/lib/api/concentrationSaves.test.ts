@@ -5,16 +5,16 @@ vi.mock('../supabase',()=>({supabase:{rpc:m.rpc,from:m.from}}));
 vi.mock('../../rules/dice',()=>({rollDie:m.die}));
 import {createConcentrationOffer,resolveConcentrationSave,savedConcentrationRolls} from './concentrationSaves';
 const receipt={pendingId:'offer',outcome:'failed',d20:3,total:5,replayed:false};
-beforeEach(()=>{localStorage.clear();vi.resetAllMocks();m.die.mockReturnValue(3);m.rpc.mockResolvedValue({data:receipt,error:null});});
+beforeEach(()=>{localStorage.clear();vi.resetAllMocks();m.die.mockReturnValue(3);m.rpc.mockResolvedValue({data:receipt,error:null});context(false);});
 afterEach(()=>vi.restoreAllMocks());
 it('stores the original die before sending, then forgets a verified receipt',async()=>{
- m.rpc.mockImplementation(async()=>{expect(savedConcentrationRolls('hero')).toEqual([{characterId:'hero',pendingId:'offer',d20:3,source:'player'}]);return {data:receipt,error:null};});
+ m.rpc.mockImplementation(async()=>{expect(savedConcentrationRolls('hero')).toEqual([{characterId:'hero',pendingId:'offer',d20:3,source:'player',advantage:false}]);return {data:receipt,error:null};});
  expect(await resolveConcentrationSave('hero','offer','player')).toEqual(receipt);expect(savedConcentrationRolls('hero')).toEqual([]);
 });
 it('deduplicates simultaneous clicks and timeout in one tab',async()=>{
  let finish!:(v:unknown)=>void;m.rpc.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
  const first=resolveConcentrationSave('hero','offer','player'),second=resolveConcentrationSave('hero','offer','timeout');
- expect(first).toBe(second);expect(m.rpc).toHaveBeenCalledTimes(1);finish({data:receipt,error:null});await first;expect(m.die).toHaveBeenCalledTimes(1);
+ expect(first).toBe(second);await vi.waitFor(()=>expect(m.rpc).toHaveBeenCalledTimes(1));finish({data:receipt,error:null});await first;expect(m.die).toHaveBeenCalledTimes(1);
 });
 it('lost responses retain the same proposed roll and source for later confirmation',async()=>{
  m.rpc.mockRejectedValue(new Error('Offline'));await expect(resolveConcentrationSave('hero','offer','player')).rejects.toThrow('Offline');
@@ -58,4 +58,38 @@ it('cannot create an offer without a valid casting revision',async()=>{
 it('surfaces failed offer creation without attempting a roll',async()=>{
  m.from.mockReturnValue({insert:vi.fn().mockResolvedValue({error:{message:'Rejected'}})});
  await expect(createConcentrationOffer(offer)).rejects.toThrow('Rejected');expect(m.rpc).not.toHaveBeenCalled();expect(m.die).not.toHaveBeenCalled();
+});
+
+function context(advantage:boolean,characterId='hero'){
+ const q={select:()=>q,eq:()=>q,single:async()=>({data:{id:'offer',character_id:characterId,has_advantage:advantage},error:null})};m.from.mockReturnValue(q);
+}
+it('persists both advantage dice before sending and verifies the higher result',async()=>{
+ context(true);m.die.mockReturnValueOnce(3).mockReturnValueOnce(17);
+ m.rpc.mockImplementation(async(_name,args)=>{
+  expect(args).toMatchObject({p_d20:3,p_second_d20:17});
+  expect(savedConcentrationRolls('hero')[0]).toMatchObject({d20:3,secondD20:17,advantage:true});
+  return {data:{...receipt,d20:17,total:19,outcome:'passed',advantage:true,rolls:[3,17]},error:null};
+ });
+ expect((await resolveConcentrationSave('hero','offer','player')).d20).toBe(17);expect(m.die).toHaveBeenCalledTimes(2);
+});
+it('lost advantage response retries the exact pair after reopening without reading current feats',async()=>{
+ context(true);m.die.mockReturnValueOnce(3).mockReturnValueOnce(17);m.rpc.mockRejectedValue(new Error('Offline'));
+ await expect(resolveConcentrationSave('hero','offer','player')).rejects.toThrow('Offline');
+ context(false);m.rpc.mockResolvedValue({data:{...receipt,d20:17,total:19,outcome:'passed',advantage:true,rolls:[3,17],replayed:true},error:null});
+ await resolveConcentrationSave('hero','offer','timeout');expect(m.die).toHaveBeenCalledTimes(2);
+ expect(m.rpc.mock.calls[2][1]).toEqual(m.rpc.mock.calls[0][1]);
+});
+it('upgrades a legacy saved first die by rolling only its missing advantage die',async()=>{
+ localStorage.setItem('dndkeep:concentration-roll:hero:offer',JSON.stringify({characterId:'hero',pendingId:'offer',source:'player',d20:12}));
+ context(true);m.die.mockReturnValue(17);m.rpc.mockResolvedValue({data:{...receipt,d20:17,total:19,outcome:'passed',advantage:true,rolls:[12,17]},error:null});
+ await resolveConcentrationSave('hero','offer','timeout');expect(m.die).toHaveBeenCalledTimes(1);
+ expect(m.rpc.mock.calls[0][1]).toEqual({p_pending_id:'offer',p_d20:12,p_second_d20:17,p_source:'player'});
+});
+it('does not roll for an offer belonging to another character',async()=>{
+ context(true,'other');await expect(resolveConcentrationSave('hero','offer','player')).rejects.toThrow('settings could not be verified');expect(m.die).not.toHaveBeenCalled();expect(m.rpc).not.toHaveBeenCalled();
+});
+it('retains both dice when the receipt selects the lower die',async()=>{
+ context(true);m.die.mockReturnValueOnce(3).mockReturnValueOnce(17);
+ m.rpc.mockResolvedValue({data:{...receipt,advantage:true,rolls:[3,17]},error:null});
+ await expect(resolveConcentrationSave('hero','offer','player')).rejects.toThrow('dice could not be verified');expect(savedConcentrationRolls('hero')[0].secondD20).toBe(17);
 });
