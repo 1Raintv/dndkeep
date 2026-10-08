@@ -1,30 +1,35 @@
 # DNDKeep — Two-Track Roadmap
 
-### In progress — map HP controls: zero, temporary HP and safe persistence
+### v2.806 candidate — reliable HP controls on the battle map
 
-Confirmed live import: BattleMapV2 renders battlemap/TokenQuickPanel. Its current
-applyHp rejects zero even for Set, parses decimal/junk inputs with parseInt,
-subtracts damage directly from real HP, and writes stale absolute HP without a
-revision check. The existing HP revision trigger from v2.798 provides the boundary.
+The live character quick panel now uses the manual HP transaction instead of a
+stale absolute update. Set HP accepts zero, damage consumes temporary HP first,
+healing caps at max HP, and invalid amounts cannot submit. Temporary HP is visible.
+The input clears after confirmed success. The panel stays inside short landscape
+viewports and scrolls its remaining controls.
 
-Local-only groundwork: canonical HP adjustment parsing/calculation now handles
-zero Set, temp-first damage, capped healing, strict whole numbers, and explicit
-repair after max HP is lowered. New migration 20261008053426 adds a private
-idempotency ledger and owner/current-DM RPC: captured revision, one history event,
-transactional rollback, and current counters on a replay (never old HP restored).
-Applied locally only. Twenty DB cases passed, including cancellation/payment
-races and rejection of delayed canceled requests, plus full gate: 2,106 units,
-TS 203/203, hooks/RAW/coordinates/anchors/build/SW and 254.0 KB entry. Security
-advisors show only the standing keep_warm/client_errors warnings.
+Captured adjustments persist by account/character before sending. Reopen/reload
+and retry reuse the same identity. A hung call times out visibly; its late result
+cannot overwrite another character or erase a newer request. Cancellation needs
+server proof; already-paid adjustments resume instead. Current HP revisions order
+receipts, and incoming HP/temp/revision changes refresh the panel. No optimistic
+HP writes or legacy write fallback remain in this control.
 
-**Not connected or released.** Safe cancellation now uses the same character
-lock and private ledger; a late request either already applied or is permanently
-rejected. Already-paid adjustments cannot be canceled/refunded. Then build account/character-scoped durable client recovery, latest HP/
-revision loading, visible errors, immediate duplicate-submit guard, and actual
-map-panel tests for zero, temp absorption, lost response, retry and stale revision.
-Apply the backend through a separate gated PR before its client. Combat damage
-consequences (concentration/death saves/conditions) remain a distinct integration
-boundary; do not claim this manual resource transaction automates them.
+Backend PR144 merged at 4bbc5b29. Production workflow 37734145365 explicitly
+applied 20261008053426 and finished db push. Main CI 37734145419 and production
+Vercel 7wr6UEJRYjcxGXf12cbRLrSNNv2k succeeded. Twenty local DB cases cover revision
+races, exact retry, cancellation, ownership, history rollback and HP arithmetic.
+Security advisors show only the standing keep_warm/client_errors warnings.
+
+Client validation so far: 21 focused API/UI cases; actual desktop/phone map flows
+passed setting zero, temporary HP, lost responses, reload/retry, stale revision
+cancellation, and landscape bounds. Phone/landscape screenshots inspected. Final
+release gate passed 2,127 units, TS 203/203, zero hook violations, RAW/map math,
+build/SW and 254.0 KB entry. No client release yet.
+
+This is manual HP adjustment, not the entire combat damage resolver: concentration,
+death saves and condition consequences remain a distinct integration boundary.
+Further work must connect the relevant combat consequences without replaying HP.
 
 ### v2.804 deployed — verified casting recovery
 

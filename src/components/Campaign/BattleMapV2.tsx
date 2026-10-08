@@ -278,8 +278,8 @@ export interface BattleMapV2Props {
      *  species table (same seam as `size`). Absent falls back to 0,
      *  which only matters in a Dark scene. */
     darkvision?: number;
-    current_hp: number;
-    max_hp: number;
+    current_hp: number; max_hp: number;
+    temp_hp?: number; hit_point_revision?: number;
     armor_class: number;
     active_conditions: string[];
     strength: number;
