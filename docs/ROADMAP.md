@@ -1,5 +1,26 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.822 — narrow campaign Guards lookup (backend foundation)
+
+A separate authenticated RPC returns only whether a character currently has
+Guards protection. The character owner, current campaign DM and current campaign
+members can read this boolean. It exposes no discipline history, rolls, resource
+receipts or turn token, and performs no writes or character locks. The existing
+private-ledger RPC retains its owner/DM boundary. Removed membership or a
+character leaving the campaign revokes access immediately on the next request.
+
+Validation: five real database cases pass for owner, DM, member, removed member,
+former campaign, anonymous/unrelated and missing-target access; activation and
+expiry return the correct boolean without altering turn state or energy. Local
+migration 20261008090528 applied; ledger has no pending files. Database lint
+reports no issue in the new functions (existing warnings elsewhere). Full gate
+passes: 2,348 tests, TypeScript 201/201, 255.1 KB entry.
+
+Ship this migration before switching the client lookup and adding Guards to the
+class-ability save dialog: players there may roll against another party member.
+Production apply is pending the normal merge/CI route.
+
+
 ### v2.821 — Guards on end-of-turn condition saves
 
 Automatic end-of-turn Intelligence saves now read the outgoing character's
