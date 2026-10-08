@@ -10,7 +10,7 @@ const dm='11111111-1111-1111-1111-111111111111',player='12121212-1212-1212-1212-
 
 test.describe('Paid casting recovery (local stack)',()=>{
  gateDbSuite();test.use({serviceWorkers:'block'});
- for(const scenario of ['recovered','countered','canceled'])test(scenario==='countered'?'failed Counterspell returns the caster slot without applying effects':scenario==='canceled'?'cancel rejected casting after a lost cancellation response and start again':'last-slot casting survives a lost response and reload',async({page,browser},info)=>{
+ for(const scenario of ['recovered','countered','canceled','limited'])test(scenario==='limited'?'current-turn slot limit survives reload and permits casting next turn':scenario==='countered'?'failed Counterspell returns the caster slot without applying effects':scenario==='canceled'?'cancel rejected casting after a lost cancellation response and start again':'last-slot casting survives a lost response and reload',async({page,browser},info)=>{
   const countered=scenario==='countered';
   test.setTimeout(90_000);
   const camp=randomUUID(),scene=randomUUID(),enc=randomUUID(),hero=randomUUID(),target=randomUUID();
@@ -41,6 +41,11 @@ test.describe('Paid casting recovery (local stack)',()=>{
     spell_sources='{"fly":["class:Psion"]}',spell_preparation_sources='{"fly":["class:Psion"]}',spell_slots='{"3":{"total":1,"used":0}}' where id='${hero}';
     update characters set class_name='Wizard',level=5,intelligence=18,known_spells=ARRAY['counterspell'],prepared_spells=ARRAY['counterspell'],
     spell_sources='{"counterspell":["class:Wizard"]}',spell_preparation_sources='{"counterspell":["class:Wizard"]}',spell_slots='{"3":{"total":1,"used":0}}' where id='${target}'`);
+   if(scenario==='limited'){
+    sql(`update characters set spell_slots='{"3":{"total":2,"used":0}}' where id='${hero}';
+     begin;set local role authenticated;set local request.jwt.claims='{"sub":"${player}","role":"authenticated"}';
+     select declare_spell_cast_atomic('${randomUUID()}','${hero}',(select id from combat_participants where encounter_id='${enc}' and entity_id='${hero}'),'fly','Fly',3,'{"total":2,"used":0}','{"source":"class:Psion","spellLevel":3,"isBonusAction":false}');commit;`);
+   }
    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
    const bodies:string[]=[];
    if(scenario==='recovered')await page.route('**/rest/v1/rpc/declare_spell_cast_atomic',async route=>{
@@ -64,6 +69,22 @@ test.describe('Paid casting recovery (local stack)',()=>{
    await spellRow.getByRole('button',{name:'Cast',exact:true}).click();
    await page.getByRole('button',{name:'Declare',exact:true}).click();
    const dialog=page.getByRole('dialog',{name:'Casting Fly',exact:true});await expect(dialog).toBeVisible();
+   if(scenario==='limited'){
+    await expect(dialog.getByRole('alert')).toContainText('Only one spell slot');
+    expect(sql(`select spell_slots->'3'->>'used' from characters where id='${hero}'`)).toBe('1');
+    await page.reload();await expect(dialog.getByRole('alert')).toContainText('Only one spell slot');
+    const probe=process.env.DNDKEEP_UI_OVERFLOW_PROBE;
+    if(probe){const source=readFileSync(probe,'utf8'),body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelector('[aria-label=\"Casting Fly\"]')?.querySelectorAll('*') ?? []"),report=await page.evaluate('('+scoped+'\n})()');expect(report.sideways).toBe(false);expect(report.clipped).toEqual([]);expect(report.pastEdge).toEqual([]);}
+    await page.screenshot({path:info.outputPath('slot-limit.png')});
+    await dialog.getByRole('button',{name:'Cancel unconfirmed cast',exact:true}).click();await expect(dialog).toBeHidden();
+    sql(`update combat_encounters set current_turn_index=1 where id='${enc}'`);
+    await page.reload();await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+    await spellRow.getByRole('button',{name:'Cast',exact:true}).click();await page.getByRole('button',{name:'Declare',exact:true}).click();
+    await expect.poll(()=>sql(`select count(*) from dndkeep_private.declared_spell_payments where character_id='${hero}'`)).toBe('2');
+    expect(sql(`select spell_slots->'3'->>'used' from characters where id='${hero}'`)).toBe('2');
+    expect(sql(`select count(distinct turn_id) from dndkeep_private.spell_turn_slot_spends where character_id='${hero}'`)).toBe('2');
+    expect(errors).toEqual([]);return;
+   }
    if(scenario==='canceled'){
     await expect(dialog.getByRole('alert')).toContainText('Spell slots changed');
     await expect(dialog.getByText('Confirmation needed',{exact:true})).toBeVisible();await expect(dialog.getByText(/seconds left/)).toHaveCount(0);
