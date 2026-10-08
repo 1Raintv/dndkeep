@@ -34,6 +34,7 @@ begin
  select * into prior from dndkeep_private.standalone_concentration_saves where request_id=p_request_id;
  if found then
   if prior.character_id is distinct from c.id or prior.request is distinct from req then raise exception 'Concentration check request changed';end if;
+  if prior.outcome->>'outcome'='canceled' then raise exception 'This concentration check request was canceled';end if;
   return to_jsonb(prior)-'request'||jsonb_build_object('replayed',true);
  end if;
  if c.campaign_id is not null then raise exception 'Use campaign concentration checks for this character';end if;
@@ -131,3 +132,33 @@ revoke all on function public.settle_standalone_concentration_save(uuid,uuid,int
 grant execute on function public.queue_standalone_concentration_save(uuid,uuid,integer,integer,jsonb) to authenticated;
 grant execute on function public.get_standalone_concentration_saves(uuid) to authenticated;
 grant execute on function public.settle_standalone_concentration_save(uuid,uuid,integer[]) to authenticated;
+
+-- Cancel only an unconfirmed creation, never a recorded pending/result row.
+-- The same character lock seals late requests, including lost cancel responses.
+create or replace function dndkeep_private.cancel_standalone_concentration_request(
+ p_character_id uuid,p_request_id uuid,p_damage integer,p_modifier integer,p_expected jsonb
+) returns jsonb language plpgsql security definer set search_path='' as $$
+declare c public.characters; r dndkeep_private.standalone_concentration_saves; req jsonb;
+begin
+ if auth.uid() is null then raise exception 'Sign in to cancel a concentration request';end if;
+ select * into c from public.characters where id=p_character_id and user_id=auth.uid() for update;
+ if not found then raise exception 'Character is unavailable';end if;
+ if p_request_id is null or p_damage is null or p_damage<1 or p_modifier is null or p_modifier not between -5 and 20
+  or p_expected is null or jsonb_typeof(p_expected)<>'object' then raise exception 'Invalid concentration request';end if;
+ req:=jsonb_build_object('damage',p_damage,'modifier',p_modifier,'expected',p_expected);
+ select * into r from dndkeep_private.standalone_concentration_saves where request_id=p_request_id;
+ if found then
+  if r.character_id is distinct from c.id or r.request is distinct from req then raise exception 'Concentration check request changed';end if;
+  return jsonb_build_object('requestId',p_request_id,'characterId',c.id,'canceled',coalesce(r.outcome->>'outcome'='canceled',false),'replayed',true);
+ end if;
+ insert into dndkeep_private.standalone_concentration_saves(request_id,character_id,request,spell_name,casting_revision,damage,dc,save_bonus,has_advantage,natural_extremes,outcome)
+ values(p_request_id,c.id,req,'',0,0,0,0,false,false,jsonb_build_object('outcome','canceled'));
+ return jsonb_build_object('requestId',p_request_id,'characterId',c.id,'canceled',true,'replayed',false);
+end;
+$$;
+revoke all on function dndkeep_private.cancel_standalone_concentration_request(uuid,uuid,integer,integer,jsonb) from public,anon;
+grant execute on function dndkeep_private.cancel_standalone_concentration_request(uuid,uuid,integer,integer,jsonb) to authenticated;
+create or replace function public.cancel_standalone_concentration_request(p_character_id uuid,p_request_id uuid,p_damage integer,p_modifier integer,p_expected jsonb)
+returns jsonb language sql security invoker set search_path='' as $$ select dndkeep_private.cancel_standalone_concentration_request(p_character_id,p_request_id,p_damage,p_modifier,p_expected); $$;
+revoke all on function public.cancel_standalone_concentration_request(uuid,uuid,integer,integer,jsonb) from public,anon;
+grant execute on function public.cancel_standalone_concentration_request(uuid,uuid,integer,integer,jsonb) to authenticated;

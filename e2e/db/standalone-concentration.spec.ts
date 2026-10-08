@@ -103,4 +103,25 @@ test.describe('Standalone concentration ledger',()=>{
   }finally{sql(`drop trigger if exists ${trigger} on ${table};drop function if exists public.${trigger}();`);}
   expect(run(settle())).toMatchObject({outcome:'failed',replayed:false});
  });
+ test('canceling an unsent request seals late creation and retry returns proof',()=>{
+  const q=queue(),cancel=q.replace('queue_standalone_concentration_save','cancel_standalone_concentration_request');
+  expect(run(cancel)).toMatchObject({canceled:true,replayed:false});expect(run(cancel)).toMatchObject({canceled:true,replayed:true});
+  expect(()=>run(q)).toThrow(/was canceled/);expect(run(`select get_standalone_concentration_saves('${character}')`).pending).toEqual([]);
+ });
+ test('cancellation never discards an existing pending check or its recorded result',()=>{
+  const q=queue(),cancel=q.replace('queue_standalone_concentration_save','cancel_standalone_concentration_request');run(q);
+  expect(run(cancel)).toMatchObject({canceled:false});expect(run(`select get_standalone_concentration_saves('${character}')`).pending).toHaveLength(1);
+  run(settle('array[20]'));expect(run(cancel)).toMatchObject({canceled:false});
+ });
+ test('stale unconfirmed creation can be canceled without rebasing onto a newer spell',()=>{
+  const q=queue(),cancel=q.replace('queue_standalone_concentration_save','cancel_standalone_concentration_request');
+  sql(`update characters set concentration_spell='Invisibility' where id='${character}'`);
+  expect(()=>run(q)).toThrow(/Character changed/);expect(run(cancel)).toMatchObject({canceled:true});expect(spell()).toBe('Invisibility');
+ });
+ test('cancellation rejects a changed request or another owner',()=>{
+  const q=queue(),cancel=q.replace('queue_standalone_concentration_save','cancel_standalone_concentration_request');
+  expect(()=>run(cancel,other)).toThrow(/unavailable/);run(cancel);
+  expect(()=>run(queue(request,9).replace('queue_standalone_concentration_save','cancel_standalone_concentration_request'))).toThrow(/request changed/);
+ });
+
 });

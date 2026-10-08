@@ -15,10 +15,14 @@ concentration, action log and character history atomically. Old casts and checks
 from before joining a campaign retire without changing the current spell. Zero
 HP/incapacitation ends the matching concentration without a die. No HP is changed.
 The ledger is not exposed; anonymous and other-character callers cannot read or
-resolve it. Nineteen local DB cases passed, including concurrent clients, separate
+resolve it. Twenty-three local DB cases passed, including concurrent clients, separate
 hits, snapshot drift, malformed dice, permissions, and rollback of either history
 failure. Full gate passed 2,146 units, TS 203/203, hooks, RAW, coordinates/anchors,
 build/SW and 254 KB entry. Local advisors retain only standing warnings.
+
+Unconfirmed creation requests can be canceled only with a server receipt; a
+tombstone blocks late creation. Existing pending checks/results cannot be canceled
+through that API. Stale unsent requests can be dismissed without rebasing them.
 
 Migration 20261008061734 is local only. This is groundwork, not live sheet
 integration: add durable creation/roll requests and the recoverable queue UI,
