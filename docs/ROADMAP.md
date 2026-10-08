@@ -1,5 +1,21 @@
 # DNDKeep — Two-Track Roadmap
 
+### Release candidate — secondary Psion Actions with missing slots, v2.800
+
+Actions no longer hides ready spell rows just because the primary class is
+martial and imported slot records are empty. Known cantrips remain available;
+leveled spells still display No Slots and receive no invented spell slots.
+The existing Spells source-review controls remain accessible. The change removes
+a redundant class gate from the root rather than adding another caster classifier.
+
+A real Fighter/Psion fixture reproduced the missing Light row before the fix.
+Four desktop/mobile checks passed for both class orders; the phone Actions view
+was inspected. Final checks additionally cast Light and verify one logged cast
+without changing the empty slot map. All eight final desktop/mobile checks passed,
+including existing source-review and preparation eligibility cases. Final v2.800
+gate passed: 1,953 unit tests, TS 206/206, zero hook violations, rules/coordinates/
+anchors/build/SW-version and 253.7 KB entry. No migration or automatic slot repair.
+
 ### Release candidate — reliable target distance loading, v2.799
 
 Player attack targets wait for map distances before becoming available. Results
