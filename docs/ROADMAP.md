@@ -1,6 +1,43 @@
 # DNDKeep — Two-Track Roadmap
 
-### v2.848 candidate — Species-aware damage resistance
+### v2.849 candidate — Sharpened Mind in Destructive Thoughts resolution
+
+The DM damage dialog now previews Psychic defenses, immediate Sharpened resistance
+bypass, and an optional replacement of one saved damage die. It uses an active
+finalized activation's recorded number (including paid Enkindled/Surge changes),
+preserves original dice, and claims one replacement per current combat turn.
+Another creature's turn permits a new use; overlapping activations share that limit.
+The DM selects one active record rather than combining recorded numbers. Unfinished
+activations still provide immediate resistance bypass; finalizing is needed only
+for selecting their recorded number. The source is the user's private UA2025
+Psion Update, pp.4–5; this does not add it to the public class library.
+
+Migration `20261008145514_sharpened_damage_resolution.sql` commits turn use, HP,
+death state, concentration, history and the attack receipt together. Failed writes
+roll everything back; duplicate requests reuse the attack receipt. Deleting an
+applied attack cannot refund the turn use. Scoped actor/target locks and the
+encounter turn token protect concurrent requests. Current sheet/encounter wards
+are included, and unknown/conditional defenses require an explicit DM choice.
+Manual damage edits remain available and get a private adjustment event.
+
+Validation: full gate green (2,672 units, TypeScript 200/200, entry 255.1 KB),
+18 new database cases plus 34 existing context/application/life-state regressions pass.
+Two additional paid player-to-DM flows pass. Six desktop/phone browser cases pass, including a paid Sharpened activation and
+lost committed response. Scoped layout checks pass; screenshots show replacement
+1→8 and final damage 20. Deliberately skipping replacement arithmetic makes that
+browser case fail; corrected SQL is restored. New/replaced SQL functions have no
+lint findings. Maximum recorded 36, lower-value replacements, off-turn use,
+expiry, incapacitation, immunity, stale wards, overlapping activations, deletion,
+rollback and competing attacks are covered.
+
+Scope remaining: weapon attacks, other Psion spells/features, shared AoE rolls and
+standalone/tabletop damage still need integration. The existing three-argument
+application RPC remains compatible for older frontends; the new dialog uses the
+new transaction. Destructive Thoughts still needs durable payment/trigger linkage.
+Review low-Intelligence minimum/cap wording separately; preserved dice are not proof
+of a valid triggering Psion spell. This is not a claim that all Psion automation is finished.
+
+### v2.848 — Species-aware damage resistance
 
 Tiefling resistance follows the saved Fiendish Legacy: Abyssal Poison, Chthonic
 Necrotic, Infernal Fire. Missing/unknown choices grant no guessed automatic trait.
@@ -24,6 +61,10 @@ show 23 Poison becoming 11 damage and HP 50→39. Replacing the Abyssal resistan
 with Fire makes the actual browser regression fail. No SQL lint findings for the
 updated context function. Other species-choice automation and typed attack damage,
 including Sharpened Mind, remain follow-ups; this does not claim they are integrated.
+
+Merged as PR #192 (`0321138`). Production migration run `37795634724` applied
+species-choice context at 14:49 UTC on October 8. Production frontend remains
+blocked by Vercel's 24-hour deployment rate limit.
 
 ### v2.847 — Correct condition removal and concentration cleanup
 

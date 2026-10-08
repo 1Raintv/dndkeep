@@ -67,8 +67,8 @@ test.describe('Psion Destructive Thoughts', () => {
         update characters set campaign_id='${camp}',level=${level},intelligence=18,hit_dice_spent=0,class_resources='{"psion-disciplines":["Destructive Thoughts"],"psionic-energy-dice":2,"other":9}' where id='${charId}';
         insert into combatants(id,campaign_id,owner_id,name,definition_type,definition_id,current_hp,max_hp) values
           ('${cbSelf}','${camp}','${userId}','Restoration Fixture','character','${charId}',30,30),
-          ('${cbTarget}','${camp}','${dm}','Visible Goblin','srd_monster','fixture-goblin',30,30),
-          ('${cbHidden}','${camp}','${dm}','Secret Assassin','srd_monster','fixture-assassin',30,30);
+          ('${cbTarget}','${camp}','${dm}','Visible Goblin','custom','fixture-goblin',30,30),
+          ('${cbHidden}','${camp}','${dm}','Secret Assassin','custom','fixture-assassin',30,30);
         insert into combat_encounters(id,campaign_id,status,current_turn_index) values('${enc}','${camp}','active',0);
         insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,initiative,combatant_id,hidden_from_players) values
           ('${self}','${enc}','${camp}','character','${charId}','Restoration Fixture',0,20,'${cbSelf}',false),
@@ -109,6 +109,10 @@ test.describe('Psion Destructive Thoughts', () => {
       await dmPage.getByText(campName,{exact:true}).locator('visible=true').first().click();
       await dmPage.getByRole('button',{name:/Roll Damage/}).click();
       await expect(dmPage.getByRole('button',{name:/Apply Damage/})).toBeVisible();
+      // These are explicit custom fixtures, not nonexistent catalog monsters.
+      await expect(dmPage.getByRole('region',{name:'Psychic damage resolution'})).toContainText('conditional or missing defenses');
+      await dmPage.getByRole('combobox',{name:'Psychic defenses'}).selectOption('normal');
+      await expect(dmPage.getByRole('button',{name:/Apply Damage/})).toBeEnabled();
       await dmPage.screenshot({path:info.outputPath('destructive-resolve.png')});
       await dmPage.getByRole('button',{name:/Apply Damage/}).click();
       await expect.poll(()=>sql(`select current_hp from combatants where id='${cbTarget}'`)).toBe(String(30-amount));

@@ -21,6 +21,20 @@ export async function applyDestructiveThoughtsDamage(attack:PendingAttack):Promi
   if(attack.state==='applied')return attack; // legacy application predating receipts
   const ctx=await psionicRpc('get_pending_damage_context',{p_attack_id:attack.id},true) as {attack?:PendingAttack;target?:{definitionType:string;definition:Record<string,unknown>}|null};
   if(ctx?.attack?.id!==attack.id)throw new Error('Damage context could not be verified.');
+  const modifier=psionicTargetConModifier(ctx);
+  value=await psionicRpc('apply_psionic_pending_damage',{p_attack_id:attack.id,p_expected:ctx,p_con_modifier:modifier},true);
+ }
+ return finishPsionicDamageApplication(value,attack.id);
+}
+export async function finishPsionicDamageApplication(value:unknown,attackId:string):Promise<PendingAttack>{
+ const result=verified(value,attackId),s=result.settlement;
+ if(s.concentrationMode==='auto'&&s.concentrationCheckId&&s.characterId){
+  await readConcentrationResult(s.characterId,s.concentrationCheckId)??await resolveConcentrationSave(s.characterId,s.concentrationCheckId,'player');
+ }
+ return result.attack;
+}
+
+export function psionicTargetConModifier(ctx:{target?:{definitionType:string;definition:Record<string,unknown>}|null}):number {
   let modifier=0;
   if(ctx.target?.definitionType==='character'){
    const c=ctx.target.definition;
@@ -29,11 +43,5 @@ export async function applyDestructiveThoughtsDamage(attack:PendingAttack):Promi
    const scores=Object.fromEntries(keys.map(k=>[k,c[k]])) as Record<typeof keys[number],number>;
    modifier=abilityModifier(getEffectiveAbilityScores(scores,c.inventory as InventoryItem[]|null).constitution);
   }
-  value=await psionicRpc('apply_psionic_pending_damage',{p_attack_id:attack.id,p_expected:ctx,p_con_modifier:modifier},true);
- }
- const result=verified(value,attack.id),s=result.settlement;
- if(s.concentrationMode==='auto'&&s.concentrationCheckId&&s.characterId){
-  await readConcentrationResult(s.characterId,s.concentrationCheckId)??await resolveConcentrationSave(s.characterId,s.concentrationCheckId,'player');
- }
- return result.attack;
+  return modifier;
 }
