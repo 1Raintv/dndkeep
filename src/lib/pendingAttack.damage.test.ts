@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import {beforeEach,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({query:vi.fn(),roll:vi.fn(),event:vi.fn(),reactions:vi.fn(),remove:vi.fn(),riders:[] as unknown[],attack:{} as Record<string,unknown>,prior:null as unknown,writeError:null as unknown,riderError:null as unknown,patch:null as Record<string,unknown>|null,filters:[] as unknown[][],selections:[] as string[]}));
+const m=vi.hoisted(()=>({record:vi.fn(),query:vi.fn(),roll:vi.fn(),event:vi.fn(),reactions:vi.fn(),remove:vi.fn(),riders:[] as unknown[],attack:{} as Record<string,unknown>,prior:null as unknown,writeError:null as unknown,riderError:null as unknown,patch:null as Record<string,unknown>|null,filters:[] as unknown[][],selections:[] as string[]}));
+vi.mock('./api/pendingDamage',()=>({recordPendingDamage:m.record}));
 vi.mock('./supabase',()=>({supabase:{from:m.query}}));
 vi.mock('../rules/dice',async original=>({...await original<typeof import('../rules/dice')>(),rollDiceExpr:m.roll}));
 vi.mock('./combatEvents',()=>({emitCombatEvent:m.event,newChainId:()=> 'chain'}));
@@ -12,11 +13,12 @@ beforeEach(()=>{
  vi.clearAllMocks();localStorage.clear();m.riders=[];m.prior=null;m.writeError=null;m.riderError=null;m.patch=null;m.filters=[];m.selections=[];
  m.attack={id:'attack',attack_name:'Psychic hit',attack_kind:'attack_roll',hit_result:'hit',damage_dice:'1d6+2',damage_type:'psychic',state:'attack_rolled',attacker_participant_id:'actor'};
  m.roll.mockReturnValue({rolls:[3],modifier:2,total:5});
+ m.record.mockImplementation(async r=>{if(m.writeError)throw new Error('Damage not confirmed');m.patch={damage_rolls:r.rolls,damage_raw:r.raw,damage_final:r.final,damage_components:r.components,state:'damage_rolled'};return {attack:{...r.attack,...m.patch},replayed:false};});
  m.query.mockImplementation((table:string)=>{let update=false,group=false;const result=()=>({data:table==='combat_participants'?{active_buffs:[]}:group?m.prior:update?(m.writeError?null:{...m.attack,...m.patch}):m.attack,error:table==='combat_participants'?m.riderError:update?m.writeError:null});const q={select:(v:string)=>{m.selections.push(v);return q;},eq:(...v:unknown[])=>{m.filters.push(v);if(v[0]==='damage_group_id')group=true;return q;},not:()=>q,limit:()=>q,update:(p:Record<string,unknown>)=>{update=true;m.patch=p;return q;},single:async()=>result(),maybeSingle:async()=>result()};return q;});
 });
 it('stores psychic base and fire rider dice with their own modifiers and totals',async()=>{
  m.riders=[{buff:{key:'fire',name:'Fire rider',source:'feature',damageRider:{damageType:'fire'}},dice:'1d4+1'}];m.roll.mockReturnValueOnce({rolls:[3],modifier:2,total:5}).mockReturnValueOnce({rolls:[2],modifier:1,total:3});await rollDamage('attack');
- const packet=m.patch!.damage_components as {components:Record<string,unknown>[]};expect(packet.components.map(c=>[c.damageType,c.rawTotal,c.modifier])).toEqual([['psychic',5,2],['fire',3,1]]);expect(m.patch!.damage_final).toBe(8);expect(m.selections).toContain('combatants:combatant_id(active_buffs)');expect(m.filters).toContainEqual(['state','attack_rolled']);
+ const packet=m.patch!.damage_components as {components:Record<string,unknown>[]};expect(packet.components.map(c=>[c.damageType,c.rawTotal,c.modifier])).toEqual([['psychic',5,2],['fire',3,1]]);expect(m.patch!.damage_final).toBe(8);expect(m.selections).toContain('combatants:combatant_id(active_buffs)');expect(m.record).toHaveBeenCalledWith(expect.objectContaining({attack:expect.objectContaining({state:'attack_rolled'})}));
 });
 it('distinguishes a fixed critical maximum from a rolled die',async()=>{
  localStorage.setItem('dndkeep:houseRules','{"critRule":"max_plus_roll"}');m.attack.hit_result='crit';await rollDamage('attack');const packet=m.patch!.damage_components as {components:Record<string,unknown>[]};expect(packet.components[0]).toMatchObject({rolls:[3,6],dieKinds:['rolled','maximum'],rawTotal:11,modifier:2});
@@ -41,5 +43,9 @@ it('shared typed critical rolls preserve synthetic provenance without another ro
  await rollDamage('attack');expect((m.patch!.damage_components as {components:Record<string,unknown>[]}).components[0]).toEqual(component);expect(m.roll).not.toHaveBeenCalled();expect(m.patch!.damage_final).toBe(11);
 });
 it('a stale miss cannot overwrite a completed attack or report success',async()=>{
- m.attack.hit_result='miss';m.writeError={message:'stale'};await expect(rollDamage('attack')).rejects.toThrow(/Miss damage was not confirmed/);expect(m.filters).toContainEqual(['state','attack_rolled']);expect(m.event).not.toHaveBeenCalled();
+ m.attack.hit_result='miss';m.writeError={message:'stale'};await expect(rollDamage('attack')).rejects.toThrow(/not confirmed/);expect(m.record).toHaveBeenCalledWith(expect.objectContaining({attack:expect.objectContaining({state:'attack_rolled'})}));expect(m.event).not.toHaveBeenCalled();
+});
+
+it('a competing winning record is returned without logging discarded dice',async()=>{
+ const winner={...m.attack,state:'damage_rolled',damage_raw:9,damage_final:9};m.record.mockResolvedValue({attack:winner,replayed:true});expect(await rollDamage('attack')).toEqual(winner);expect(m.event).not.toHaveBeenCalled();expect(m.remove).not.toHaveBeenCalled();expect(m.reactions).not.toHaveBeenCalled();
 });
