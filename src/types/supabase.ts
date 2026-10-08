@@ -1678,7 +1678,7 @@ export type Database = {
           campaign_id: string;
           encounter_id: string | null;
           chain_id: string;
-          participant_id: string;
+          participant_id: string | null;
           character_id: string;
           spell_name: string;
           concentration_revision: number | null;
@@ -1702,7 +1702,7 @@ export type Database = {
           campaign_id: string;
           encounter_id?: string | null;
           chain_id: string;
-          participant_id: string;
+          participant_id: string | null;
           character_id: string;
           spell_name: string;
           concentration_revision?: number | null;
@@ -1726,7 +1726,7 @@ export type Database = {
           campaign_id?: string;
           encounter_id?: string | null;
           chain_id?: string;
-          participant_id?: string;
+          participant_id?: string | null;
           character_id?: string;
           spell_name?: string;
           concentration_revision?: number | null;

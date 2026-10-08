@@ -1,5 +1,26 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.825 — campaign concentration outside encounters (foundation)
+
+The existing campaign concentration queue now accepts a save with no encounter
+or combat participant. Encounter-bound saves still require a matching participant.
+Settlement retains owner/DM authorization, casting-revision protection, War Caster
+snapshots, saved dice, concurrent replay protection and atomic history. Offers
+without a participant do not touch participant-owned combat effects. No new dice
+or save implementation. Client/database types match the nullable link.
+
+Validation: 24 real local database cases, including authenticated offer creation,
+outside-encounter success/failure, permission rejection, races and stale casting;
+four desktop/phone prompt checks also pass and screenshots inspected. Changed
+function has no database-lint diagnostics; four unrelated existing entries remain.
+Local migration 20261008093019 applied, no pending ledger rows. Full release gate
+passes (2,375 tests; TypeScript 201/201; 255.1 KB entry).
+
+This is the prerequisite for atomic party damage, not the replacement itself.
+Next: one persisted damage identity updates temporary HP/current HP and queues its
+concentration save together, coordinates the sheet's realtime observer, and gives
+DMs safe recovery after lost responses. Party AoE's legacy direct write remains.
+
 ### v2.824 — party damage affinities and phone layout
 
 Party AoE now loads stored resistance, vulnerability and immunity columns; the

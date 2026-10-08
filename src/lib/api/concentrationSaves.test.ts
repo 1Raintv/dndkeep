@@ -93,3 +93,12 @@ it('retains both dice when the receipt selects the lower die',async()=>{
  m.rpc.mockResolvedValue({data:{...receipt,advantage:true,rolls:[3,17]},error:null});
  await expect(resolveConcentrationSave('hero','offer','player')).rejects.toThrow('dice could not be verified');expect(savedConcentrationRolls('hero')[0].secondD20).toBe(17);
 });
+
+it('creates a party save without an encounter or invented participant',async()=>{
+ const insert=vi.fn().mockResolvedValue({error:null});m.from.mockReturnValue({insert});
+ await createConcentrationOffer({...offer,participantId:null,encounterId:null});
+ expect(insert).toHaveBeenCalledWith(expect.objectContaining({participant_id:null,encounter_id:null,campaign_id:'campaign'}));
+});
+it('rejects encounter saves missing their participant before a write',async()=>{
+ await expect(createConcentrationOffer({...offer,participantId:null})).rejects.toThrow('requires a combat participant');expect(m.from).not.toHaveBeenCalled();
+});
