@@ -79,20 +79,36 @@ export default function TargetPickerModal({
   maxRangeFt,
   normalRangeFt,
 }: Props) {
-  // v2.480.0 — Battle map state. Loaded async on mount; null until the
-  // load resolves (rows just render without distance during the gap).
-  const [snapshot, setBattleMap] = useState<ActiveBattleMap | null>(null);
-  const battleMap=useLiveBattleMap(snapshot);
+  // v2.799 — unknown distance during a request is not evidence of no map.
+  // Key the result to the viewed campaign/scene so a previous response never
+  // enables an attack in a newly selected scene. No-map play stays available
+  // once the lookup completes; failed requests offer an explicit retry.
   const sceneId=useBattleMapStore(s=>s.currentSceneId);
+  const sceneLoading=useBattleMapStore(s=>s.loading);
+  const [retry,setRetry]=useState(0);
+  const loadKey=campaignId && fromParticipant ? JSON.stringify([campaignId,sceneId,retry]) : null;
+  const [loaded,setLoaded]=useState<{key:string;map:ActiveBattleMap|null;failed:boolean}|null>(null);
+  const snapshot=loaded?.key===loadKey ? loaded.map : null;
+  const battleMap=useLiveBattleMap(snapshot);
+  const rangeLoading=loadKey!==null && (loaded?.key!==loadKey || (snapshot!==null && snapshot.id===sceneId && sceneLoading));
+  const rangeFailed=loadKey!==null && loaded?.key===loadKey && loaded.failed;
   const movementBusy=useMapMovementBusy();
   useEffect(() => {
-    if (!campaignId || !fromParticipant) return;
+    if (!campaignId || !loadKey) return;
     let cancelled = false;
-    loadActiveBattleMap(campaignId).then(map => {
-      if (!cancelled) setBattleMap(map);
+    // A hung connection must leave a way to recover; its late result is stale.
+    const timer=setTimeout(()=>{
+      cancelled=true;setLoaded({key:loadKey,map:null,failed:true});
+    },15_000);
+    loadActiveBattleMap(campaignId,{viewedSceneId:sceneId,throwOnError:true}).then(map => {
+      clearTimeout(timer);
+      if (!cancelled) setLoaded({key:loadKey,map,failed:false});
+    },()=>{
+      clearTimeout(timer);
+      if (!cancelled) setLoaded({key:loadKey,map:null,failed:true});
     });
-    return () => { cancelled = true; };
-  }, [campaignId, fromParticipant,sceneId]);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [campaignId,loadKey,sceneId]);
 
   // v2.746.0 — rank instead of filter. The distance callback carries the
   // v2.480 footprint-aware math (0 ft for self; null while the map loads
@@ -149,9 +165,13 @@ export default function TargetPickerModal({
               <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--t-2)' }}>{subtitle}</p>
             )}
           </div>
-          <button onClick={onCancel} style={{ fontSize: 11, padding: '4px 10px', minHeight: 0 }}>✕</button>
+          <button aria-label="Close target picker" onClick={onCancel} style={{ fontSize: 11, padding: '4px 10px', minHeight: 0 }}>✕</button>
         </div>
 
+        {rangeLoading && <div role="status" style={{padding:'10px 14px',fontSize:13,color:'var(--t-2)'}}>Checking target distances…</div>}
+        {rangeFailed && <div role="alert" style={{padding:'10px 14px',fontSize:13,color:'var(--t-2)'}}>
+          Could not check target distances. <button onClick={()=>setRetry(n=>n+1)}>Try again</button>
+        </div>}
         <MovementPendingNotice busy={movementBusy}/>
         <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {total === 0 ? (
@@ -188,12 +208,12 @@ export default function TargetPickerModal({
               && distanceFt !== null
               && normalRangeFt != null
               && distanceFt > normalRangeFt;
-            const blocked = outOfRange || movementBusy;
+            const blocked = outOfRange || movementBusy || rangeLoading || rangeFailed;
             return (
               <button
                 key={p.id}
                 data-target-group={row.group}
-                onClick={()=>{if(!outOfRange && !isMapMovementBusy(sceneId))onPick(p);}}
+                onClick={()=>{if(!blocked && !isMapMovementBusy(sceneId))onPick(p);}}
                 disabled={blocked}
                 title={outOfRange ? `Out of range — ${distanceFt} ft (max ${maxRangeFt} ft)` : undefined}
                 style={{

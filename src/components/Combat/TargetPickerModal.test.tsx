@@ -2,6 +2,7 @@
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 import TargetPickerModal from './TargetPickerModal';
+import {loadActiveBattleMap,type ActiveBattleMap} from '../../lib/battleMapGeometry';
 import {useBattleMapStore,type Token} from '../../lib/stores/battleMapStore';
 import type {CombatParticipant} from '../../types';
 import {beginTokenMove} from '../Campaign/battlemap/pendingTokenMoves';
@@ -59,4 +60,78 @@ it('v2.746 — lists a 0-HP creature under DOWNED and a dead one last under DEAD
   expect(rows.every(r=>!r.disabled)).toBe(true);
   fireEvent.click(rows[2]);expect(pick).toHaveBeenCalledWith(dead);
   fireEvent.click(rows[1]);expect(pick).toHaveBeenCalledWith(down);
+});
+
+it('waits for distances before allowing a target, then keeps an unreachable target blocked',async()=>{
+  let resolve!:(map:ActiveBattleMap|null)=>void;
+  vi.mocked(loadActiveBattleMap).mockReturnValueOnce(new Promise(r=>{resolve=r;}));
+  const actor={id:'hero',name:'Hero',participant_type:'character',entity_id:'hero'} as CombatParticipant;
+  const target={id:'g',name:'Goblin',participant_type:'creature',entity_id:'goblin'} as CombatParticipant;
+  const pick=vi.fn();render(<TargetPickerModal participants={[target]} fromParticipant={actor} campaignId="c" maxRangeFt={5} onPick={pick} onCancel={vi.fn()}/>);
+  const button=screen.getByRole('button',{name:/Goblin/}) as HTMLButtonElement;
+  expect(button.disabled).toBe(true);
+  fireEvent.click(button);expect(pick).not.toHaveBeenCalled();
+  await act(async()=>resolve({id:'s',grid_size:70,grid_cols:15,grid_rows:12,walls:[],tokens:[
+    {id:'hero',character_id:'hero',row:0,col:0},{id:'g',creature_id:'goblin',row:0,col:8},
+  ]}));
+  expect(button.textContent).toContain('40 ft — out of range');expect(button.disabled).toBe(true);
+});
+
+it('keeps no-map play available after checking and retries a failed lookup without picking automatically',async()=>{
+  vi.mocked(loadActiveBattleMap).mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(null);
+  const actor={id:'hero',name:'Hero',participant_type:'character',entity_id:'hero'} as CombatParticipant;
+  const target={id:'g',name:'Goblin',participant_type:'creature',entity_id:'goblin'} as CombatParticipant;
+  const pick=vi.fn();render(<TargetPickerModal participants={[target]} fromParticipant={actor} campaignId="c" maxRangeFt={5} onPick={pick} onCancel={vi.fn()}/>);
+  const button=screen.getByRole('button',{name:/Goblin/}) as HTMLButtonElement;
+  await screen.findByRole('alert');expect(button.disabled).toBe(true);
+  fireEvent.click(button);expect(pick).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'Try again'}));
+  await waitFor(()=>expect(button.disabled).toBe(false));
+  expect(screen.queryByRole('alert')).toBeNull();expect(pick).not.toHaveBeenCalled();
+  fireEvent.click(button);expect(pick).toHaveBeenCalledWith(target);
+});
+it('does not let a late response from the previous campaign enable the new picker',async()=>{
+  let first!:(map:ActiveBattleMap|null)=>void,second!:(map:ActiveBattleMap|null)=>void;
+  vi.mocked(loadActiveBattleMap).mockReturnValueOnce(new Promise(r=>{first=r;})).mockReturnValueOnce(new Promise(r=>{second=r;}));
+  const actor={id:'hero',name:'Hero',participant_type:'character',entity_id:'hero'} as CombatParticipant;
+  const target={id:'g',name:'Goblin',participant_type:'creature',entity_id:'goblin'} as CombatParticipant;
+  const props={participants:[target],fromParticipant:actor,maxRangeFt:5,onPick:vi.fn(),onCancel:vi.fn()};
+  const view=render(<TargetPickerModal {...props} campaignId="first"/>);
+  view.rerender(<TargetPickerModal {...props} campaignId="second"/>);
+  const button=screen.getByRole('button',{name:/Goblin/}) as HTMLButtonElement;
+  await act(async()=>first(null));expect(button.disabled).toBe(true);
+  await act(async()=>second(null));expect(button.disabled).toBe(false);
+});
+it('waits again when changing scenes, including while live scene tokens are loading',async()=>{
+  const actor={id:'hero',name:'Hero',participant_type:'character',entity_id:'hero'} as CombatParticipant;
+  const target={id:'g',name:'Goblin',participant_type:'creature',entity_id:'goblin'} as CombatParticipant;
+  useBattleMapStore.setState({currentSceneId:'s',loading:false,tokens:{}});
+  const pick=vi.fn();render(<TargetPickerModal participants={[target]} fromParticipant={actor} campaignId="c" maxRangeFt={5} onPick={pick} onCancel={vi.fn()}/>);
+  const button=screen.getByRole('button',{name:/Goblin/}) as HTMLButtonElement;
+  await waitFor(()=>expect(button.disabled).toBe(false));
+  let resolve!:(map:ActiveBattleMap|null)=>void;
+  vi.mocked(loadActiveBattleMap).mockReturnValueOnce(new Promise(r=>{resolve=r;}));
+  act(()=>useBattleMapStore.setState({currentSceneId:'new',loading:true}));
+  expect(button.disabled).toBe(true);
+  await act(async()=>resolve({id:'new',grid_size:70,grid_cols:15,grid_rows:12,tokens:[],walls:[]}));
+  expect(button.disabled).toBe(true);
+  act(()=>useBattleMapStore.setState({loading:false}));expect(button.disabled).toBe(false);
+  expect(pick).not.toHaveBeenCalled();
+});
+
+it('offers retry after a hung load and ignores its late response',async()=>{
+  vi.useFakeTimers();
+  try {
+    let resolve!:(map:ActiveBattleMap|null)=>void;
+    vi.mocked(loadActiveBattleMap).mockReturnValueOnce(new Promise(r=>{resolve=r;})).mockResolvedValueOnce(null);
+    const actor={id:'hero',name:'Hero',participant_type:'character',entity_id:'hero'} as CombatParticipant;
+    const target={id:'g',name:'Goblin',participant_type:'creature',entity_id:'goblin'} as CombatParticipant;
+    render(<TargetPickerModal participants={[target]} fromParticipant={actor} campaignId="c" maxRangeFt={5} onPick={vi.fn()} onCancel={vi.fn()}/>);
+    const button=screen.getByRole('button',{name:/Goblin/}) as HTMLButtonElement;
+    await act(async()=>vi.advanceTimersByTimeAsync(15_000));
+    expect(screen.getByRole('alert').textContent).toContain('Could not check target distances');
+    await act(async()=>resolve(null));expect(button.disabled).toBe(true);
+    await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Try again'})));
+    expect(button.disabled).toBe(false);
+  }finally{vi.useRealTimers();}
 });
