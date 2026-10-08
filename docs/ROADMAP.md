@@ -1,5 +1,28 @@
 # DNDKeep — Two-Track Roadmap
 
+### In progress — atomic pending-attack settlement
+
+Local migration `20261008125440_pending_damage_context.sql` adds a DM-only,
+consistent read of attack, encounter, roster, runtime pools, current definitions
+and reactions. It rejects mismatched character/combatant/encounter identities,
+keeps custom/legacy unknown defenses distinct from none, and excludes old full
+sheet snapshots from the response. Eleven local database cases pass; changed
+functions have no advisor findings. This is an integration checkpoint, not a
+shipped HP transaction or a new automation claim.
+
+Next implementation must replace `pendingAttack.applyDamage` separate writes
+with one idempotent settlement receipt. Preserve original damage components;
+record reaction/DM adjustments explicitly before recomputing typed totals.
+Lock and recheck the captured context; settle target pools/death state, melee
+retaliation, concentration cleanup/offers and combat events together. Mastery
+side effects need saved roll/outcome identities (especially Topple), not a new
+random roll on receipt replay. Sharpened once-per-current-turn replacement must
+share that settlement and retain shared-AoE roll provenance. Conditional/unknown
+defenses need explicit adjudication, never silent matching failure. Character
+species defaults also need correction before reuse (current blanket Tiefling
+fire and Goliath cold defaults are not sufficient to model lineage choices).
+
+
 ### v2.843 — Keep creature damage defenses through import and editing
 
 Catalog import now copies resistance, immunity and vulnerability lists into
@@ -16,6 +39,8 @@ browser regression fail on missing Psychic resistance; restoring it passes.
 Local migration applied; advisors add no findings compared with the preceding
 run (existing creature-table policy performance warnings remain). These saved
 defenses are not yet wired into pending-attack HP settlement.
+PR #187 merged as 1c14aad; production workflow 37780286624 applied
+20261008124213_creature_damage_defenses.sql successfully.
 
 
 ### v2.842 — Preserve active Sharpened records
