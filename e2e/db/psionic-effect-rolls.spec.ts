@@ -188,26 +188,29 @@ test.describe('Linked effect saved activation rolls',()=>{
  const rows=run(`select get_psionic_effect_roll_records('${char}')`);expect(rows).toHaveLength(7);expect(rows.find((r:{requestId:string})=>r.requestId===activation)).toMatchObject({finalized:true,applied:false,total:6});
  });
 
- test.describe('combat delivery',()=>{
- let camp:string,enc:string,self:string,target:string,cbSelf:string,cbTarget:string,id:string;
+ for(const targetKind of ['creature','character'] as const)test.describe(`combat delivery to ${targetKind}`,()=>{
+ let camp:string,enc:string,self:string,target:string,cbSelf:string,cbTarget:string,id:string,targetCharacter:string;
  test.beforeEach(()=>{
-  camp=randomUUID();enc=randomUUID();self=randomUUID();target=randomUUID();cbSelf=randomUUID();cbTarget=randomUUID();id=randomUUID();
+  camp=randomUUID();enc=randomUUID();self=randomUUID();target=randomUUID();cbSelf=randomUUID();cbTarget=randomUUID();id=randomUUID();targetCharacter=randomUUID();
+  if(targetKind==='character')sql(`insert into characters(id,user_id,name,species,class_name,background) values('${targetCharacter}','${other}','Goblin','Human','Fighter','Soldier')`);
+  const targetEntity=targetKind==='character'?targetCharacter:'goblin';
   sql(`insert into campaigns(id,owner_id,name) values('${camp}','${other}','Linked delivery');insert into campaign_members(campaign_id,user_id,role) values('${camp}','${owner}','player');update characters set campaign_id='${camp}' where id='${char}';
-   insert into combatants(id,campaign_id,owner_id,name,definition_type,definition_id,current_hp,max_hp) values('${cbSelf}','${camp}','${owner}','Psion','character','${char}',30,30),('${cbTarget}','${camp}','${other}','Goblin','custom','goblin',30,30);
+   insert into combatants(id,campaign_id,owner_id,name,definition_type,definition_id,current_hp,max_hp) values('${cbSelf}','${camp}','${owner}','Psion','character','${char}',30,30),('${cbTarget}','${camp}','${other}','Goblin','${targetKind==='character'?'character':'custom'}','${targetEntity}',30,30);
    insert into combat_encounters(id,campaign_id,status,current_turn_index) values('${enc}','${camp}','active',0);
-   insert into combat_participants(id,campaign_id,encounter_id,name,participant_type,entity_id,combatant_id,turn_order) values('${self}','${camp}','${enc}','Psion','character','${char}','${cbSelf}',0),('${target}','${camp}','${enc}','Goblin','creature','goblin','${cbTarget}',1);`);
-  const metadata={characterName:'Psion',targetName:'Goblin',target:{id:target,entity_id:'goblin',participant_type:'creature',combatant_id:cbTarget},context:{campaignId:camp,encounterId:enc,self:{id:self,entity_id:char,participant_type:'character',combatant_id:cbSelf}}};
+   insert into combat_participants(id,campaign_id,encounter_id,name,participant_type,entity_id,combatant_id,turn_order) values('${self}','${camp}','${enc}','Psion','character','${char}','${cbSelf}',0),('${target}','${camp}','${enc}','Goblin','${targetKind}','${targetEntity}','${cbTarget}',1);`);
+  const metadata={characterName:'Psion',targetName:'Goblin',target:{id:target,entity_id:targetEntity,participant_type:targetKind,combatant_id:cbTarget},context:{campaignId:camp,encounterId:enc,self:{id:self,entity_id:char,participant_type:'character',combatant_id:cbSelf}}};
   const snapshot=sql(`select request->'expected' from dndkeep_private.psionic_discipline_uses where request_id='${activation}'`);
   const turn=JSON.stringify(run(`select get_enkindled_turn('${char}')`).turn);
   run(`select begin_psionic_effect_roll('${char}','${id}','${turn}','destructive-thoughts',array[2,3],2,4,'${snapshot}','${JSON.stringify(metadata)}')`);
  });
- test.afterEach(()=>sql(`update characters set campaign_id=null where id='${char}';delete from campaigns where id='${camp}';`));
+ test.afterEach(()=>sql(`update characters set campaign_id=null where id='${char}';delete from campaigns where id='${camp}';delete from characters where id='${targetCharacter}';`));
  const queue=()=>`select queue_destructive_thoughts_effect('${char}','${id}')`;
  test('queues exact finalized enhanced dice once and does not recreate a deleted declaration',()=>{
   run(enhance(randomUUID(),'surge','null','6',id));run(finalize(id));
   expect(run(queue())).toMatchObject({attackId:id,replayed:false});expect(run(queue()).replayed).toBe(true);
   expect(JSON.parse(sql(`select jsonb_build_object('dice',psionic_damage_dice,'total',damage_dice,'target',target_participant_id) from pending_attacks where id='${id}'`))).toEqual({dice:{version:1,sides:12,originalRolls:[2,3],rolls:[4,4],modifier:4},total:'12',target});
   expect(sql(`select count(*) from combat_events where campaign_id='${camp}' and event_type='attack_declared'`)).toBe('1');
+  expect(sql(`select target_type from combat_events where campaign_id='${camp}' and event_type='attack_declared'`)).toBe(targetKind==='character'?'player':'creature');
   sql(`delete from pending_attacks where id='${id}';update combat_encounters set status='ended' where id='${enc}'`);expect(run(queue()).replayed).toBe(true);expect(sql(`select count(*) from pending_attacks where id='${id}'`)).toBe('0');
  });
  test('concurrent delivery creates a single declaration and receipt',async()=>{
