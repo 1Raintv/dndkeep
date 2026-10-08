@@ -9,7 +9,7 @@ const dm='11111111-1111-1111-1111-111111111111',player='12121212-1212-1212-1212-
 
 test.describe('Counterspell source choices (local stack)',()=>{
  gateDbSuite();test.use({serviceWorkers:'block'});
- test('reactor selects prepared source and its effective DC, not the target spell level',async({page},info)=>{
+ for(const loseResponse of [false,true])test(`reactor selects its source and links the cast${loseResponse?' after a lost response':''}`,async({page},info)=>{
   test.setTimeout(90_000);
   const camp=randomUUID(),scene=randomUUID(),enc=randomUUID(),hero=randomUUID(),target=randomUUID(),cast=randomUUID(),offer=randomUUID();
   try {
@@ -57,11 +57,21 @@ test.describe('Counterspell source choices (local stack)',()=>{
    await expect(page.getByText('DC 16 CON save',{exact:true})).toBeVisible();await expect(castButton).toBeEnabled();
    expect(sql(`select spell_slots->'5'->>'used' from characters where id='${hero}'`)).toBe('0');
    await page.screenshot({path:info.outputPath('counterspell-source.png')});
+   const rpcBodies:string[]=[];
+   if(loseResponse)await page.route('**/rest/v1/rpc/accept_counterspell_atomic',async route=>{
+    rpcBodies.push(route.request().postData()??'');
+    if(rpcBodies.length===1){const response=await route.fetch();expect(response.status()).toBe(200);await route.abort('failed');}
+    else await route.continue();
+   });
    await castButton.click();
    await expect.poll(()=>sql(`select save_dc from pending_attacks where campaign_id='${camp}' and attack_name like 'Counterspell%'`)).toBe('16');
    await expect.poll(()=>sql(`select spell_slots->'5'->>'used' from characters where id='${hero}'`)).toBe('1');
    expect(sql(`select spell_slots->'3'->>'used' from characters where id='${hero}'`)).toBe('0');
    await expect.poll(()=>sql(`select state from pending_reactions where id='${offer}'`)).toBe('accepted');
+   await expect.poll(()=>sql(`select state from pending_spell_casts where id='${cast}'`)).toBe('counterspell_offered');
+   if(loseResponse){await expect.poll(()=>rpcBodies.length).toBe(2);expect(rpcBodies[1]).toBe(rpcBodies[0]);}
+   expect(sql(`select count(*) from dndkeep_private.counterspell_acceptances where offer_id='${offer}'`)).toBe('1');
+   expect(sql(`select count(*) from combat_events where campaign_id='${camp}' and event_type='reaction_used'`)).toBe('1');
    expect(errors).toEqual([]);
   }finally{
    sql(`delete from pending_reactions where campaign_id='${camp}';delete from pending_spell_casts where campaign_id='${camp}';delete from pending_attacks where campaign_id='${camp}';`);
