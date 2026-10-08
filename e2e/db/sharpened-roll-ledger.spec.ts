@@ -102,12 +102,29 @@ test.describe('Sharpened saved activation rolls',()=>{
  expect(()=>sql(`begin;set local role anon;select get_sharpened_roll_records('${char}');commit;`)).toThrow(/permission denied/);
  });
 
- test('keeps all unfinished records while limiting only completed history',()=>{
+ test('keeps unfinished and active finalized records, then bounds expired history',()=>{
  const ids=[activation];
  for(let turn=1;turn<=6;turn++){run(`select advance_psionic_solo_turn('${char}','${randomUUID()}',${turn-1})`);const next=randomUUID();begin(next,turn);ids.push(next);}
  expect(run(`select get_sharpened_roll_records('${char}')`)).toHaveLength(7);
  for(const id of ids)run(finalize(id));
+ const active=run(`select get_sharpened_roll_records('${char}')`);expect(active).toHaveLength(7);expect(active.map((r:{requestId:string})=>r.requestId)).toEqual([...ids].reverse());
+ // Advance declared time until even the newest activation has expired.
+ for(let turn=6;turn<16;turn++)run(`select advance_psionic_solo_turn('${char}','${randomUUID()}',${turn})`);
  const rows=run(`select get_sharpened_roll_records('${char}')`);expect(rows).toHaveLength(5);expect(rows.every((r:{finalized:boolean})=>r.finalized)).toBe(true);expect(rows.map((r:{requestId:string})=>r.requestId)).toEqual(ids.slice(2).reverse());
+ });
+
+ for(const ending of ['incapacitation','unknown duration','unknown incapacitation'])test(`bounds finalized ${ending} records without hiding unfinished recovery`,()=>{
+ const ids=[activation];
+ for(let turn=1;turn<=6;turn++){run(`select advance_psionic_solo_turn('${char}','${randomUUID()}',${turn-1})`);const next=randomUUID();begin(next,turn);ids.push(next);}
+ for(const id of ids)run(finalize(id));
+ if(ending==='incapacitation')sql(`update characters set active_conditions=array['Stunned'] where id='${char}'`);
+ else if(ending==='unknown duration')sql(`update dndkeep_private.sharpened_rolls set duration_start_seconds=null where character_id='${char}'`);
+ else sql(`update dndkeep_private.sharpened_rolls set incapacitation_token=null where character_id='${char}'`);
+ const rows=run(`select get_sharpened_roll_records('${char}')`);
+ expect(rows).toHaveLength(5);expect(rows.map((r:{requestId:string})=>r.requestId)).toEqual(ids.slice(2).reverse());
+ // An unfinished paid activation stays recoverable even when validity is unknown.
+ sql(`update dndkeep_private.sharpened_rolls set result=null where request_id='${activation}'`);
+ expect(run(`select get_sharpened_roll_records('${char}')`).map((r:{requestId:string})=>r.requestId)).toContain(activation);
  });
 
  const record=()=>run(`select get_sharpened_roll_records('${char}')`).find((r:{requestId:string})=>r.requestId===activation);

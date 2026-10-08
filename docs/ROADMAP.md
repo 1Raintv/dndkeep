@@ -1,5 +1,20 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.842 — Preserve active Sharpened records
+
+The existing saved-roll lookup now retains every duration/condition-tracked
+activation that has not ended, even beyond five finalized rolls. Unfinished
+paid rolls remain recoverable. Only inactive or untracked finalized history is
+limited to five. No strongest/latest overlap choice or automatic damage claim
+is implied by returning these records.
+
+Validation: 37 local database cases pass, including authorization, expiry,
+incapacitation and missing tracking. Restoring the old lookup makes the new
+regression fail (five records instead of seven); restoring the fix passes.
+Full gate: 2,579 units, TypeScript 200/200, hooks clean, entry 255.1 KB.
+The changed function has no advisor findings; local migration applied.
+
+
 ### In progress — typed damage resolution and Sharpened integration
 
 Local `src/rules/typedDamage.ts` work groups same-type components before resistance,
@@ -15,9 +30,8 @@ Remaining integration must preserve reaction/DM adjustment provenance, load targ
 defenses from the actual character/creature definition, and settle HP plus the
 once-per-current-turn replacement without duplicate writes. `applyDamage` still
 uses separate writes and blanket-condition resistance; its reaction/HP side effects
-need the same transaction/recovery guarantees as the recorded damage roll. Saved
-Sharpened history also limits finalized rows to five, so automatic selection must
-query every currently valid activation rather than that history window. Resolve
+need the same transaction/recovery guarantees as the recorded damage roll. The pending v2.842 lookup keeps all tracked, unexpired Sharpened activations
+plus unfinished recovery and five inactive finalized records. Resolve
 activation overlap explicitly instead of guessing the strongest/latest number.
 
 ### Migration release-tool recovery
