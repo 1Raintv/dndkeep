@@ -30,15 +30,16 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
   const previousView=usePreviousMapView(viewport,sceneId);
   useEffect(() => { if (editingToolActive) setPan(false); }, [editingToolActive]);
   useEffect(() => {
-    if (!viewport) return;
-    const update = () => setZoom(Math.round(viewport.scale.x * 100));
+    if (!viewport || viewport.destroyed) return;
+    // v2.791 — scene replacement can destroy Pixi before React cleans up this effect.
+    const update = () => { if (!viewport.destroyed) setZoom(Math.round(viewport.scale.x * 100)); };
     update();
     viewport.on('zoomed', update);
     return () => { viewport.off('zoomed', update); };
   }, [viewport]);
 
   const fit = () => {
-    if (!viewport || !canvas) return;
+    if (!viewport || viewport.destroyed || !canvas) return;
     const frame=boundsFrame(0,0,viewport.worldWidth,viewport.worldHeight,viewport.screenWidth,viewport.screenHeight,4,clearArea());
     if(!frame)return;
     previousView.remember(frame);
@@ -50,7 +51,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     setZoom(Math.round(viewport.scale.x * 100));
   };
   const chooseZoom = (scale: number) => {
-    if (!viewport) return;
+    if (!viewport || viewport.destroyed) return;
     // v2.713 — stop residual pan momentum and retain the same world center.
     // setZoom also respects the live clamp, including a fitted zoom floor.
     viewport.plugins.get('decelerate')?.reset();
@@ -71,7 +72,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     };
   };
   const focus = () => {
-    if (!viewport || !canvas) return;
+    if (!viewport || viewport.destroyed || !canvas) return;
     const tokens = Object.values(useBattleMapStore.getState().tokens).filter(t => selectedIds.has(t.id));
     const frame=selectionFrame(tokens,gridSizePx,viewport.screenWidth,viewport.screenHeight,viewport.scale.x,clearArea());
     if (!frame) return;
@@ -83,10 +84,10 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     setZoom(Math.round(frame.zoom*100));
   };
   const restoreView=()=>{const scale=previousView.restore();if(scale!==null)setZoom(Math.round(scale*100));};
-  useMapNavigationShortcuts(canvas,{zoom:factor=>{if(viewport)chooseZoom(viewport.scale.x*factor);},fit,focus:selectedIds.size ? focus : undefined,previous:previousView.canReturn ? restoreView : undefined});
+  useMapNavigationShortcuts(canvas,{zoom:factor=>{if(viewport && !viewport.destroyed)chooseZoom(viewport.scale.x*factor);},fit,focus:selectedIds.size ? focus : undefined,previous:previousView.canReturn ? restoreView : undefined});
 
   useEffect(() => {
-    if (!canvas || !viewport) return;
+    if (!canvas || !canvas.parentElement || !viewport || viewport.destroyed) return;
     let pointer:{x:number;y:number;buttons:number}|null=null, space = false;
     let suppressClickUntil = 0;
     let drag: { id: number; x: number; y: number } | null = null;
@@ -100,6 +101,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     const enter = (event:PointerEvent) => { pointer={x:event.clientX,y:event.clientY,buttons:event.buttons};cursor(); };
     const leave = () => { pointer=null; };
     const down = (event: PointerEvent) => {
+      if (viewport.destroyed) return;
       // v2.735 — middle pan uses the same capture/cancel path as Space pan,
       // including over tokens. Never take over a primary-button token drag.
       const middle=event.button===1 && event.buttons===4;
@@ -111,6 +113,7 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
       canvas.setPointerCapture(event.pointerId); cursor();
     };
     const move = (event: PointerEvent) => {
+      if (viewport.destroyed) return;
       if(event.target===canvas)pointer={x:event.clientX,y:event.clientY,buttons:event.buttons};
       // v2.698 — Pan owns all fingers, including a pinch over a token.
       // Keep the world point under the midpoint fixed while zooming.
@@ -203,12 +206,12 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
       <button type="button" aria-pressed={pan} onClick={()=>{setPan(true); onSelectMode();}} title="Drag the map · hold Space for temporary pan"><MapControlIcon kind="pan"/>Pan</button>
     </div>
     <div className="map-navigation-zoom">
-      <button type="button" aria-label="Zoom out" onClick={()=>viewport && chooseZoom(viewport.scale.x/1.2)}>−</button>
+      <button type="button" aria-label="Zoom out" onClick={()=>viewport && !viewport.destroyed && chooseZoom(viewport.scale.x/1.2)}>−</button>
       <select aria-label="Map zoom" title="Choose zoom level" value={zoom} onChange={event=>chooseZoom(Number(event.target.value)/100)}>
         {/* Keep wheel/pinch/Fit values visible without rounding the actual camera. */}
         {[...new Set([25,50,100,200,400,zoom])].sort((a,b)=>a-b).map(value=><option key={value} value={value}>{value}%</option>)}
       </select>
-      <button type="button" aria-label="Zoom in" onClick={()=>viewport && chooseZoom(viewport.scale.x*1.2)}>+</button>
+      <button type="button" aria-label="Zoom in" onClick={()=>viewport && !viewport.destroyed && chooseZoom(viewport.scale.x*1.2)}>+</button>
     </div>
     <div className="map-navigation-framing">
       <button type="button" onClick={fit} title="Show the entire map"><MapControlIcon kind="fit"/>Fit map</button>

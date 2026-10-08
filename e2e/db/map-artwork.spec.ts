@@ -44,8 +44,8 @@ test.describe('map artwork preview',()=>{
       const saved=await page.evaluate(async id=>{const path='/src/lib/supabase.ts';const {supabase}=await import(/* @vite-ignore */ path);const {data}=await supabase.from('scenes').select('background_storage_path,width_cells,height_cells').eq('id',id).single();return data;},scene!.id);
       expect(saved.background_storage_path).toBeTruthy();expect([saved.width_cells,saved.height_cells]).toEqual([10,10]);
       await expect.poll(()=>page.evaluate(()=>{
-        const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
-        return vp.children.some((c:any)=>c.texture?.width===700 && c.texture?.height===700);
+        const vp=(window as any).__PIXI_APP__?.stage.children.find((c:any)=>c.plugins);
+        return vp?.children.some((c:any)=>c.texture?.width===700 && c.texture?.height===700);
       })).toBe(true);
       await page.screenshot({path:info.outputPath('artwork-applied.png')});
       await expect(page.getByRole('button',{name:'Change Map',exact:true})).toBeVisible();expect(errors).toEqual([]);
@@ -53,4 +53,58 @@ test.describe('map artwork preview',()=>{
       await page.evaluate(async id=>{const path='/src/lib/supabase.ts';const {supabase}=await import(/* @vite-ignore */ path);const {data}=await supabase.from('scenes').select('background_storage_path').eq('id',id).single();if(data?.background_storage_path)await supabase.storage.from('battlemap-assets').remove([data.background_storage_path]);await supabase.from('scenes').delete().eq('id',id);},scene!.id);
     }
   });
+  test('high-resolution artwork keeps native detail without resizing the grid',async({page},info)=>{
+    test.setTimeout(60_000);
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
+    await signInAsSeedDm(page);
+    const name=`HD artwork ${Date.now()}`;
+    const scene=await page.evaluate(async name=>{
+      const path='/src/lib/api/scenes.ts';const api=await import(/* @vite-ignore */ path);
+      return api.createScene('22222222-2222-2222-2222-222222222222','11111111-1111-1111-1111-111111111111',{name,widthCells:10,heightCells:10});
+    },name);
+    expect(scene).toBeTruthy();
+    try{
+      await page.goto('/campaigns');await page.getByText('Local Test Campaign',{exact:true}).locator('visible=true').first().click();
+      await page.locator('select').filter({has:page.locator('option',{hasText:name})}).selectOption({label:name});
+      const png=await page.evaluate(()=>{
+        const c=document.createElement('canvas');c.width=2400;c.height=1200;const ctx=c.getContext('2d')!;
+        ctx.fillStyle='#263648';ctx.fillRect(0,0,c.width,c.height);ctx.strokeStyle='#e8c36b';ctx.lineWidth=2;
+        for(let x=0;x<c.width;x+=24){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,c.height);ctx.stroke();}
+        ctx.fillStyle='#d1dee8';ctx.font='bold 100px sans-serif';ctx.fillText('HIGH DETAIL MAP',150,600);
+        return c.toDataURL().split(',')[1];
+      });
+      await page.getByLabel('Choose map artwork').setInputFiles({name:'hd-map.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
+      const dialog=page.getByRole('dialog',{name:'Preview map artwork'});
+      await expect(dialog).toBeVisible();await expect(dialog).toContainText('Saved image: 2400 × 2400 pixels.');
+      const dimensions=()=>dialog.locator('canvas').evaluate(c=>[(c as HTMLCanvasElement).width,(c as HTMLCanvasElement).height]);
+      expect(await dimensions()).toEqual([2400,2400]);
+      await dialog.getByLabel('Fill and crop',{exact:false}).check();await expect.poll(dimensions).toEqual([1200,1200]);
+      await dialog.getByLabel('Fit inside',{exact:false}).check();await expect.poll(dimensions).toEqual([2400,2400]);
+      await expect(dialog.getByRole('status')).toHaveCount(0);
+      await page.screenshot({path:info.outputPath('hd-artwork-preview.png')});
+      await dialog.getByRole('button',{name:'Apply artwork'}).click();await expect(dialog).toBeHidden();
+      const texture=()=>page.evaluate(()=>{
+        const vp=(window as any).__PIXI_APP__?.stage.children.find((c:any)=>c.plugins);
+        const sprite=vp?.children.find((c:any)=>c.texture?.width===2400&&c.texture?.height===2400);
+        return sprite?{width:sprite.width,height:sprite.height}:null;
+      });
+      await expect.poll(texture).toEqual({width:700,height:700});
+      const saved=await page.evaluate(async id=>{
+        const path='/src/lib/supabase.ts';const {supabase}=await import(/* @vite-ignore */ path);
+        const {data}=await supabase.from('scenes').select('width_cells,height_cells,grid_size_px,background_storage_path').eq('id',id).single();
+        return data;
+      },scene!.id);
+      expect([saved.width_cells,saved.height_cells,saved.grid_size_px]).toEqual([10,10,70]);
+      await page.reload();
+      // Reload opens the campaign's default scene; explicitly return to this private fixture.
+      await page.locator('select').filter({has:page.locator('option',{hasText:name})}).selectOption({label:name});
+      await expect.poll(texture).toEqual({width:700,height:700});
+      await page.getByTitle('Fullscreen map',{exact:true}).click();
+      await page.getByRole('button',{name:'Fit map',exact:true}).click();
+      await page.screenshot({path:info.outputPath('hd-artwork-applied.png')});expect(errors).toEqual([]);
+    }finally{
+      await page.evaluate(async id=>{const path='/src/lib/supabase.ts';const {supabase}=await import(/* @vite-ignore */ path);const {data}=await supabase.from('scenes').select('background_storage_path').eq('id',id).single();if(data?.background_storage_path)await supabase.storage.from('battlemap-assets').remove([data.background_storage_path]);await supabase.from('scenes').delete().eq('id',id);},scene!.id);
+    }
+  });
+
 });

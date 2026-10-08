@@ -15,7 +15,7 @@ export function MapArtworkUpload({scene,userId,onSaved}:{scene:Scene;userId:stri
   const [busy,setBusy]=useState(false),[error,setError]=useState('');
   const [gridOpacity,setGridOpacity]=useState(.25);
   const worldW=scene.widthCells*scene.gridSizePx,worldH=scene.heightCells*scene.gridSizePx;
-  const raster=artworkRaster(worldW,worldH);
+  const raster=artworkRaster(worldW,worldH,image??undefined,fit);
   const discard=()=>{const path=uploaded.current;uploaded.current=null;if(path)void assets.discardSceneBackground(path).catch(()=>{});};
   useEffect(()=>{mounted.current=true;return ()=>{mounted.current=false;generation.current++;if(!saving.current)discard();};},[]);
   useEffect(()=>()=>{image?.close();},[image]);
@@ -63,6 +63,7 @@ export function MapArtworkUpload({scene,userId,onSaved}:{scene:Scene;userId:stri
     {image && createPortal(<dialog ref={dialog} className="map-artwork-dialog" aria-labelledby="artwork-title" onCancel={e=>{e.preventDefault();close();}}>
       <h2 id="artwork-title">Preview map artwork</h2>
       <p>{image.width} × {image.height} pixels · {scene.widthCells} × {scene.heightCells} grid cells</p>
+      <p>Saved image: {raster.width} × {raster.height} pixels.</p>
       <div className="map-artwork-preview"><canvas ref={canvas} aria-label="Prepared map artwork"/><div aria-hidden="true" className="map-artwork-grid" style={{opacity:gridOpacity,backgroundSize:`${100/scene.widthCells}% ${100/scene.heightCells}%`}}/></div>
       <label className="map-artwork-grid-control">Preview grid <input aria-label="Preview grid opacity" type="range" min="0" max="1" step="0.05" value={gridOpacity} onChange={e=>setGridOpacity(Number(e.target.value))}/></label>
       <fieldset disabled={busy}><legend>Image sizing</legend>

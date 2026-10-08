@@ -46,3 +46,11 @@ it('discards return points when the scene or viewport changes, including switchi
   expect(result.current.restore()).toBeNull();expect(vp.moveCenter).not.toHaveBeenCalled();
   rerender({...initialProps,viewport:null});act(()=>result.current.remember());expect(result.current.canReturn).toBe(false);
 });
+
+it('ignores a disposed camera even when a return action captured live history',()=>{
+  const vp={...camera(),destroyed:false};const {result}=renderHook(()=>usePreviousMapView(vp as unknown as Viewport,'a'));
+  act(()=>result.current.remember());const stale=result.current;
+  vp.destroyed=true;Object.defineProperty(vp,'scale',{get:()=>{throw new Error('disposed transform');}});
+  act(()=>{stale.remember();expect(stale.restore()).toBeNull();});
+  expect(vp.setZoom).not.toHaveBeenCalled();expect(vp.moveCenter).not.toHaveBeenCalled();
+});

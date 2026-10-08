@@ -1,6 +1,29 @@
 # DNDKeep — Two-Track Roadmap
 
-### In progress — standalone healing and spell history, planned v2.790
+### In progress — sharper map artwork and scene-switch stability, planned v2.791
+
+Map uploads previously discarded source detail by baking to the scene's world
+pixel size (a 10×10 scene became 700×700 even with a 2400-pixel original).
+Exports now preserve native detail for Fit/Crop within the existing 4096-edge,
+roughly 8-megapixel ceiling. Grid dimensions, token coordinates and map framing
+stay unchanged. The preview shows the saved resolution. Existing low-resolution
+uploads need the original image re-uploaded to recover lost detail.
+
+Local browser coverage exposed two scene teardown failures: navigation read a
+destroyed Pixi transform, and an obsolete hover-preview listener cleared a
+destroyed graphic. Navigation and camera history now ignore disposed renderers;
+the hover preview, disabled since v2.359, is removed along with its empty graphics
+and pointer/animation listeners. Active token drag previews remain in TokenLayer.
+Component regressions cover already-destroyed mounts, late zoom/pointer/keyboard
+events, history callbacks and recovery with a replacement viewport.
+
+All 14 desktop/mobile browser checks pass without retries; preview and applied
+artwork screenshots inspected. Full gate passes: 1,734 unit tests, TS 207/207,
+required rules/map/hooks/build checks and 254 KB entry. Release pending.
+Further lifecycle audit: active ruler refresh
+still reads the viewport transform directly and needs its own focused coverage.
+
+### Released — standalone healing and spell history, v2.790
 
 Standalone healing previously accepted only bare dice, so Cure Wounds with
 `+ MOD` did nothing; the Spells-tab modal offered no healing roll. Both tabs now
@@ -16,7 +39,9 @@ verify Metamorph Cure Wounds at level 2 (4d8 + INT), exact slot persistence,
 cancellation and Mage Hand history. Ten combined desktop/mobile checks pass;
 two focused follow-ups verify the final healing preview. Screenshots inspected.
 Full gate: 1,727 unit tests, TS 207/207 (baseline ratcheted down), required
-rules/map/hooks/build checks and 254 KB entry all pass. Release pending.
+rules/map/hooks/build checks and 254 KB entry all pass. PR #119 merged as
+`08ed0971`; main CI 37683149634 passed. Cache-busted public service worker
+confirms 2.790.0 (the unversioned URL briefly served the previous CDN copy).
 
 
 ### Released — cantrip damage and Potent Thoughts, v2.789
