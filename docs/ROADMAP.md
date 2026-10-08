@@ -1,5 +1,20 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.864 — Responsive combat initiative strip
+
+Combat controls use the available width below the monster rail, with 44px primary
+buttons, a scrollable participant list and responsive rows. Fullscreen removes
+the hidden sidebar gutter; short landscape uses one row to preserve map height.
+The Fast Combat Rolls checkbox no longer inherits full-width text-input styling.
+Map clearance regression now checks primary button visibility, hit testing, touch
+size, strip height, rotation and real saved move/undo/redo. Rail transitions settle
+before checking Fit map geometry. Both desktop/phone map flows and both combat
+lifecycle flows pass (real End Turn / End Combat). Scoped overflow checks pass;
+portrait and landscape screenshots inspected. The new touch-target regression
+fails against the old layout. Full gate passes: 2,838 units / 257 files,
+TypeScript 199/199, hooks/RAW/coordinates/anchors, production build, 255.2 KB entry.
+No migration. Publishing pending.
+
 ### v2.863 — Recover casting actions on their original turn
 
 Declared casting receipts now capture their immutable server turn and action,
@@ -23,8 +38,11 @@ action. Existing refunds, cancellation and slot-limit recovery remain covered.
 All 80 SQL cases pass. Full gate passes: 2,838 units / 257 files, TypeScript
 199/199, hooks/RAW/coordinates/anchors, production build and 255.1 KB entry.
 Both SQL schemas lint clean; new and changed pure/controller modules lint clean.
-Publishing pending.
-Migration: `20261008201103_declared_spell_action_context.sql` (local applied).
+Merged PR #207 after both CI gates passed. Production migration run
+`37839538112` applied the file; captured columns, trigger and privileges verified
+independently. Advisors unchanged (6 security / 4 performance). Frontend remains
+v2.861.0 while Vercel deployments are rate-limited.
+Migration: `20261008201103_declared_spell_action_context.sql` (local/production applied).
 
 Remaining: fully persisted action budgets across completed-cast reloads, manual
 casting, automatic turn transitions and other action writers. This corrects saved

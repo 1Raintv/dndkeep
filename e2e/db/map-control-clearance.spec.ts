@@ -27,6 +27,7 @@ test.describe('Map navigation and monster action layout',()=>{gateDbSuite();test
    const nav=page.getByRole('toolbar',{name:'Map navigation'});
    async function inspect(label:string){
     const rail=page.getByRole('region',{name:'Monster actions',exact:true});
+    if(await rail.count())await rail.evaluate(async el=>{await Promise.all(el.getAnimations().map(a=>a.finished));await new Promise<void>(r=>requestAnimationFrame(()=>requestAnimationFrame(()=>r())));});
     await nav.getByRole('button',{name:'Fit map',exact:true}).click({timeout:2500});
     await expect.poll(()=>page.evaluate(()=>{
      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins),canvas=document.querySelector('canvas')!.getBoundingClientRect(),dock=document.querySelector('.map-navigation')!.getBoundingClientRect(),rail=document.querySelector('.monster-action-rail'),r=rail?.getBoundingClientRect();
@@ -34,7 +35,7 @@ test.describe('Map navigation and monster action layout',()=>{gateDbSuite();test
      return a.y+canvas.top>=canvas.top+60&&b.y+canvas.top<=dock.top-10&&a.x+canvas.left>=canvas.left+60&&b.x+canvas.left<=(side?r!.left-10:canvas.right-10);
     })).toBe(true);
     await nav.getByRole('button',{name:'Zoom in',exact:true}).click();await nav.getByRole('button',{name:'Fit map',exact:true}).click();
-    if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8'),body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('.map-navigation,.map-navigation *, .monster-action-rail,.monster-action-rail *')"),report=await page.evaluate('('+scoped+'\n})()');expect(report.sideways).toBe(false);expect(report.clipped).toEqual([]);expect(report.pastEdge).toEqual([]);}
+    if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8'),body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('.map-navigation,.map-navigation *, .monster-action-rail,.monster-action-rail *, .initiative-strip, .initiative-summary,.initiative-summary *, .initiative-controls,.initiative-controls *')"),report=await page.evaluate('('+scoped+'\n})()');expect(report.sideways).toBe(false);expect(report.clipped).toEqual([]);expect(report.pastEdge).toEqual([]);}
     await page.screenshot({path:info.outputPath(label+'.png')});
     if(await rail.getByTitle('Collapse action rail',{exact:true}).isVisible()){
      await rail.getByRole('button',{name:'Dash',exact:true}).click({trial:true});
@@ -52,6 +53,13 @@ test.describe('Map navigation and monster action layout',()=>{gateDbSuite();test
    await expect.poll(()=>sql(`select x from scene_token_placements where id='${placement}'`)).toBe('315');
    await inspect('rail-history');
    await page.setViewportSize({width:851,height:393});await inspect('rail-landscape');
+   const strip=page.locator('.initiative-strip');
+   for(const name of ['End Turn','End Combat','Disengage']){
+    const button=strip.getByRole('button',{name,exact:true});
+    await expect(button).toBeInViewport();await button.click({trial:true,timeout:2500});
+    expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+   }
+   expect((await strip.boundingBox())!.height).toBeLessThan(110);
    await history.getByRole('button',{name:/Undo/}).click();await expect.poll(()=>sql(`select x from scene_token_placements where id='${placement}'`)).toBe('175');
    await history.getByRole('button',{name:/Redo/}).click();await expect.poll(()=>sql(`select x from scene_token_placements where id='${placement}'`)).toBe('315');
    sql(`update combat_encounters set status='ended' where id='${enc}'`);
