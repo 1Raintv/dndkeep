@@ -47,7 +47,7 @@ export function ReachOverlayLayer(props: {
   const reachRectRef = useRef<Graphics | null>(null);
 
   useEffect(() => {
-    if (!viewport) return;
+    if (!viewport || viewport.destroyed) return;
     const rect = new Graphics();
     rect.eventMode = 'none';
     rect.visible = false;
@@ -96,7 +96,8 @@ export function ReachOverlayLayer(props: {
     rect.rect(cx - halfFootPx, cy - halfFootPx, halfFootPx * 2, halfFootPx * 2);
     rect.stroke();
     rect.visible = true;
-  }, [reachPreview, gridSizePx]);
+  // v2.805: a replacement viewport owns new Graphics, even when hover data is unchanged.
+  }, [viewport, reachPreview, gridSizePx]);
 
   return null;
 }
