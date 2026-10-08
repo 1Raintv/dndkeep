@@ -37,7 +37,7 @@ export default function PsionicDieRollButton({persistence,character,feature,labe
    const source=prepared?.character??c,sides=psionicDieSides(psionProgression(source)?.level??0);
    // Guards spends a die without rolling it: no Surge or Enkindled offer.
    if(discipline?.id==='psionic-guards'){
-    if(await beginDiscipline(persistence!,latest,prepared!,discipline.id,[],1,options)&&options.active())showToast('Psionic Guards recorded. Apply its condition protections and saving-throw Advantage until your next turn.','success');
+    if(await beginDiscipline(persistence!,latest,prepared!,discipline.id,[],1,options)&&options.active())showToast('Psionic Guards active until your next turn. Charmed and Frightened protection is automatic.','success');
     return;
    }
    const original=rollDie(sides);

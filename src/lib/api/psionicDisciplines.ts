@@ -72,8 +72,11 @@ export async function getPsionicDisciplineTurn(characterId:string):Promise<Disci
 }
 
 /** v2.818 — read at roll time; a cached badge is not proof of active protection.
- * Missing effect metadata is compatible with servers awaiting this migration. */
+ * v2.823: the narrow RPC also permits current campaign members, without
+ * returning the private discipline ledger. */
 export async function getPsionicGuardsSaveAdvantage(characterId:string,ability:string):Promise<boolean>{
  if(!['int','intelligence'].includes(ability.trim().toLowerCase()))return false;
- return !!(await getPsionicDisciplineTurn(characterId)).guards;
+ const active=await psionicRpc('get_psionic_guards_active',{p_character_id:characterId});
+ if(typeof active!=='boolean')throw new Error('Protection could not be verified. Try the save again.');
+ return active;
 }

@@ -120,7 +120,7 @@ test.describe('Psionic Discipline activation controls',()=>{
    const roll=(id:string)=>page.evaluate(async id=>{const path='/src/lib/pendingAttack.ts';const module=await import(path);return await module.rollSave(id,7);},id);
    const guardedId=attack();const guarded=await roll(guardedId);expect(guarded.save_total).toBe(guarded.save_d20+7);
    const payload=JSON.parse(sql(`select payload from combat_events where chain_id=(select chain_id from pending_attacks where id='${guardedId}') and event_type='save_rolled'`));expect(payload.advantage).toBe(true);expect(payload.individual_results).toHaveLength(2);expect(guarded.save_d20).toBe(Math.max(...payload.individual_results));
-   const blockedId=attack();const endpoint='**/rest/v1/rpc/get_psionic_discipline_turn';await page.route(endpoint,route=>route.fulfill({status:403,contentType:'application/json',body:'{"message":"Protection unavailable","code":"42501"}'}));
+   const blockedId=attack();const endpoint='**/rest/v1/rpc/get_psionic_guards_active';await page.route(endpoint,route=>route.fulfill({status:403,contentType:'application/json',body:'{"message":"Protection unavailable","code":"42501"}'}));
    await expect(roll(blockedId)).rejects.toThrow(/Protection unavailable/);expect(sql(`select coalesce(save_result,'unrolled') from pending_attacks where id='${blockedId}'`)).toBe('unrolled');
    await page.goto(`/campaigns/${campaign}`);const saveButton=page.getByRole('button',{name:'⚄ Roll Save',exact:true});await expect(saveButton).toBeVisible();await saveButton.click();
    await expect(page.getByText('Protection unavailable',{exact:true})).toBeVisible();await expect(saveButton).toBeEnabled();
@@ -134,6 +134,42 @@ test.describe('Psionic Discipline activation controls',()=>{
    const normalId=attack();await roll(normalId);
    const normal=JSON.parse(sql(`select payload from combat_events where chain_id=(select chain_id from pending_attacks where id='${normalId}') and event_type='save_rolled'`));expect(normal.advantage).toBe(false);expect(normal.psionic_guards).toBe(false);expect(normal.individual_results).toBeUndefined();
   }finally{sql(`update characters set campaign_id=null where id='${charId}';delete from campaigns where id='${campaign}'`);}
+ });
+ test('class save dialog reads another party members Guards without private history',async({page},info)=>{
+  test.setTimeout(90000);const dm=randomUUID(),targetOwner=randomUUID(),target=randomUUID(),campaign=randomUUID(),encounter=randomUUID(),casterCombatant=randomUUID(),targetCombatant=randomUUID();
+  try{
+   sql(`insert into auth.users(id,email,raw_user_meta_data) values('${dm}','${dm}@guards.local','{}'),('${targetOwner}','${targetOwner}@guards.local','{}');
+    insert into campaigns(id,owner_id,name) values('${campaign}','${dm}','Party Guards');
+    insert into campaign_members(campaign_id,user_id) values('${campaign}','${userId}'),('${campaign}','${targetOwner}');
+    update characters set campaign_id='${campaign}' where id='${charId}';
+    insert into characters(id,user_id,campaign_id,name,species,class_name,background,level,intelligence,saving_throw_proficiencies,nat_1_20_saves,class_resources)
+    values('${target}','${targetOwner}','${campaign}','Protected Psion','Human','Psion','Sage',5,18,array['intelligence'],false,'{"psion-disciplines":["psionic-guards"],"psionic-energy-dice":6}');
+    insert into combatants(id,campaign_id,owner_id,name,definition_type,definition_id,current_hp,max_hp,is_dead) values
+    ('${casterCombatant}','${campaign}','${userId}','Caster','character','${charId}',20,20,false),('${targetCombatant}','${campaign}','${targetOwner}','Protected Psion','character','${target}',20,20,false);
+    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaign}','active',1,1);
+    insert into combat_participants(encounter_id,campaign_id,participant_type,entity_id,name,turn_order,combatant_id) values
+    ('${encounter}','${campaign}','character','${charId}','Caster',0,'${casterCombatant}'),('${encounter}','${campaign}','character','${target}','Protected Psion',1,'${targetCombatant}');
+    begin;set local role authenticated;set local request.jwt.claims='{"sub":"${targetOwner}","role":"authenticated"}';
+    select begin_psionic_discipline('${target}','${randomUUID()}',get_psionic_discipline_turn('${target}')->'turn','psionic-guards',array[]::integer[],1,4,
+    (select jsonb_build_object('class_name',class_name,'level',level,'secondary_class',secondary_class,'secondary_level',secondary_level,'intelligence',intelligence,'inventory',inventory,'disciplines',class_resources->'psion-disciplines') from characters where id='${target}'));commit;`);
+   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);await expect(page.getByRole('button',{name:/^intelligence saving throw/}).first()).toBeVisible();
+   // Mount the real reusable dialog with an INT-save fixture; current built-in
+   // class ability metadata has no INT save. All data/auth/RPCs remain real.
+   await page.evaluate(async characterId=>{
+    const reactPath='/node_modules/.vite/deps/react.js',domPath='/node_modules/.vite/deps/react-dom_client.js',modalPath='/src/components/Combat/ClassAbilityResolveModal.tsx',dbPath='/src/lib/supabase.ts';
+    const [React,dom,modal,db]=await Promise.all([import(reactPath),import(domPath),import(modalPath),import(dbPath)]);
+    const {data:character,error}=await db.supabase.from('characters').select('*').eq('id',characterId).single();if(error)throw error;
+    const host=document.createElement('div');document.body.appendChild(host);const root=dom.default.createRoot(host);
+    root.render(React.default.createElement(modal.default,{open:true,onClose:()=>root.unmount(),character,campaign:null,campaignId:character.campaign_id,saveDC:18,
+     ability:{name:'Intelligence save fixture',actionType:'action',minLevel:1,description:'',save:{ability:'INT',dc:'spell',targetMode:'any'}},
+     onConfirmed:(outcomes:unknown)=>{document.body.dataset.guardsOutcome=JSON.stringify(outcomes);root.unmount();}}));
+   },charId);
+   const dialog=page.getByRole('dialog',{name:'Intelligence save fixture saving throws'});await expect(dialog).toBeVisible();await expect(dialog.getByRole('button',{name:'Roll Save',exact:true})).toBeEnabled();
+   await dialog.getByRole('button',{name:'Roll Save',exact:true}).click();await expect(dialog.getByText(/Psionic Guards:.*keep highest/)).toBeVisible();await page.screenshot({path:info.outputPath('guards-class-save.png')});
+   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[role=dialog], [role=dialog] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways).toBe(false);expect(layout.clipped).toEqual([]);expect(layout.pastEdge).toEqual([]);}
+   await dialog.getByRole('button',{name:'Confirm',exact:true}).click();const outcomes=await page.evaluate(()=>JSON.parse(document.body.dataset.guardsOutcome!));expect(outcomes).toHaveLength(1);expect(outcomes[0].advantage).toBe(true);expect(outcomes[0].rolls).toHaveLength(2);expect(outcomes[0].d20).toBe(Math.max(...outcomes[0].rolls));expect(outcomes[0].total).toBe(outcomes[0].d20+7);
+   const privateRead=await page.evaluate(async id=>{const path='/src/lib/supabase.ts';const {supabase}=await import(path);return (await supabase.rpc('get_psionic_discipline_turn',{p_character_id:id})).error?.message;},target);expect(privateRead).toContain('Character is unavailable');
+  }finally{sql(`delete from action_logs where character_id='${target}';delete from characters where id='${target}';update characters set campaign_id=null where id='${charId}';delete from campaigns where id='${campaign}';delete from auth.users where id in('${dm}','${targetOwner}')`);}
  });
  test('secondary Psion uses the original class snapshot instead of the display projection',async({page})=>{
   sql(`update characters set class_name='Fighter',level=3,secondary_class='Psion',secondary_level=5,intelligence=18,class_resources='{"psion-disciplines":["psionic-guards"],"psionic-energy-dice":6}' where id='${charId}'`);

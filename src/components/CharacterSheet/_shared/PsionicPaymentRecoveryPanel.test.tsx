@@ -47,3 +47,10 @@ it('confirms a saved discipline decision without offering to discard or reverse 
  fireEvent.click(screen.getByRole('button',{name:'Confirm saved attempt'}));await screen.findByText(/Energy Die was kept/);
  expect(persistence.finishDiscipline).toHaveBeenCalledWith(request);expect(persistence.energy).not.toHaveBeenCalled();
 });
+
+it('Guards recovery acknowledges the original protection without reapplying an expired effect',async()=>{
+ localStorage.clear();const request={requestId:'guard',sourceFeature:'Psionic Guards',discipline:'psionic-guards' as const,turn:{soloTurn:0},rolls:[],count:1,modifier:0,expected:{class_name:'Psion',level:5,secondary_class:null,secondary_level:0,intelligence:10,inventory:[],disciplines:['psionic-guards']}};
+ rememberPsionicPayment('hero',{kind:'discipline-begin',request});const persistence=service();
+ persistence.beginDiscipline=vi.fn(async()=>{forgetPsionicPayment('hero','guard');return {...request,outcome:{spent:true}} as unknown as DisciplineReceipt;});
+ render(ui(persistence));fireEvent.click(screen.getByRole('button',{name:'Confirm saved attempt'}));await screen.findByText(/Protection was applied with the original use; it may now have expired/);expect(screen.queryByText(/does not apply the feature effect/)).toBeNull();expect(persistence.beginDiscipline).toHaveBeenCalledWith(request);
+});
