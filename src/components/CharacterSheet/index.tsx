@@ -17,7 +17,8 @@ import {setSpellSourcePrepared} from '../../rules/spellPreparation';
 import {addClassSpellSelection,removeClassSpellSelection} from '../../rules/classSpellSelection';
 import {createPsionicRestRequest} from '../../lib/psionicRestRequest';
 import {pendingPsionicPayments} from '../../lib/psionicPaymentRecovery';
-import {savingThrowPassed} from '../../rules/savingThrows';
+import {hasWarCaster,rollConcentrationCheck} from '../../rules/concentrationSave';
+import {ConcentrationCheckPrompt} from './ConcentrationCheckPrompt';
 import {longRestHitDice} from '../../rules/restRecovery';
 import PsionicPaymentRecoveryPanel from './_shared/PsionicPaymentRecoveryPanel';
 import {usePsionicEnhancements} from '../../lib/hooks/usePsionicEnhancements';
@@ -38,7 +39,7 @@ import MinionPanel from './MinionPanel';
 import { rollDiceExpr } from '../../lib/buffs';
 import { createPortal } from 'react-dom';
 import type { Character, ConditionName, InventoryItem, SpellSlots, NoteField, SpellData } from '../../types';
-import { computeStats, abilityModifier, rollDie } from '../../lib/gameUtils';
+import { computeStats, abilityModifier } from '../../lib/gameUtils';
 import { applyDamageToPools, applyHealing, concentrationDC } from '../../rules/hp';
 import { formatRange } from '../../lib/formatRange';
 import { updateCharacter, supabase } from '../../lib/supabase';
@@ -671,7 +672,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
 
  /**
  * Shared concentration-save roll. Used by both the Prompt popup's Roll
- * button and the Auto path in handleUpdateHP. Rolls 1d20 + CON save
+ * button and the Auto path in handleUpdateHP. Rolls a CON save
  * bonus vs the DC, logs to the action log, and drops concentration on
  * a failed save. Returns the roll result for callers that want it.
  *
@@ -689,10 +690,9 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  const pb = currentStats.proficiency_bonus;
  const hasSaveProf = currentStats.saving_throws.constitution.proficient;
  const saveBonus = currentStats.saving_throws.constitution.total;
- const d20 = rollDie(20);
- const total = d20 + saveBonus;
  const useNat = currentCharacter.nat_1_20_saves !== false;
- const passed = savingThrowPassed(d20, total, dc, { naturalExtremes: useNat });
+ const advantage = hasWarCaster(currentCharacter.gained_feats);
+ const {rolls,d20,total,passed} = rollConcentrationCheck(saveBonus,dc,advantage,useNat);
  const verdict = useNat && d20 === 20 ? '✓ Maintained (NAT 20 — auto-success)'
  : useNat && d20 === 1 ? '✗ Broken (NAT 1 — auto-fail)'
  : passed ? '✓ Maintained' : '✗ Broken';
@@ -721,6 +721,10 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  triggerRoll({
  result: d20,
  dieType: 20,
+ advantage,
+ allDice: rolls.map(value=>({die:20,value})),
+ expression: advantage?'2d20kh1':'1d20',
+ flatBonus: saveBonus,
  modifier: saveBonus,
  total,
  label: `${spellName} — Concentration Save (DC ${dc}) · ${verdict}`,
@@ -738,10 +742,10 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  characterName: currentCharacter.name,
  actionType: 'save',
  actionName: 'Concentration Check',
- diceExpression: '1d20',
- individualResults: [d20],
+ diceExpression: advantage?'2d20kh1':'1d20',
+ individualResults: rolls,
  total,
- notes: `DC ${dc} · ${verdict} · CON ${conMod >= 0 ? '+' : ''}${conMod}${hasSaveProf ? ` + Prof +${pb}` : ''}`,
+ notes: `DC ${dc} · ${verdict}${advantage?' · War Caster advantage (keep higher)':''} · CON ${conMod >= 0 ? '+' : ''}${conMod}${hasSaveProf ? ` + Prof +${pb}` : ''}`,
  });
  });
  return { passed, total, d20 };
@@ -1639,51 +1643,11 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
      v2.56.0: Now shows the actual damage that triggered the prompt + the formula
      breakdown so users can see why the DC is what it is. RAW: DC = max(10, floor(damage/2)),
      capped at 30. */}
- {concentrationSaveDC !== null && concentrationSpellId && (() => {
- const saveBonus = computed.saving_throws.constitution.total;
- const spellName = spellMap[concentrationSpellId]?.name ?? 'Concentration';
- const dmg = concentrationSaveDamage ?? 0;
- const halfDmg = Math.floor(dmg / 2);
- const dcReason = halfDmg >= 30
- ? `capped at 30 (half of ${dmg} = ${halfDmg})`
- : halfDmg > 10
- ? `half of ${dmg} damage = ${halfDmg}`
- : `floor of 10 (half of ${dmg} = ${halfDmg}, below floor)`;
- return (
- <div style={{
- padding: '12px 16px', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
- background: 'rgba(167,139,250,0.08)', border: '1px solid rgba(167,139,250,0.4)',
- animation: 'pulse-gold 1s ease-out 1',
- }}>
- <div style={{ flex: 1, minWidth: 0 }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 11, color: '#a78bfa', letterSpacing: '0.1em', textTransform: 'uppercase' as const, marginBottom: 3 }}>
- Concentration Check Required
- </div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 13, color: 'var(--t-1)', fontWeight: 600 }}>
- {spellName} — took {dmg} damage → CON save DC {concentrationSaveDC}
- </div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)', marginTop: 2 }}>
- DC = {dcReason} · need a {concentrationSaveDC - saveBonus} or higher on the d20
- </div>
- </div>
- <button
- onClick={() => {
- rollConcentrationSave(concentrationSaveDC!);
- setConcentrationSaveDC(null);
- setConcentrationSaveDamage(null);
- }}
- style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 12, padding: '6px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
- background: 'rgba(167,139,250,0.2)', border: '1px solid rgba(167,139,250,0.5)', color: '#a78bfa' }}
- >
- Roll CON Save ({saveBonus >= 0 ? '+' : ''}{saveBonus})
- </button>
- <button onClick={() => { setConcentrationSaveDC(null); setConcentrationSaveDamage(null); }}
- style={{ fontFamily: 'var(--ff-body)', fontSize: 11, padding: '4px 8px', borderRadius: 'var(--r-sm)', cursor: 'pointer', background: 'transparent', border: '1px solid var(--c-border)', color: 'var(--t-3)' }}>
- Dismiss
- </button>
- </div>
- );
- })()}
+ {concentrationSaveDC !== null && concentrationSpellId && <ConcentrationCheckPrompt
+ spellName={spellMap[concentrationSpellId]?.name ?? 'Concentration'} damage={concentrationSaveDamage??0}
+ dc={concentrationSaveDC} bonus={computed.saving_throws.constitution.total} advantage={hasWarCaster(character.gained_feats)}
+ onRoll={()=>{rollConcentrationSave(concentrationSaveDC);setConcentrationSaveDC(null);setConcentrationSaveDamage(null);}}
+ onDismiss={()=>{setConcentrationSaveDC(null);setConcentrationSaveDamage(null);}}/>}
 
  {concentrationSpellId && (() => {
  const spell = spellMap[concentrationSpellId];
