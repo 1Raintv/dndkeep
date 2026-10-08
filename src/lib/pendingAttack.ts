@@ -1,3 +1,4 @@
+import {getPsionicGuardsSaveAdvantage} from './api/psionicDisciplines';
 import {settleCounterspellSave} from './api/counterspellSettlement';
 import {createConcentrationOffer,resolveConcentrationSave} from './api/concentrationSaves';
 import {log} from './log';
@@ -51,7 +52,7 @@ import { isCreatureParticipantType } from './participantType';
 // previously buffs.ts's weaker parser (no ±modifier support) — it now
 // aliases the canonical one, which fixes riders/ticks with dice like
 // "2d4+2" silently contributing 0.
-import { rollDie, rollDiceExpr, doubleDice } from '../rules/dice';
+import { rollDie, rollDiceExpr, doubleDice, physicalDiceList, physicalDiceOutcome } from '../rules/dice';
 import { applyDamageToPools, concentrationDC } from '../rules/hp';
 export { rollDiceExpr };
 const rollBuffDice = rollDiceExpr;
@@ -658,24 +659,30 @@ export async function rollSave(
   let targetConditions: string[] = [];
   let targetBuffs: ActiveBuff[] = [];
   let targetExhaustion = 0;
+  let targetCharacterId: string | null = null;
   let naturalExtremes = false;
   if (atk.target_participant_id) {
-    const { data: tRowRaw } = await (supabase as any)
+    const { data: tRowRaw, error: targetError } = await (supabase as any)
       .from('combat_participants')
       .select('entity_id, participant_type, ' + JOINED_COMBATANT_FIELDS)
       .eq('id', atk.target_participant_id)
       .maybeSingle();
-  const tRow = tRowRaw ? normalizeParticipantRow(tRowRaw) : tRowRaw;
+  if (targetError || !tRowRaw) throw new Error(targetError?.message ?? 'The save target could not be verified. Try again.');
+  const tRow = normalizeParticipantRow(tRowRaw);
     targetConditions = ((tRow?.active_conditions as string[] | null) ?? []);
     targetBuffs = ((tRow?.active_buffs as ActiveBuff[] | null) ?? []);
     targetExhaustion = ((tRow?.exhaustion_level as number | null) ?? 0);
     if (tRow?.participant_type === 'character' && tRow.entity_id) {
+      targetCharacterId = tRow.entity_id;
       naturalExtremes = await getCharacterSaveNaturalExtremes(tRow.entity_id);
     }
   }
   const ability = atk.save_ability ?? '';
   const autoFail = conditionsAutoFailSave(targetConditions, ability);
   const saveDisadvantage = !autoFail && conditionsDisadvantageSave(targetConditions, ability);
+  // v2.820: campaign saves run as the current DM. Verify the target's live
+  // protection before rolling or writing; a failed read must not lose Advantage.
+  const saveAdvantage = !autoFail && !!targetCharacterId && await getPsionicGuardsSaveAdvantage(targetCharacterId, ability);
 
   // v2.103.0 — Phase F: half / three-quarters cover grants +2 / +5 to DEX
   // saves (2024 PHB). Doesn't apply to other save abilities.
@@ -708,14 +715,13 @@ export async function rollSave(
   if (autoFail) {
     d20 = 1;                                   // cosmetic — always a "nat 1" for log readability
     total = 1 + effectiveBonus;
-  } else if (saveDisadvantage) {
-    const r1 = rollD20();
-    const r2 = rollD20();
-    d20 = Math.min(r1, r2);
-    d20Alt = Math.max(r1, r2);
-    total = d20 + effectiveBonus;
   } else {
-    d20 = rollD20();
+    // Reuse the physical roller's selection rules, including cancellation.
+    const event = {dieType:20,result:0,advantage:saveAdvantage,disadvantage:saveDisadvantage};
+    const dice = physicalDiceList(event).map(d=>({...d,value:rollD20()}));
+    const outcome = physicalDiceOutcome(event,dice);
+    d20 = outcome.total;
+    d20Alt = outcome.discarded.length ? dice[outcome.discarded[0]].value : null;
     total = d20 + effectiveBonus;
   }
   const dc = atk.save_dc ?? 10;
@@ -805,7 +811,9 @@ export async function rollSave(
       trigger_attacker: atk.attacker_name,
       // v2.111.0 — Phase H pt 2: condition-sourced save mods
       auto_fail: autoFail,
-      disadvantage: saveDisadvantage,
+      advantage: saveAdvantage && !saveDisadvantage,
+      disadvantage: saveDisadvantage && !saveAdvantage,
+      psionic_guards: saveAdvantage,
       individual_results: d20Alt != null ? [d20, d20Alt] : undefined,
       // v2.113.0 — Phase H pt 4 buff contributions
       buff_contributions: rolledSaveBuffs.map(r => ({

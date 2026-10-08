@@ -107,6 +107,28 @@ test.describe('Psionic Discipline activation controls',()=>{
    expect(normalMatch).not.toBeNull();expect(Number(normalMatch[2])).toBe(Number(normalMatch[1])+7);
   }finally{sql(`update characters set campaign_id=null where id='${charId}';delete from campaigns where id='${campaign}'`);}
  });
+ test('DM campaign attack saves verify Guards and stop on unreadable protection',async({page})=>{
+  test.setTimeout(90000);const campaign=randomUUID(),encounter=randomUUID(),combatant=randomUUID(),participant=randomUUID();
+  sql(`insert into campaigns(id,owner_id,name) values('${campaign}','${userId}','Guards combat fixture');
+   update characters set campaign_id='${campaign}',level=5,intelligence=18,nat_1_20_saves=false,class_resources='{"psion-disciplines":["psionic-guards"],"psionic-energy-dice":6}' where id='${charId}';
+   insert into combatants(id,campaign_id,owner_id,name,definition_type,definition_id,current_hp,max_hp,is_dead) values('${combatant}','${campaign}','${userId}','Psion','character','${charId}',20,20,false);
+   insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaign}','active',1,0);
+   insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,combatant_id) values('${participant}','${encounter}','${campaign}','character','${charId}','Psion',0,'${combatant}')`);
+  try{
+   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);await page.getByRole('button',{name:'Activate Guards',exact:true}).locator('visible=true').first().click();await expect(page.getByRole('status',{name:'Psionic Guards protection'})).toBeVisible();
+   const attack=()=>{const id=randomUUID();sql(`insert into pending_attacks(id,campaign_id,encounter_id,target_participant_id,attacker_name,attacker_type,target_name,target_type,attack_name,attack_kind,save_ability,save_dc,chain_id) values('${id}','${campaign}','${encounter}','${participant}','Fixture','system','Psion','character','Guards INT save','save','INT',18,gen_random_uuid())`);return id;};
+   const roll=(id:string)=>page.evaluate(async id=>{const path='/src/lib/pendingAttack.ts';const module=await import(path);return await module.rollSave(id,7);},id);
+   const guardedId=attack();const guarded=await roll(guardedId);expect(guarded.save_total).toBe(guarded.save_d20+7);
+   const payload=JSON.parse(sql(`select payload from combat_events where chain_id=(select chain_id from pending_attacks where id='${guardedId}') and event_type='save_rolled'`));expect(payload.advantage).toBe(true);expect(payload.individual_results).toHaveLength(2);expect(guarded.save_d20).toBe(Math.max(...payload.individual_results));
+   const blockedId=attack();const endpoint='**/rest/v1/rpc/get_psionic_discipline_turn';await page.route(endpoint,route=>route.fulfill({status:403,contentType:'application/json',body:'{"message":"Protection unavailable","code":"42501"}'}));
+   await expect(roll(blockedId)).rejects.toThrow(/Protection unavailable/);expect(sql(`select coalesce(save_result,'unrolled') from pending_attacks where id='${blockedId}'`)).toBe('unrolled');
+   await page.goto(`/campaigns/${campaign}`);const saveButton=page.getByRole('button',{name:'⚄ Roll Save',exact:true});await expect(saveButton).toBeVisible();await saveButton.click();
+   await expect(page.getByText('Protection unavailable',{exact:true})).toBeVisible();await expect(saveButton).toBeEnabled();
+   await page.unroute(endpoint);await saveButton.click();await expect.poll(()=>sql(`select coalesce(save_result,'unrolled') from pending_attacks where id='${blockedId}'`)).toMatch(/passed|failed/);
+   sql(`update combat_encounters set round_number=2 where id='${encounter}'`);const normalId=attack();await roll(normalId);
+   const normal=JSON.parse(sql(`select payload from combat_events where chain_id=(select chain_id from pending_attacks where id='${normalId}') and event_type='save_rolled'`));expect(normal.advantage).toBe(false);expect(normal.psionic_guards).toBe(false);expect(normal.individual_results).toBeUndefined();
+  }finally{sql(`update characters set campaign_id=null where id='${charId}';delete from campaigns where id='${campaign}'`);}
+ });
  test('secondary Psion uses the original class snapshot instead of the display projection',async({page})=>{
   sql(`update characters set class_name='Fighter',level=3,secondary_class='Psion',secondary_level=5,intelligence=18,class_resources='{"psion-disciplines":["psionic-guards"],"psionic-energy-dice":6}' where id='${charId}'`);
   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);await page.getByRole('button',{name:'Activate Guards',exact:true}).locator('visible=true').first().click();

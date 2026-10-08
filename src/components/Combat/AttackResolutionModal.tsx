@@ -1,3 +1,4 @@
+import {useToast} from '../shared/Toast';
 // v2.97.0 — Phase E of the Combat Backbone
 //
 // Auto-opens for the DM whenever a pending_attack exists in non-terminal state
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export default function AttackResolutionModal({ campaignId, isDM }: Props) {
+  const {showToast}=useToast();
   const [atk, setAtk] = useState<PendingAttack | null>(null);
   const [reactions, setReactions] = useState<PendingReaction[]>([]);
   const [loading, setLoading] = useState(false);
@@ -138,11 +140,16 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
   }
 
   async function onRollSave() {
+    if (!atk || loading) return;
     setLoading(true);
-    if (!atk) return;
-    const bonus = parseInt(saveBonus, 10) || 0;
-    await rollSave(atk.id, bonus);
-    setLoading(false);
+    try {
+      const bonus = parseInt(saveBonus, 10) || 0;
+      await rollSave(atk.id, bonus);
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'The saving throw could not be confirmed. Try again.', 'error');
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function onRollDamage() {

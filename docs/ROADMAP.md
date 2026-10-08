@@ -1,5 +1,23 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.820 — Guards on campaign attack saves
+
+The campaign save resolver reads live Guards protection for character targets
+before rolling, keeps the higher Intelligence d20, and records both dice and the
+benefit in the combat event. It reuses canonical dice selection, including
+Advantage/Disadvantage cancellation. Auto-fails and recorded-save retries do not
+roll or reread protection. Missing/unreadable targets or failed protection reads
+stop before rolling or saving. The DM save button reports failure and re-enables
+for retry instead of remaining stuck. Existing save house rules are preserved.
+
+Validation: full gate passes (2,335 tests; TypeScript 201/201; 255.1 KB entry).
+Real local campaign tests confirm Guards totals, expiry, denied-read no-write,
+and retry through the DM control. No migration. Other automatic save paths
+(including end-of-turn saves and auras) still need an audit; Sharpened Mind is
+still manual. The existing monster-action dice animation is cosmetic and does
+not yet display the stored Advantage pair. Hosting is still rate-limited.
+
+
 ### v2.819 — Guards on DM-requested saves
 
 DM save prompts now read current Guards protection before rolling. They use the
