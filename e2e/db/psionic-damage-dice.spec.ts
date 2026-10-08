@@ -7,7 +7,8 @@ const sql=(q:string)=>execFileSync('docker',['exec','-i','supabase_db_dndkeep','
 test.use({serviceWorkers:'block'});
 test.describe('Preserved Destructive Thoughts dice',()=>{
  gateDbSuite();
- for(const surge of [false,true])test(surge?'Surge-adjusted Psion dice survive the combat queue':'natural Psion dice survive the combat queue',async({page},info)=>{
+ for(const {surge,sharpened} of [{surge:false,sharpened:false},{surge:true,sharpened:false},{surge:false,sharpened:true}])test(sharpened?'Sharpened replaces a saved die and bypasses resistance atomically':surge?'Surge-adjusted Psion dice survive the combat queue':'natural Psion dice survive the combat queue',async({page},info)=>{
+ const activation=randomUUID();
  const [user,campaign,char,cb,enc,cp,attack]=Array.from({length:7},()=>randomUUID()),email='typed-'+user+'@dndkeep.local';
  try{
   sql(`begin;
@@ -22,6 +23,14 @@ test.describe('Preserved Destructive Thoughts dice',()=>{
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,combatant_id) values('${cp}','${enc}','${campaign}','character','${char}','Damage actor',0,'${cb}');
    update combatants set active_buffs='[{"key":"test-fire","name":"Fire rider","source":"test","singleUse":true,"damageRider":{"dice":"1d4+1","damageType":"fire"}}]' where id='${cb}';
    commit;`);
+  if(sharpened){
+   sql(`update characters set class_name='Psion',level=20,intelligence=18,damage_resistances=array['psychic'],class_resources='{"psionic-energy-dice":12,"psion-disciplines":["sharpened-mind"]}' where id='${char}'`);
+   const auth=(q:string)=>`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${user}","role":"authenticated"}';${q};commit;`;
+   const turn=JSON.parse(sql(auth(`select get_psionic_discipline_turn('${char}')`))).turn;
+   const snapshot=sql(`select jsonb_build_object('class_name',class_name,'level',level,'secondary_class',secondary_class,'secondary_level',secondary_level,'intelligence',intelligence,'inventory',inventory,'disciplines',class_resources->'psion-disciplines') from characters where id='${char}'`);
+   sql(auth(`select begin_psionic_discipline('${char}','${activation}','${JSON.stringify(turn)}','sharpened-mind',array[8],1,4,'${snapshot}')`));
+   sql(auth(`select finalize_sharpened_roll('${char}','${activation}')`));
+  }
   await signInAsSeedDm(page,email);
   const dice={version:1,sides:8,originalRolls:[1,5,3],rolls:surge?[4,5,4]:[1,5,3],modifier:4},total=surge?17:13;
   await page.evaluate(async input=>{
@@ -38,12 +47,13 @@ test.describe('Preserved Destructive Thoughts dice',()=>{
   expect(JSON.parse(sql(`select active_buffs from combatants where id='${cb}'`))).toHaveLength(1);
   await page.goto('/campaigns/'+campaign);const panel=page.getByRole('region',{name:'Resolve attack'});
   await expect(panel).toContainText('3d8+4');await expect(panel.getByRole('spinbutton')).toHaveValue(String(total));
+  if(sharpened){await panel.getByRole('combobox',{name:'Sharpened Mind replacement'}).selectOption(activation);await expect(panel).toContainText('Final Psychic damage: 20');await expect(panel).toContainText('Die 1: 1 → 8');}
   await panel.getByRole('button',{name:/Apply Damage/}).click({trial:true});await panel.screenshot({path:info.outputPath('psionic-damage-dice.png')});
   if(surge)await expect(panel).toContainText('Surge adjusted low dice to 4.');
   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[aria-label=\"Resolve attack\"], [aria-label=\"Resolve attack\"] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped).toEqual([]);expect(layout.pastEdge).toEqual([]);}
   // Lose the first committed write response: recovery must retain attack identity.
   let writes=0;
-  if(surge)await page.route('**/rest/v1/rpc/apply_psionic_pending_damage',async route=>{
+  if(surge||sharpened)await page.route('**/rest/v1/rpc/apply_psionic_damage_resolution',async route=>{
    if(!route.request().postDataJSON()?.p_expected){await route.continue();return;}
    writes++;
    if(writes===1){const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort('failed');}
@@ -52,11 +62,12 @@ test.describe('Preserved Destructive Thoughts dice',()=>{
   // Apply through the real API, then request the committed result again.
   await panel.getByRole('button',{name:/Apply Damage/}).click();
   await expect.poll(()=>sql(`select state from pending_attacks where id='${attack}'`)).toBe('applied');
-  if(surge)await expect.poll(()=>writes).toBe(2);
+  if(surge||sharpened)await expect.poll(()=>writes).toBe(2);
   const applied=await page.evaluate(async id=>{const path='/src/lib/pendingAttack.ts';return (await import(path)).applyDamage(id);},attack);
-  expect(applied.state).toBe('applied');expect(applied.damage_final).toBe(total);
-  expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe(String(20-total));
-  expect(sql(`select current_hp from characters where id='${char}'`)).toBe(String(20-total));
+  expect(applied.state).toBe('applied');expect(applied.damage_final).toBe(sharpened?20:total);
+  expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe(String(20-(sharpened?20:total)));
+  expect(sql(`select current_hp from characters where id='${char}'`)).toBe(String(20-(sharpened?20:total)));
+  if(sharpened){expect(sql(`select count(*) from dndkeep_private.sharpened_damage_uses where character_id='${char}'`)).toBe('1');expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${char}'`)).toBe('11');}
   expect(sql(`select count(*) from combat_events where campaign_id='${campaign}' and event_type='damage_applied'`)).toBe('1');
   expect(JSON.parse(sql(`select active_buffs from combatants where id='${cb}'`))).toHaveLength(1);
 
