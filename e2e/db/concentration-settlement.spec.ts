@@ -139,9 +139,9 @@ test.describe('Atomic campaign concentration settlement',()=>{
   sql(authenticated(owner,`insert into pending_concentration_saves(id,campaign_id,encounter_id,chain_id,participant_id,character_id,spell_name,damage,dc,con_bonus,has_con_prof,expires_at,concentration_revision)
    select '${pending}','${campaign}',null,'${chain}',null,id,concentration_spell,5,10,0,false,now()+interval '2 minutes',concentration_revision from characters where id='${character}'`));
  };
- test('party damage between encounters settles and preserves unrelated combat effects',()=>{
-  outside();const before=effects();expect(receipt(dm)).toMatchObject({outcome:'failed',d20:1,total:1,replayed:false});
-  expect(spell()).toBe('');expect(effects()).toEqual(before);
+ test('party damage between encounters clears only the casters lingering effects',()=>{
+  outside();expect(receipt(dm)).toMatchObject({outcome:'failed',d20:1,total:1,replayed:false});
+  expect(spell()).toBe('');expect(effects()).toEqual({conditions:['Poisoned'],sources:{Poisoned:{source:'other'}},buffs:[{key:'other',source:'spell:detect-magic',casterParticipantId:'someone-else'}]});
   expect(receipt(owner,20)).toMatchObject({outcome:'failed',d20:1,replayed:true});
   expect(sql(`select count(*) from combat_events where chain_id='${chain}' and encounter_id is null and event_type='save_rolled'`)).toBe('1');
  });
@@ -168,6 +168,11 @@ test.describe('Atomic campaign concentration settlement',()=>{
   expect(results.map(r=>r.code)).toEqual([0,0]);const receipts=results.map(r=>JSON.parse(r.out));
   expect(receipts.map(r=>r.replayed).sort()).toEqual([false,true]);expect(receipts[0].d20).toBe(receipts[1].d20);
   expect(sql(`select count(*) from combat_events where chain_id='${chain}' and event_type='save_rolled'`)).toBe('1');
+ });
+
+ test('outside-encounter failure with no participant identity preserves all unrelated buffs',()=>{
+  outside();sql(`update combat_participants set entity_id='unrelated-character' where id='${participant}'`);
+  const before=effects();expect(receipt()).toMatchObject({outcome:'failed'});expect(effects()).toEqual(before);expect(spell()).toBe('');
  });
 
 });

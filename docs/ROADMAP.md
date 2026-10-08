@@ -6,10 +6,11 @@ The existing campaign concentration queue now accepts a save with no encounter
 or combat participant. Encounter-bound saves still require a matching participant.
 Settlement retains owner/DM authorization, casting-revision protection, War Caster
 snapshots, saved dice, concurrent replay protection and atomic history. Offers
-without a participant do not touch participant-owned combat effects. No new dice
+without a participant match the caster's campaign participant identities for
+cleanup, removing owned spell effects and preserving other casters' effects. No new dice
 or save implementation. Client/database types match the nullable link.
 
-Validation: 24 real local database cases, including authenticated offer creation,
+Validation: 25 real local database cases, including authenticated offer creation,
 outside-encounter success/failure, permission rejection, races and stale casting;
 four desktop/phone prompt checks also pass and screenshots inspected. Changed
 function has no database-lint diagnostics; four unrelated existing entries remain.

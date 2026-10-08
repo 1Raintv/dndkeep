@@ -13,7 +13,7 @@ create or replace function dndkeep_private.settle_concentration_roll(p_pending_i
 returns jsonb language plpgsql security definer set search_path='' as $$
 declare r public.pending_concentration_saves; c public.characters; participant public.combat_participants;
  target public.combatants; outcome text; score integer; passed boolean;
- chosen integer; rolls integer[]; needle text; removed text[]; extra text[]; sources jsonb; buffs jsonb;
+ chosen integer; rolls integer[]; caster_ids text[]; needle text; removed text[]; extra text[]; sources jsonb; buffs jsonb;
 begin
  if auth.uid() is null then raise exception 'Sign in to resolve this save'; end if;
  select * into r from public.pending_concentration_saves where id=p_pending_id;
@@ -64,23 +64,31 @@ begin
   if not passed then
    update public.characters set concentration_spell='',concentration_rounds_remaining=null,concentration_slot_level=null where id=c.id;
    needle:='spell:'||lower(r.spell_name);
+   -- Between encounters, match this character's participant identities rather
+   -- than comparing with NULL (which could remove unrelated buffs under NOT).
+   if r.participant_id is not null then caster_ids:=array[r.participant_id::text];
+   else
+    select coalesce(array_agg(cp.id::text),array[]::text[]) into caster_ids
+     from public.combat_participants cp where cp.campaign_id=r.campaign_id
+      and cp.participant_type='character' and cp.entity_id=c.id::text;
+   end if;
    -- Lock shared combatant rows in a stable order. Filtering the locked JSON
    -- preserves other casters' effects and unrelated updates; all cleanup rolls
    -- back if any part of settlement or history fails.
-   for target in select cb.* from public.combatants cb where r.participant_id is not null and cb.campaign_id=r.campaign_id and exists(
+   for target in select cb.* from public.combatants cb where cb.campaign_id=r.campaign_id and exists(
     select 1 from public.combat_participants cp where cp.combatant_id=cb.id and cp.campaign_id=r.campaign_id
      and (r.encounter_id is null or cp.encounter_id=r.encounter_id)) order by cb.id for update of cb loop
     sources:=coalesce(target.condition_sources,'{}');buffs:=coalesce(target.active_buffs,'[]');
     if jsonb_typeof(sources)<>'object' or jsonb_typeof(buffs)<>'array' then raise exception 'Check combatant effect data';end if;
     select coalesce(array_agg(key),array[]::text[]) into removed from jsonb_each(sources)
-     where value->>'source'=needle and value->>'casterParticipantId'=r.participant_id::text and key=any(coalesce(target.active_conditions,array[]::text[]));
+     where value->>'source'=needle and value->>'casterParticipantId'=any(caster_ids) and key=any(coalesce(target.active_conditions,array[]::text[]));
     loop
      select coalesce(array_agg(key),array[]::text[]) into extra from jsonb_each(sources)
       where value->>'source'=any(select 'cascade:'||x from unnest(removed) x) and not(key=any(removed));
      exit when cardinality(extra)=0;removed:=removed||extra;
     end loop;
     select coalesce(jsonb_agg(b),'[]') into buffs from jsonb_array_elements(buffs) b
-     where not(coalesce(b->>'source','')=needle and coalesce(b->>'casterParticipantId','')=r.participant_id::text);
+     where not(coalesce(b->>'source','')=needle and coalesce(b->>'casterParticipantId','')=any(caster_ids));
     if cardinality(removed)>0 or buffs is distinct from coalesce(target.active_buffs,'[]') then
      update public.combatants set active_conditions=array(select x from unnest(coalesce(target.active_conditions,array[]::text[])) x where not(x=any(removed))),
       condition_sources=sources-removed,active_buffs=buffs,
