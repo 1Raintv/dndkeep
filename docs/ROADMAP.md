@@ -1,5 +1,17 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.828 — keep delayed Psion rolls on the originating character
+
+Manual Energy Die and Sharpened Mind payments can finish after closing a sheet
+or switching characters. Their enhancement flow now checks the original owner
+before reading character state or opening Enkindled/Surge prompts. Biofeedback,
+Destructive Thoughts, and conditional disciplines use the same ownership guard.
+The paid base result remains in the original character's history for recovery.
+Regression cases delay payment across both switching and closing, checking no
+extra payment, roll, prompt, or update reaches the next character.
+Full gate passed: 2,404 unit tests, TypeScript 201/201, hooks clean, and
+production build with 255.1 KB entry within budget.
+
 ### v2.827 — recoverable party damage controls
 
 Party area damage now uses authoritative previews and the atomic damage API.

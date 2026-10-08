@@ -32,3 +32,9 @@ it('keeps paid extra dice when the sheet closes during the later Surge decision'
  const options=setup();let active=true;options.active=()=>active;options.confirm.mockImplementation(async()=>{active=false;return false;});
  expect((await offerPsionicRollEnhancements(options))?.roll).toBe(6);expect(options.update).toHaveBeenCalledTimes(1);
 });
+
+it('does not read another character or begin an enhancement after its caller closes',async()=>{
+ const options=setup();options.active=()=>false;options.current=vi.fn(()=>{throw new Error('stale character read');});
+ expect(await offerPsionicRollEnhancements(options)).toBeNull();expect(options.current).not.toHaveBeenCalled();
+ expect(options.prompt).not.toHaveBeenCalled();expect(options.confirm).not.toHaveBeenCalled();expect(options.update).not.toHaveBeenCalled();
+});

@@ -6,6 +6,9 @@ import type {useModal} from '../../shared/Modal';
 type Options=Parameters<typeof offerPsionicSurge>[0]&{prompt:ReturnType<typeof useModal>['prompt']};
 /** v2.782 — the server owns Enkindled's turn claim, cost and recovery record. */
 export async function offerPsionicRollEnhancements(options:Options){
+ // v2.828: a base payment can finish after navigation. Do not capture the
+ // next character as the owner of enhancements to the previous paid roll.
+ if(!options.active())return null;
  const id=options.current().id,base=[...(options.rolls??[options.roll])];let extra:number[]=[];
  const unchanged={roll:base.reduce((a,b)=>a+b,0),rolls:base,originalRolls:base,enkindledRolls:extra,usedSurge:false,unconfirmed:false};
  const maximum=enkindledCapacity(options.current());

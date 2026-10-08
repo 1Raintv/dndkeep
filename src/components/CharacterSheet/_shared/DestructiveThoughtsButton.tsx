@@ -73,7 +73,7 @@ export default function DestructiveThoughtsButton({persistence,character}:{persi
    const rolls=Array.from({length:count},()=>rollDie(now.sides));
    if(!await beginDiscipline(persistence!,latest,prepared,'destructive-thoughts',rolls,count,{...options,recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for Psychic damage (minimum 1) to ${targetName}. No damage was queued yet.`}))return;
    const surged=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:rolls[0],rolls,sides:now.sides,feature:'Destructive Thoughts',campaignId,recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for Psychic damage (minimum 1) to ${targetName}. No damage was queued yet.`.slice(0,1000),
-    current:()=>latest.current,active:()=>mounted.current,eligible:c=>!!capacity(c),prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
+    current:()=>latest.current,active:options.active,eligible:c=>!!capacity(c),prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
    if(surged?.unconfirmed)return;
    const amount=psionicDisciplineTotal(surged?.rolls??rolls,now.sides,intelligence)!;
    const result:PaidResult={requestId:crypto.randomUUID(),characterId:id,characterName:current.name,amount,targetName,target,context,queued:false};

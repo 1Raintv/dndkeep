@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
 vi.mock('../../../lib/supabase',()=>({supabase:{}}));
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({roll:vi.fn(()=>2),log:vi.fn(),toast:vi.fn()}));
 vi.mock('../../../rules/dice',()=>({rollDie:mocks.roll}));
 vi.mock('../../shared/ActionLog',()=>({logAction:mocks.log}));
 vi.mock('../../shared/Toast',()=>({useToast:()=>({showToast:mocks.toast})}));
 import RealPsionicDieRollButton from './PsionicDieRollButton';
-import {withTestPsionicPersistence} from './psionicPersistence.testSupport';
+import {testPsionicPersistence,withTestPsionicPersistence} from './psionicPersistence.testSupport';
 const PsionicDieRollButton=withTestPsionicPersistence(RealPsionicDieRollButton);
 import {ModalProvider} from '../../shared/Modal';
 import type {Character} from '../../../types';
@@ -46,4 +46,22 @@ it('Sharpened Mind records one base roll through the discipline path',async()=>{
  render(<ModalProvider><PsionicDieRollButton character={c} onUpdate={update} feature="Sharpened Mind" label="Use discipline" onRolled={rolled}/></ModalProvider>);
  fireEvent.click(screen.getByRole('button',{name:'Use discipline'}));await waitFor(()=>expect(rolled).toHaveBeenCalledWith(2,8));expect(mocks.roll).toHaveBeenCalledTimes(1);
  expect(update).toHaveBeenCalledWith({class_resources:{'psion-disciplines':['sharpened-mind'],'psionic-energy-dice':0}});
+});
+
+for(const feature of ['Psionic Energy Dice','Sharpened Mind'])for(const departure of ['switch','close'] as const)it(`keeps a late paid ${feature} roll on its original character after ${departure}`,async()=>{
+ const original={...character,intelligence:10,inventory:[],class_resources:{...character.class_resources,'psion-disciplines':['sharpened-mind']}} as unknown as Character;
+ const persistence=testPsionicPersistence(()=>original),pay=persistence.energy;
+ let release!:()=>void;const delay=new Promise<void>(resolve=>{release=resolve;});
+ persistence.energy=vi.fn(async request=>{await delay;return pay(request);});
+ persistence.getTurn=vi.fn(persistence.getTurn);persistence.spend=vi.fn(persistence.spend);persistence.surge=vi.fn(persistence.surge);
+ const rolled=vi.fn(),update=vi.fn();
+ const props={persistence,character:original,onUpdate:update,feature,label:'Spend die',onRolled:rolled};
+ const view=render(<ModalProvider><RealPsionicDieRollButton {...props}/></ModalProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Spend die'}));await waitFor(()=>expect(persistence.energy).toHaveBeenCalledTimes(1));
+ if(departure==='switch')view.rerender(<ModalProvider><RealPsionicDieRollButton {...props} character={{...character,id:'other-psion',name:'Other'}}/></ModalProvider>);
+ else view.unmount();
+ await act(async()=>{release();await delay;});
+ await waitFor(()=>expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({characterId:'psion',total:2})));
+ expect(persistence.getTurn).not.toHaveBeenCalled();expect(persistence.spend).not.toHaveBeenCalled();expect(persistence.surge).not.toHaveBeenCalled();
+ expect(rolled).not.toHaveBeenCalled();expect(update).not.toHaveBeenCalled();expect(screen.queryByRole('dialog')).toBeNull();expect(mocks.roll).toHaveBeenCalledTimes(1);
 });
