@@ -38,3 +38,11 @@ it('does not read another character or begin an enhancement after its caller clo
  expect(await offerPsionicRollEnhancements(options)).toBeNull();expect(options.current).not.toHaveBeenCalled();
  expect(options.prompt).not.toHaveBeenCalled();expect(options.confirm).not.toHaveBeenCalled();expect(options.update).not.toHaveBeenCalled();
 });
+
+it('carries one Sharpened activation through both enhancement payments',async()=>{
+ const options={...setup(),feature:'Sharpened Mind',activationId:'11111111-1111-4111-8111-111111111111'};
+ options.persistence.spend=vi.fn(options.persistence.spend);options.persistence.surge=vi.fn(options.persistence.surge);
+ expect((await offerPsionicRollEnhancements(options))?.roll).toBe(12);
+ expect(options.persistence.spend).toHaveBeenCalledWith(expect.objectContaining({activationId:options.activationId,baseRolls:[2],extraRolls:[2,2]}));
+ expect(options.persistence.surge).toHaveBeenCalledWith(expect.objectContaining({activationId:options.activationId,rolls:[2,2,2]}));
+});

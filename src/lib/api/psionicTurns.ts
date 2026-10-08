@@ -1,3 +1,4 @@
+import {validSharpenedEnhancementLink} from '../psionicDisciplineRequest';
 import type {DisciplineRequest,DisciplineOutcomeRequest} from '../psionicDisciplineRequest';
 import type {DisciplineReceipt,DisciplineTurn} from './psionicDisciplines';
 import {shortRestHealing} from '../../rules/restRecovery';
@@ -9,9 +10,9 @@ import {supabase} from '../supabase';
 export type PsionicTurn={soloTurn:number}|{encounterId:string;round:number;index:number;turnId:string};
 export interface EnkindledUse {requestId:string;sourceFeature:string;baseRolls:number[];extraRolls:number[];diceCount:number}
 export interface EnkindledTurn {turn:PsionicTurn;used:EnkindledUse|null}
-export interface EnkindledRequest {requestId:string;turn:PsionicTurn;count:number;baseRolls:number[];extraRolls:number[];sourceFeature:string;recoveryNote?:string}
+export interface EnkindledRequest {activationId?:string;requestId:string;turn:PsionicTurn;count:number;baseRolls:number[];extraRolls:number[];sourceFeature:string;recoveryNote?:string}
 export interface EnkindledReceipt {requestId:string;extraRolls:number[];hitDiceSpent:number;hitDiceRevision:number;replayed:boolean}
-export interface SurgeRequest {hitDie?:HitDie;requestId:string;rolls:number[];sourceFeature:string;recoveryNote?:string}
+export interface SurgeRequest {activationId?:string;hitDie?:HitDie;requestId:string;rolls:number[];sourceFeature:string;recoveryNote?:string}
 export interface SurgeReceipt {hitDiceSpentByType?:Record<string,number>|null;requestId:string;rolls:number[];total:number;hitDiceSpent:number;hitDiceRevision:number;replayed:boolean}
 /** Injected into roll controls so a paid server result can refresh the sheet
  * without being enqueued as another optimistic absolute-value write. */
@@ -67,11 +68,13 @@ function receipt(value:unknown,requestId:string):asserts value is Record<string,
 function validRolls(value:unknown):value is number[]{return Array.isArray(value)&&value.length>0&&value.length<=14&&value.every(n=>Number.isInteger(n)&&n>=1&&n<=12);}
 export async function spendEnkindledLifeForce(characterId:string,input:EnkindledRequest):Promise<EnkindledReceipt>{
  const request=structuredClone(input);
- const data=await psionicRpc('spend_enkindled_life_force',{
+ if(!validSharpenedEnhancementLink(request)||(request.activationId!==undefined&&(!validRolls(request.baseRolls)||request.baseRolls.length!==1||!validRolls(request.extraRolls)||![1,2].includes(request.count)||request.extraRolls.length!==request.count)))throw new PsionicRequestError('Invalid Sharpened activation link or dice.',true);
+ const data=await psionicRpc(request.activationId?'enhance_sharpened_roll':'spend_enkindled_life_force',request.activationId?{p_character_id:characterId,p_activation_id:request.activationId,p_request_id:request.requestId,p_kind:'enkindled',p_extra_rolls:request.extraRolls,p_hit_die:null}:{
   p_character_id:characterId,p_request_id:request.requestId,p_turn:request.turn,p_count:request.count,
   p_base_rolls:request.baseRolls,p_extra_rolls:request.extraRolls,p_source_feature:request.sourceFeature,
  },true);
  receipt(data,request.requestId);
+ if(request.activationId&&(data.activationId!==request.activationId||data.kind!=='enkindled'))throw new PsionicRequestError('The saved Sharpened enhancement could not be verified.',false);
  if(!validRolls(data.extraRolls)||JSON.stringify(data.extraRolls)!==JSON.stringify(request.extraRolls))throw new PsionicRequestError('The saved extra rolls could not be verified.',false);
  return data as unknown as EnkindledReceipt;
 }
@@ -81,10 +84,12 @@ export async function advancePsionicSoloTurn(characterId:string,requestId:string
 
 export async function spendPsionicSurge(characterId:string,input:SurgeRequest):Promise<SurgeReceipt>{
  const request=structuredClone(input);
+ if(!validSharpenedEnhancementLink(request)||(request.activationId!==undefined&&request.hitDie===undefined))throw new PsionicRequestError('Invalid Sharpened activation or Hit Die pool.',true);
  if(request.hitDie!==undefined&&![6,8,10,12].includes(request.hitDie))throw new PsionicRequestError('Choose a valid Hit Die size.',true);
- const data=await psionicRpc(request.hitDie===undefined?'spend_psionic_surge':'spend_psionic_surge_from_pool',{...(request.hitDie===undefined?{}:{p_hit_die:request.hitDie}),p_character_id:characterId,p_request_id:request.requestId,
+ const data=await psionicRpc(request.activationId?'enhance_sharpened_roll':request.hitDie===undefined?'spend_psionic_surge':'spend_psionic_surge_from_pool',request.activationId?{p_character_id:characterId,p_activation_id:request.activationId,p_request_id:request.requestId,p_kind:'surge',p_extra_rolls:null,p_hit_die:request.hitDie}:{...(request.hitDie===undefined?{}:{p_hit_die:request.hitDie}),p_character_id:characterId,p_request_id:request.requestId,
   p_rolls:request.rolls,p_source_feature:request.sourceFeature},true);
  receipt(data,request.requestId);
+ if(request.activationId&&(data.activationId!==request.activationId||data.kind!=='surge'))throw new PsionicRequestError('The saved Sharpened enhancement could not be verified.',false);
  if(request.hitDie!==undefined&&data.hitDiceSpentByType!==null&&!isHitDiceAllocation(data.hitDiceSpentByType,Number(data.hitDiceSpent)))throw new PsionicRequestError('The saved Hit Die pool could not be verified. Keep the saved request.',false);
  if(!validRolls(data.rolls)||data.rolls.length!==request.rolls.length||data.rolls.some((n,index)=>n!==Math.max(4,request.rolls[index]))||data.total!==data.rolls.reduce((sum,n)=>sum+n,0))throw new PsionicRequestError('The saved Surge rolls could not be verified.',false);
  return data as unknown as SurgeReceipt;
