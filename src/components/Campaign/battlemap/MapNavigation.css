@@ -75,3 +75,23 @@
 .map-appearance-section > summary:focus-visible { outline:2px solid #e4bd69; outline-offset:-2px; }
 .map-appearance-section .grid-appearance { margin-top:6px; border:0; padding:0; }
 .map-appearance-section .grid-appearance legend { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
+
+/* v2.861 — retain the dock beside desktop monster actions, above phone drawers. */
+.map-navigation { right:max(12px,var(--map-side-clearance,0px)); max-width:calc(100% - max(12px,var(--map-side-clearance,0px)) - 12px); box-sizing:border-box; }
+@media(max-width:600px) { .map-navigation { right:max(8px,var(--map-side-clearance,0px)); width:calc(100% - max(8px,var(--map-side-clearance,0px)) - 8px); max-width:calc(100% - max(8px,var(--map-side-clearance,0px)) - 8px); } }
+
+/* Short landscape screens retain 44px targets in one row. Accessible names
+   and existing tooltips remain; icons avoid spending the map's height on labels. */
+@media(min-width:701px) and (max-height:550px) {
+ .map-navigation { flex-wrap:nowrap; gap:2px; padding:4px; }
+ .map-navigation button { width:44px; min-width:44px; min-height:44px; padding:0; }
+ .map-navigation-modes button,.map-navigation-framing>button:first-child,.map-navigation>button { font-size:0; gap:0; }
+ .map-navigation-zoom { padding:0; }
+ .map-navigation-zoom select { width:50px; min-height:44px; padding:0; font-size:12px; }
+ .map-help>summary { width:44px; height:44px; }
+}
+@media(min-width:701px) and (max-height:550px) {
+ .map-navigation:has(.map-history-controls) { flex-wrap:wrap; }
+ .map-navigation .map-history-controls { flex-basis:100%; justify-content:center; border-left:0; border-top:1px solid #44434f; padding:4px 0 0; }
+ .map-navigation .map-history-controls button { width:auto; padding:0 8px; }
+}

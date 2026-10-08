@@ -1,0 +1,23 @@
+/* v2.861: the action rail and map navigation reserve separate space. The
+   compact drawer scrolls as one surface so short screens cannot hide actions. */
+.monster-action-rail { --map-rail-layout:side; position:fixed; top:148px; right:12px; bottom:max(88px,calc(var(--combat-strip-inset,0px) + 12px)); width:280px; display:flex; flex-direction:column; box-sizing:border-box; background:#161722; border:1px solid #ac666b; border-radius:10px; box-shadow:0 4px 24px #0008; z-index:10000; font-family:var(--ff-body); overflow:hidden; transition:width 160ms ease; }
+.monster-action-rail[data-collapsed=true] { width:44px; }
+.monster-action-rail-header { background:#161722; flex-shrink:0; }
+.monster-action-rail[data-collapsed=true] .monster-action-rail-header { padding:4px!important; }
+.monster-action-rail-header>button { flex-shrink:0; min-width:36px; min-height:36px; }
+.monster-action-rail-body { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
+@media(max-width:700px) {
+ .monster-action-rail[data-collapsed=false] { --map-rail-layout:bottom; top:auto; right:8px; bottom:calc(var(--combat-strip-inset,88px) + 12px); width:min(420px,calc(100vw - 16px)); height:max(80px,min(240px,calc(100dvh - var(--combat-strip-inset,88px) - 304px))); display:block; overflow-y:auto; overscroll-behavior:contain; }
+ .monster-action-rail[data-collapsed=false] .monster-action-rail-header { position:sticky; top:0; z-index:1; }
+ .monster-action-rail[data-collapsed=false] .monster-action-rail-body { overflow:visible; }
+ .monster-action-rail-header>button { min-width:44px; min-height:44px; }
+ .monster-action-rail[data-collapsed=true] .monster-action-rail-header>button { min-width:34px; min-height:44px; }
+}
+@media(max-height:550px) { .monster-action-rail[data-collapsed=true] { top:12px; } }
+@media(prefers-reduced-motion:reduce) { .monster-action-rail { transition:none; } }
+
+@media(min-width:701px) and (max-height:550px) {
+ .monster-action-rail[data-collapsed=false] { top:12px; display:block; overflow-y:auto; overscroll-behavior:contain; }
+ .monster-action-rail[data-collapsed=false] .monster-action-rail-header { position:sticky; top:0; z-index:1; }
+ .monster-action-rail[data-collapsed=false] .monster-action-rail-body { overflow:visible; }
+}

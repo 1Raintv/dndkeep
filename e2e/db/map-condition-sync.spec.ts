@@ -26,7 +26,7 @@ test.describe('Map condition lifecycle (local stack)',()=>{
    await signInAsSeedDm(page);await page.goto('/campaigns');await page.getByText(name,{exact:true}).locator('visible=true').first().click();
    await expect(page.locator('canvas').first()).toBeVisible({timeout:30_000});
    async function openPanel(){
-   const full=page.getByTitle('Fullscreen map',{exact:true});if(await full.isVisible())await full.click();const rail=page.getByTitle('Collapse action rail',{exact:true});if(await rail.isVisible())await rail.click();await page.getByRole('button',{name:'Fit map',exact:true}).click();
+   const full=page.getByTitle('Fullscreen map',{exact:true});if(await full.isVisible())await full.click();const rail=page.getByTitle('Collapse action rail',{exact:true});if(await rail.isVisible())await rail.click();await page.getByRole('button',{name:'Fit map',exact:true}).click({timeout:4000});
    await expect.poll(()=>page.evaluate(()=>!!(window as any).__PIXI_APP__?.stage.children.find((c:any)=>c.plugins)?.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId))).toBe(true);
    const point=await page.evaluate(async()=>{
     const path='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(path);const t=Object.values(useBattleMapStore.getState().tokens).find((t:any)=>t.name==='Condition Hero') as any;
@@ -63,7 +63,7 @@ test.describe('Map condition lifecycle (local stack)',()=>{
    }
    expect(sql(`select coalesce(concentration_spell,'') from characters where id='${hero}'`)).toBe('');
    await expect(panel.getByTitle('Remove Unconscious',{exact:true})).toBeVisible();
-   await panel.getByTitle('Remove Unconscious',{exact:true}).click();
+   await panel.getByRole('button',{name:'Remove Unconscious',exact:true}).focus();await page.keyboard.press('Space');
    await expect.poll(()=>sql(`select array_to_string(active_conditions,',') from combatants where campaign_id='${camp}' and definition_id='${hero}'`)).toBe('Prone');
    expect(sql(`select array_to_string(active_conditions,',') from characters where id='${hero}'`)).toBe('Prone');
    await expect(panel.getByTitle('Remove Prone',{exact:true})).toBeVisible();await inspect('condition-panel');expect(errors).toEqual([]);
@@ -85,13 +85,13 @@ test.describe('Map condition lifecycle (local stack)',()=>{
     insert into combat_participants(encounter_id,campaign_id,participant_type,entity_id,name,turn_order,initiative,ac,combatant_id)
      values('${enc}','${camp}','creature','${monster}','Condition Creature',0,10,10,'${one}');commit;`);
    await signInAsSeedDm(page);await page.goto('/campaigns');await page.getByText(name,{exact:true}).locator('visible=true').first().click();await expect(page.locator('canvas').first()).toBeVisible({timeout:30_000});
-   const full=page.getByTitle('Fullscreen map',{exact:true});if(await full.isVisible())await full.click();const rail=page.getByTitle('Collapse action rail',{exact:true});if(await rail.isVisible())await rail.click();await page.getByRole('button',{name:'Fit map',exact:true}).click();
+   const full=page.getByTitle('Fullscreen map',{exact:true});if(await full.isVisible())await full.click();const rail=page.getByTitle('Collapse action rail',{exact:true});if(await rail.isVisible())await rail.click();await page.getByRole('button',{name:'Fit map',exact:true}).click({timeout:4000});
    await expect.poll(()=>page.evaluate(()=>!!(window as any).__PIXI_APP__?.stage.children.find((c:any)=>c.plugins)?.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId))).toBe(true);
    const point=await page.evaluate(id=>{const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins),item=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id),p=item.getGlobalPosition(),r=document.querySelector('canvas')!.getBoundingClientRect();return {x:r.x+p.x,y:r.y+p.y};},placement);
    await page.mouse.click(point.x,point.y,{button:'right'});await page.getByText('Open Quick Panel',{exact:true}).click();const panel=page.getByRole('dialog',{name:'Creature token: Condition Creature'});await expect(panel).toBeVisible();
-   await panel.getByRole('button',{name:'+ apply',exact:true}).click();await panel.getByRole('button',{name:'+ Unconscious',exact:true}).click();
+   await panel.getByRole('button',{name:'+ apply',exact:true}).click();await panel.getByRole('button',{name:'Apply Unconscious',exact:true}).focus();await page.keyboard.press('Enter');
    await expect.poll(()=>sql(`select array_to_string(active_conditions,',') from combatants where id='${one}'`)).toBe('Unconscious,Prone,Incapacitated');
-   await panel.getByTitle('Remove Unconscious',{exact:true}).click();await expect.poll(()=>sql(`select array_to_string(active_conditions,',') from combatants where id='${one}'`)).toBe('Prone');
+   await panel.getByRole('button',{name:'Remove Unconscious',exact:true}).focus();await page.keyboard.press('Space');await expect.poll(()=>sql(`select array_to_string(active_conditions,',') from combatants where id='${one}'`)).toBe('Prone');
    expect(sql(`select cardinality(active_conditions) from combatants where id='${two}'`)).toBe('0');
    await expect(panel.getByTitle('Remove Prone',{exact:true})).toBeVisible();await page.screenshot({path:info.outputPath('creature-panel.png')});
    if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8'),body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[role=\"dialog\"], [role=\"dialog\"] *')"),report=await page.evaluate('('+scoped+'\n})()');expect(report.sideways).toBe(false);expect(report.clipped).toEqual([]);expect(report.pastEdge).toEqual([]);}

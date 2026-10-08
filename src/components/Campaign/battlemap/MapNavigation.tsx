@@ -1,3 +1,4 @@
+import {mapControlInsets} from './mapControlInsets';
 import { useEffect, useRef, useState } from 'react';
 import type { Viewport } from 'pixi-viewport';
 import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
@@ -64,10 +65,12 @@ export function MapNavigation({ viewport, canvas, selectedIds, gridSizePx, editi
     const rail=host?.querySelector('.map-tool-palette')?.getBoundingClientRect();
     const actions=host?.querySelector('.map-selection-actions')?.getBoundingClientRect();
     const dock=navRef.current?.getBoundingClientRect();
+    const sideRails=[...document.querySelectorAll('.monster-action-rail')].filter(el=>getComputedStyle(el).getPropertyValue('--map-rail-layout').trim()!=='bottom');
+    const inset=mapControlInsets(rect,[],sideRails.map(el=>el.getBoundingClientRect()));
     return {
       left:rail ? rail.right-rect.left+12 : 12,
       top:Math.max(60,actions ? actions.bottom-rect.top+12 : 0),
-      right:viewport!.screenWidth-12,
+      right:viewport!.screenWidth-Math.max(12,inset.right),
       bottom:Math.min(viewport!.screenHeight-12,dock ? dock.top-rect.top-12 : viewport!.screenHeight-12),
     };
   };

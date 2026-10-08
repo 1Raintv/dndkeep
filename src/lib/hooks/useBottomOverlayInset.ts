@@ -4,9 +4,12 @@ import {useLayoutEffect,type RefObject} from 'react';
 export function useBottomOverlayInset(ref:RefObject<HTMLElement|null>,active:boolean){
  useLayoutEffect(()=>{
   const node=ref.current;if(!active||!node)return;
-  const style=document.body.style,key='--combat-strip-inset';let last='';
-  const measure=()=>{last=`${Math.max(0,Math.ceil(window.innerHeight-node.getBoundingClientRect().top))}px`;style.setProperty(key,last);};
-  measure();const observer=new ResizeObserver(measure);observer.observe(node);window.addEventListener('resize',measure);
-  return()=>{observer.disconnect();window.removeEventListener('resize',measure);if(style.getPropertyValue(key)===last)style.removeProperty(key);};
+  const style=document.body.style,key='--combat-strip-inset';let last='',frame=0;
+  const measure=()=>{frame=0;last=`${Math.max(0,Math.ceil(window.innerHeight-node.getBoundingClientRect().top))}px`;if(style.getPropertyValue(key)!==last)style.setProperty(key,last);};
+  // v2.861: changing the shared inset resizes other observed overlays. Defer
+  // it out of ResizeObserver delivery to avoid a same-frame notification loop.
+  const schedule=()=>{if(!frame)frame=requestAnimationFrame(measure);};
+  measure();const observer=new ResizeObserver(schedule);observer.observe(node);window.addEventListener('resize',schedule);
+  return()=>{observer.disconnect();cancelAnimationFrame(frame);window.removeEventListener('resize',schedule);if(style.getPropertyValue(key)===last)style.removeProperty(key);};
  },[ref,active]);
 }
