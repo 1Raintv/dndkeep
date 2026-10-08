@@ -1,3 +1,6 @@
+import {createPortal} from 'react-dom';
+import {useMapConditions} from './battlemap/useMapConditions';
+import {MapConditionFeedback} from './battlemap/MapConditionFeedback';
 import {useMapMenuPosition} from './battlemap/useMapMenuPosition';
 import { abilityModifier } from '../../rules/abilities';
 import { useState, useEffect, useCallback } from 'react';
@@ -82,9 +85,8 @@ import { findParticipantForToken } from '../../lib/participantForToken';
  * panel's own writes (no optimistic local update — let the channel
  * echo it).
  *
- * Conditions: writes go through `npcs.conditions text[]` directly,
- * matching v1's pattern (and the character panel's). No combat
- * cascade routing here — same trade-off as character panel.
+ * v2.860: conditions settle against this creature instance with cascades,
+ * source-aware removal and a saved request that survives lost responses.
  */
 
 interface NpcRow {
@@ -207,7 +209,8 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
   const [hpInput, setHpInput] = useState('');
   const [hpMode, setHpMode] = useState<'damage' | 'heal' | 'set'>('damage');
   const [applying, setApplying] = useState(false);
-  const [condBusy, setCondBusy] = useState(false);
+  const conditionState=useMapConditions(npc?.campaign_id??'','combatant',combatantId,isDM&&!!npc&&!!combatant);
+  const condBusy=conditionState.blocked;
   const [showCondPicker, setShowCondPicker] = useState(false);
   // v2.494.0 — Campaign Time Scale, fed into the buff duration label.
   // Defaults to 10 (DND 404 default) until the campaign row resolves;
@@ -405,49 +408,9 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     }
   }, [npc, combatant, hpInput, hpMode, combatantId, showToast]);
 
-  const addCondition = useCallback(async (cond: string) => {
-    if (!npc || condBusy) return;
-    // v2.393.0 — Conditions write target moved from homebrew_monsters
-    // to combatants for the same reason as HP above. The combatant's
-    // conditions array is what combat reads (and now what map renders
-    // via tokenStateMap).
-    const current = combatant?.active_conditions ?? [];
-    if (current.includes(cond)) return;
-    setCondBusy(true);
-    try {
-      const next = [...current, cond];
-      const { error } = await supabase
-        .from('combatants')
-        .update({ active_conditions: next, updated_at: new Date().toISOString() })
-        .eq('id', combatantId);
-      if (error) {
-        console.error('[NpcTokenQuickPanel] addCondition failed', error);
-        showToast(`Failed to apply ${cond}.`, 'error');
-      }
-    } finally {
-      setCondBusy(false);
-    }
-  }, [npc, combatant, condBusy, combatantId, showToast]);
-
-  const removeCondition = useCallback(async (cond: string) => {
-    if (!npc || condBusy) return;
-    const current = combatant?.active_conditions ?? [];
-    if (!current.includes(cond)) return;
-    setCondBusy(true);
-    try {
-      const next = current.filter(x => x !== cond);
-      const { error } = await supabase
-        .from('combatants')
-        .update({ active_conditions: next, updated_at: new Date().toISOString() })
-        .eq('id', combatantId);
-      if (error) {
-        console.error('[NpcTokenQuickPanel] removeCondition failed', error);
-        showToast(`Failed to remove ${cond}.`, 'error');
-      }
-    } finally {
-      setCondBusy(false);
-    }
-  }, [npc, combatant, condBusy, combatantId, showToast]);
+  // v2.860: per-instance deltas share the character panel's recoverable settlement.
+  const addCondition=(condition:string)=>conditionState.change(condition,true);
+  const removeCondition=(condition:string)=>conditionState.change(condition,false);
 
   // v2.482.0 — Manual immunity revoke. Mirrors the character sheet's
   // ActiveImmunitiesPanel handler (v2.478) but writes against
@@ -696,9 +659,9 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
   // Loading state — fetch hasn't returned yet. Render a tiny stub so
   // the panel anchors don't visibly flicker.
   if (!npc) {
-    return (
+    return createPortal(
       <div
-        style={{ position: 'fixed', inset: 0, zIndex: 9997 }}
+        style={{ position: 'fixed', inset: 0, zIndex: 10000 }}
         onMouseDown={onClose}
       >
         <div ref={panelRef} role="dialog" aria-label="Loading creature token"
@@ -715,7 +678,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
         >
           Loading…
         </div>
-      </div>
+      </div>,document.body
     );
   }
 
@@ -732,9 +695,10 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
   const conditions = combatant?.active_conditions ?? npc.conditions ?? [];
   const availableConds = ALL_CONDITIONS.filter(c => !conditions.includes(c));
 
-  return (
+  // v2.860: portal keeps controls above the active-combat strip on phones.
+  return createPortal(
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 9997 }}
+      style={{ position: 'fixed', inset: 0, zIndex: 10000 }}
       onMouseDown={onClose}
     >
       <div ref={panelRef} role="dialog" aria-label={`Creature token: ${npc.name}`}
@@ -1215,6 +1179,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
               })}
             </div>
           )}
+          {isDM&&<MapConditionFeedback state={conditionState}/>}
           {/* Picker — DM only, expanded with all unapplied conditions. */}
           {isDM && showCondPicker && availableConds.length > 0 && (
             <div style={{
@@ -1230,6 +1195,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
                   <button
                     key={cond}
                     onClick={() => { addCondition(cond); }}
+                    disabled={condBusy}
                     style={{
                       padding: '2px 8px',
                       background: 'transparent',
@@ -1368,6 +1334,6 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
         )}
 
       </div>
-    </div>
+    </div>,document.body
   );
 }

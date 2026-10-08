@@ -27,3 +27,9 @@ it('explicitly removing Prone is separate from waking',()=>{
 it('missing condition removal is a no-op; untracked manual conditions survive',()=>{
  expect(removeConditions(['Prone','Incapacitated'],{},['Unconscious'])).toEqual({conditions:['Prone','Incapacitated'],sources:{},removed:[]});
 });
+
+it.each(['cascade:Unconscious','manual'])('cannot stand while Unconscious even when Prone began as %s',source=>{
+ const result=removeConditions(['Unconscious','Prone'],{Prone:{source}},['Prone']);
+ expect(result.conditions).toEqual(['Unconscious','Prone']);expect(result.removed).toEqual([]);
+ expect(removeConditions(result.conditions,result.sources,['Unconscious']).conditions).toEqual(['Prone']);
+});

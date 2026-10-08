@@ -18,6 +18,7 @@ test.describe('Condition removal database parity',()=>{
     cases.push({conditions,sources,requested});
    }
   }
+  for(const source of ['manual','cascade:Unconscious'])for(const requested of [['Prone'],['Unconscious'],['Unconscious','Prone']])cases.push({conditions:['Unconscious','Prone','Incapacitated','Poisoned'],sources:{Prone:{source},Incapacitated:{source:'cascade:Unconscious'},Poisoned:{source:'other'}},requested});
   const results=JSON.parse(sql(`select jsonb_agg(dndkeep_private.remove_conditions(array(select jsonb_array_elements_text(c->'conditions')),c->'sources',array(select jsonb_array_elements_text(c->'requested')))) from jsonb_array_elements(${json(cases)}) c`));
   expect(results).toEqual(cases.map(c=>removeConditions(c.conditions,c.sources,c.requested)));
  });

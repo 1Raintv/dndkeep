@@ -1,13 +1,14 @@
+import {createPortal} from 'react-dom';
 // Extracted verbatim from BattleMapV2.tsx (v2.636 decomposition step 3).
 // See that file's header changelog for this code's full history.
 
 import {useMapMenuPosition} from './useMapMenuPosition';
 import { abilityModifier } from '../../../rules/abilities';
 import { useEffect, useState } from 'react';
-import { supabase } from '../../../lib/supabase';
+import {useMapConditions} from './useMapConditions';
+import {MapConditionFeedback} from './MapConditionFeedback';
 import ChecksPanel from '../ChecksPanel';
 import type { Character } from '../../../types';
-import { useToast } from '../../shared/Toast';
 import {TokenHitPointControls} from './TokenHitPointControls';
 import { ALL_CONDITIONS, COND_COLOR } from './shared';
 
@@ -21,12 +22,8 @@ import { ALL_CONDITIONS, COND_COLOR } from './shared';
  *   - Open full Character Sheet (router navigate)
  *   - Close
  *
- * Scope of v2.226: read-only HP/AC/Speed display + Damage/Heal/Set
- * controls + Open Sheet link. Conditions are shown as read-only chips.
- * v2.227+ will add inline condition apply/remove (which routes through
- * the combat-participants table — different from the characters table
- * that owns HP). Until then, condition changes happen on the full
- * character sheet or via the existing combat encounter UI.
+ * v2.860: condition changes update the character and its combat bodies in one
+ * transaction, including concentration cleanup and recoverable confirmation.
  *
  * For tokens NOT linked to a character (NPCs, plain markers), the
  * panel is not opened; right-click context menu remains the way to
@@ -70,11 +67,8 @@ export function TokenQuickPanel(props: {
   onOpenSheet: () => void;
 }) {
   const { character: c, anchorX, anchorY, isDM, campaignId, onClose, onOpenSheet } = props;
-  const { showToast } = useToast();
-  // v2.227 — guard for in-flight condition writes. Prevents double-click
-  // from racing two updates against an out-of-date base array.
-  const [condBusy, setCondBusy] = useState(false);
-
+  const conditions=useMapConditions(campaignId,'character',c.id,isDM);
+  const condBusy=conditions.blocked;
   // v2.280.0 — Per-DM collapse state for the Default Stats and Ability
   // Checks sections. Persisted in localStorage so the DM's preference
   // survives page reloads. Default `false` (sections start expanded)
@@ -128,62 +122,19 @@ export function TokenQuickPanel(props: {
   const mod = (score: number) => abilityModifier(score);
   const modStr = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 
-  // v2.227 — Direct write to characters.active_conditions (matches
-  // v1's approach in BattleMap.tsx). Cascade rules from
-  // src/lib/conditions.ts (Unconscious → Prone+Incapacitated, etc.)
-  // are NOT applied here — same trade-off v1 makes. Cascades only
-  // fire through the encounter pipeline (combat_participants); the
-  // map-side panel is for quick adjustments, not full event-driven
-  // condition changes. v2.228+ can route through applyCondition()
-  // when a combat encounter is active.
-  async function addCondition(cond: string) {
-    if (condBusy) return;
-    const current = c.active_conditions ?? [];
-    if (current.includes(cond)) return;
-    setCondBusy(true);
-    try {
-      const next = [...current, cond];
-      const { error } = await supabase
-        .from('characters')
-        .update({ active_conditions: next })
-        .eq('id', c.id);
-      if (error) {
-        console.error('[TokenQuickPanel] addCondition failed', error);
-        showToast(`Failed to apply ${cond}.`, 'error');
-      }
-    } finally {
-      setCondBusy(false);
-    }
-  }
-
-  async function removeCondition(cond: string) {
-    if (condBusy) return;
-    const current = c.active_conditions ?? [];
-    if (!current.includes(cond)) return;
-    setCondBusy(true);
-    try {
-      const next = current.filter(x => x !== cond);
-      const { error } = await supabase
-        .from('characters')
-        .update({ active_conditions: next })
-        .eq('id', c.id);
-      if (error) {
-        console.error('[TokenQuickPanel] removeCondition failed', error);
-        showToast(`Failed to remove ${cond}.`, 'error');
-      }
-    } finally {
-      setCondBusy(false);
-    }
-  }
+  // v2.860: server settles condition cascades, concentration and combat bodies together.
+  const addCondition=(condition:string)=>conditions.change(condition,true);
+  const removeCondition=(condition:string)=>conditions.change(condition,false);
 
   function stop(e: React.MouseEvent) { e.stopPropagation(); }
 
-  return (
+  // v2.860: escape the fullscreen map stacking context above the combat bar.
+  return createPortal(
     <div
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 9997,
+        zIndex: 10000,
         // Backdrop is invisible but catches outside clicks to close.
       }}
       onMouseDown={onClose}
@@ -257,9 +208,10 @@ export function TokenQuickPanel(props: {
 
         {/* v2.227 — Apply Condition picker (DM only). Lists every
             condition NOT already active as a clickable color chip;
-            click → write to characters.active_conditions → Realtime
+            click → settle a shared condition delta → Realtime
             updates the parent → this panel re-renders with the
             condition moved into the "active" chip row above. */}
+        {isDM && <MapConditionFeedback state={conditions}/>}
         {isDM && (() => {
           const activeSet = new Set(c.active_conditions ?? []);
           const remaining = ALL_CONDITIONS.filter(cond => !activeSet.has(cond));
@@ -405,8 +357,7 @@ export function TokenQuickPanel(props: {
         {/* v2.227 — Active conditions chips, moved to bottom in v2.280.
             DM clicks the ✕ to remove; players see them read-only.
             Color-coded via COND_COLOR matching v1's palette. Writes
-            flow through the characters table directly (same path v1
-            uses) — Realtime propagates back to this panel and to
+            settle with combat bodies and concentration — Realtime updates
             character sheets. Bottom placement is per-spec: conditions
             are status info, not the primary actionable surface. */}
         {c.active_conditions && c.active_conditions.length > 0 && (
@@ -443,6 +394,6 @@ export function TokenQuickPanel(props: {
           </div>
         )}
       </div>
-    </div>
+    </div>,document.body
   );
 }
