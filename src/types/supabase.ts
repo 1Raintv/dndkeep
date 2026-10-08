@@ -1191,6 +1191,9 @@ export type Database = {
           attack_name: string | null;
           attack_bonus: number | null;
           attack_damage: string | null;
+          damage_resistances: string[] | null;
+          damage_immunities: string[] | null;
+          damage_vulnerabilities: string[] | null;
           xp: number | null;
           traits: string | null;
           is_public: boolean | null;
@@ -1240,6 +1243,9 @@ export type Database = {
           attack_name?: string | null;
           attack_bonus?: number | null;
           attack_damage?: string | null;
+          damage_resistances?: string[] | null;
+          damage_immunities?: string[] | null;
+          damage_vulnerabilities?: string[] | null;
           xp?: number | null;
           traits?: string | null;
           is_public?: boolean | null;
@@ -1289,6 +1295,9 @@ export type Database = {
           attack_name?: string | null;
           attack_bonus?: number | null;
           attack_damage?: string | null;
+          damage_resistances?: string[] | null;
+          damage_immunities?: string[] | null;
+          damage_vulnerabilities?: string[] | null;
           xp?: number | null;
           traits?: string | null;
           is_public?: boolean | null;
