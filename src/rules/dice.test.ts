@@ -3,7 +3,7 @@
 // pendingAttack damage, buff riders/ticks, monster browser, bestiary
 // bare-integer damage (v2.448), and crit doubling (2024 PHB).
 import { describe, expect, it } from 'vitest';
-import { addDiceModifier, rollDiceGroups, doubleDice, rollDiceExpr, rollDie } from './dice';
+import { physicalDiceList, physicalDiceOutcome, addDiceModifier, rollDiceGroups, doubleDice, rollDiceExpr, rollDie } from './dice';
 
 describe('rollDie', () => {
   it('stays in [1, sides] and hits every face over many rolls', () => {
@@ -92,5 +92,25 @@ describe('spell damage groups',()=>{
   expect(addDiceModifier('2d6+2',-2)).toBe('2d6');
   expect(addDiceModifier('2d6',-1)).toBe('2d6-1');
   expect(doubleDice(addDiceModifier('2d6',4))).toBe('4d6+4');
+ });
+});
+
+describe('physical Advantage dice',()=>{
+ const event={dieType:20,result:0,modifier:4};const dice=[{die:20,value:3},{die:20,value:17}];
+ it('creates two d20s from an Advantage flag without changing the input',()=>{expect(physicalDiceList({...event,advantage:true})).toEqual([{die:20,value:0},{die:20,value:0}]);expect(event).toEqual({dieType:20,result:0,modifier:4});});
+ it('keeps the higher physical d20 rather than summing',()=>{expect(physicalDiceOutcome({...event,advantage:true},dice)).toEqual({total:21,discarded:[0]});});
+ it('keeps the lower physical d20 for Disadvantage',()=>{expect(physicalDiceOutcome({...event,disadvantage:true},dice)).toEqual({total:7,discarded:[1]});});
+ it('cancels both flags to one ordinary die',()=>{
+  const both={...event,advantage:true,disadvantage:true,allDice:dice};expect(physicalDiceList(both)).toEqual([dice[0]]);
+  expect(physicalDiceOutcome(both,dice)).toEqual({total:7,discarded:[1]});
+ });
+ it('adds bonus dice and modifiers without adding the discarded d20',()=>{expect(physicalDiceOutcome({...event,advantage:true,flatBonus:2},[...dice,{die:4,value:3}])).toEqual({total:26,discarded:[0]});});
+ it('keeps one die on equal faces',()=>{expect(physicalDiceOutcome({...event,advantage:true},[{die:20,value:9},{die:20,value:9}])).toEqual({total:13,discarded:[1]});});
+ it('does not change ordinary multi-die damage or percentile dice',()=>{
+  expect(physicalDiceOutcome(event,dice)).toEqual({total:24,discarded:[]});
+  expect(physicalDiceList({dieType:100,result:0,advantage:true})).toEqual([{die:100,value:0}]);
+ });
+ it('does not duplicate an explicitly supplied second d20 or consume a bonus die',()=>{
+  const list=[...dice,{die:4,value:2}];expect(physicalDiceList({...event,advantage:true,allDice:list})).toEqual(list);
  });
 });

@@ -89,3 +89,31 @@ export function addDiceModifier(expression:string,bonus:number):string {
  const total=Number(m[2]??0)+bonus;
  return m[1]+(total>0?'+'+total:total<0?String(total):'');
 }
+
+export interface PhysicalDiceEvent {
+ dieType:number;result:number;allDice?:{die:number;value:number}[];
+ advantage?:boolean;disadvantage?:boolean;modifier?:number;flatBonus?:number;
+}
+/** v2.818 — flags must create real dice, not only an Advantage label. */
+export function physicalDiceList(event:PhysicalDiceEvent):{die:number;value:number}[]{
+ const list=(event.allDice?.length?event.allDice:[{die:event.dieType,value:event.result}]).map(d=>({...d}));
+ if(event.dieType!==20||(!event.advantage&&!event.disadvantage))return list;
+ const first=list.findIndex(d=>d.die===20);if(first<0)return list;
+ if(event.advantage&&event.disadvantage)return list.filter((d,i)=>d.die!==20||i===first);
+ if(list.filter(d=>d.die===20).length===1)list.splice(first+1,0,{die:20,value:0});
+ return list;
+}
+/** Use the settled physical faces. Bonus dice still add normally; Advantage
+ * selects one d20, and its discarded partner remains available for history. */
+export function physicalDiceOutcome(event:PhysicalDiceEvent,dice:{die:number;value:number}[]):{total:number;discarded:number[]}{
+ const d20=dice.map((d,i)=>({d,i})).filter(({d})=>d.die===20);
+ let discarded:number[]=[];
+ if(event.dieType===20&&(event.advantage||event.disadvantage)&&d20.length){
+  let kept=d20[0];
+  if(!(event.advantage&&event.disadvantage))for(const candidate of d20.slice(1)){
+   if(event.advantage?candidate.d.value>kept.d.value:candidate.d.value<kept.d.value)kept=candidate;
+  }
+  discarded=d20.filter(({i})=>i!==kept.i).map(({i})=>i);
+ }
+ return {total:dice.reduce((sum,d,i)=>sum+(discarded.includes(i)?0:d.value),0)+(event.modifier??0)+(event.flatBonus??0),discarded};
+}

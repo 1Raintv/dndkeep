@@ -1,3 +1,4 @@
+import {physicalDiceList,physicalDiceOutcome} from '../rules/dice';
 /**
  * DiceRoller3D — v2.0.0
  * Uses cannon-es for proper rigid-body physics with ConvexPolyhedron collision shapes.
@@ -407,6 +408,13 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
   const activeSkin=DICE_SKINS.find(s=>s.id===skinId)??DICE_SKINS[0];
   useEffect(()=>{
     const el=mountRef.current;if(!el)return;
+    // v2.818: StrictMode replays effects. Remove this roll's imperative DOM
+    // alongside its canvas, while preserving React's dismiss hint and styles.
+    const ownedNodes: HTMLElement[] = [];
+    const appendRollNode = (node: HTMLElement) => {
+      ownedNodes.push(node);
+      el.appendChild(node);
+    };
     const W=window.innerWidth,H=window.innerHeight;
 
     // ── Web Audio — procedural dice sounds ───────────────────────────────────
@@ -456,7 +464,7 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
     renderer.toneMappingExposure=1.35;
     renderer.outputColorSpace=THREE.SRGBColorSpace;
     renderer.domElement.style.cssText='position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;';
-    el.appendChild(renderer.domElement);
+    appendRollNode(renderer.domElement);
     const scene=new THREE.Scene();
     // IBL: procedural warm studio environment for realistic reflections
     const pmrem=new THREE.PMREMGenerator(renderer);
@@ -560,7 +568,7 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
     addWall(  0, 0, BZf,  0,1,0,  Math.PI);     // front wall
 
     // ── Dice ─────────────────────────────────────────────────────────
-    const rawList=event.allDice?.length?event.allDice:[{die:event.dieType,value:event.result}];
+    const rawList=physicalDiceList(event);
     // Scale dice to ~7% of window height so they're readable across the full window
     const diceScreenPct=BZ*0.155; // tuned for uniform SM=1.0
     const baseS=Math.max(0.8,Math.min(1.6,diceScreenPct)-Math.max(0,rawList.length-1)*0.05);
@@ -641,6 +649,7 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
       if(shown||!el)return;shown=true;
       rollingDiv.style.display='none';
       const detectedDice=dice.map(d=>({die:d.sides,value:d.val}));
+      const outcome=physicalDiceOutcome(event,detectedDice);
       // D100: tens die (geoKey 10090) contributes val×10, units die contributes val
       // If both are 0, result is 100 (not 0)
       let detectedTotal:number;
@@ -650,7 +659,7 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
         const t=tensDie?.val??0, u=unitsDie?.val??0;
         detectedTotal=(t===0&&u===0)?100:t*10+u;
       } else {
-        detectedTotal=detectedDice.reduce((s,d)=>s+d.value,0)+(event.flatBonus??0)+(event.modifier??0);
+        detectedTotal=outcome.total;
       }
       if(onResult)onResult(detectedDice,detectedTotal);
       const tot=detectedTotal;
@@ -666,7 +675,7 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
       if(isNat20){
         const glow=document.createElement('div');
         glow.style.cssText='position:absolute;inset:0;pointer-events:none;animation:nat20Pulse 0.6s ease-out both;background:radial-gradient(ellipse at center,rgba(255,200,50,0.35) 0%,transparent 70%);';
-        el.appendChild(glow);
+        appendRollNode(glow);
         // 3D gold particle burst from the nat 20 die
         const nat20Die=dice.find(d=>d.sides===20);
         if(nat20Die){
@@ -690,7 +699,7 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
       if(isNat1){
         const flash=document.createElement('div');
         flash.style.cssText='position:absolute;inset:0;pointer-events:none;animation:nat1Flash 0.5s ease-out both;background:rgba(220,30,30,0.25);';
-        el.appendChild(flash);
+        appendRollNode(flash);
         try{
           const ctx=getAudio();
           const o=ctx.createOscillator(),g=ctx.createGain();
@@ -713,9 +722,9 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
       if(multi){
         // Multi-dice: label + per-die breakdown + total
         // Group by die type for display: d12=8, d20=15  →  8 + 15 = 23
-        const dieParts=detectedDice.map(d=>{
+        const dieParts=detectedDice.map((d,i)=>{
           const c=dieColor(d.die);
-          return `<span style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;margin:0 6px">` +
+          return `<span style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;margin:0 6px;opacity:${outcome.discarded.includes(i)?0.35:1};text-decoration:${outcome.discarded.includes(i)?'line-through':'none'}">` +
             `<span style="font:900 46px system-ui;color:${c};line-height:1;text-shadow:0 0 20px ${c}60">${d.value}</span>` +
             `<span style="font:700 9px system-ui;color:${c}99;letter-spacing:.12em;text-transform:uppercase">d${d.die}</span>` +
           `</span>`;
@@ -724,12 +733,13 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
         const exprParts:string[]=[];
         detectedDice.forEach((d,i)=>{
           exprParts.push(dieParts[i]);
-          if(i<detectedDice.length-1) exprParts.push(`<span style="font:700 28px system-ui;color:rgba(255,255,255,0.3);margin:0 2px;align-self:center;display:inline-block;transform:translateY(-8px)">+</span>`);
+          if(i<detectedDice.length-1) exprParts.push(`<span style="font:700 28px system-ui;color:rgba(255,255,255,0.3);margin:0 2px;align-self:center;display:inline-block;transform:translateY(-8px)">${outcome.discarded.length&&d.die===20&&detectedDice[i+1].die===20?'or':'+'}</span>`);
         });
-        const bonusPart=(event.flatBonus&&event.flatBonus!==0)?
-          `<span style="font:700 28px system-ui;color:rgba(255,255,255,0.3);margin:0 2px;align-self:center;display:inline-block;transform:translateY(-8px)">${event.flatBonus>0?'+':''}</span>`+
+        const displayBonus=(event.flatBonus??0)+(event.modifier??0);
+        const bonusPart=(displayBonus&&displayBonus!==0)?
+          `<span style="font:700 28px system-ui;color:rgba(255,255,255,0.3);margin:0 2px;align-self:center;display:inline-block;transform:translateY(-8px)">${displayBonus>0?'+':''}</span>`+
           `<span style="display:inline-flex;flex-direction:column;align-items:center;gap:2px;margin:0 6px">` +
-            `<span style="font:900 46px system-ui;color:rgba(255,255,255,0.5);line-height:1">${event.flatBonus}</span>` +
+            `<span style="font:900 46px system-ui;color:rgba(255,255,255,0.5);line-height:1">${displayBonus}</span>` +
             `<span style="font:700 9px system-ui;color:rgba(255,255,255,0.3);letter-spacing:.12em">BONUS</span>` +
           `</span>`:'';
         // v2.639 audit 1.6: lbl is user-controlled (character names reach it via
@@ -751,14 +761,14 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
           (hasMod?`<div style="font:500 16px system-ui;color:rgba(255,255,255,0.45);margin-top:6px">${firstResult} ${(event.modifier??0)>=0?'+':''}${event.modifier} = ${tot}</div>`:'');
       }
       div.prepend(rollLabelNode(lbl,multi)); // user text → textContent (audit 1.6)
-      el.appendChild(div);
+      appendRollNode(div);
     }
 
     // "Rolling..." indicator shown until result
     const rollingDiv=document.createElement('div');
     rollingDiv.style.cssText='position:absolute;top:14px;left:50%;transform:translateX(-50%);font:600 12px system-ui;color:rgba(255,255,255,0.35);letter-spacing:.18em;text-transform:uppercase;pointer-events:none;';
     rollingDiv.textContent='Rolling...';
-    el.appendChild(rollingDiv);
+    appendRollNode(rollingDiv);
 
     function frame(ts:number){
       if(dismissed)return;
@@ -866,7 +876,7 @@ export default function DiceRoller3D({event,onDismiss,onResult,skinId}:Props){
       });
       envMap.dispose(); // pmrem render-target texture on scene.environment
       renderer.dispose();
-      if(el.contains(renderer.domElement))el.removeChild(renderer.domElement);
+      ownedNodes.forEach(node => node.remove());
       scene.clear();
       audioCtx?.close();
     };
