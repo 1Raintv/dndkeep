@@ -1,3 +1,4 @@
+import type {PsionicDamageDice} from '../../../rules/psionicDamageDice';
 import {psionProgression} from '../../../rules/psionProgression';
 import {prepareDiscipline,beginDiscipline} from './disciplinePayment';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
@@ -23,7 +24,7 @@ function capacity(c:Character){
  if(!progression||!Array.isArray(choices)||!hasDiscipline(choices.filter((v):v is string=>typeof v==='string'),discipline))return null;
  return psionicDisciplineCapacity(progression.level,c.class_resources?.['psionic-energy-dice'],computeStats(c).modifiers.intelligence);
 }
-interface PaidResult {requestId:string;characterId:string;characterName:string;amount:number;targetName:string;target:CombatParticipant|null;context:PsionicDamageContext|null;queued:boolean}
+interface PaidResult {requestId:string;characterId:string;characterName:string;amount:number;psionicDamageDice:PsionicDamageDice;targetName:string;target:CombatParticipant|null;context:PsionicDamageContext|null;queued:boolean}
 /** v2.777 — confirm the spell trigger, then spend/roll once. Retrying delivery
  * reuses the paid result and declaration ID; it never rolls or charges again. */
 export default function DestructiveThoughtsButton({persistence,character}:{persistence?:PsionicEnhancementPersistence;character:Character;onUpdate:(patch:Partial<Character>)=>void}){
@@ -76,7 +77,7 @@ export default function DestructiveThoughtsButton({persistence,character}:{persi
     current:()=>latest.current,active:options.active,eligible:c=>!!capacity(c),prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
    if(surged?.unconfirmed)return;
    const amount=psionicDisciplineTotal(surged?.rolls??rolls,now.sides,intelligence)!;
-   const result:PaidResult={requestId:crypto.randomUUID(),characterId:id,characterName:current.name,amount,targetName,target,context,queued:false};
+   const result:PaidResult={requestId:crypto.randomUUID(),characterId:id,characterName:current.name,amount,psionicDamageDice:{version:1,sides:now.sides,originalRolls:[...(surged?.originalRolls??rolls)],rolls:[...(surged?.rolls??rolls)],modifier:intelligence},targetName,target,context,queued:false};
    if(mounted.current&&latest.current.id===id)setPaid(result);
    const warnLog=()=>showToast('Damage rolled, but its log could not be saved. Keep the displayed result.','warn');
    void logAction({campaignId:campaignId??null,characterId:id,characterName:current.name,targetName,

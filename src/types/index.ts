@@ -991,6 +991,7 @@ export interface PendingAttack {
   damage_dice: string | null;
   damage_type: string | null;
   damage_rolls: number[] | null;
+  psionic_damage_dice?: import('../rules/psionicDamageDice').PsionicDamageDice | null;
   damage_components?: import('../rules/damageComponents').DamageComponentRecord | null;
   damage_raw: number | null;
   damage_final: number | null;

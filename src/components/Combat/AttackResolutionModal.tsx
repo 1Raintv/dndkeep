@@ -1,3 +1,4 @@
+import {readDamageComponents} from '../../rules/damageComponents';
 import {isNetworkError} from '../../lib/authErrors';
 import {useToast} from '../shared/Toast';
 // v2.97.0 — Phase E of the Combat Backbone
@@ -154,6 +155,7 @@ function AttackResolutionContent({ campaignId, isDM }: Props) {
   const onCancel=()=>runAction(()=>cancelAttack(atk.id));
   const controlsDisabled=loading||!!loadError;
 
+  const recordedBase=readDamageComponents(atk.damage_components)?.components.find(c=>c.source==='base');
   const isAttackRoll = atk.attack_kind === 'attack_roll';
   const isSaveBased  = atk.attack_kind === 'save';
   const isAutoHit    = atk.attack_kind === 'auto_hit';
@@ -395,13 +397,14 @@ function AttackResolutionContent({ campaignId, isDM }: Props) {
                     Damage
                   </div>
                   <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-2)' }}>
-                    {atk.damage_dice} {atk.damage_type ?? ''}
+                    {recordedBase?.expression??atk.damage_dice} {atk.damage_type ?? ''}
                     {atk.damage_rolls && atk.damage_rolls.length > 0 && (
                       <span style={{ color: 'var(--t-3)', marginLeft: 8 }}>
                         [{atk.damage_rolls.join(', ')}]
                       </span>
                     )}
                     {atk.hit_result === 'crit' && <span style={{ color: 'var(--c-gold-l)', marginLeft: 8, fontWeight: 700 }}>CRIT</span>}
+                    {atk.psionic_damage_dice&&recordedBase?.dieKinds.includes('adjusted')&&<div style={{fontSize:10,marginTop:4}}>Surge adjusted low dice to 4.</div>}
                   </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

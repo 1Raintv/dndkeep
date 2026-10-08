@@ -6,18 +6,19 @@ vi.mock('../pendingAttack',()=>({declareAttack:mocks.declare}));
 import {loadPsionicDamageContext,queuePsionicDamage} from './psionicDamage';
 const self={id:'self',participant_type:'character',entity_id:'psion'} as CombatParticipant;
 const target={id:'target',name:'Goblin',participant_type:'creature'} as CombatParticipant;
-const input={requestId:'paid',context:{campaignId:'camp',encounterId:'enc',self,participants:[self,target]},target,characterId:'psion',characterName:'Psion',amount:12};
+const input={requestId:'paid',context:{campaignId:'camp',encounterId:'enc',self,participants:[self,target]},target,characterId:'psion',characterName:'Psion',amount:12,psionicDamageDice:{version:1 as const,sides:8,originalRolls:[3,5],rolls:[3,5],modifier:4}};
+const existingAttack=()=>({id:'paid',attacker_participant_id:'self',target_participant_id:'target',attack_kind:'auto_hit',attack_name:'Destructive Thoughts',damage_dice:'12',damage_type:'Psychic',psionic_damage_dice:input.psionicDamageDice});
 function query(data:unknown,error:unknown=null){
  const q={select:vi.fn(()=>q),eq:vi.fn(()=>q),maybeSingle:async()=>({data,error}),then:(resolve:(value:unknown)=>unknown)=>Promise.resolve({data,error}).then(resolve)};return q;
 }
-beforeEach(()=>{vi.clearAllMocks();mocks.declare.mockResolvedValue({id:'paid'});});
+beforeEach(()=>{vi.clearAllMocks();mocks.declare.mockResolvedValue(existingAttack());});
 it('needs a campaign and the character in an active encounter',async()=>{
  expect(await loadPsionicDamageContext(null,'psion')).toBeNull();expect(mocks.from).not.toHaveBeenCalled();
  mocks.from.mockReturnValueOnce(query({id:'enc'})).mockReturnValueOnce(query([target]));
  expect(await loadPsionicDamageContext('camp','psion')).toBeNull();
 });
 it('recovers an already queued result before rechecking an ended encounter',async()=>{
- const existing=query({id:'paid'});mocks.from.mockReturnValue(existing);await queuePsionicDamage(input);
+ const existing=query(existingAttack());mocks.from.mockReturnValue(existing);await queuePsionicDamage(input);
  expect(existing.eq).toHaveBeenCalledWith('id','paid');expect(existing.eq).toHaveBeenCalledWith('campaign_id','camp');expect(mocks.from).toHaveBeenCalledTimes(1);expect(mocks.declare).not.toHaveBeenCalled();
 });
 it.each(['changed encounter','removed target'])('keeps paid damage for manual resolution after %s',async situation=>{
@@ -26,7 +27,7 @@ it.each(['changed encounter','removed target'])('keeps paid damage for manual re
 });
 it('queues the fixed total without a second save, roll, or extra Intelligence modifier',async()=>{
  mocks.from.mockReturnValueOnce(query(null)).mockReturnValueOnce(query({id:'enc'})).mockReturnValueOnce(query([self,target]));
- await queuePsionicDamage(input);expect(mocks.declare).toHaveBeenCalledWith({requestId:'paid',campaignId:'camp',encounterId:'enc',attackerParticipantId:'self',attackerName:'Psion',attackerType:'character',targetParticipantId:'target',targetName:'Goblin',targetType:'creature',attackSource:'ability',attackName:'Destructive Thoughts',attackKind:'auto_hit',damageDice:'12',damageType:'Psychic'});
+ await queuePsionicDamage(input);expect(mocks.declare).toHaveBeenCalledWith({requestId:'paid',campaignId:'camp',encounterId:'enc',attackerParticipantId:'self',attackerName:'Psion',attackerType:'character',targetParticipantId:'target',targetName:'Goblin',targetType:'creature',psionicDamageDice:input.psionicDamageDice,attackSource:'ability',attackName:'Destructive Thoughts',attackKind:'auto_hit',damageDice:'12',damageType:'Psychic'});
 });
 it('surfaces a rejected write for retry',async()=>{
  mocks.from.mockReturnValueOnce(query(null)).mockReturnValueOnce(query({id:'enc'})).mockReturnValueOnce(query([self,target]));mocks.declare.mockResolvedValue(null);
@@ -35,3 +36,7 @@ it('surfaces a rejected write for retry',async()=>{
 it('does not queue malformed damage',async()=>{
  await expect(queuePsionicDamage({...input,amount:NaN})).rejects.toThrow('Invalid');expect(mocks.from).not.toHaveBeenCalled();
 });
+
+it('rejects a total that differs from saved dice before declaring damage',async()=>{await expect(queuePsionicDamage({...input,amount:13})).rejects.toThrow(/do not match/);expect(mocks.from).not.toHaveBeenCalled();});
+
+it('cannot confirm an existing ID with a different target or original dice',async()=>{mocks.from.mockReturnValue(query({...existingAttack(),target_participant_id:'other'}));await expect(queuePsionicDamage(input)).rejects.toThrow(/differs/);expect(mocks.declare).not.toHaveBeenCalled();});
