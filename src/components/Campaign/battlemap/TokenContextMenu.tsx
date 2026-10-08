@@ -477,7 +477,7 @@ export function TokenContextMenu(props: {
           token that has a quick panel — PCs and NPCs both. Cyan
           palette to distinguish from the purple "View Character
           Sheet" navigate-away action below. */}
-      {onOpenQuickPanel && (token.characterId || token.npcId) && (
+      {onOpenQuickPanel && (token.characterId || token.npcId || (token.creatureId && token.definitionType !== 'srd_monster' && token.definitionType !== 'custom')) && (
         <button type="button" disabled={busy}
           style={{
             ...itemStyle,

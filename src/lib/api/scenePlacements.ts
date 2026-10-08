@@ -135,6 +135,7 @@ export function joinedRowToToken(row: PlacementJoinRow): Token {
     playerId: null,
     // v2.312: new field. Always populated when this path is used.
     combatantId: row.combatant_id,
+    definitionType: row.combatants?.definition_type ?? null,
     // v2.617.0 — B3a: the combatant's owner (auth user id). Drives
     // the player minion drag gate in BattleMapV2; DM tokens have the
     // DM's id here and are still blocked for players by the

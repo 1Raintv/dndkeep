@@ -1,3 +1,4 @@
+import {useMapMenuPosition} from './battlemap/useMapMenuPosition';
 import { abilityModifier } from '../../rules/abilities';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
@@ -360,22 +361,8 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  // Position calc — same logic as character panel (clamp inside viewport).
-  const PANEL_W = 280;
-  const PANEL_H = 420;
-  const margin = 8;
-  let left = Math.max(margin, anchorX + 14);
-  if (typeof window !== 'undefined') {
-    if (left + PANEL_W + margin > window.innerWidth) {
-      left = Math.max(margin, anchorX - PANEL_W - 14);
-    }
-  }
-  let top = Math.max(margin, anchorY - PANEL_H / 2);
-  if (typeof window !== 'undefined') {
-    if (top + PANEL_H + margin > window.innerHeight) {
-      top = Math.max(margin, window.innerHeight - PANEL_H - margin);
-    }
-  }
+  // v2.845: use measured bounds for both loading and loaded content.
+  const {ref:panelRef,left,top}=useMapMenuPosition(anchorX+14,anchorY-210,`${npcId}:${!!npc}`,420);
 
   const applyHp = useCallback(async () => {
     if (!npc) return;
@@ -714,10 +701,10 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
         style={{ position: 'fixed', inset: 0, zIndex: 9997 }}
         onMouseDown={onClose}
       >
-        <div
+        <div ref={panelRef} role="dialog" aria-label="Loading creature token"
           style={{
             position: 'fixed', left, top,
-            width: PANEL_W, padding: 14,
+            width: 'min(280px, calc(100vw - 16px))', padding: 14, boxSizing: 'border-box', overflowY: 'auto',
             background: 'var(--c-card)',
             border: '1px solid var(--c-border)',
             borderRadius: 'var(--r-lg, 12px)',
@@ -750,11 +737,13 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
       style={{ position: 'fixed', inset: 0, zIndex: 9997 }}
       onMouseDown={onClose}
     >
-      <div
+      <div ref={panelRef} role="dialog" aria-label={`Creature token: ${npc.name}`}
         style={{
           position: 'fixed', left, top,
-          width: PANEL_W,
-          maxHeight: PANEL_H,
+          width: 'min(280px, calc(100vw - 16px))',
+          maxHeight: 'min(420px, calc(100dvh - 16px))',
+          boxSizing: 'border-box',
+          overscrollBehavior: 'contain',
           overflowY: 'auto',
           background: 'var(--c-card)',
           border: '1px solid var(--c-border)',

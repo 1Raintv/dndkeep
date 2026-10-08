@@ -71,6 +71,8 @@ export interface SceneDrawing {
 }
 
 export interface Token {
+  /** v2.845: retain the backing source so UI does not open a homebrew-only panel for catalog/custom tokens. */
+  definitionType?: string | null;
   id: string;
   sceneId: string | null; // null = ephemeral / pre-sync
   x: number; // world pixels, cell corner after snap
