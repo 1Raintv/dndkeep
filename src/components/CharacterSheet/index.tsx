@@ -1,3 +1,5 @@
+import {psionRestResources} from '../../lib/psionRestResources';
+import {psionProgression} from '../../rules/psionProgression';
 import {automaticSpellGrantPatch} from '../../lib/automaticSpellGrants';
 import {setSpellSourcePrepared} from '../../rules/spellPreparation';
 import {addClassSpellSelection,removeClassSpellSelection} from '../../rules/classSpellSelection';
@@ -885,7 +887,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  const [restSaving,setRestSaving]=useState(false);
  async function persistRest(kind:'short'|'long',updates:Partial<Character>){
   if(restBusy.current||frozen)return false;
-  if(character.class_name!=='Psion'){applyUpdate(updates,true);return true;}
+  if(character.class_name!=='Psion'&&character.secondary_class!=='Psion'){applyUpdate(updates,true);return true;}
   if(pendingPsionicPayments(character.id).some(payment=>payment.kind==='rest')){
    toast.showToast('Confirm your saved rest in Actions before taking another rest.','warn');return false;
   }
@@ -923,12 +925,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  newResources[def.id] = Math.min(max, current + 1);
  }
 
- // Psion: regain 1 Psionic Energy Die on Short Rest
- if (character.class_name === 'Psion') {
- const maxDice = allResources.find(r => r.id === 'psionic-energy-dice')?.getMax(character.level, abilityScores) ?? 4;
- const current = (newResources['psionic-energy-dice'] as number) ?? maxDice;
- newResources['psionic-energy-dice'] = Math.min(maxDice, current + 1);
- }
+ // v2.792 — each class recovers using its own level, including secondary Psion.
+ if(psionProgression(character))Object.assign(newResources,psionRestResources(character,'short'));
 
  // Reset short-rest feature_uses.
  // v2.606.0 — split into full-reset vs partial (2024 RAW): Second
@@ -938,7 +936,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // Inspiration fully resets on a Short Rest only from Bard level 5;
  // before that it is Long Rest only (v2.606 left this as a known gap).
  const shortRestFeatures = ['Action Surge'];
- if (character.class_name === 'Bard' && character.level >= 5) shortRestFeatures.push('Bardic Inspiration');
+ if ((character.class_name === 'Bard' && character.level >= 5)||(character.secondary_class === 'Bard' && (character.secondary_level??0) >= 5)) shortRestFeatures.push('Bardic Inspiration');
  const partialRestFeatures = ['Second Wind', 'Wild Shape', 'Channel Divinity'];
  const newFeatureUses = { ...(character.feature_uses as Record<string, number> ?? {}) };
  for (const name of shortRestFeatures) {
@@ -983,7 +981,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  // Recover ALL class resources on long rest
  const abilityScores = { strength: character.strength, dexterity: character.dexterity, constitution: character.constitution, intelligence: character.intelligence, wisdom: character.wisdom, charisma: character.charisma };
- const newResources = buildDefaultResources(character.class_name, character.level, abilityScores);
+ const newResources = psionProgression(character)?psionRestResources(character,'long'):buildDefaultResources(character.class_name, character.level, abilityScores);
  // Preserve non-numeric resources (e.g. psion-disciplines array, subclass-spells)
  const existing = (character.class_resources ?? {}) as Record<string, unknown>;
  for (const [key, val] of Object.entries(existing)) {
@@ -1037,7 +1035,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  feature_uses: {}, // All per-rest feature uses reset on long rest
  inventory: rechargedInventory,
  }))return;
- setConcentration(null,undefined,character.class_name!=='Psion');
+ setConcentration(null,undefined,character.class_name!=='Psion'&&character.secondary_class!=='Psion');
  setShortRestHpGained(0);
  setShowRest(false);
 

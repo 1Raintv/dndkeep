@@ -1,3 +1,4 @@
+import {psionFeatureCharacter} from '../../lib/psionFeatureCharacter';
 import {payPsionicEnergy} from './_shared/payPsionicEnergy';
 import {useModal} from '../shared/Modal';
 import type {EnergyRequest,PsionicEnhancementPersistence} from '../../lib/api/psionicTurns';
@@ -160,7 +161,11 @@ function resolveDesc(desc: string | ((c: Character) => string), character: Chara
  return raw.replace('{{sneak_dice}}', String(Math.ceil(character.level / 2)));
 }
 
-export default function ClassAbilitiesSection({ persistence, character, combatFilter, onUpdate, userId, campaignId, campaign }: Props) {
+export default function ClassAbilitiesSection(props:Props) {
+ const secondaryPsion=props.character.class_name==='Psion'?null:psionFeatureCharacter(props.character);
+ return <><ClassAbilityRows {...props}/>{secondaryPsion&&<ClassAbilityRows {...props} character={secondaryPsion} includeSpecies={false}/>}</>;
+}
+function ClassAbilityRows({ persistence, character, combatFilter, onUpdate, userId, campaignId, campaign, includeSpecies=true }: Props & {includeSpecies?:boolean}) {
  const { showToast } = useToast();
  const paymentModal=useModal(),mounted=useRef(true);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
@@ -402,7 +407,7 @@ export default function ClassAbilitiesSection({ persistence, character, combatFi
  // actionType so they're correctly excluded.
  const speciesAbilities: ClassAbility[] = [];
  const speciesData = SPECIES.find(s => s.name === character.species);
- if (speciesData) {
+ if (includeSpecies && speciesData) {
  for (const trait of speciesData.traits) {
  const t = trait as any;
  // Only traits with explicit actionType get surfaced. Passive

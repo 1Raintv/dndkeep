@@ -1,3 +1,4 @@
+import {psionFeatureCharacter} from '../../lib/psionFeatureCharacter';
 import type {PsionicEnhancementPersistence} from '../../lib/api/psionicTurns';
 import PsionicRestorationButton from './_shared/PsionicRestorationButton';
 import { abilityModifier } from '../../rules/abilities';
@@ -293,9 +294,11 @@ export default function FeaturesAndTraitsPanel({ persistence, character, onUpdat
  );
 
  const classFeatures = useMemo(() => {
- const all = CLASS_FEATURES[character.class_name] ?? [];
- return all.filter(f => f.level <= character.level);
- }, [character.class_name, character.level]);
+ const psion=character.class_name==='Psion'?null:psionFeatureCharacter(character);
+ const contexts=psion?[character,psion]:[character];
+ return contexts.flatMap(context=>(CLASS_FEATURES[context.class_name]??[])
+  .filter(feature=>feature.level<=context.level).map(feature=>({feature,context})));
+ }, [character]);
 
  // Parse species traits from features_and_traits
  const speciesSections = useMemo(() => {
@@ -396,12 +399,12 @@ export default function FeaturesAndTraitsPanel({ persistence, character, onUpdat
  letterSpacing: '0.12em', textTransform: 'uppercase' as const,
  color: '#a78bfa', marginBottom: 12,
  }}>
- {character.class_name} Class Features
+ {character.class_name}{character.class_name!=='Psion'&&psionFeatureCharacter(character)?' + Psion':''} Class Features
  {character.subclass && <span style={{ color: '#c084fc', marginLeft: 6, fontWeight: 400 }}>— {character.subclass}</span>}
  </div>
 
  <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
- {classFeatures.map((feature, idx) => {
+ {classFeatures.map(({feature,context:character}, idx) => {
  const subclassFeats = feature.isSubclassFeature ? getSubclassFeatures(character, feature.level) : [];
  const choiceDisplay = getChoiceDisplay(feature.name, character, choices);
  const calc = getCalcNote(feature.name, character);

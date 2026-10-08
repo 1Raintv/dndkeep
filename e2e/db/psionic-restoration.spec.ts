@@ -29,12 +29,14 @@ test.describe('Psionic Restoration (local stack)', () => {
     if (userId) sql(`delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
   });
 
-  test('Psion powers charge only the correct uses and persist after reload',async({page},info)=>{
+  for(const secondary of [false,true])test(`Psion powers (${secondary?'secondary':'primary'}) charge only the correct uses and persist after reload`,async({page},info)=>{
+    if(secondary)sql(`update characters set class_name='Fighter',level=11,subclass='Champion',secondary_class='Psion',secondary_level=5,secondary_subclass='Telepath',intelligence=18 where id='${charId}'`);
     const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     const button=(name:string)=>page.getByRole('button',{name,exact:true}).locator('visible=true').first();
     const dice=()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`);
     await button('Free 5 ft').click();await expect(page.getByRole('dialog',{name:'Telekinetic Propel'})).toBeVisible();
+    if(secondary)await expect(page.getByRole('dialog',{name:'Telekinetic Propel'})).toContainText('DC 17 Strength');
     await button('Save failed').click();expect(dice()).toBe('2');
     await button('Powered (1 die)').click();await button('Save passed').click();await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Telekinetic Propel' and notes like 'Passed STR save%'`)).toBe('1');expect(dice()).toBe('2');
     await button('Powered (1 die)').click();
@@ -54,11 +56,12 @@ test.describe('Psionic Restoration (local stack)', () => {
     await expect.poll(dice).toBe('6');await expect(button('Extend (free)')).toBeEnabled();expect(errors).toEqual([]);
   });
 
-  for (const view of ['Actions','Features']) test(`Psionic Restoration from ${view} refills dice, persists and refreshes only after a Long Rest`,async({page},info)=>{
+  for (const secondary of [false,true]) for (const view of ['Actions','Features']) test(`Psionic Restoration from ${view} (${secondary?'secondary':'primary'} Psion) refills dice, persists and refreshes only after a Long Rest`,async({page},info)=>{
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     page.on('response', response => { if(response.status() >= 400) errors.push(`${response.status()} ${response.url()}`); });
     sql(`update characters set class_resources = class_resources || '{"psionic-energy-dice":2}'::jsonb, hit_dice_spent=5, feature_uses='{}'::jsonb where id='${charId}'`);
+    if(secondary)sql(`update characters set class_name='Fighter',level=11,subclass='Champion',secondary_class='Psion',secondary_level=5,secondary_subclass='Telepath',class_resources=class_resources || '{"second-wind":0,"action-surge":0,"other":3}'::jsonb where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     if(view==='Features') await page.locator('button.tab').filter({hasText:/^Features$/}).click();
     const meditate=()=>page.getByRole('button',{name:'Meditate (1 min)',exact:true}).locator('visible=true').first();
@@ -88,6 +91,10 @@ test.describe('Psionic Restoration (local stack)', () => {
     await expect(page.getByRole('button',{name:'Dice full',exact:true}).locator('visible=true').first()).toBeDisabled();
     sql(`update characters set class_resources=class_resources || '{"psionic-energy-dice":5}'::jsonb where id='${charId}'`);
     await page.reload();if(view==='Features') await page.locator('button.tab').filter({hasText:/^Features$/}).click();await expect(meditate()).toBeEnabled();
+    if(secondary){
+      const saved=JSON.parse(sql(`select row_to_json(c) from characters c where id='${charId}'`));
+      expect(saved).toMatchObject({class_name:'Fighter',level:11,secondary_class:'Psion',secondary_level:5,class_resources:{'second-wind':4,'action-surge':1,other:3}});
+    }
     expect(errors).toEqual([]);
   });
 
@@ -112,7 +119,7 @@ test.describe('Psionic Restoration (local stack)', () => {
     await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and notes like '%4 dice remaining'`)).toBe('1');
   });
 
-  test('Surge boosts base powers while preserving their separate Energy Die costs',async({page},info)=>{
+  for(const secondary of [false,true])test(`Surge (${secondary?'secondary':'primary'} Psion) boosts base powers while preserving their separate Energy Die costs`,async({page},info)=>{
     // A slow history insert must not discard the next independent power.
     let release!:()=>void;const pending=new Promise<void>(r=>release=r);
     let delayed=false,heldConnection=false;
@@ -125,6 +132,7 @@ test.describe('Psionic Restoration (local stack)', () => {
     });
     try {
     sql(`update characters set level=7,hit_dice_spent=0 where id='${charId}'`);
+    if(secondary)sql(`update characters set class_name='Fighter',level=11,subclass='Champion',secondary_class='Psion',secondary_level=7,secondary_subclass='Telepath',intelligence=18 where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     const button=(name:string)=>page.getByRole('button',{name,exact:true}).locator('visible=true').first();
     await expect(button('Powered (1 die)')).toBeVisible({timeout:20_000});
@@ -133,6 +141,7 @@ test.describe('Psionic Restoration (local stack)', () => {
     await button('Powered (1 die)').click();await button('Spend 1 Hit Point Die').click();
     const propel=page.getByRole('dialog',{name:'Telekinetic Propel'});
     await expect(propel).toContainText('Psionic Surge treats 1 as 4: 20 ft');
+    if(secondary)await expect(propel).toContainText('DC 18 Strength');
     await expect.poll(resources).toBe('1:2');
     await page.screenshot({path:info.outputPath('surged-propel.png')});
     await button('Save passed').click();await expect(propel).toBeHidden();expect(resources()).toBe('1:2');

@@ -38,3 +38,11 @@ it('rechecks current resources after the confirmation was opened',async()=>{
   await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Complete meditation'})));
   expect(update).not.toHaveBeenCalled();
 });
+
+it('secondary Psion meditation restores six dice rather than the primary level pool',async()=>{
+ const update=vi.fn();const c={...initial,class_name:'Fighter',level:11,secondary_class:'Psion',secondary_level:5,class_resources:{...initial.class_resources,other:3}};
+ render(<ModalProvider><PsionicRestorationButton character={c} onUpdate={update}/></ModalProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Meditate (1 min)'}));fireEvent.click(screen.getByRole('button',{name:'Complete meditation'}));
+ await waitFor(()=>expect(update).toHaveBeenCalledOnce());
+ expect(update).toHaveBeenCalledWith({class_resources:{'psionic-energy-dice':6,'psionic-restoration':0,other:3},feature_uses:{'Psionic Restoration':1}});
+});

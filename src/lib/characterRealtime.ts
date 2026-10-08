@@ -81,7 +81,7 @@ export function acceptPsionicRestReceipt(ref:{current:Character},receipt:{charac
 /** Ordinary optimistic edits own only unrelated keys. Resource payments and
  * rests acknowledge these protected keys through their ordered receipts. */
 export function preservePsionicResources(current:Partial<Character>,partial:Partial<Character>):Partial<Character>{
- if(current.class_name!=='Psion')return partial;
+ if(current.class_name!=='Psion'&&current.secondary_class!=='Psion')return partial;
  const patch={...partial};
  for(const field of ['class_resources','feature_uses'] as const){
   if(!Object.prototype.hasOwnProperty.call(partial,field))continue;
@@ -96,7 +96,7 @@ export function preservePsionicResources(current:Partial<Character>,partial:Part
 /** Ordinary-save receipts must repair an older tab even when its realtime
  * echo arrived while the stale local patch was still marked pending. */
 export function acceptSavedPsionicResources(ref:{current:Character},saved:Partial<Character>,pending:Partial<Character>={}){
- if(saved.id!==ref.current.id||ref.current.class_name!=='Psion'||saved.class_name!=='Psion'||!Number.isSafeInteger(saved.psionic_energy_revision))return {previous:ref.current,patch:{}};
+ if(saved.id!==ref.current.id||(ref.current.class_name!=='Psion'&&ref.current.secondary_class!=='Psion')||(saved.class_name!=='Psion'&&saved.secondary_class!=='Psion')||!Number.isSafeInteger(saved.psionic_energy_revision))return {previous:ref.current,patch:{}};
  const resources=preservePsionicResources(saved,{class_resources:ref.current.class_resources,feature_uses:ref.current.feature_uses});
  return reconcileCharacterUpdate(ref,{...resources,psionic_energy_revision:saved.psionic_energy_revision},pending);
 }

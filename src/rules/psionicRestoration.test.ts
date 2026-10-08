@@ -50,3 +50,12 @@ it.each([NaN,Infinity,0,-1,5.5,21])('rejects invalid Psion level %s',level=>{
  expect(psionicPoolRemaining(level,2)).toBeNull();
  expect(restorePsionicDice({...character,level})).toBeNull();
 });
+
+it('restores a secondary Psion pool at its own level and preserves the other class',()=>{
+ const c={...character,class_name:'Fighter',level:11,secondary_class:'Psion',secondary_level:5};
+ const result=restorePsionicDice(c);
+ expect(result?.class_resources).toEqual({...character.class_resources,'psionic-energy-dice':6,'psionic-restoration':0});
+ expect(result?.feature_uses).toEqual({Other:2,'Psionic Restoration':1});
+ expect(restorePsionicDice({...c,...result})).toBeNull();
+ expect(restorePsionicDice({...c,secondary_level:4})).toBeNull();
+});

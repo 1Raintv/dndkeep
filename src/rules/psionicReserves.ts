@@ -1,4 +1,5 @@
-/** v2.754 — Class levels are stored separately; total level is not eligibility. */
-export function hasPsionicReserves(c:{class_name:string;level:number;secondary_class?:string|null;secondary_level?:number|null}):boolean {
-  return (c.class_name==='Psion'&&c.level>=18)||(c.secondary_class==='Psion'&&(c.secondary_level??0)>=18);
+import {psionProgression,type PsionicClassState} from './psionProgression';
+/** v2.792 — initiative recovery uses the same validated class levels as powers. */
+export function hasPsionicReserves(c:PsionicClassState):boolean {
+ return (psionProgression(c)?.level??0)>=18;
 }

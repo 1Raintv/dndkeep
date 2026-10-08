@@ -1,3 +1,5 @@
+import {psionRestResources} from '../../lib/psionRestResources';
+import {psionProgression} from '../../rules/psionProgression';
 import type {Database} from '../../types/supabase';
 import {createPsionicRestRequest} from '../../lib/psionicRestRequest';
 import {completePsionicRest} from '../../lib/api/psionicTurns';
@@ -466,7 +468,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
         strength: c.strength, dexterity: c.dexterity, constitution: c.constitution,
         intelligence: c.intelligence, wisdom: c.wisdom, charisma: c.charisma,
       };
-      const newResources = buildDefaultResources(c.class_name, c.level, abilityScores);
+      const newResources = psionProgression(c)?psionRestResources(c,'long'):buildDefaultResources(c.class_name, c.level, abilityScores);
       // Preserve non-numeric resources (e.g. arrays, objects) since
       // buildDefaultResources only emits numerics.
       const existingRes = (c.class_resources ?? {}) as Record<string, unknown>;
@@ -492,7 +494,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
         // supabase-js Json union. See src/lib/jsonbCast.ts.
         inventory: recharge?.rechargedInventory ?? c.inventory,
       };
-      if(c.class_name==='Psion'){
+      if(c.class_name==='Psion'||c.secondary_class==='Psion'){
         const request=createPsionicRestRequest(c,'long',updates,crypto.randomUUID());
         return settleSavedPsionicPayment(c.id,{kind:'rest',request},()=>completePsionicRest(c.id,request));
       }

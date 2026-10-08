@@ -9,7 +9,8 @@ describe('Psionic Surge (owner UA update p.4)',()=>{
  });
  it('requires seven Psion levels, not combined level',()=>{
   expect(psionicSurge({...psion,level:6,secondary_class:'Fighter',secondary_level:2},[1])).toBeNull();
-  expect(psionicSurge({...psion,class_name:'Fighter',secondary_class:'Psion',secondary_level:7},[1])).toBeNull(); // UI currently primary Psion only
+  expect(psionicSurge({...psion,class_name:'Fighter',secondary_class:'Psion',secondary_level:7},[1])).toEqual({rolls:[4],total:4,hit_dice_spent:3});
+  expect(psionicSurge({...psion,class_name:'Fighter',secondary_class:'Psion',secondary_level:6},[1])).toBeNull();
  });
  it('uses available Hit Point Dice including a second class without rolling or healing',()=>{
   expect(psionicSurge({...psion,hit_dice_spent:7},[1])).toBeNull();
@@ -30,4 +31,11 @@ describe('Psionic Surge (owner UA update p.4)',()=>{
   expect(psionicSurge({...psion,level:17},[1,12])?.total).toBe(16);
   expect(psionicSurge({...psion,level:21},[1])).toBeNull();
  });
+});
+
+it('uses the secondary Psion die size and combined Hit Point Dice',()=>{
+ const c={...psion,class_name:'Fighter',level:11,secondary_class:'Psion',secondary_level:7,hit_dice_spent:17};
+ expect(psionicSurge(c,[1,8])).toEqual({rolls:[4,8],total:12,hit_dice_spent:18});
+ expect(psionicSurge(c,[1,10])).toBeNull();
+ expect(psionicSurge({...c,hit_dice_spent:18},[1])).toBeNull();
 });

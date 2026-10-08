@@ -1,3 +1,4 @@
+import {psionProgression} from '../../../rules/psionProgression';
 import {payPsionicEnergy} from './payPsionicEnergy';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
 import {acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
@@ -17,9 +18,10 @@ import {offerPsionicRollEnhancements} from './offerPsionicRollEnhancements';
 const TargetPicker=lazyWithRetry(()=>import('../../Combat/TargetPickerModal'));
 const discipline=findDiscipline('destructive-thoughts')!;
 function capacity(c:Character){
+ const progression=psionProgression(c);
  const choices=c.class_resources?.['psion-disciplines'];
- if(c.class_name!=='Psion'||!Array.isArray(choices)||!hasDiscipline(choices.filter((v):v is string=>typeof v==='string'),discipline))return null;
- return psionicDisciplineCapacity(c.level,c.class_resources?.['psionic-energy-dice'],computeStats(c).modifiers.intelligence);
+ if(!progression||!Array.isArray(choices)||!hasDiscipline(choices.filter((v):v is string=>typeof v==='string'),discipline))return null;
+ return psionicDisciplineCapacity(progression.level,c.class_resources?.['psionic-energy-dice'],computeStats(c).modifiers.intelligence);
 }
 interface PaidResult {requestId:string;characterId:string;characterName:string;amount:number;targetName:string;target:CombatParticipant|null;context:PsionicDamageContext|null;queued:boolean}
 /** v2.777 — confirm the spell trigger, then spend/roll once. Retrying delivery

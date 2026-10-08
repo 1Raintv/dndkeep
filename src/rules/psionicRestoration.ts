@@ -1,3 +1,4 @@
+import {psionProgression,type PsionicClassState} from './psionProgression';
 /** UA update p.2: Energy Dice column, shared by rolls and pool displays. */
 export function psionicDieSides(level:number):number {
   return level>=17?12:level>=11?10:level>=5?8:6;
@@ -14,20 +15,20 @@ export function psionicPoolRemaining(level:number,pool:unknown):number|null {
   if(pool===undefined)return maximum;
   return typeof pool==='number'&&Number.isInteger(pool)&&pool>=0&&pool<=maximum?pool:null;
 }
-export interface PsionicRestorationState {
-  class_name:string;
-  level:number;
+export interface PsionicRestorationState extends PsionicClassState {
   class_resources?:Record<string,unknown>|null;
   feature_uses?:Record<string,number>|null;
 }
 export function psionicRestorationStatus(character:PsionicRestorationState) {
   const resources=character.class_resources??{};
-  const maximum=psionicDieCount(character.level);
+  const progression=psionProgression(character);
+  const level=progression?.level??0;
+  const maximum=progression?psionicDieCount(level):0;
   const raw=resources['psionic-energy-dice'];
-  const pool=psionicPoolRemaining(character.level,raw);
+  const pool=psionicPoolRemaining(level,raw);
   const remaining=pool??0;
   const used=(character.feature_uses?.['Psionic Restoration']??0)>0 || resources['psionic-restoration']===0;
-  const reason=character.class_name!=='Psion'||!Number.isInteger(character.level)||character.level<5||character.level>20?'Requires Psion level 5':pool===null?'Check Psionic Energy Dice':used?'Used · Long Rest':remaining===maximum?'Dice full':null;
+  const reason=!progression||level<5?'Requires Psion level 5':pool===null?'Check Psionic Energy Dice':used?'Used · Long Rest':remaining===maximum?'Dice full':null;
   return {maximum,remaining,recovered:pool===null?0:maximum-remaining,used,reason};
 }
 export function restorePsionicDice(character:PsionicRestorationState) {

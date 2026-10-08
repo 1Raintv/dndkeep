@@ -1,28 +1,28 @@
+import {psionProgression,type PsionicClassState} from './psionProgression';
 import {validPsionicRoll,psionicRollNote,type PsionicRollEnhancement} from './psionicEnhancedRoll';
 import {psionicPoolRemaining,psionicDieSides} from './psionicRestoration';
-export interface PsionicPowerCharacter {
-  class_name:string; level:number; subclass?:string|null;
+export interface PsionicPowerCharacter extends PsionicClassState {
   class_resources?:Record<string,unknown>|null; feature_uses?:Record<string,number>|null;
 }
 export type PsionicPowerUse = ({kind:'propel';mode:'free'|'powered'|'technique';roll:number} | {kind:'connection';roll:number;free:boolean}) & PsionicRollEnhancement;
 export const CONNECTION_USE='Telepathic Connection';
 export function psionicPowerState(c:PsionicPowerCharacter) {
+  const progression=psionProgression(c),level=progression?.level??0;
   const raw=c.class_resources?.['psionic-energy-dice'];
-  const remaining=psionicPoolRemaining(c.level,raw);
-  return {valid:c.class_name==='Psion'&&remaining!==null,dice:remaining??0,
-    sides:psionicDieSides(c.level),
+  const remaining=psionicPoolRemaining(level,raw);
+  return {valid:!!progression&&remaining!==null,level,dice:remaining??0,
+    sides:psionicDieSides(level),
     connectionFree:!(c.feature_uses?.[CONNECTION_USE]),
-    telepathyRange:c.subclass==='Telepath'&&c.level>=6?60:30,
-    technique:c.subclass==='Psykinetic'&&c.level>=3};
+    telepathyRange:progression?.subclass==='Telepath'&&level>=6?60:30,
+    technique:progression?.subclass==='Psykinetic'&&level>=3};
 }
 /** v2.748 — settle against current resources, never a pool captured before a save. */
 export function resolvePsionicPower(c:PsionicPowerCharacter,use:PsionicPowerUse,failedSave?:boolean) {
-  if(c.class_name!=='Psion'||c.level<1)return null;
   const state=psionicPowerState(c);
   if(!state.valid)return null;
   const isTechnique=use.kind==='propel'&&use.mode==='technique';
   const rolls=use.kind==='connection'||use.mode!=='free';
-  if(rolls&&(isTechnique?(!Number.isInteger(use.roll)||use.roll<1||use.roll>4):!validPsionicRoll(c.level,use.roll,use)))return null;
+  if(rolls&&(isTechnique?(!Number.isInteger(use.roll)||use.roll<1||use.roll>4):!validPsionicRoll(state.level,use.roll,use)))return null;
   if(isTechnique&&!state.technique)return null;
   if(use.kind==='propel'&&failedSave===undefined)return null;
   // A first-free use cannot become a paid use while its dialog is open.

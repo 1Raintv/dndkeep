@@ -75,3 +75,15 @@ it('adds Enkindled dice to distance without spending them from the Energy pool',
  expect(resolvePsionicPower(psion,{...use,kind:'connection',free:true})).toMatchObject({feet:250,cost:0});
  expect(resolvePsionicPower({...psion,level:19},use,true)).toBeNull();
 });
+
+it('uses secondary Psion level and subclass for power dice, range and technique',()=>{
+ const secondary={...c,class_name:'Fighter',level:11,subclass:'Champion',secondary_class:'Psion',secondary_level:6,secondary_subclass:'Telepath'};
+ expect(psionicPowerState(secondary)).toMatchObject({valid:true,sides:8,telepathyRange:60,technique:false});
+ expect(resolvePsionicPower(secondary,{kind:'connection',free:true,roll:8})).toMatchObject({feet:140,cost:0});
+ expect(resolvePsionicPower(secondary,{kind:'connection',free:true,roll:10})).toBeNull();
+ expect(psionicPowerState({...secondary,secondary_level:5}).telepathyRange).toBe(30);
+ expect(resolvePsionicPower({...secondary,secondary_level:3,secondary_subclass:'Psykinetic'},
+  {kind:'propel',mode:'technique',roll:4},true)).toMatchObject({feet:20,cost:0});
+ expect(resolvePsionicPower({...secondary,secondary_level:2,secondary_subclass:'Psykinetic'},
+  {kind:'propel',mode:'technique',roll:4},true)).toBeNull();
+});

@@ -1,6 +1,36 @@
 # DNDKeep — Two-Track Roadmap
 
-### In progress — sharper map artwork and scene-switch stability, planned v2.791
+### In progress — Psion multiclass automation, planned v2.792
+
+Owner-provided UA Update p.2 grants features by Psion level, regardless of
+class order. The shared progression resolver now validates either position and
+uses the matching subclass. Restoration, Surge, powers, discipline controls and
+Reserves use the correct level; total levels still govern proficiency/Hit Dice.
+
+Secondary Psion Actions and Features reuse the existing feature controls with a
+read-only class context. The stored primary class remains unchanged, and species
+and feats are not duplicated. Individual and party rests recover both classes'
+resources at their own levels. Short Rest restores one Energy Die without
+refreshing meditation; Long Rest restores its availability. Ordinary saves and
+realtime receipts preserve paid Psion resources in either class order.
+
+Database migration `20261008005154` preserves ownership, row locks, replay and
+history while updating energy/rest/Surge/subclass eligibility and Reserves.
+All 68 local database checks pass, including both-order Restoration races, Surge
+limits, rest replay, stale saves and authorization. Schema PR #121 (`2343c492`)
+merged as `2896015`. Production migration run `37710992296` applied the file
+successfully before the dependent controls release.
+
+The full local gate passed with 1,767 unit tests, TS 207/207 and a 254 KB entry.
+All 28 final desktop/mobile checks passed without retries, including secondary
+Psion meditation from Actions and Features, correct INT-save DCs, Surge costs,
+persistence, daily limits and party-rest recovery after unknown responses.
+Desktop/mobile screenshots inspected. The final versioned gate passed.
+App release awaiting CI. Follow-up: per-spell multiclass casting ability/source
+selection and the general mixed-class Short Rest Hit Die chooser still need
+separate audits.
+
+### Released — map detail and stability, v2.791
 
 Map uploads previously discarded source detail by baking to the scene's world
 pixel size (a 10×10 scene became 700×700 even with a 2400-pixel original).
@@ -19,7 +49,10 @@ events, history callbacks and recovery with a replacement viewport.
 
 All 14 desktop/mobile browser checks pass without retries; preview and applied
 artwork screenshots inspected. Full gate passes: 1,734 unit tests, TS 207/207,
-required rules/map/hooks/build checks and 254 KB entry. Release pending.
+required rules/map/hooks/build checks and 254 KB entry. PR #120 merged as
+`836b5f02` after both CI runs (37709333433, 37709336994) and Vercel preview
+passed. Main CI 37709719618 passed; cache-busted public service worker confirms
+2.791.0.
 Further lifecycle audit: active ruler refresh
 still reads the viewport transform directly and needs its own focused coverage.
 

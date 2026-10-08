@@ -1,3 +1,4 @@
+import {psionProgression} from '../../../rules/psionProgression';
 import {payPsionicEnergy} from './payPsionicEnergy';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
 import {acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
@@ -21,7 +22,7 @@ export default function ConditionalPsionicButton({persistence,character,discipli
  const mounted=useRef(true),busy=useRef(false);const [pending,setPending]=useState(false);
  const modal=useModal(),{showToast}=useToast();
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
- const state=conditionalPsionicDie(character.level,character.class_resources?.['psionic-energy-dice'],1,false);
+ const state=conditionalPsionicDie(psionProgression(character)?.level??0,character.class_resources?.['psionic-energy-dice'],1,false);
  async function run() {
   if(busy.current||!state)return;busy.current=true;setPending(true);
   const id=latest.current.id;
@@ -34,7 +35,7 @@ export default function ConditionalPsionicButton({persistence,character,discipli
      eligible:current=>{
       const chosen=(current.class_resources as Record<string,unknown>|null)?.['psion-disciplines'];
       return Array.isArray(chosen)&&hasDiscipline(chosen.filter((v):v is string=>typeof v==='string'),discipline)
-       &&!!conditionalPsionicDie(current.level,current.class_resources?.['psionic-energy-dice'],originalRoll,false);
+       &&!!conditionalPsionicDie(psionProgression(current)?.level??0,current.class_resources?.['psionic-energy-dice'],originalRoll,false);
      },
 
      prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
@@ -51,8 +52,8 @@ export default function ConditionalPsionicButton({persistence,character,discipli
    if(!mounted.current||latest.current.id!==id)return;
    const current=latest.current;
    const chosen=(current.class_resources as Record<string,unknown>|null)?.['psion-disciplines'];
-   if(current.class_name!=='Psion'||!Array.isArray(chosen)||!hasDiscipline(chosen.filter((v):v is string=>typeof v==='string'),discipline))return;
-   const result=conditionalPsionicDie(current.level,current.class_resources?.['psionic-energy-dice'],roll,changed,enhancement);
+   if(!psionProgression(current)||!Array.isArray(chosen)||!hasDiscipline(chosen.filter((v):v is string=>typeof v==='string'),discipline))return;
+   const result=conditionalPsionicDie(psionProgression(current)?.level??0,current.class_resources?.['psionic-energy-dice'],roll,changed,enhancement);
    if(!result){showToast('Resources changed. Check your Psionic Energy Dice before resolving this bonus.','warn');return;}
    if(result.cost){
     if(!await payPsionicEnergy(persistence,latest,{requestId:crypto.randomUUID(),operation:'spend',count:1,rolls:[originalRoll],sourceFeature:discipline.name,
