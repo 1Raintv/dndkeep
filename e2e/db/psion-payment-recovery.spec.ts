@@ -28,7 +28,7 @@ test.describe('Psion saved payment recovery', () => {
       commit;`);
   });
   test.afterEach(() => {
-    if (userId) sql(`delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
+    if (userId) sql(`delete from action_logs where character_id='${charId}'; delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
   });
 
 
@@ -132,6 +132,32 @@ test.describe('Psion saved payment recovery', () => {
     expect(state()).toEqual(kind==='long'?{pool:1,spent:0,exhaustion:2,charges:0}:{pool:1,spent:5,exhaustion:3,charges:0});
     expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='${kind==='long'?'Long Rest':'Short Rest'}'`)).toBe('1');
     await expect.poll(()=>page.evaluate(id=>Object.keys(localStorage).filter(key=>key.startsWith(`dndkeep:psionic-payment:${id}:`)).length,charId)).toBe(0);
+  });
+
+  test('a silent Restoration response times out and its late reply cannot erase recovery',async({page})=>{
+    test.setTimeout(90_000);await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await expect(page.getByRole('button',{name:'Meditate (1 min)',exact:true}).locator('visible=true').first()).toBeVisible();
+    let release!:()=>void,delivered!:()=>void,calls=0;const held=new Promise<void>(resolve=>{release=resolve;}),complete=new Promise<void>(resolve=>{delivered=resolve;});
+    await page.route('**/rest/v1/rpc/settle_psionic_energy',async route=>{
+      calls++;const response=await route.fetch();expect(response.ok()).toBe(true);await held;await route.fulfill({response});delivered();
+    });
+    try{
+      await page.getByRole('button',{name:'Meditate (1 min)',exact:true}).locator('visible=true').first().click();
+      await page.clock.install();await page.clock.pauseAt(new Date());
+      await page.getByRole('button',{name:'Complete meditation',exact:true}).dispatchEvent('click');
+      await expect.poll(()=>sql(`select feature_uses->>'Psionic Restoration' from characters where id='${charId}'`)).toBe('1');
+      await page.clock.runFor(15001);await page.clock.resume();
+      const dialog=page.getByRole('dialog',{name:'Dice cost not confirmed'});await expect(dialog).toContainText('timed out');
+      await dialog.getByRole('button',{name:'Resolve later'}).click();const recovery=page.getByRole('status',{name:'Psion roll recovery'});await expect(recovery).toContainText('Psionic Restoration');expect(calls).toBe(1);
+      release();await complete;await expect(recovery.getByRole('button',{name:'Confirm dice cost'})).toBeEnabled();
+      expect(await page.evaluate(id=>Object.keys(localStorage).filter(k=>k.startsWith(`dndkeep:psionic-payment:${id}:`)).length,charId)).toBe(1);
+      await page.unroute('**/rest/v1/rpc/settle_psionic_energy');await page.reload();
+      await page.getByRole('status',{name:'Psion roll recovery'}).getByRole('button',{name:'Confirm dice cost'}).click();
+      await expect(page.getByRole('status',{name:'Psion roll recovery'})).toContainText('Psionic Restoration confirmed');
+      expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('12');
+      expect(sql(`select count(*) from psionic_energy_uses where character_id='${charId}'`)).toBe('1');
+      expect(sql(`select feature_uses->>'Psionic Restoration' from characters where id='${charId}'`)).toBe('1');
+    }finally{release();await page.unroute('**/rest/v1/rpc/settle_psionic_energy');}
   });
 
 });

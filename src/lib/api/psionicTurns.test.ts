@@ -1,11 +1,12 @@
 import {createPsionicRestRequest} from '../psionicRestRequest';
 import type {Character} from '../../types';
-import {beforeEach,expect,it,vi} from 'vitest';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({rpc:vi.fn()}));
 vi.mock('../supabase',()=>({supabase:{rpc:mocks.rpc}}));
 import {spendPsionicSurge,completePsionicRest,settlePsionicEnergy,advancePsionicSoloTurn,getEnkindledTurn,spendEnkindledLifeForce} from './psionicTurns';
 const request={requestId:'stable',turn:{soloTurn:0},count:2,baseRolls:[1],extraRolls:[2,3],sourceFeature:'Biofeedback'};
 beforeEach(()=>vi.resetAllMocks());
+afterEach(()=>vi.useRealTimers());
 it('replays an ambiguous charge with the identical request and accepts its saved receipt',async()=>{
  mocks.rpc.mockResolvedValueOnce({data:null,error:{message:'Failed to fetch',code:''}}).mockResolvedValueOnce({data:{requestId:'stable',extraRolls:[2,3],hitDiceSpent:2,hitDiceRevision:1,replayed:true},error:null});
  expect((await spendEnkindledLifeForce('hero',request)).replayed).toBe(true);
@@ -89,4 +90,24 @@ it('keeps legacy saved Surge requests on their original endpoint',async()=>{
 it.each([[3,5],[5,5],[4,6]])('rejects a Surge receipt that changes the original dice incorrectly: %j',async(first,second)=>{
  const rolls=[first,second];mocks.rpc.mockResolvedValue({data:{requestId:'verify',rolls,total:first+second,hitDiceSpent:1,hitDiceSpentByType:{'6':1},hitDiceRevision:1,replayed:false},error:null});
  await expect(spendPsionicSurge('hero',{requestId:'verify',rolls:[1,5],sourceFeature:'Biofeedback',hitDie:6})).rejects.toMatchObject({definitelyNotPaid:false});
+});
+
+it('times out a silent Energy Die payment without retrying or claiming cancellation',async()=>{
+ vi.useFakeTimers();let finish!:(v:unknown)=>void;mocks.rpc.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ const sent=settlePsionicEnergy('hero',energyRequest),rejection=expect(sent).rejects.toMatchObject({definitelyNotPaid:false,message:expect.stringContaining('timed out')});
+ await vi.advanceTimersByTimeAsync(15000);await rejection;expect(mocks.rpc).toHaveBeenCalledOnce();
+ finish({data:energyReceipt,error:null});await Promise.resolve();
+ mocks.rpc.mockResolvedValue({data:{...energyReceipt,replayed:true},error:null});expect((await settlePsionicEnergy('hero',energyRequest)).replayed).toBe(true);expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[1]);
+});
+it('times out a turn read instead of leaving Enkindled unavailable forever',async()=>{
+ vi.useFakeTimers();mocks.rpc.mockImplementation(()=>new Promise(()=>{}));const sent=getEnkindledTurn('hero'),rejection=expect(sent).rejects.toThrow('timed out');await vi.advanceTimersByTimeAsync(15000);await rejection;expect(mocks.rpc).toHaveBeenCalledOnce();
+});
+it('a delayed Energy payment freezes its original rolls and cost for retries and verification',async()=>{
+ const input=structuredClone(energyRequest);let reject!:(e:unknown)=>void;mocks.rpc.mockImplementationOnce(()=>new Promise((_resolve,r)=>{reject=r;})).mockResolvedValueOnce({data:{...energyReceipt,replayed:true},error:null});
+ const sent=settlePsionicEnergy('hero',input);input.rolls[0]=8;input.count=2;reject(new Error('Lost reply'));
+ expect((await sent).rolls).toEqual([3]);expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[1]);expect(mocks.rpc.mock.calls[1][1]).toMatchObject({p_count:1,p_rolls:[3]});
+});
+it('captures Enkindled turn and extra rolls before waiting for its response',async()=>{
+ const input=structuredClone(request);let finish!:(v:unknown)=>void;mocks.rpc.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));const sent=spendEnkindledLifeForce('hero',input);input.extraRolls[0]=12;input.turn.soloTurn=9;
+ finish({data:{requestId:'stable',extraRolls:[2,3],hitDiceSpent:2,hitDiceRevision:1,replayed:false},error:null});expect((await sent).extraRolls).toEqual([2,3]);expect(mocks.rpc.mock.calls[0][1]).toMatchObject({p_turn:{soloTurn:0},p_extra_rolls:[2,3]});
 });

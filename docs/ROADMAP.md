@@ -1,5 +1,76 @@
 # DNDKeep — Two-Track Roadmap
 
+### Psion discipline ledger candidate — backend groundwork
+
+A private ledger now records a discipline attempt and its original rolls once
+per character/turn. Failed conditional bonuses retain their Energy Die but
+consume the discipline use. Base payments, history and claims commit together;
+exact retries return the saved outcome with current character resources.
+Owners and current campaign DMs share the same claim. Pending conditional
+outcomes remain recoverable after a turn changes.
+
+Source: owner's UA2025-Psion+Update.pdf, pp. 3–5. Guards and Sharpened Mind
+are distinct start-of-turn exceptions, each preceding an ordinary discipline.
+Allowing both exceptions plus one ordinary discipline is our composition of
+those permissions, not an explicit three-use statement in the source. Actual
+start-of-turn timing still requires a tabletop declaration; this ledger orders
+discipline claims but does not track every intervening action. Effective INT
+uses the client's modifier against a checked raw ability/inventory snapshot.
+
+Validation: 22 local database cases cover competing tabs, retries, conditional
+outcomes, exceptions, multiclass eligibility, owner/DM access, encounter rewind,
+and transaction rollback. Full gate: 2,206 units, TS 203/203, hooks, rules,
+coordinates, anchors, build, service worker and 254 KB entry. Advisors found no
+discipline-specific warning; existing keep_warm/client_errors warnings remain.
+
+Not yet wired into the sheet: the current buttons still use the old payment
+path. Next: durable begin/finish requests, all eleven discipline controls,
+visible shared turn usage, pending-outcome recovery and desktop/phone checks.
+
+
+### v2.812 Psion candidate — recover silent resource requests
+
+Psion RPCs now stop waiting after 15 seconds per attempt. A silent response is
+classified as an unknown payment, never proof that dice were not charged. The
+existing saved-roll/rest recovery remains visible, explicit retry keeps the
+original request, and a late success cannot acknowledge or discard that saved
+request. Enkindled turn reads also stop waiting, so a stalled check does not
+leave the roll flow locked indefinitely. Payment functions clone their input
+before awaiting, keeping retries and receipt validation bound to the original
+rolls, turn and resource snapshot.
+
+Validation: 44 focused API/recovery cases; real desktop/phone Restoration tests
+hold a successful server response until after the deadline, release it late,
+reload and confirm exactly one recorded Restoration use. Full gate passed
+2,206 units, TS 203/203, hooks/RAW/coordinates/anchors/build/SW and 254 KB entry.
+
+Release checkpoint: PR151 merged at 5f0f9b49, main CI 37741304466 succeeded,
+but production Vercel rejected the build for its rate limit. PR152 hosted gates
+passed; its preview hit the same limit. No hosting plan change was made.
+
+Remaining Psion audit: the general one-Discipline-per-turn limit is currently
+a reminder, not a shared persisted claim. Its Psionic Guards/Sharpened Mind
+exceptions and conditional free-roll attempts need source-backed ordering and
+end-to-end enforcement; Energy Dice accounting alone does not prove that rule.
+
+
+### v2.811 map candidate — preview HP adjustments before applying
+
+The token panel previews exact remaining HP and temporary HP before a DM applies
+damage, healing or Set HP. It uses the same canonical pool calculation as the
+request validation, explains temporary-HP absorption and maximum-HP caps, and
+keeps invalid inputs disabled. Changing tokens clears the unfinished amount/mode
+so an adjustment intended for one character cannot carry into the next. Primary
+HP controls have 44px touch targets; the HP bar exposes its numbers to assistive
+technology.
+
+Validation: 11 panel unit cases, both desktop/phone authenticated map recovery
+scenarios (including preview math, lost-reply recovery, stale cancellation and
+landscape bounds), and inspected phone/landscape screenshots. Full gate passed
+2,201 units, TS 203/203, hooks/RAW/coordinates/anchors/build/SW and 254 KB entry.
+Candidate depends on the preceding v2.810 branch; not yet deployed.
+
+
 ### v2.810 sheet integration — durable standalone damage and saves
 
 The solo sheet now submits one saved damage identity that pays HP and queues its
@@ -24,8 +95,11 @@ hits, War Caster, zero HP, auto/off, delayed animations/new casts, and two open
 sheets. The phone prompt screenshot was inspected. Backend marker regression
 coverage passed all 43 compound/manual HP database cases.
 
-Release dependency: PR150 must merge and apply migration 20261008063321 before
-this UI is merged. At this checkpoint the UI is verified locally, not deployed.
+Release update: PR150 merged at c1766604; workflow 37740939632 explicitly
+applied migration 20261008063321 and finished db push. PR151 contains the
+verified UI; its hosted gates passed and its preview is pending. The backend
+production frontend build hit Vercel’s build-rate limit; no plan was upgraded.
+At this checkpoint the new UI is not deployed.
 Campaign damage and external legacy HP writers still need their own durable
 consequence integration; this does not certify death-save/instant-death automation.
 
