@@ -20,10 +20,7 @@ import {
   rollCheck, checkModifier, encodeCheckPrompt,
   type CheckTarget, type CheckRollResult,
 } from '../../lib/abilityChecks';
-import {
-  DAMAGE_TYPES, labelForDamageType, DAMAGE_TYPE_COLORS,
-  applyDamageTypeModifiers, type DamageModifier,
-} from '../../lib/damageModifiers';
+import PartyDamagePanel from './PartyDamagePanel';
 import { buildDefaultResources } from '../../data/classResources';
 import { emitCombatEvent } from '../../lib/combatEvents';
 import { rechargeOnLongRest } from '../../lib/charges';
@@ -196,16 +193,6 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
   }, [campaign]);
 
   // AoE
-  const [aoeDamage, setAoeDamage] = useState('');
-  const [aoeTargets, setAoeTargets] = useState<Set<string>>(new Set());
-  const [aoeHalved, setAoeHalved] = useState(false);
-  // v2.166.0 — Phase Q.0 pt 7: damage type for AOE. null = untyped
-  // (no resistance / vulnerability / immunity is consulted).
-  const [aoeDamageType, setAoeDamageType] = useState<string | null>(null);
-  const [aoeApplied, setAoeApplied] = useState<{
-    name: string; took: number; concentration: boolean;
-    modifier: DamageModifier; // 'none' | 'resistant' | 'vulnerable' | 'immune' | 'resistant-vulnerable'
-  }[] | null>(null);
   // Passive perception
   const [perceptionDC, setPerceptionDC] = useState('');
   // Announce
@@ -349,34 +336,6 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     setLootPp(''); setLootGp(''); setLootEp(''); setLootSp(''); setLootCp('');
     setLootItem('');
     setLootSelectedItem(null);
-  }
-
-  async function applyAoE() {
-    const dmg = parseInt(aoeDamage);
-    if (isNaN(dmg) || dmg <= 0 || aoeTargets.size === 0) return;
-    const results: {
-      name: string; took: number; concentration: boolean; modifier: DamageModifier;
-    }[] = [];
-    // v2.166.0 — Phase Q.0 pt 7: per-target type-aware damage.
-    // Order: save-half first (handled by aoeHalved), then per-target
-    // resistance/vulnerability/immunity via applyDamageTypeModifiers.
-    const halved = aoeHalved ? Math.floor(dmg / 2) : dmg;
-    await Promise.all([...aoeTargets].map(id => {
-      const c = characters.find(x => x.id === id);
-      if (!c) return Promise.resolve();
-      const { final: actual, modifier } = applyDamageTypeModifiers(halved, aoeDamageType, c);
-      const newHP = Math.max(0, c.current_hp - actual);
-      const concBreaks = !!(c.concentration_spell && actual > 0);
-      results.push({ name: c.name, took: actual, concentration: concBreaks, modifier });
-      const patch: Partial<Character> = { current_hp: newHP };
-      if (concBreaks) patch.concentration_spell = '';
-      return checkedWrite('characters.update aoe-damage', { characterId: id }, supabase.from('characters').update(patch).eq('id', id));
-    }));
-    setAoeApplied(results);
-    setAoeDamage('');
-    setAoeTargets(new Set());
-    setAoeHalved(false);
-    setAoeDamageType(null);
   }
 
   // v2.167.0 — Phase Q.0 pt 8: Party Rest split into Short / Long.
@@ -867,7 +826,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
                 // a no-op now (was: toggle off, hiding all panels).
                 // One panel is always open, so re-clicking does
                 // nothing instead of dropping to an invalid state.
-                onClick={() => { if (dmPanel !== id) { setDmPanel(id); setAoeApplied(null); } }}
+                onClick={() => { if (dmPanel !== id) { setDmPanel(id); } }}
                 style={{ fontSize: 11, fontWeight: 700, padding: '5px 14px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
                   border: dmPanel === id ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
                   background: dmPanel === id ? 'var(--c-gold-bg)' : 'var(--c-raised)',
@@ -902,159 +861,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
               equals the tallest panel. `pointer-events: none` on
               inactive panels prevents stray clicks bleeding through
               their inputs. */}
-          {/* ── AoE DAMAGE PANEL ── */}
-          <div role="region" aria-label="Party area damage" style={{ ...DM_PANEL_STYLE, ...panelLayoutStyle(dmPanel === 'aoe'), padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(248,113,113,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#f87171' }}>
-                AoE / Mass Damage — select targets, enter damage, apply
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {characters.map(c => {
-                  const sel = aoeTargets.has(c.id);
-                  return (
-                    <button key={c.id}
-                      onClick={() => { const next = new Set(aoeTargets); sel ? next.delete(c.id) : next.add(c.id); setAoeTargets(next); setAoeApplied(null); }}
-                      style={{ fontSize: 11, fontWeight: sel ? 700 : 400, padding: '4px 10px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
-                        border: sel ? '1px solid rgba(248,113,113,0.5)' : '1px solid var(--c-border-m)',
-                        background: sel ? 'rgba(248,113,113,0.12)' : 'var(--c-raised)',
-                        color: sel ? '#f87171' : 'var(--t-2)' }}
-                    >
-                      {sel ? '✓ ' : ''}{c.name}
-                      <span style={{ marginLeft: 5, fontSize: 9, opacity: 0.7 }}>{c.current_hp}/{c.max_hp}</span>
-                    </button>
-                  );
-                })}
-                <button onClick={() => setAoeTargets(aoeTargets.size === characters.length ? new Set() : new Set(characters.map(c => c.id)))}
-                  style={{ fontSize: 10, fontWeight: 600, padding: '4px 8px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-3)' }}>
-                  {aoeTargets.size === characters.length ? 'Deselect all' : 'Select all'}
-                </button>
-              </div>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <input type="number" value={aoeDamage} onChange={e => { setAoeDamage(e.target.value); setAoeApplied(null); }}
-                  placeholder="Damage amount…" min={0} onKeyDown={e => e.key === 'Enter' && applyAoE()}
-                  style={{ flex: 1, minWidth: 120, fontSize: 14, fontFamily: 'var(--ff-stat)', padding: '7px 10px', borderRadius: 7, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
-                />
-                <button onClick={() => { setAoeHalved(v => !v); setAoeApplied(null); }}
-                  style={{ fontSize: 11, fontWeight: 700, padding: '6px 12px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
-                    border: aoeHalved ? '1px solid var(--c-gold-bdr)' : '1px solid var(--c-border-m)',
-                    background: aoeHalved ? 'var(--c-gold-bg)' : 'var(--c-raised)',
-                    color: aoeHalved ? 'var(--c-gold-l)' : 'var(--t-3)' }}>
-                  {aoeHalved ? '½ Halved' : 'Half damage?'}
-                </button>
-                <button onClick={applyAoE} disabled={!aoeDamage || parseInt(aoeDamage) <= 0 || aoeTargets.size === 0}
-                  style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0,
-                    border: '1px solid rgba(248,113,113,0.4)', background: 'rgba(248,113,113,0.1)', color: '#f87171',
-                    opacity: (!aoeDamage || parseInt(aoeDamage) <= 0 || aoeTargets.size === 0) ? 0.4 : 1 }}>
-                  Apply to {aoeTargets.size} target{aoeTargets.size !== 1 ? 's' : ''}
-                </button>
-              </div>
-
-              {/* v2.166.0 — Phase Q.0 pt 7: damage type picker.
-                  When a type is selected, applyAoE consults each target's
-                  resistances/vulnerabilities/immunities and adjusts damage
-                  per RAW. "Untyped" disables type-based modifiers entirely
-                  (useful for raw HP loss like falling damage where the DM
-                  doesn't want resistance to apply). */}
-              {/* v2.171.0 — Phase Q.0 pt 12: damage type is a dropdown
-                  instead of a pill row. 14 pills was visually noisy;
-                  a single select is cleaner and faster to scan. The
-                  selected type's RAW color renders in the select
-                  itself for visual continuity with the result badges. */}
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--t-3)' }}>
-                  Type
-                </span>
-                <select
-                  value={aoeDamageType ?? ''}
-                  onChange={e => {
-                    const v = e.target.value;
-                    setAoeDamageType(v === '' ? null : v as any);
-                    setAoeApplied(null);
-                  }}
-                  style={{
-                    fontSize: 11, fontWeight: 700, padding: '5px 8px', borderRadius: 6, cursor: 'pointer', minHeight: 0,
-                    border: `1px solid ${aoeDamageType ? (DAMAGE_TYPE_COLORS[aoeDamageType] ?? 'var(--c-border-m)') : 'var(--c-border-m)'}`,
-                    background: aoeDamageType ? `${DAMAGE_TYPE_COLORS[aoeDamageType] ?? 'var(--c-gold)'}18` : 'var(--c-raised)',
-                    color: aoeDamageType ? (DAMAGE_TYPE_COLORS[aoeDamageType] ?? 'var(--t-1)') : 'var(--t-2)',
-                    textTransform: 'capitalize' as const,
-                  }}
-                  title="Damage type — untyped ignores resistance/vulnerability"
-                >
-                  <option value="">Untyped</option>
-                  {DAMAGE_TYPES.map(t => (
-                    <option key={t} value={t}>{labelForDamageType(t)}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Preview — type-aware per-target damage breakdown */}
-              {aoeDamage && parseInt(aoeDamage) > 0 && aoeTargets.size > 0 && !aoeApplied && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                  {[...aoeTargets].map(id => {
-                    const c = characters.find(x => x.id === id);
-                    if (!c) return null;
-                    const halved = aoeHalved ? Math.floor(parseInt(aoeDamage) / 2) : parseInt(aoeDamage);
-                    const { final: dmg, modifier } = applyDamageTypeModifiers(halved, aoeDamageType, c);
-                    const newHP = Math.max(0, c.current_hp - dmg);
-                    const modBadge = modifier === 'resistant' ? ' ½' :
-                                     modifier === 'vulnerable' ? ' ×2' :
-                                     modifier === 'immune' ? ' ⊘' :
-                                     modifier === 'resistant-vulnerable' ? ' ½ then ×2' : '';
-                    const modColor = modifier === 'resistant' ? '#60a5fa' :
-                                     modifier === 'vulnerable' ? '#f87171' :
-                                     modifier === 'immune' ? '#86efac' :
-                                     modifier === 'resistant-vulnerable' ? '#fbbf24' : undefined;
-                    return (
-                      <span key={id} style={{ fontSize: 10, padding: '2px 8px', borderRadius: 999,
-                        background: newHP <= 0 ? 'rgba(220,38,38,0.12)' : 'rgba(248,113,113,0.08)',
-                        border: `1px solid ${newHP <= 0 ? 'rgba(220,38,38,0.4)' : 'rgba(248,113,113,0.2)'}`,
-                        color: newHP <= 0 ? '#dc2626' : '#f87171' }}>
-                        {/* v2.171.0 — lead with damage dealt (what matters) and
-                            show HP transition as supporting detail. Previously
-                            read "ghj: 4 → 0" which obscured the fact that the
-                            DM dealt 40 damage and overkilled by 36. */}
-                        {c.name} takes {dmg} <span style={{ color: 'var(--t-3)', fontWeight: 400 }}>({c.current_hp}→{newHP})</span>
-                        {modBadge && <span style={{ color: modColor, marginLeft: 4, fontWeight: 800 }}>{modBadge}</span>}
-                        {newHP <= 0 ? ' ☠' : ''}{c.concentration_spell && dmg > 0 ? ' ⚠ Conc.' : ''}
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-              {/* Result — type-aware breakdown */}
-              {aoeApplied && (
-                <div style={{ padding: '8px 10px', background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.25)', borderRadius: 8 }}>
-                  <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--c-green-l)', marginBottom: 4 }}>Applied</div>
-                  {aoeApplied.map((r, i) => {
-                    const concDC = r.took > 0 ? concentrationDC(r.took) : 0;
-                    const modLabel =
-                      r.modifier === 'resistant'  ? 'resistant'  :
-                      r.modifier === 'vulnerable' ? 'vulnerable' :
-                      r.modifier === 'immune'     ? 'immune'     :
-                      r.modifier === 'resistant-vulnerable'  ? 'resistance then vulnerability' : null;
-                    const modColor =
-                      r.modifier === 'resistant'  ? '#60a5fa' :
-                      r.modifier === 'vulnerable' ? '#f87171' :
-                      r.modifier === 'immune'     ? '#86efac' :
-                      r.modifier === 'resistant-vulnerable'  ? '#fbbf24' : 'var(--t-3)';
-                    return (
-                      <div key={i} style={{ fontSize: 11, color: 'var(--t-2)', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        <span>{r.name} took {r.took} damage</span>
-                        {modLabel && (
-                          <span style={{ fontSize: 10, fontWeight: 700, color: modColor, background: `${modColor}1a`, border: `1px solid ${modColor}55`, padding: '1px 7px', borderRadius: 999 }}>
-                            {modLabel}
-                          </span>
-                        )}
-                        {r.concentration && (
-                          <span style={{ fontSize: 10, fontWeight: 700, color: '#a78bfa', background: 'rgba(167,139,250,0.12)', border: '1px solid rgba(167,139,250,0.3)', padding: '1px 7px', borderRadius: 999 }}>
-                            Conc. check DC {concDC}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+          <PartyDamagePanel campaignId={campaignId} characters={characters} active={dmPanel==='aoe'} onApplied={()=>void loadCharacters()} style={{...DM_PANEL_STYLE,...panelLayoutStyle(dmPanel==='aoe')}} />
 
           {/* ── PARTY LONG REST PANEL ── */}
           <div style={{ ...DM_PANEL_STYLE, ...panelLayoutStyle(dmPanel === 'rest'), padding: '14px 16px', background: 'var(--c-card)', border: '1px solid var(--c-gold-bdr)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 12 }}>

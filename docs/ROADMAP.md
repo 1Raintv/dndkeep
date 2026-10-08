@@ -1,5 +1,24 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.827 — recoverable party damage controls
+
+Party area damage now uses authoritative previews and the atomic damage API.
+The complete target group is saved before sending damage. Interrupted requests
+can be confirmed after reload without damaging successful targets twice; cancel
+keeps completed damage and prevents unapplied requests. Temporary HP, half damage,
+resistance/vulnerability order, condition resistance, and concentration settings
+are shown before applying. Automatic concentration recovery reads an existing
+result before attempting a roll. Account/campaign changes stop remaining targets.
+
+Focused checks cover immutable requests, storage failures, partial batches,
+cancellation, campaign changes, and automatic-save recovery. Desktop/phone checks
+cover damage previews and lost-response recovery after reload. Full gate passed: 2,399 unit tests, TypeScript 201/201, hooks clean,
+production build and 255.1 KB entry within budget. Four browser checks passed.
+The preceding atomic migration 20261008093955 is confirmed applied to production
+by workflow 37760628529 (actual apply step). Frontend release remains subject to
+the existing Vercel hosting quota. Manual single-character HP controls and
+Sharpened Mind enhancements remain separate follow-up work.
+
 ### v2.826 — atomic party-damage backend and sheet coordination
 
 New DM-only snapshot/apply/cancel RPCs use one immutable request identity per

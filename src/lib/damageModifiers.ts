@@ -74,12 +74,13 @@ export function applyDamageTypeModifiers(
   baseDamage: number,
   dmgType: string | null | undefined,
   character: Pick<Character, 'species' | 'damage_resistances' | 'damage_vulnerabilities' | 'damage_immunities'>,
+  options:{resistanceAll?:boolean}={},
 ): AppliedDamage {
   const type=dmgType?.trim().toLowerCase();
   const has=(types:string[])=>!!type&&types.some(t=>t.trim().toLowerCase()===type);
   return applyDamageAffinities(baseDamage,{
     immune:has(resolveImmunities(character)),
-    resistant:has(resolveResistances(character)),
+    resistant:has(resolveResistances(character))||!!type&&!!options.resistanceAll,
     vulnerable:has(resolveVulnerabilities(character)),
   });
 }
