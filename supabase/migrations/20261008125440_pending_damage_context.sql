@@ -22,8 +22,8 @@ begin
   select jsonb_object_agg(key,value) into definition from jsonb_each(definition) where key=any(array[
    'id','user_id','campaign_id','name','species','species_choices','class_name','level','secondary_class','secondary_level',
    'strength','dexterity','constitution','intelligence','wisdom','charisma','inventory','saving_throw_proficiencies',
-   'class_resources','feature_uses','damage_resistances','damage_immunities','damage_vulnerabilities',
-   'concentration_spell','concentration_revision','automation_overrides','advanced_automations_unlocked','nat_1_20_saves','hit_point_revision']);
+   'class_resources','feature_uses','gained_feats','weapon_masteries','damage_resistances','damage_immunities','damage_vulnerabilities',
+   'current_hp','max_hp','temp_hp','concentration_spell','concentration_revision','automation_overrides','advanced_automations_unlocked','nat_1_20_saves','hit_point_revision']);
  elsif kind in('homebrew_monster','narrative_npc','roster_npc') then
   select jsonb_build_object('id',m.id,'name',m.name,'damage_resistances',m.damage_resistances,
    'damage_immunities',m.damage_immunities,'damage_vulnerabilities',m.damage_vulnerabilities)

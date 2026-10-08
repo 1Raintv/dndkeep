@@ -18,10 +18,24 @@ receipt on exact retry. Saved receipts survive target removal. Sixteen local DB
 cases pass, including competing duplicate/distinct hits, stale snapshots, failed
 receipt insertion, outer-transaction rollback and permission denial. Full gate
 passes (2,587 units, TypeScript 200/200, 255.1 KB entry); no stage advisor findings.
-The current app still uses the old apply path. Keep both local migrations off
+The current app still uses the old apply path. Keep the local settlement migrations off
 main until the outer transaction includes the remaining side effects and marks
 the attack applied. Character-sheet HP/revision and suppression markers must be
 synchronized in that same outer transaction; the private stage only writes CB pools.
+
+Local migration `20261008131207_pending_damage_life_settlement.sql` composes
+pool settlement with death saves, massive damage, unconscious condition sources,
+character-sheet HP/marker synchronization, concentration termination/cleanup and
+revision-bound concentration offers (including the existing advantage trigger).
+The caller must explicitly select character-style death saves versus monster
+instant death; characters cannot opt out of death-save handling through this API.
+Sheet/combat maximum mismatch fails before commit rather than writing sheet HP
+over its maximum. The private composition refuses an independently committed
+partial pool receipt; normal callers must keep the whole hit in one transaction.
+Forty-one combined local database cases and the full 2,587-unit gate pass; no
+life-stage advisor findings. The app still calls the old damage path. Remaining
+integration includes retaliation, mastery, events, typed adjustments/defenses,
+Sharpened choice/turn usage, an outer endpoint and client receipt recovery.
 
 Next implementation must replace `pendingAttack.applyDamage` separate writes
 with one idempotent settlement receipt. Preserve original damage components;
