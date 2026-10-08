@@ -2,7 +2,7 @@ import {spellActionKind,type SpellActionKind} from '../rules/spellActionCost';
 import type {Character,SpellData} from '../types';
 import type {ConcentrationCastSource} from '../rules/concentrationCasting';
 export interface SpellCombatIntent {
- kind:'attack_roll'|'save'|'auto_hit';damageDice:string;damageType:string;
+ kind:'attack_roll'|'save'|'auto_hit';attackMode?:'melee'|'ranged'|null;damageDice:string;damageType:string;
  attackBonus:number|null;targetAC:number|null;saveAbility:'STR'|'DEX'|'CON'|'INT'|'WIS'|'CHA'|null;saveSuccessEffect:'half'|'none'|'other'|null;
  actorCombatantId:string|null;
  target:{participantId:string;entityId:string;type:'character'|'creature';combatantId:string|null};
@@ -52,7 +52,8 @@ export function isSpellCombatIntent(value:unknown):value is SpellCombatIntent {
  if(!value||typeof value!=='object')return false;
  const v=value as Partial<SpellCombatIntent>,t=v.target;
  const bounded=(n:unknown,min:number,max:number)=>typeof n==='number'&&Number.isInteger(n)&&n>=min&&n<=max;
- return ['attack_roll','save','auto_hit'].includes(v.kind??'')
+ return (v.attackMode==null||v.kind==='attack_roll'&&['melee','ranged'].includes(v.attackMode))
+  &&['attack_roll','save','auto_hit'].includes(v.kind??'')
   &&text(v.damageDice,100)&&v.damageDice.length>0&&text(v.damageType,40)&&v.damageType.length>0
   &&(v.actorCombatantId===null||uuid(v.actorCombatantId))
   &&!!t&&uuid(t.participantId)&&text(t.entityId,160)&&t.entityId.length>0

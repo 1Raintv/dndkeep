@@ -29,6 +29,22 @@ test.describe('Atomic pending damage recording',()=>{
  const run=(q=call(),u=dm)=>JSON.parse(sql(auth(u,q)));
  const buffs=()=>JSON.parse(sql(`select active_buffs from combatants where id='${cb}'`));
  const state=()=>sql(`select state from pending_attacks where id='${attack}'`);
+ test('ranged spell excludes a melee-only rider and preserves it for later',()=>{
+  const gated=[{...bonus[0],onlyMelee:true},bonus[1]];
+  sql(`update pending_attacks set attack_source='spell',attack_mode='ranged' where id='${attack}';update combatants set active_buffs=${json(gated)} where id='${cb}'`);
+  const packet=components();packet.components=packet.components.slice(0,1);
+  const result=run(call(attack,packet,5,gated,{...expected(),attack_mode:'ranged'}));
+  expect(result.attack.damage_final).toBe(5);expect(buffs()).toEqual(gated);
+ });
+ test('melee spell includes and consumes its melee-only rider',()=>{
+  const gated=[{...bonus[0],onlyMelee:true},bonus[1]];
+  sql(`update pending_attacks set attack_source='spell',attack_mode='melee' where id='${attack}';update combatants set active_buffs=${json(gated)} where id='${cb}'`);
+  expect(run(call(attack,components(),8,gated,{...expected(),attack_mode:'melee'})).attack.damage_final).toBe(8);expect(buffs()).toEqual([bonus[1]]);
+ });
+ test('a changed attack mode rejects a stale damage record without consuming bonuses',()=>{
+  const captured={...expected(),attack_mode:null};sql(`update pending_attacks set attack_mode='ranged' where id='${attack}'`);
+  expect(()=>run(call(attack,components(),8,bonus,captured))).toThrow(/Attack changed/);expect(buffs()).toEqual(bonus);expect(state()).toBe('attack_rolled');
+ });
  test('owner records dice and consumes only the eligible one-use bonus together',()=>{const r=run(call(),player);expect(r.replayed).toBe(false);expect(r.attack.damage_final).toBe(8);expect(r.attack.damage_components).toEqual(components());expect(buffs()).toEqual([bonus[1]]);});
  test('exact replay cannot consume a reapplied bonus',()=>{const q=call(),first=run(q);sql(`update combatants set active_buffs=${json(bonus)} where id='${cb}'`);expect(run(q)).toEqual({...first,replayed:true});expect(buffs()).toEqual(bonus);});
  test('two simultaneous calls for one attack return one saved roll',async()=>{const q=call();const r=await Promise.all([parallel(auth(dm,q)),parallel(auth(player,q))]);expect(r.every(v=>v.code===0),JSON.stringify(r)).toBe(true);expect(r.map(v=>JSON.parse(v.out).replayed).sort()).toEqual([false,true]);expect(buffs()).toEqual([bonus[1]]);});

@@ -8,7 +8,7 @@ import TargetPickerModal from './TargetPickerModal';
 interface Props {
  character:Character;spell:SpellData;userId:string;slotLevel:number;
  casting:ConcentrationCastSource&{saveDC:number};maxRangeFt:number|null;
- attackKind:'attack_roll'|'save';attackBonus?:number;damageDice:string;damageType:string;
+ attackMode?:'melee'|'ranged'|null;attackKind:'attack_roll'|'save';attackBonus?:number;damageDice:string;damageType:string;
  saveAbility?:'STR'|'DEX'|'CON'|'INT'|'WIS'|'CHA';saveSuccessEffect?:'half'|'none'|'other';label?:string;
 }
 /** v2.856: pick only; the sheet's existing declaration host owns durable payment.
@@ -22,7 +22,7 @@ export default function SpellAttackCastButton(props:Props){
   try{
    if(!actor||!['character','creature'].includes(target.participant_type))throw new Error('Review this combat target.');
    if(props.attackKind==='attack_roll'&&target.ac==null)throw new Error('Target Armor Class is missing. Ask the DM to update this combat target.');
-   const combat:SpellCombatIntent={kind:props.attackKind,damageDice:props.damageDice,damageType:props.damageType,
+   const combat:SpellCombatIntent={kind:props.attackKind,attackMode:props.attackKind==='attack_roll'?props.attackMode??null:null,damageDice:props.damageDice,damageType:props.damageType,
     attackBonus:props.attackKind==='attack_roll'?props.attackBonus??0:null,targetAC:props.attackKind==='attack_roll'?target.ac:null,
     saveAbility:props.attackKind==='save'?props.saveAbility??null:null,saveSuccessEffect:props.attackKind==='save'?props.saveSuccessEffect??'half':null,
     actorCombatantId:actor.combatant_id??null,target:{participantId:target.id,entityId:target.entity_id,type:target.participant_type as 'character'|'creature',combatantId:target.combatant_id??null}};

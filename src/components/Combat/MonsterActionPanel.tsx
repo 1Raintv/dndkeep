@@ -1,3 +1,4 @@
+import {explicitAttackMode} from '../../rules/attackMode';
 import './MonsterActionPanel.css';
 import {MultiTargetSavePicker} from './MultiTargetSavePicker';
 import {useMapMovementBusy,isMapMovementBusy} from '../Campaign/battlemap/useMapMovementBusy';
@@ -1387,7 +1388,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
         targetType: target.participant_type,
         attackSource: 'monster_action',
         attackName: a.name,
-        attackKind: 'attack_roll',
+        attackKind: 'attack_roll', attackMode:explicitAttackMode(a.desc?.split(/[.:]/)[0]),
         attackBonus: a.attack_bonus ?? 0,
         targetAC: target.ac,
         damageDice: a.damage_dice ?? null,

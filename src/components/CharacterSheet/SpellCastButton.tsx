@@ -782,7 +782,7 @@ function ResolvedSpellCastButton({
  return (
    <SpellAttackCastButton
      character={character} spell={spell} userId={userId} casting={casting} slotLevel={effSlot}
-     attackKind="attack_roll"
+     attackKind="attack_roll" attackMode={mechanics.attackType}
      maxRangeFt={parseRangeToFt(spell.range)}
      attackBonus={spellAttack}
      damageDice={dice}

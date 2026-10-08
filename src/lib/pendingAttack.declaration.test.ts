@@ -13,3 +13,9 @@ it('returns a paid declaration while history remains pending',async()=>{
  const existing={id:'paid-roll',state:'declared'};const q={insert:vi.fn(()=>q),select:vi.fn(()=>q),single:async()=>({data:existing,error:null})};mocks.from.mockReturnValue(q);
  mocks.event.mockReturnValue(new Promise(()=>{}));expect(await declareAttack(input)).toBe(existing);
 });
+
+it('stores attack mode independently of the weapon source',async()=>{
+ const q={insert:vi.fn(()=>q),select:vi.fn(()=>q),single:async()=>({data:{id:'hit',state:'declared'},error:null})};mocks.from.mockReturnValue(q);
+ await declareAttack({...input,attackKind:'attack_roll',attackSource:'weapon',attackMode:'ranged'});
+ expect(q.insert).toHaveBeenCalledWith(expect.objectContaining({attack_source:'weapon',attack_mode:'ranged'}));
+});

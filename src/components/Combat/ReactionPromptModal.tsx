@@ -214,7 +214,7 @@ export default function ReactionPromptModal({ campaignId }: Props) {
       targetParticipantId: mover.mover_participant_id,
       targetName: mover.mover_name,
       targetType: (targetPart?.participant_type as any) ?? null,
-      attackSource: 'weapon',
+      attackSource: 'weapon', attackMode:'melee',
       attackName: `${oaName.trim() || 'Opportunity Attack'} (OA)`,
       attackKind: 'attack_roll',
       attackBonus: bonusNum,
