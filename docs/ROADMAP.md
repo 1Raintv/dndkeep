@@ -1,5 +1,33 @@
 # DNDKeep — Two-Track Roadmap
 
+### Psion discipline ledger candidate — backend groundwork
+
+A private ledger now records a discipline attempt and its original rolls once
+per character/turn. Failed conditional bonuses retain their Energy Die but
+consume the discipline use. Base payments, history and claims commit together;
+exact retries return the saved outcome with current character resources.
+Owners and current campaign DMs share the same claim. Pending conditional
+outcomes remain recoverable after a turn changes.
+
+Source: owner's UA2025-Psion+Update.pdf, pp. 3–5. Guards and Sharpened Mind
+are distinct start-of-turn exceptions, each preceding an ordinary discipline.
+Allowing both exceptions plus one ordinary discipline is our composition of
+those permissions, not an explicit three-use statement in the source. Actual
+start-of-turn timing still requires a tabletop declaration; this ledger orders
+discipline claims but does not track every intervening action. Effective INT
+uses the client's modifier against a checked raw ability/inventory snapshot.
+
+Validation: 22 local database cases cover competing tabs, retries, conditional
+outcomes, exceptions, multiclass eligibility, owner/DM access, encounter rewind,
+and transaction rollback. Full gate: 2,206 units, TS 203/203, hooks, rules,
+coordinates, anchors, build, service worker and 254 KB entry. Advisors found no
+discipline-specific warning; existing keep_warm/client_errors warnings remain.
+
+Not yet wired into the sheet: the current buttons still use the old payment
+path. Next: durable begin/finish requests, all eleven discipline controls,
+visible shared turn usage, pending-outcome recovery and desktop/phone checks.
+
+
 ### v2.812 Psion candidate — recover silent resource requests
 
 Psion RPCs now stop waiting after 15 seconds per attempt. A silent response is
