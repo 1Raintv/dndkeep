@@ -167,8 +167,7 @@ export default function CharacterPage() {
           flex child under justify-content: space-between, so they
           spread across the full width with even empty space between.
           "Campaign:" now lives INSIDE the chip as part of the button. */}
-      <div style={{
-        display: 'flex',
+      <nav className="character-page-nav" aria-label="Character navigation" style={{
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: 'var(--sp-3)',
@@ -177,7 +176,7 @@ export default function CharacterPage() {
         fontSize: 'var(--fs-xs)',
         color: 'var(--t-2)',
       }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', minWidth: 0 }}>
+        <span className="character-breadcrumb" style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', minWidth: 0 }}>
           <button
             className="btn-ghost btn-sm"
             onClick={() => navigate('/lobby')}
@@ -188,7 +187,7 @@ export default function CharacterPage() {
           <span>/</span>
           <span style={{ color: 'var(--t-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{character.name}</span>
         </span>
-        <span style={{
+        <span className="character-campaign-context" style={{
           display: 'flex',
           alignItems: 'center',
           gap: 'var(--sp-2)',
@@ -203,7 +202,7 @@ export default function CharacterPage() {
                 className="crumb-btn crumb-btn-gold"
                 onClick={() => navigate(`/campaigns/${character.campaign_id}`)}
                 title="Open this campaign"
-                style={{ maxWidth: 300 }}
+                style={{ maxWidth: 'min(300px, 100%)' }}
               >
                 <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--c-gold)', display: 'inline-block', flexShrink: 0 }} />
                 <span style={{ color: 'var(--t-3)', fontWeight: 700, flexShrink: 0 }}>Campaign:</span>
@@ -211,7 +210,7 @@ export default function CharacterPage() {
               </button>
             )
           ) : showJoin ? (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexWrap: 'wrap', minWidth: 0 }}>
               <input
                 value={joinCode}
                 onChange={e => { setJoinCode(e.target.value); if (joinError) setJoinError(null); }}
@@ -219,6 +218,7 @@ export default function CharacterPage() {
                   if (e.key === 'Enter' && !joining) handleBreadcrumbJoin();
                   if (e.key === 'Escape') { setShowJoin(false); setJoinError(null); }
                 }}
+                aria-label="Campaign invite code"
                 placeholder="ABC123"
                 autoFocus
                 autoCapitalize="characters"
@@ -254,7 +254,7 @@ export default function CharacterPage() {
             child (v2.587.0) so the bar distributes evenly. */}
         {character.campaign_id && (
             <button
-              className={combatActive ? 'crumb-btn crumb-btn-combat' : 'crumb-btn'}
+              className={'character-map-button '+(combatActive ? 'crumb-btn crumb-btn-combat' : 'crumb-btn')}
               onClick={() => navigate(`/campaigns/${character.campaign_id}?tab=map`)}
               title={combatActive ? 'Combat in progress — open the battle map' : 'Open the current battle map'}
             >
@@ -263,7 +263,7 @@ export default function CharacterPage() {
             </button>
           )}
         {isPro && (
-          <span style={{
+          <span className="character-sync-status" style={{
             display: 'flex',
             alignItems: 'center',
             gap: 'var(--sp-2)',
@@ -283,7 +283,7 @@ export default function CharacterPage() {
             />
           </span>
         )}
-      </div>
+      </nav>
 
       {/* v2.161.0 — Phase Q.0 pt 2: transient toast for new
           notifications. Sits above all other content with

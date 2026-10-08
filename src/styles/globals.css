@@ -954,7 +954,11 @@ body.in-combat::before {
    Panels sit above their buttons and scroll within the available viewport. */
 body { --floating-tools-bottom: var(--sp-10); }
 body.in-combat { --floating-tools-bottom: calc(var(--combat-strip-inset, 88px) + 12px); }
-.quickroll-fab, .rolllog-fab { bottom: var(--floating-tools-bottom) !important; }
+.quickroll-fab, .rolllog-fab {
+  bottom: var(--floating-tools-bottom) !important;
+  /* Layout changes must not animate these controls through the combat strip. */
+  transition-property: background, border-color, box-shadow, color, transform !important;
+}
 .quickroll-panel, .rolllog-panel {
   bottom: calc(var(--floating-tools-bottom) + 60px) !important;
   max-height: calc(100dvh - var(--floating-tools-bottom) - 68px);
@@ -1325,6 +1329,22 @@ input[type=number] { -moz-appearance: textfield; }
   border-radius: var(--r-sm, 6px);
   cursor: pointer;
   transition: background .15s, border-color .15s;
+}
+/* v2.854: navigation controls keep their labels while campaign names truncate.
+   Phones use separate breadcrumb, destination and sync rows instead of squeezing
+   four unrelated controls into a single line. */
+.character-page-nav { display: flex; flex-wrap: wrap; }
+.character-breadcrumb { flex: 1 1 180px; max-width: 100%; }
+.character-breadcrumb > button, .character-map-button { flex-shrink: 0; white-space: nowrap; }
+.character-campaign-context { flex: 0 1 300px; min-width: 0; max-width: 100%; }
+.character-sync-status { flex-shrink: 0; white-space: nowrap; }
+@media (max-width: 700px) {
+  .character-page-nav { display: grid; grid-template-columns: minmax(0, 1fr) auto; }
+  .character-breadcrumb, .character-sync-status { grid-column: 1 / -1; }
+  .character-campaign-context { grid-column: 1; }
+  .character-map-button { grid-column: 2; }
+  .character-sync-status { justify-content: space-between; }
+  .character-page-nav button { min-height: 44px; }
 }
 .crumb-btn:hover { background: var(--c-surface); border-color: var(--c-gold-bdr); }
 .crumb-btn-gold {

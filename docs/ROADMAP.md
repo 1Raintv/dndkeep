@@ -1,5 +1,26 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.854 — Readable character-to-map navigation
+
+Phone navigation now separates breadcrumbs, campaign/map actions and sync status.
+The Battle Map label and Characters link stay readable; long campaign names
+truncate within their own chip. Desktop navigation remains one row when space
+allows. The join-code input is labeled and still supports Escape. Floating tool
+positions no longer animate through the initiative strip during layout changes.
+
+Validation: reproduced 39px of clipped map-button content before the fix; four
+phone/desktop long-name and solo join-form flows pass, plus two final polish
+reruns. Screenshots inspected. Full release gate passes (2,743 units,
+TypeScript 200/200, entry 255.1 KB). No migration; publishing pending.
+
+Next mechanics work: connect spell-slot payment and spell-source identity to
+combat declarations. Current single-target attack declarations call the cost
+callback even when creation returns no attack, and action/bonus-action flags are
+not a one-spell-slot-per-current-turn ledger. The SRD 5.2.1 p.105 rule concerns
+slots used to cast, not all leveled spells. Preserve free Psion casts and reaction
+turn distinctions; this foundation also supports qualifying Discipline triggers
+and broader Sharpened Mind integration. These gaps remain unimplemented here.
+
 ### v2.853 — Floating combat tools clear phone controls
 
 The dice and roll-history buttons now clear the measured initiative strip rather
@@ -13,10 +34,10 @@ Validation: reproduced a 23.6px phone overlap with the new browser assertion;
 fixed desktop/mobile combat and tabletop checks pass, including a 650x450
 landscape resize and return. Two final panel-capture reruns pass; screenshots
 inspected for both tools and viewports. Full gate passes (2,743 units,
-TypeScript 200/200, entry 255.1 KB). PR/production publishing pending.
+TypeScript 200/200, entry 255.1 KB). Merged PR #197 (`ca37c7d`), both CI gates
+green. Vercel success and public service-worker version confirm v2.853.0 live.
 
-Remaining visible interface issue: the character page campaign/map header is
-crowded on narrow phones; address its wrapping separately.
+The narrow character campaign/map header is addressed in v2.854 above.
 
 ### v2.852 — Recoverable Psion rolls and exactly-once delivery
 
