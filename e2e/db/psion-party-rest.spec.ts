@@ -39,7 +39,8 @@ test.describe('DM Psion rest recovery', () => {
 
 
 
- for(const lost of [false,true])test(`DM party rest ${lost?'recovers a partial unknown result':'confirms the whole party'}`,async({page},info)=>{
+ for(const secondary of [false,true])for(const lost of [false,true])test(`DM party rest (${secondary?'secondary':'primary'} Psion) ${lost?'recovers a partial unknown result':'confirms the whole party'}`,async({page},info)=>{
+  if(secondary)sql(`update characters set class_name='Fighter',level=11,secondary_class='Psion',secondary_level=7,class_resources=class_resources||'{"second-wind":0,"other":3}'::jsonb where id='${charId}'`);
   await signInAsSeedDm(page,email);await page.goto(`/campaigns/${campaignId}`);await page.getByRole('button',{name:'Party',exact:true}).click();
   const rest=page.getByRole('button',{name:'Long Rest',exact:true}).locator('visible=true').first();await expect(rest).toBeVisible();
   let calls=0;const endpoint='**/rest/v1/rpc/complete_psionic_rest';
@@ -65,6 +66,7 @@ test.describe('DM Psion rest recovery', () => {
    expect(sql(`select message from campaign_chat where campaign_id='${campaignId}' and message_type='long_rest_completed'`)).toContain('all spent Hit Point Dice');
   }
   expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Long Rest'`)).toBe('1');
+  if(secondary)expect(JSON.parse(sql(`select class_resources from characters where id='${charId}'`))).toMatchObject({'second-wind':4,other:3});
  });
  test('a rejected Psion rest retries only that character after the fighter already rested',async({page})=>{
   await signInAsSeedDm(page,email);await page.goto(`/campaigns/${campaignId}`);await page.getByRole('button',{name:'Party',exact:true}).click();

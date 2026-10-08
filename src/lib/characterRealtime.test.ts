@@ -107,3 +107,11 @@ it('syncs independent preparation and preserves explicit empty review entries',(
  expect(ref.current.spell_preparation_sources).toEqual({armor:[]});
  expect(reconcileCharacterUpdate(ref,{spell_preparation_sources:{}},{}).patch).toEqual({spell_preparation_sources:{}});
 });
+
+it('protects secondary Psion resources from stale ordinary edits and adopts paid receipts',()=>{
+ const c={...character,class_name:'Fighter',level:11,secondary_class:'Psion',secondary_level:5};
+ expect(preservePsionicResources(c,{class_resources:{'psionic-energy-dice':6,Other:9}})).toMatchObject({class_resources:{'psionic-energy-dice':2,Other:9}});
+ const ref={current:c};const saved={...c,class_resources:{'psionic-energy-dice':1},psionic_energy_revision:10};
+ acceptSavedPsionicResources(ref,saved);
+ expect(ref.current.class_resources?.['psionic-energy-dice']).toBe(1);expect(ref.current.class_name).toBe('Fighter');
+});

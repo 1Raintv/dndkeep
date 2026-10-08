@@ -23,3 +23,12 @@ it('blocks malformed pools and wrong classes without spending',()=>{
  const update=vi.fn();render(<ModalProvider><PsionicDieRollButton character={{...character,class_name:'Fighter'}} onUpdate={update} feature="Psionic Energy Dice" label="Spend die" onRolled={vi.fn()}/></ModalProvider>);
  expect((screen.getByRole('button',{name:'Spend die'}) as HTMLButtonElement).disabled).toBe(true);expect(update).not.toHaveBeenCalled();
 });
+
+it('uses a secondary Psion die rather than the higher primary level',async()=>{
+ const update=vi.fn(),rolled=vi.fn();const c={...character,class_name:'Fighter',level:11,secondary_class:'Psion',secondary_level:5,hit_dice_spent:0};
+ render(<ModalProvider><PsionicDieRollButton character={c} onUpdate={update} feature="Psionic Energy Dice" label="Spend die" onRolled={rolled}/></ModalProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Spend die'}));
+ await waitFor(()=>expect(rolled).toHaveBeenCalledWith(2,8));expect(mocks.roll).toHaveBeenCalledWith(8);
+ expect(update).toHaveBeenCalledWith({class_resources:{'psionic-energy-dice':0,other:9}});
+ expect(screen.queryByRole('dialog',{name:'Psionic Surge'})).toBeNull();
+});

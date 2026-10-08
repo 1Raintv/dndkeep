@@ -1,3 +1,4 @@
+import {psionProgression} from '../../../rules/psionProgression';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
 import {payPsionicEnergy} from './payPsionicEnergy';
 import {acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
@@ -19,15 +20,16 @@ export default function PsionicDieRollButton({persistence,character,feature,labe
  const modal=useModal(),{showToast}=useToast();
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  const eligible=(c:Character)=>{
-  if(c.class_name!=='Psion')return false;
+  const progression=psionProgression(c);
+  if(!progression)return false;
   const discipline=findDiscipline(feature),chosen=c.class_resources?.['psion-disciplines'];
-  return !discipline||(Array.isArray(chosen)&&hasDiscipline(chosen.filter((v):v is string=>typeof v==='string'),discipline));
+  return !discipline||(progression.level>=2&&Array.isArray(chosen)&&hasDiscipline(chosen.filter((v):v is string=>typeof v==='string'),discipline));
  };
  async function run(){
-  const c=latest.current,pool=psionicPoolRemaining(c.level,c.class_resources?.['psionic-energy-dice']);
+  const c=latest.current,pool=psionicPoolRemaining(psionProgression(c)?.level??0,c.class_resources?.['psionic-energy-dice']);
   if(busy.current||!eligible(c)||!pool)return;busy.current=true;setPending(true);
   try{
-   const sides=psionicDieSides(c.level),original=rollDie(sides);
+   const sides=psionicDieSides(psionProgression(c)?.level??0),original=rollDie(sides);
    const request={requestId:crypto.randomUUID(),operation:'spend' as const,count:1,rolls:[original],sourceFeature:feature,recoveryNote:'The base Energy Die was spent. Apply this saved roll manually; do not spend it again.'};
    if(!await payPsionicEnergy(persistence,latest,request,{active:()=>mounted.current&&latest.current.id===c.id,confirm:modal.confirm,warn:message=>showToast(message,'warn')}))return;
    const enhanced=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:original,sides,feature,recoveryNote:'The base Energy Die was already spent. Apply the rolled feature manually without spending it again.',campaignId:c.campaign_id,current:()=>latest.current,active:()=>mounted.current,eligible,prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
@@ -39,6 +41,6 @@ export default function PsionicDieRollButton({persistence,character,feature,labe
    void logAction({campaignId:c.campaign_id??null,characterId:c.id,characterName:c.name,actionType:'roll',actionName:feature==='Psionic Energy Dice'?`Spent Psionic Energy Die (1d${sides})`:feature,diceExpression:`${originals.length}d${sides}`,individualResults:originals,total,notes}).then(result=>{if(result?.error)warn();}).catch(warn);
   }finally{busy.current=false;if(mounted.current)setPending(false);}
  }
- const pool=psionicPoolRemaining(character.level,character.class_resources?.['psionic-energy-dice']);
+ const pool=psionicPoolRemaining(psionProgression(character)?.level??0,character.class_resources?.['psionic-energy-dice']);
  return <button className="btn-ghost" style={{fontSize:11,minHeight:36,color:'#c4b5fd'}} disabled={pending||!eligible(character)||!pool} onClick={()=>void run()}>{pending?'Rolling…':label}</button>;
 }

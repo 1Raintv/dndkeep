@@ -1,3 +1,4 @@
+import {psionProgression} from '../../../rules/psionProgression';
 import {payPsionicEnergy} from './payPsionicEnergy';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
 import {acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
@@ -14,9 +15,10 @@ import {logAction} from '../../shared/ActionLog';
 import {offerPsionicRollEnhancements} from './offerPsionicRollEnhancements';
 const discipline=findDiscipline('biofeedback')!;
 function capacity(c:Character){
+ const progression=psionProgression(c);
  const choices=c.class_resources?.['psion-disciplines'];
- if(c.class_name!=='Psion'||!Array.isArray(choices)||!hasDiscipline(choices.filter((v):v is string=>typeof v==='string'),discipline))return null;
- return biofeedbackCapacity(c.level,c.class_resources?.['psionic-energy-dice'],computeStats(c).modifiers.intelligence);
+ if(!progression||!Array.isArray(choices)||!hasDiscipline(choices.filter((v):v is string=>typeof v==='string'),discipline))return null;
+ return biofeedbackCapacity(progression.level,c.class_resources?.['psionic-energy-dice'],computeStats(c).modifiers.intelligence);
 }
 /** v2.770 — manual spell-trigger confirmation; the dice cost is paid before rolling. */
 export default function BiofeedbackButton({persistence,character,onUpdate}:{persistence?:PsionicEnhancementPersistence;character:Character;onUpdate:(patch:Partial<Character>)=>void}){
