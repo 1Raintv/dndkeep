@@ -47,9 +47,13 @@ export default function PsionicDieRollButton({persistence,character,feature,labe
    else if(!await payPsionicEnergy(persistence,latest,request,options))return;
    const enhanced=await offerPsionicRollEnhancements({activationId,persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:original,sides,feature,recoveryNote:'The base Energy Die was already spent. Apply the rolled feature manually without spending it again.',campaignId:c.campaign_id,current:()=>latest.current,active:options.active,eligible,prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
    if(enhanced?.unconfirmed)return;
-   const total=enhanced?.roll??original,originals=enhanced?.originalRolls??[original];
+   let total=enhanced?.roll??original,originals=enhanced?.originalRolls??[original],savedRolls:number[]|null=null;
+   if(activationId&&persistence?.finalizeSharpenedRoll&&options.active()){
+    try{const saved=await persistence.finalizeSharpenedRoll(activationId);total=saved.total;originals=saved.originalRolls;savedRolls=saved.rolls;}
+    catch{showToast('Sharpened final number is not confirmed. Use its saved roll record; do not spend or roll again.','warn');return;}
+   }
    if(mounted.current&&latest.current.id===c.id){onRolled(total,sides);showToast(`${feature}: ${total}. Apply the feature at the table.`,'success');}
-   const notes=`Manual feature roll; apply its effect at the table.${enhanced?.enkindledRolls.length?` Enkindled: ${enhanced.enkindledRolls.length} Hit Point Dice spent; extra Energy Dice not expended.`:''}${enhanced?.usedSurge?' Surge: low rolls treated as 4; 1 Hit Point Die spent.':''} Rolled ${originals.join(', ')}; total ${total} · ${pool-1} dice remaining`;
+   const notes=savedRolls?`Sharpened Mind recorded number ${total}. Original dice: ${originals.join(', ')}. Final dice: ${savedRolls.join(', ')}. Apply the effect at the table; confirmation does not restart its duration.`:`Manual feature roll; apply its effect at the table.${enhanced?.enkindledRolls.length?` Enkindled: ${enhanced.enkindledRolls.length} Hit Point Dice spent; extra Energy Dice not expended.`:''}${enhanced?.usedSurge?' Surge: low rolls treated as 4; 1 Hit Point Die spent.':''} Rolled ${originals.join(', ')}; total ${total} · ${pool-1} dice remaining`;
    const warn=()=>showToast(`${feature}: rolled ${total}, but history could not be saved. Keep this paid result.`,'warn');
    void logAction({campaignId:c.campaign_id??null,characterId:c.id,characterName:c.name,actionType:'roll',actionName:feature==='Psionic Energy Dice'?`Spent Psionic Energy Die (1d${sides})`:feature,diceExpression:`${originals.length}d${sides}`,individualResults:originals,total,notes}).then(result=>{if(result?.error)warn();}).catch(warn);
   }finally{busy.current=false;if(mounted.current)setPending(false);}

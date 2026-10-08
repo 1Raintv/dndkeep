@@ -65,3 +65,15 @@ for(const feature of ['Psionic Energy Dice','Sharpened Mind'])for(const departur
  expect(persistence.getTurn).not.toHaveBeenCalled();expect(persistence.spend).not.toHaveBeenCalled();expect(persistence.surge).not.toHaveBeenCalled();
  expect(rolled).not.toHaveBeenCalled();expect(update).not.toHaveBeenCalled();expect(screen.queryByRole('dialog')).toBeNull();expect(mocks.roll).toHaveBeenCalledTimes(1);
 });
+
+for(const fails of [false,true])it(`automatically confirms Sharpened final number with failure=${fails}`,async()=>{
+ const c={...character,level:5,intelligence:18,inventory:[],class_resources:{'psion-disciplines':['sharpened-mind'],'psionic-energy-dice':6}} as unknown as Character;
+ const p=testPsionicPersistence(()=>c);p.beginDiscipline=vi.fn(p.beginDiscipline!);
+ p.finalizeSharpenedRoll=vi.fn(async requestId=>{if(fails)throw new Error('Lost confirmation');return {requestId,characterId:c.id,originalRolls:[2],rolls:[2],total:2,activatedAt:'2026-10-08T12:00:00Z',turn:{soloTurn:0},replayed:false};});
+ const rolled=vi.fn();render(<ModalProvider><RealPsionicDieRollButton persistence={p} character={c} onUpdate={vi.fn()} feature="Sharpened Mind" label="Use discipline" onRolled={rolled}/></ModalProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Use discipline'}));await waitFor(()=>expect(p.finalizeSharpenedRoll).toHaveBeenCalledTimes(1));
+ expect(p.finalizeSharpenedRoll).toHaveBeenCalledWith(vi.mocked(p.beginDiscipline).mock.calls[0][0].requestId);
+ if(fails){expect(rolled).not.toHaveBeenCalled();expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('final number is not confirmed'),'warn');}
+ else await waitFor(()=>expect(rolled).toHaveBeenCalledWith(2,8));
+ expect(mocks.roll).toHaveBeenCalledTimes(1);
+});

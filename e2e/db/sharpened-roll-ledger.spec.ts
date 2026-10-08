@@ -87,4 +87,27 @@ test.describe('Sharpened saved activation rolls',()=>{
  }finally{sql(`delete from characters where id='${otherChar}'`);}
  });
 
+ test('new base-only activations remain discoverable without browser storage',()=>{
+ const rows=run(`select get_sharpened_roll_records('${char}')`);expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({requestId:activation,total:2,finalized:false});
+ const timestamp=rows[0].activatedAt;run(finalize());const confirmed=run(`select get_sharpened_roll_records('${char}')`);
+ expect(confirmed[0]).toMatchObject({total:2,finalized:true,activatedAt:timestamp});
+ });
+ test('read previews match paid enhancements and finalized results exactly',()=>{
+ run(enhance());run(enhance(randomUUID(),'surge','null','6'));const preview=run(`select get_sharpened_roll_records('${char}')`)[0];
+ expect(preview).toMatchObject({originalRolls:[2,3,8],rolls:[4,4,8],total:16,finalized:false});
+ const final=run(finalize());expect({...preview,finalized:undefined}).toEqual({...final,replayed:undefined,finalized:undefined});
+ });
+ test('unrelated users and anonymous callers cannot list records',()=>{
+ expect(()=>run(`select get_sharpened_roll_records('${char}')`,other)).toThrow(/Character is unavailable/);
+ expect(()=>sql(`begin;set local role anon;select get_sharpened_roll_records('${char}');commit;`)).toThrow(/permission denied/);
+ });
+
+ test('keeps all unfinished records while limiting only completed history',()=>{
+ const ids=[activation];
+ for(let turn=1;turn<=6;turn++){run(`select advance_psionic_solo_turn('${char}','${randomUUID()}',${turn-1})`);const next=randomUUID();begin(next,turn);ids.push(next);}
+ expect(run(`select get_sharpened_roll_records('${char}')`)).toHaveLength(7);
+ for(const id of ids)run(finalize(id));
+ const rows=run(`select get_sharpened_roll_records('${char}')`);expect(rows).toHaveLength(5);expect(rows.every((r:{finalized:boolean})=>r.finalized)).toBe(true);expect(rows.map((r:{requestId:string})=>r.requestId)).toEqual(ids.slice(2).reverse());
+ });
+
 });

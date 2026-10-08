@@ -1,3 +1,4 @@
+import {getSharpenedRollRecords,finalizeSharpenedRoll} from '../api/sharpenedRolls';
 import {beginPsionicDiscipline,finishPsionicDiscipline,getPsionicDisciplineTurn,type DisciplineReceipt} from '../api/psionicDisciplines';
 import {settleSavedPsionicPayment} from '../settleSavedPsionicPayment';
 import {hasSavedPsionicPayment,type PendingPsionicPayment} from '../psionicPaymentRecovery';
@@ -27,6 +28,10 @@ export function usePsionicEnhancements(characterId:string,queue:SaveQueue,accept
    if(mounted.current&&live.current.characterId===characterId)live.current.accept(receipt);
    return receipt;
   }
-  return {getDisciplineTurn:()=>getPsionicDisciplineTurn(characterId),beginDiscipline:request=>pay({kind:'discipline-begin',request},saved=>beginPsionicDiscipline(characterId,saved)),finishDiscipline:request=>pay({kind:'discipline-finish',request},saved=>finishPsionicDiscipline(characterId,saved)),heal:request=>pay({kind:'healing',request},saved=>spendRestHitDice(characterId,saved)),rest:request=>pay({kind:'rest',request},saved=>completePsionicRest(characterId,saved)),energy:request=>pay({kind:'energy',request},saved=>settlePsionicEnergy(characterId,saved)),getTurn:()=>getEnkindledTurn(characterId),spend:request=>pay({kind:'enkindled',request},saved=>spendEnkindledLifeForce(characterId,saved)),surge:request=>pay({kind:'surge',request},saved=>spendPsionicSurge(characterId,saved))};
+  return {getSharpenedRolls:()=>getSharpenedRollRecords(characterId),finalizeSharpenedRoll:async activationId=>{
+   if(!mounted.current||live.current.characterId!==characterId||live.current.frozen)throw new PsionicRequestError('This sheet is not available to confirm rolls.',true);
+   const result=await finalizeSharpenedRoll(characterId,activationId);
+   window.dispatchEvent(new Event('dndkeep:sharpened-roll-changed'));return result;
+  },getDisciplineTurn:()=>getPsionicDisciplineTurn(characterId),beginDiscipline:request=>pay({kind:'discipline-begin',request},saved=>beginPsionicDiscipline(characterId,saved)),finishDiscipline:request=>pay({kind:'discipline-finish',request},saved=>finishPsionicDiscipline(characterId,saved)),heal:request=>pay({kind:'healing',request},saved=>spendRestHitDice(characterId,saved)),rest:request=>pay({kind:'rest',request},saved=>completePsionicRest(characterId,saved)),energy:request=>pay({kind:'energy',request},saved=>settlePsionicEnergy(characterId,saved)),getTurn:()=>getEnkindledTurn(characterId),spend:request=>pay({kind:'enkindled',request},saved=>spendEnkindledLifeForce(characterId,saved)),surge:request=>pay({kind:'surge',request},saved=>spendPsionicSurge(characterId,saved))};
  },[characterId,queue]);
 }

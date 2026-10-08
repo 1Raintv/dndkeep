@@ -1,5 +1,29 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.831 — persistent Sharpened final-roll confirmation
+
+New activations create a server-side pending record even without enhancements.
+The sheet automatically confirms the final paid total after enhancement choices;
+interrupted confirmations remain recoverable in a dedicated roll panel. Original
+and final dice, total and original activation time survive reload. Confirmation
+locks further enhancements without repeating costs or restarting duration. The
+panel explicitly labels these as saved numbers, not currently active effects.
+
+Preview and finalization share one database computation. All unfinished records
+remain discoverable, with the five latest completed records retained in the UI.
+The owner/current DM controls access. Frozen sheets and character switches block
+unsent confirmation; unresolved enhancement payments must be confirmed first.
+
+Validation: full gate (2,430 unit tests; TypeScript 201/201; hooks clean; build
+and 255.1 KB entry), 16 local DB cases, two desktop/phone recovery checks and
+reviewed phone screenshot with no panel overflow. No changed-object database
+advisor/function-lint findings; local migration ledger current.
+
+The preceding migration 20261008101533 is confirmed applied to production by
+workflow 37763185937, actual apply step. New migration 20261008102503 is local
+only until the gated merge workflow. Duration/incapacitation and damage effects
+remain the next integration work.
+
 ### v2.830 — link sheet enhancements to Sharpened activation
 
 The sheet now carries the paid Sharpened activation ID into Enkindled and Surge.

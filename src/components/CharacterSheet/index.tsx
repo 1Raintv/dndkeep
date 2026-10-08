@@ -1,3 +1,4 @@
+import SharpenedRollPanel from './_shared/SharpenedRollPanel';
 import SavePromptBanner from './SavePromptBanner';
 import PsionicDisciplineTurnPanel from './_shared/PsionicDisciplineTurnPanel';
 import {SpellDeclarationPanel} from './SpellDeclarationPanel';
@@ -2934,6 +2935,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  )}
  {(contentFilters.size === 0 || contentFilters.has('ability')) && (<>
  <PsionicPaymentRecoveryPanel characterId={character.id} persistence={psionicPersistence}/>
+ {(character.class_name==='Psion'||character.secondary_class==='Psion')&&<SharpenedRollPanel characterId={character.id} persistence={psionicPersistence} frozen={frozen}/>}
  {(character.class_name==='Psion'||character.secondary_class==='Psion')&&<PsionicDisciplineTurnPanel characterId={character.id} persistence={psionicPersistence} frozen={frozen} resourceRevision={character.psionic_energy_revision}/>}
  <ClassAbilitiesSection
  persistence={psionicPersistence}

@@ -1,3 +1,4 @@
+import type {SharpenedRollRecord,SharpenedRollReceipt} from './sharpenedRolls';
 import {validSharpenedEnhancementLink} from '../psionicDisciplineRequest';
 import type {DisciplineRequest,DisciplineOutcomeRequest} from '../psionicDisciplineRequest';
 import type {DisciplineReceipt,DisciplineTurn} from './psionicDisciplines';
@@ -17,6 +18,8 @@ export interface SurgeReceipt {hitDiceSpentByType?:Record<string,number>|null;re
 /** Injected into roll controls so a paid server result can refresh the sheet
  * without being enqueued as another optimistic absolute-value write. */
 export interface PsionicEnhancementPersistence {
+ getSharpenedRolls?:()=>Promise<SharpenedRollRecord[]>;
+ finalizeSharpenedRoll?:(activationId:string)=>Promise<SharpenedRollReceipt>;
  getDisciplineTurn?:()=>Promise<DisciplineTurn>;
  beginDiscipline?:(request:DisciplineRequest)=>Promise<DisciplineReceipt>;
  finishDiscipline?:(request:DisciplineOutcomeRequest)=>Promise<DisciplineReceipt>;
