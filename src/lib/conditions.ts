@@ -417,12 +417,13 @@ export function conditionsResistAll(conditions: string[]): boolean {
 
 /**
  * Is the target's speed zeroed by a condition?
- * Grappled / Restrained / Paralyzed / Stunned / Unconscious / Petrified.
+ * Grappled / Restrained / Paralyzed / Unconscious / Petrified.
+ * Stunned permits movement in the 2024 rules.
  */
 export function conditionsSpeedZero(conditions: string[]): boolean {
   for (const c of conditions) {
     const m = CONDITION_MAP[c];
-    if (m?.speedZero) return true;
+    if (m?.speedZero || m?.cantMove) return true;
   }
   return false;
 }

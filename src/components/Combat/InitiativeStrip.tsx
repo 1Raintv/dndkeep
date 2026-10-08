@@ -15,7 +15,7 @@ import { supabase } from '../../lib/supabase';
 import { advanceTurn, endEncounter } from '../../lib/combatEncounter';
 // v2.486.0 — In-app confirm via useModal (replaces v2.485 ConfirmDialog).
 import { useModal } from '../shared/Modal';
-import { takeDash, takeDisengage } from '../../lib/movement';
+import { takeDash, takeDisengage, movementAllowanceForParticipant } from '../../lib/movement';
 import { removeCondition } from '../../lib/conditions';
 import { removeBuff } from '../../lib/buffs';
 import { CONDITION_MAP } from '../../data/conditions';
@@ -358,7 +358,7 @@ export default function InitiativeStrip({ isDM }: Props) {
           {/* v2.107.0 — Phase G: remaining movement chip for the current actor. */}
           {currentActor && currentActor.max_speed_ft != null && (() => {
             const used = currentActor.movement_used_ft ?? 0;
-            const max = currentActor.max_speed_ft;
+            const max = movementAllowanceForParticipant(currentActor);
             const remaining = Math.max(0, max - used);
             const pct = max > 0 ? used / max : 0;
             const color = pct >= 1 ? '#f87171' : pct >= 0.67 ? '#fbbf24' : '#60a5fa';

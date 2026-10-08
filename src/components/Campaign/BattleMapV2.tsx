@@ -202,7 +202,7 @@ import { useCombat } from '../../context/CombatContext';
 // canMove validates the budget before commit; logMovement writes the
 // new movement_used_ft + emits the combat event + offers OAs.
 // computeChebyshevFt drives the live drag-preview path label.
-import { canMove, logMovement } from '../../lib/movement';
+import { canMove, logMovement, movementAllowanceForParticipant } from '../../lib/movement';
 // v2.348.0 — A* pathfinder for click-to-move. Routes around walls +
 // occupied cells so the player doesn't have to click each leg of an
 // L-shaped corridor.
@@ -2105,21 +2105,8 @@ function BattleMapV2(props: BattleMapV2Props) {
     for (const t of Object.values(liveTokens)) {
       if (findParticipantForToken(t, pool)?.id === currentActor.id) { tokenId = t.id; break; }
     }
-    let baseMax = currentActor.max_speed_ft ?? 30;
-    // v2.631.0 — Weapon Mastery Slow preview: −10 ft while the
-    // mastery_slowed buff rides on this actor (canMove enforces
-    // server-side; this keeps the range ring honest).
-    if (((currentActor.active_buffs ?? []) as { key?: string }[]).some(b => b?.key === 'mastery_slowed')) {
-      baseMax = Math.max(0, baseMax - 10);
-    }
-    const dashed = currentActor.dash_used_this_turn === true;
-    const conds = currentActor.active_conditions ?? [];
-    const speedZeroed =
-      conds.includes('Unconscious') ||
-      conds.includes('Petrified') ||
-      conds.includes('Paralyzed') ||
-      conds.includes('Stunned');
-    const max = speedZeroed ? 0 : (dashed ? baseMax * 2 : baseMax);
+    const dashed=currentActor.dash_used_this_turn===true;
+    const max=movementAllowanceForParticipant(currentActor);
     return {
       tokenId,
       used: currentActor.movement_used_ft ?? 0,

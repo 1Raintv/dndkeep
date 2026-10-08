@@ -107,6 +107,8 @@ test.describe('player map combat (local stack)',()=>{
       await drag(otherToken);await drag(ownToken);
       expect(writes).toHaveLength(0);
       expect(position(otherToken)).toBe('455,245');expect(position(ownToken)).toBe('245,245');
+      sql(`update combatants set active_conditions=array['Stunned','Incapacitated'] where campaign_id='${camp}' and definition_id='${own}'`);
+      await expect(peer.locator('.initiative-strip').getByTitle(/^Stunned —/)).toBeVisible();
       await page.getByRole('button',{name:'End Turn',exact:true}).click();
       await expect(peer.getByTitle('0 / 5 ft used this turn — 5 ft remaining',{exact:true})).toBeVisible();
       // v2.723 — hold a real player's click-save pending; another click and a
@@ -156,6 +158,19 @@ test.describe('player map combat (local stack)',()=>{
       const saved=writes.length;
       await drag(ownToken);
       expect(position(ownToken)).toBe('245,315');expect(writes).toHaveLength(saved);
+      await peer.screenshot({path:info.outputPath('stunned-movement.png')});
+      // v2.846: preview and move validator must agree on the same reductions.
+      const participant=sql(`select id from combat_participants where encounter_id='${enc}' and entity_id='${own}'`);
+      sql(`update combat_participants set max_speed_ft=35,dash_used_this_turn=true where id='${participant}';
+       update combatants set active_conditions=array['Encumbered'],exhaustion_level=1,active_buffs='[{"key":"mastery_slowed","name":"Slow","source":"weapon_mastery"}]' where campaign_id='${camp}' and definition_id='${own}'`);
+      await expect(peer.getByTitle('5 / 20 ft used this turn — 15 ft remaining',{exact:true})).toBeVisible();
+      const allowance=await peer.evaluate(async id=>{const path='/src/lib/movement.ts';const {canMove}=await import(path);return [await canMove(id,15),await canMove(id,16)];},participant);
+      expect(allowance[0]).toMatchObject({allowed:true,maxSpeed:20,remaining:15});expect(allowance[1]).toMatchObject({allowed:false,maxSpeed:20});
+      await drag(ownToken);await expect.poll(()=>position(ownToken)).toBe('245,385');
+      await expect.poll(()=>sql(`select payload->>'max_speed_ft' from combat_events where campaign_id='${camp}' and event_type='movement' order by created_at desc limit 1`)).toBe('20');
+      sql(`update combatants set active_conditions=array['Paralyzed'] where campaign_id='${camp}' and definition_id='${own}'`);
+      await expect(peer.getByTitle('10 / 0 ft used this turn — 0 ft remaining',{exact:true})).toBeVisible();
+      expect(await peer.evaluate(async id=>{const path='/src/lib/movement.ts';return (await import(path)).canMove(id,5);},participant)).toMatchObject({allowed:false,maxSpeed:0});
       expect(errors).toEqual([]);
       const dismiss=peer.getByRole('button',{name:'Dismiss',exact:true});
       while(await dismiss.count()) await dismiss.first().click();
