@@ -15,6 +15,8 @@ vi.mock('../../lib/buffs',()=>({BUFF_SPELL_REGISTRY:{'mage hand':{}}}));
 vi.mock('../Combat/BuffTargetPickerModal',()=>({default:()=> <div role="dialog">Choose buff targets</div>}));
 vi.mock('../../lib/healSpells',async importOriginal=>({...await importOriginal<typeof import('../../lib/healSpells')>(),findHealSpell:()=>undefined}));
 vi.mock('./SummonFormPickerModal',()=>({default:()=>null}));
+vi.mock('../Combat/SpellTargetPickerModal',()=>({default:({onClose}:{onClose:()=>void})=><div role="dialog">Area targets<button onClick={onClose}>Cancel targets</button></div>}));
+vi.mock('../Combat/MultiAttackPickerModal',()=>({default:({onClose}:{onClose:()=>void})=><div role="dialog">Beam targets<button onClick={onClose}>Cancel targets</button></div>}));
 import SpellCastButton from './SpellCastButton';
 const character={id:'caster',class_name:'Psion',level:6,subclass:'Telepath',known_spells:['mind-sliver','mage-hand'],prepared_spells:[],spell_slots:{},spell_sources:{'mind-sliver':['class:Psion'],'mage-hand':['grant:class:Psion']}} as unknown as Character;
 const spell:SpellData={school:'Enchantment',components:'V',duration:'1 round',concentration:false,ritual:false,classes:['Psion'],id:'mind-sliver',name:'Mind Sliver',level:0,casting_time:'1 action',range:'60 feet',description:'',save_type:'INT',damage_type:'Psychic',damage_at_char_level:{'1':'1d6','5':'2d6','11':'3d6'}};
@@ -117,4 +119,18 @@ it.each([true,false])('keeps post-cast choices when the final slot is spent in c
  if(!compact)fireEvent.click(screen.getAllByRole('button',{name:'Cast'}).slice(-1)[0]);
  await waitFor(()=>expect(screen.getByRole('dialog').textContent).toBe('Choose buff targets'));
  expect(screen.getByText('No Slots')).toBeTruthy();
+});
+
+it.each(['area','beams'])('opens only one compact %s target dialog and cancels without spending slots',async kind=>{
+ const isArea=kind==='area',id=isArea?'thunderwave':'scorching-ray',className=isArea?'Psion':'Wizard',level=isArea?1:2;
+ const selected:SpellData={...spell,id,name:isArea?'Thunderwave':'Scorching Ray',level,save_type:isArea?'CON':undefined,
+   attack_type:isArea?undefined:'ranged',damage_dice:isArea?'2d8':'2d6',damage_type:isArea?'thunder':'fire',damage_at_char_level:undefined,
+   area_of_effect:isArea?{type:'cube' as const,size:15}:undefined};
+ const caster={...character,class_name:className,subclass:null,known_spells:[id],prepared_spells:[id],
+   spell_sources:{[id]:[`class:${className}`]},spell_preparation_sources:{[id]:[`class:${className}`]},spell_slots:{[level]:{total:2,used:0}}} as Character;
+ const update=vi.fn();render(<SpellCastButton compact spell={selected} character={caster} campaignId="c" userId="owner" onUpdateSlots={update}/>);
+ fireEvent.click(screen.getByRole('button',{name:isArea?'Cast':/3 beams/}));
+ const dialogs=await screen.findAllByRole('dialog');expect(dialogs).toHaveLength(1);
+ fireEvent.click(screen.getByRole('button',{name:'Cancel targets'}));
+ expect(screen.queryByRole('dialog')).toBeNull();expect(update).not.toHaveBeenCalled();
 });

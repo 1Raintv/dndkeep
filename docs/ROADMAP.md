@@ -1,6 +1,31 @@
 # DNDKeep — Two-Track Roadmap
 
-### Release candidate — secondary Psion Actions with missing slots, v2.800
+### Release candidate — spell targeting recovery and single dialogs, v2.801
+
+Player weapon and area-save spell pickers now share one strict map-loading hook
+and recovery notice. Spell selection/declaration and automatic area selection
+wait for complete geometry; failed or hung reads offer retry and cannot silently
+spend a slot with missing cover. Reopening a persistent dialog checks again.
+Successful no-map play and deliberate manual area-target selection remain intact;
+this does not claim range enforcement for every creature inside an area spell.
+
+The real spell browser path uncovered duplicate area-save dialogs: compact Cast
+mounted its picker both inside the button branch and at the shared footer. The
+multi-beam branch had the same error. Both branch copies are removed; each path
+has one shared mount. Two regressions observed two dialogs before the fix, one
+afterward, and cancel without spending slots. The failed-map regression also
+failed before the fix. All 39 focused tests and four desktop/mobile real-player
+weapon/spell checks passed; phone spell retry UI was inspected. The browser
+checks verify no pending attack and no slot spent during loading/failure/retry.
+Final v2.801 gate passed: 1,959 unit tests, TS 206/206, zero hook violations,
+rules/coordinates/anchors/build/SW-version and 253.7 KB entry. All four final
+versioned desktop/mobile browser cases passed. New shared files are lint-clean.
+No migration.
+
+### Merged — secondary Psion Actions with missing slots, v2.800
+
+PR134 merged at e002e778 after both hosted gates and preview passed.
+Main CI 37724185332 passed; production verification pending.
 
 Actions no longer hides ready spell rows just because the primary class is
 martial and imported slot records are empty. Known cantrips remain available;
@@ -16,7 +41,10 @@ including existing source-review and preparation eligibility cases. Final v2.800
 gate passed: 1,953 unit tests, TS 206/206, zero hook violations, rules/coordinates/
 anchors/build/SW-version and 253.7 KB entry. No migration or automatic slot repair.
 
-### Release candidate — reliable target distance loading, v2.799
+### Released — reliable target distance loading, v2.799
+
+PR133 merged at b6f7737; main CI 37723877544 passed. The public service
+worker reports 2.799.0; the subsequent v2.800 release also includes this fix.
 
 Player attack targets wait for map distances before becoming available. Results
 are scoped to the current campaign and scene; a stale response cannot unlock a

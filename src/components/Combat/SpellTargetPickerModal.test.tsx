@@ -2,6 +2,7 @@
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 import SpellTargetPickerModal from './SpellTargetPickerModal';
+import {loadActiveBattleMap} from '../../lib/battleMapGeometry';
 import {useBattleMapStore,type Token} from '../../lib/stores/battleMapStore';
 import {beginTokenMove} from '../Campaign/battlemap/pendingTokenMoves';
 import {declareMultiTargetAttack} from '../../lib/pendingAttack';
@@ -117,4 +118,22 @@ it('v2.746 — a nearer party member is listed under ALLIES below the enemies, n
   ]);
   const headers=Array.from(document.querySelectorAll('[data-target-group-header]')).map(h=>h.getAttribute('data-target-group-header'));
   expect(headers).toEqual(['hostile','ally','dead']);
+});
+
+it('blocks declaration after a failed map read and recovers only after an explicit retry',async()=>{
+  vi.mocked(loadActiveBattleMap).mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(null);
+  const spent=vi.fn();
+  render(<SpellTargetPickerModal open onClose={()=>{}} onDeclared={spent} campaignId="c" character={{id:'hero',name:'Hero'} as Character}
+    spell={{name:'Test spell',range:'30 feet',level:1,save_type:'DEX',damage_type:'fire'} as SpellData} slotLevel={1} effectiveDamageDice="2d6" saveDC={14}/>);
+  const targets=await screen.findAllByRole('checkbox');
+  expect((targets[0] as HTMLInputElement).disabled).toBe(true);
+  fireEvent.click(targets[0]);
+  const declare=screen.getByRole('button',{name:/Declare vs/}) as HTMLButtonElement;
+  expect(declare.disabled).toBe(true);fireEvent.click(declare);
+  expect(declareMultiTargetAttack).not.toHaveBeenCalled();expect(spent).not.toHaveBeenCalled();
+  fireEvent.click(await screen.findByRole('button',{name:'Try again'}));
+  await waitFor(()=>expect((targets[0] as HTMLInputElement).disabled).toBe(false));
+  expect(spent).not.toHaveBeenCalled();
+  fireEvent.click(targets[0]);fireEvent.click(screen.getByRole('button',{name:'Declare vs 1'}));
+  await waitFor(()=>expect(spent).toHaveBeenCalledTimes(1));
 });

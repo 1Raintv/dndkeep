@@ -927,7 +927,6 @@ function ResolvedSpellCastButton({
      >
        ⚔ {beamCount} beam{beamCount === 1 ? '' : 's'} +{spellAttack}
      </button>
-{campaignPickerModals}
 </>
    );
  }
@@ -995,7 +994,6 @@ function ResolvedSpellCastButton({
      button was redundant. Full save info stays in the tooltip. */}
  {recentlyCast ?? 'Cast'}
  </button>
-{campaignPickerModals}
 </>
  );
  }
@@ -1292,6 +1290,7 @@ function ResolvedSpellCastButton({
  </div>,
  document.body
  )}
+ {/* v2.801 — mount once: branch-local copies doubled area/beam dialogs. */}
  {campaignPickerModals}
  </div>
  );
