@@ -1,5 +1,33 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.862 — Current-turn spell-slot accounting
+
+New declared spell payments and Counterspell acceptances share a private,
+server-enforced slot-use ledger keyed by character and the actual current turn.
+Different slot levels and action types cannot evade the limit; cantrips do not
+consume it. Concurrent requests serialize with the existing character payment
+lock. A rejection rolls back slot, reaction, attack, history and receipt together.
+
+Counterspell's failed save releases the interrupted spell's historical slot use;
+replaying that refund cannot clear another casting's cost. This follows SRD 5.2.1
+pp.105,120: one slot expended per current turn, and no slot expenditure for the
+successfully interrupted spell. Its action remains spent.
+
+The record survives reload, rest/counter edits, and deletion of a public casting
+row. Advancing or rewinding initiative creates a new server turn nonce. No new
+client-accessible table or privileged public RPC is introduced.
+
+Verification: 73 SQL cases, eight desktop/phone casting/reload/refund/cancel
+flows, and scoped overflow checks pass. Screenshots inspected. Full gate passes:
+2,813 units / 255 files, TypeScript 199/199, clean hooks, RAW/coordinates/anchors,
+production build and 255.1 KB entry bundle. Both SQL schemas lint clean.
+Publishing pending. Migration: `20261008195719_spell_turn_slot_ledger.sql`
+(local applied). Existing payments have no reliable captured turn and are not
+retroactively assigned one. Manual/legacy slot writers and free feature casts
+still need integration. Action/bonus/reaction budgets are a separate follow-up:
+local declaration callbacks can still mark today's action for an old recovered
+casting. This release enforces slot costs at the verified payment boundaries.
+
 ### v2.861 — Map controls clear combat overlays
 
 Monster actions now reserve a desktop side lane and become a scrollable phone
@@ -19,7 +47,8 @@ flows also cover real saved token movement, undo/redo, rotation, encounter end,
 camera bounds, console and scoped overflow checks. Screenshots inspected.
 Full gate passes: 2,813 units in 255 files, TypeScript 199/199, clean hooks,
 RAW/coordinates/anchors, production build and 255.1 KB entry bundle. New modules
-lint clean. Publishing pending. No database migration.
+lint clean. Merged PR #205 after both CI gates passed. No database migration.
+Frontend v2.861.0 independently confirmed live after deployment completed.
 
 Remaining UI work: compact the combat strip further on phones/short landscape;
 its current card/action layout consumes substantial map space. This release
