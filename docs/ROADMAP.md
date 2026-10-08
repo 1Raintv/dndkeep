@@ -1,5 +1,40 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.844 — Atomic Destructive Thoughts damage application
+
+Seeded Destructive Thoughts now applies through one DM-authorized transaction:
+verified attack/target context, temporary HP, HP, death saves/conditions, sheet HP
+and suppression marker, concentration cleanup/offer, combat events and applied
+state commit together. A saved receipt keyed by attack ID makes retries and
+simultaneous requests return one result. The client probes that receipt before
+reading mutable target state, and resumes automatic concentration through its
+existing saved-roll API. Legacy attacks without saved dice retain their old path.
+
+Migrations `20261008125440_pending_damage_context.sql`,
+`20261008130309_pending_damage_pool_settlement.sql`,
+`20261008131207_pending_damage_life_settlement.sql`, and
+`20261008132417_atomic_destructive_thoughts_application.sql` compose this flow.
+Partial pool/life stages remain inaccessible to application roles. Unresolved
+reactions, changed snapshots and mismatched sheet/combat HP maxima reject the
+whole application. The endpoint preserves existing Petrified resistance and DM
+final-damage adjustments; it does not introduce typed affinity automation.
+
+Validation: full gate passes (2,597 units, TypeScript 200/200, entry 255.1 KB);
+41 foundation database cases plus nine endpoint cases; desktop/mobile checks
+cover natural and Surge-adjusted dice, actual Apply, sheet synchronization,
+replay and deliberately lost committed responses. The new browser assertion
+fails with the old branch restored (sheet HP 20 instead of 7). Release status:
+local verified work pending merge and gated production migration; frontend
+publishing remains subject to the existing Vercel quota limit.
+
+Remaining: normal attack settlement must include melee retaliation and mastery
+with saved outcomes (especially Topple). Typed defenses need explicit handling
+for unknown/conditional text and reaction/DM adjustment provenance. Sharpened
+replacement must validate source, duration and once-per-current-turn usage,
+including shared-AoE dice. Destructive Thoughts still needs payment/trigger
+binding and paid-result reload recovery. Character species defaults must be
+choice-aware before reuse: blanket Tiefling fire/Goliath cold is insufficient.
+
 ### v2.843 — Keep creature damage defenses through import and editing
 
 Catalog import now copies resistance, immunity and vulnerability lists into
@@ -16,6 +51,8 @@ browser regression fail on missing Psychic resistance; restoring it passes.
 Local migration applied; advisors add no findings compared with the preceding
 run (existing creature-table policy performance warnings remain). These saved
 defenses are not yet wired into pending-attack HP settlement.
+PR #187 merged as 1c14aad; production workflow 37780286624 applied
+20261008124213_creature_damage_defenses.sql successfully.
 
 
 ### v2.842 — Preserve active Sharpened records
