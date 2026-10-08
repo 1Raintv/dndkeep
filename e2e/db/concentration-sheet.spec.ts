@@ -26,7 +26,7 @@ test.describe('Concentration sheet saves (local stack)', () => {
       commit;`);
   });
   test.afterEach(() => {
-    if (userId) sql(`delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
+    if (userId) sql(`delete from action_logs where character_id='${charId}'; delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
   });
 
   for (const sample of [
@@ -85,4 +85,73 @@ test.describe('Concentration sheet saves (local stack)', () => {
     await expect.poll(()=>sql(`select concentration_spell from characters where id='${charId}'`)).toBe(replacement);
     await page.reload();await expect(page.getByText('Concentration Check Required',{exact:true})).toHaveCount(0);
   });
+  async function prepareSheet(page: import('@playwright/test').Page,extra=''){
+    sql(`update characters set current_hp=30,max_hp=30,temp_hp=6,constitution=14,
+      saving_throw_proficiencies='{constitution}',gained_feats=array['War Caster'],nat_1_20_saves=false,
+      concentration_spell='detect-magic',concentration_rounds_remaining=100 where id='${charId}'`);
+    if(extra)sql(`update characters set ${extra.slice(1)} where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await expect(page.getByTitle('Take 1 damage',{exact:true}).locator('visible=true').first()).toBeVisible();
+  }
+  test('lost damage reply reloads the original hit and keeps HP locked until confirmation',async({page})=>{
+    await prepareSheet(page);let requests=0;
+    await page.route('**/rest/v1/rpc/apply_standalone_damage',async route=>{requests++;await route.fetch();await route.abort('failed');});
+    await page.getByTitle('Take 5 damage',{exact:true}).locator('visible=true').first().click();
+    await expect(page.getByRole('alert').filter({hasText:/fetch|connection|confirm/i})).toBeVisible();expect(requests).toBe(2);
+    expect(sql(`select temp_hp from characters where id='${charId}'`)).toBe('1');
+    await expect(page.getByTitle('Take 5 damage',{exact:true}).locator('visible=true').first()).toBeDisabled();
+    await page.unroute('**/rest/v1/rpc/apply_standalone_damage');await page.reload();
+    await page.getByRole('button',{name:'Confirm damage',exact:true}).click();
+    await expect(page.getByTitle('Take 5 damage',{exact:true}).locator('visible=true').first()).toBeEnabled();
+    expect(sql(`select temp_hp from characters where id='${charId}'`)).toBe('1');
+    expect(sql(`select count(*) from dndkeep_private.standalone_damage_events where character_id='${charId}'`)).toBe('1');
+    await expect(page.getByRole('region',{name:'Concentration check required',exact:true})).toHaveCount(1);
+  });
+  test('lost save reply confirms the original advantage dice after reload',async({page})=>{
+    await prepareSheet(page);await page.getByTitle('Take 1 damage',{exact:true}).locator('visible=true').first().click();
+    const roll=page.getByRole('button',{name:'Roll CON Save (+5)',exact:true});await expect(roll).toBeVisible();
+    await page.evaluate(()=>{let n=0;Math.random=()=>n++===0?.125:n===2?.825:.5;});
+    await page.route('**/rest/v1/rpc/settle_standalone_concentration_save',async route=>{await route.fetch();await route.abort('failed');});
+    await roll.click();await expect(page.getByRole('alert').filter({hasText:/fetch|connection|confirm/i})).toBeVisible();
+    await page.unroute('**/rest/v1/rpc/settle_standalone_concentration_save');await page.reload();
+    await page.getByRole('button',{name:'Confirm saved roll',exact:true}).click();
+    await expect(page.getByText(/Earlier save confirmed: passed/)).toBeVisible();
+    const logs=JSON.parse(sql(`select jsonb_agg(jsonb_build_object('rolls',individual_results,'total',total)) from action_logs where character_id='${charId}' and action_name='Concentration Check'`));
+    expect(logs).toEqual([{rolls:[3,17],total:22}]);
+  });
+  test('two hits survive reload as two independent checks',async({page})=>{
+    await prepareSheet(page);const hit=page.getByTitle('Take 1 damage',{exact:true}).locator('visible=true').first();
+    await hit.click();await expect(page.getByRole('region',{name:'Concentration check required',exact:true})).toHaveCount(1);
+    await expect(hit).toBeEnabled();await hit.click();await expect(page.getByRole('region',{name:'Concentration check required',exact:true})).toHaveCount(2);
+    await page.reload();await expect(page.getByRole('region',{name:'Concentration check required',exact:true})).toHaveCount(2);
+    expect(sql(`select temp_hp from characters where id='${charId}'`)).toBe('4');
+  });
+  test('zero HP ends concentration without rolling even when automation is off',async({page})=>{
+    await prepareSheet(page,`,current_hp=1,temp_hp=0,advanced_automations_unlocked=true,automation_overrides='{"concentration_on_damage":"off"}'`);
+    await page.getByTitle('Take 1 damage',{exact:true}).locator('visible=true').first().click();
+    await expect(page.getByText('Damage confirmed. Concentration ended.',{exact:true})).toBeVisible();
+    expect(sql(`select concentration_spell from characters where id='${charId}'`)).toBe('');
+    expect(sql(`select count(*) from dndkeep_private.standalone_concentration_saves where character_id='${charId}' and outcome is null`)).toBe('0');
+    expect(sql(`select outcome->'rolls' from dndkeep_private.standalone_concentration_saves where character_id='${charId}'`)).toBe('null');
+  });
+  test('automatic save runs once and ordinary off mode leaves no prompt',async({page})=>{
+    await prepareSheet(page,`,advanced_automations_unlocked=true,automation_overrides='{"concentration_on_damage":"auto"}'`);
+    await page.evaluate(()=>{Math.random=()=>.825;});await page.getByTitle('Take 1 damage',{exact:true}).locator('visible=true').first().click();
+    await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Concentration Check'`)).toBe('1');
+    await page.reload();await expect(page.getByTitle('Take 1 damage',{exact:true}).locator('visible=true').first()).toBeVisible();
+    expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Concentration Check'`)).toBe('1');
+    sql(`update characters set automation_overrides='{"concentration_on_damage":"off"}' where id='${charId}'`);await page.reload();
+    await page.getByTitle('Take 1 damage',{exact:true}).locator('visible=true').first().click();await expect(page.getByText('Damage confirmed.',{exact:true})).toBeVisible();
+    await expect(page.getByRole('region',{name:'Concentration check required',exact:true})).toHaveCount(0);
+  });
+  test('another open sheet receives one saved check, without a duplicate local prompt',async({page,context})=>{
+    await prepareSheet(page);const other=await context.newPage();await other.goto(`/character/${charId}`);
+    await expect(other.getByTitle('Take 1 damage',{exact:true}).locator('visible=true').first()).toBeVisible();
+    await page.getByTitle('Take 1 damage',{exact:true}).locator('visible=true').first().click();
+    await expect(other.getByRole('region',{name:'Concentration check required',exact:true})).toHaveCount(1);
+    await expect(other.getByRole('region',{name:'Saved concentration checks',exact:true})).toBeVisible();
+    await expect(other.getByRole('region',{name:'Concentration check required',exact:true}).getByRole('button',{name:'Dismiss',exact:true})).toHaveCount(0);
+    await other.reload();await expect(other.getByRole('region',{name:'Concentration check required',exact:true})).toHaveCount(1);await other.close();
+  });
+
 });

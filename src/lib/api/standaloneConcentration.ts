@@ -6,9 +6,9 @@ import {isConcentrationCastingContext} from '../../rules/concentrationCasting';
 import {concentrationDC} from '../../rules/hp';
 import {hasWarCaster,rollConcentrationCheck} from '../../rules/concentrationSave';
 const fields=['concentration_spell','concentration_revision','constitution','inventory','level','secondary_class','secondary_level','saving_throw_proficiencies','gained_feats','nat_1_20_saves'] as const;
-type Snapshot=Pick<Character,typeof fields[number]>;
+export type Snapshot=Pick<Character,typeof fields[number]>;
 export interface StandaloneSaveRequest {userId:string;characterId:string;requestId:string;damage:number;modifier:number;expected:Snapshot}
-export interface StandaloneSaveOffer {request_id:string;character_id:string;spell_name:string;casting_revision:number;damage:number;dc:number;save_bonus:number;has_advantage:boolean;natural_extremes:boolean;created_at:string;outcome:unknown}
+export interface StandaloneSaveOffer {request_id:string;character_id:string;spell_name:string;casting_revision:number;damage:number;dc:number;save_bonus:number;has_advantage:boolean;natural_extremes:boolean;created_at:string;outcome:unknown;automation_mode?:'off'|'prompt'|'auto'}
 export interface StandaloneRollRequest {userId:string;characterId:string;requestId:string;offer:StandaloneSaveOffer;rolls:number[]}
 export type ConcentrationState=Pick<Character,'id'|'concentration_spell'|'concentration_revision'|'concentration_slot_level'|'concentration_rounds_remaining'|'concentration_casting_context'>;
 export interface StandaloneSaveReceipt {requestId:string;characterId:string;spell:string;castingRevision:number;outcome:'passed'|'failed'|'obsolete';reason:'save'|'casting_changed'|'incapacitated';rolls:number[]|null;d20:number|null;total:number|null;dc:number;bonus:number;advantage:boolean;replayed:boolean;character:ConcentrationState}
@@ -64,7 +64,7 @@ function forget(kind:'create'|'roll',r:StandaloneSaveRequest|StandaloneRollReque
  const k=key(kind,r);if(localStorage.getItem(k)===JSON.stringify(r)){localStorage.removeItem(k);changed();}
 }
 export function createStandaloneSaveRequest(character:Character,userId:string,damage:number,modifier:number,requestId=crypto.randomUUID()):StandaloneSaveRequest {
- const expected=Object.fromEntries(fields.map(field=>[field,character[field]??null])) as unknown as Snapshot;
+ const expected=standaloneConcentrationSnapshot(character);
  const r=structuredClone({userId,characterId:character.id,requestId,damage,modifier,expected});
  if(!validRequest(r))throw new Error('Reload the character to verify concentration before applying damage.');
  persist('create',r);return r;
@@ -142,4 +142,15 @@ export async function cancelStandaloneCreation(input:StandaloneSaveRequest):Prom
  const v=await rpc('cancel_standalone_concentration_request',args(r)) as {requestId:string;characterId:string;canceled:boolean;replayed:boolean}|null;
  if(!v||v.requestId!==r.requestId||v.characterId!==r.characterId||typeof v.canceled!=='boolean'||typeof v.replayed!=='boolean')throw new Error('The concentration cancellation could not be verified.');
  if(v.canceled){forget('create',r);if(active.get(k)?.text===JSON.stringify(r))active.delete(k);}return v.canceled;
+}
+
+export function standaloneConcentrationSnapshot(character:Character):Snapshot{
+ return structuredClone(Object.fromEntries(fields.map(field=>[field,character[field]??null]))) as unknown as Snapshot;
+}
+export {rpc as standaloneConcentrationRpc,offer as verifyStandaloneOffer,receipt as verifyStandaloneSaveReceipt,character as verifyConcentrationState};
+
+/** Retiring an outdated check does not generate a new die. A still-current check
+ * rejects this request and remains pending. */
+export async function retireStandaloneSave(row:StandaloneSaveOffer):Promise<StandaloneSaveReceipt>{
+ return receipt(await rpc('settle_standalone_concentration_save',{p_character_id:row.character_id,p_request_id:row.request_id,p_rolls:null}),row);
 }
