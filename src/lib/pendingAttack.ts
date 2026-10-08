@@ -1,3 +1,4 @@
+import {damageRollComponent,readDamageComponents,type DamageDieKind} from '../rules/damageComponents';
 import {getPsionicGuardsSaveAdvantage} from './api/psionicDisciplines';
 import {settleCounterspellSave} from './api/counterspellSettlement';
 import {createConcentrationOffer,resolveConcentrationSave} from './api/concentrationSaves';
@@ -880,17 +881,20 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
   // attack_roll path: only damage on hit/crit; miss/fumble skip damage → state shifts to applied=0
   if (atk.attack_kind === 'attack_roll') {
     if (atk.hit_result === 'miss' || atk.hit_result === 'fumble') {
-      const { data: updated } = await supabase
+      const { data: updated,error:missWriteError } = await supabase
         .from('pending_attacks')
         .update({
           damage_final: 0,
           damage_raw: 0,
+          damage_components: {version:1,components:[]},
           state: 'damage_rolled',
         })
         .eq('id', attackId)
+        .eq('state',atk.state)
         .select()
         .single();
-      return (updated as PendingAttack) ?? null;
+      if(missWriteError||!updated)throw new Error('Miss damage was not confirmed. Refresh the attack before continuing.');
+      return updated as PendingAttack;
     }
   }
 
@@ -927,11 +931,13 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
   let modifier: number;
   let total: number;
   let reusedFromGroup = false;
+  let baseDieKinds:DamageDieKind[]|null=null;
+  let baseExpression=diceExprForRoll;
 
   if (atk.damage_group_id) {
     const { data: prior } = await supabase
       .from('pending_attacks')
-      .select('damage_rolls, damage_raw')
+      .select('damage_rolls, damage_raw, damage_components')
       .eq('damage_group_id', atk.damage_group_id)
       .not('damage_rolls', 'is', null)
       .limit(1)
@@ -942,6 +948,10 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
       // Derive modifier from the dice expression (raw_total = sum(rolls) + mod)
       const sum = rolls.reduce((a, b) => a + b, 0);
       modifier = total - sum;
+      const priorBase=readDamageComponents(prior.damage_components)?.components.find(c=>c.source==='base');
+      if(priorBase&&priorBase.rawTotal===total&&priorBase.rolls.length===rolls.length&&priorBase.rolls.every((n,i)=>n===rolls[i])){
+        baseDieKinds=[...priorBase.dieKinds];baseExpression=priorBase.expression;
+      }else baseDieKinds=rolls.map(()=>'unknown');
       reusedFromGroup = true;
     } else {
       const fresh = rollDiceExpr(diceExprForRoll);
@@ -951,6 +961,8 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
     const fresh = rollDiceExpr(diceExprForRoll);
     rolls = fresh.rolls; modifier = fresh.modifier; total = fresh.total;
   }
+
+  baseDieKinds??=rolls.map(()=>'rolled');
 
   // v2.419.0 — Apply 'max_plus_roll' crit. After the standard roll
   // (which produced a normal-die-count roll set), add the maximum-
@@ -971,7 +983,7 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
       const maxDamage = n * sides;
       // Synthesize "max" entries for the animation/log so it's clear
       // these are crit-bonus dice, not natural rolls.
-      for (let i = 0; i < n; i++) rolls.push(sides);
+      for (let i = 0; i < n; i++) {rolls.push(sides);baseDieKinds.push('maximum');}
       total = total + maxDamage;
     }
   }
@@ -983,7 +995,7 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
   // the base weapon crit treatment. On a miss or save-for-none the riders
   // don't fire at all.
   let rolledDamageRiders: Array<{
-    buff: ActiveBuff; dice: string; rolls: number[]; total: number; damageType: string;
+    buff: ActiveBuff; dice: string; rolls: number[]; total: number; modifier:number; damageType: string;
   }> = [];
   let riderTotal = 0;
   const riderEligible =
@@ -992,12 +1004,13 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
     || (atk.attack_kind === 'save' && atk.save_result === 'passed' && atk.save_success_effect === 'half');
 
   if (riderEligible && atk.attacker_participant_id) {
-    const { data: aRowRaw } = await (supabase as any)
+    const { data: aRowRaw,error:riderReadError } = await (supabase as any)
       .from('combat_participants')
-      .select(', ' + JOINED_COMBATANT_FIELDS)
+      .select(JOINED_COMBATANT_FIELDS)
       .eq('id', atk.attacker_participant_id)
       .maybeSingle();
-  const aRow = aRowRaw ? normalizeParticipantRow(aRowRaw) : aRowRaw;
+  if(riderReadError||!aRowRaw)throw new Error('Attacker damage bonuses could not be loaded. Refresh before rolling damage.');
+  const aRow = normalizeParticipantRow(aRowRaw);
     const attackerBuffs = ((aRow?.active_buffs as ActiveBuff[] | null) ?? []);
     const isMeleeDmg = (atk.attack_source ?? '').toLowerCase() !== 'ranged';
     const riders = getDamageRiders(attackerBuffs, {
@@ -1013,6 +1026,7 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
         dice: diceToRoll,
         rolls: r.rolls,
         total: r.total,
+        modifier:r.modifier,
         damageType: rider.buff.damageRider?.damageType ?? 'untyped',
       });
       riderTotal += r.total;
@@ -1035,17 +1049,23 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
   // already halves the rider total to match).
   finalDamage = finalDamage + riderTotal;
 
-  const { data: updated } = await supabase
+  // v2.838: keep typed raw dice even after final damage is reduced/overridden.
+  const components=[damageRollComponent({key:'base',source:'base',label:atk.attack_name,damageType:atk.damage_type,expression:baseExpression,rolls,dieKinds:baseDieKinds,modifier,rawTotal:total}),
+    ...rolledDamageRiders.map((r,i)=>damageRollComponent({key:`rider:${i}:${r.buff.key}`,source:'rider',label:r.buff.name,damageType:r.damageType,expression:r.dice,rolls:r.rolls,modifier:r.modifier,rawTotal:r.total}))];
+  const { data: updated,error:damageWriteError } = await supabase
     .from('pending_attacks')
     .update({
+      damage_components:asJsonb({version:1,components}),
       damage_rolls: rolls,
       damage_raw: total,
       damage_final: finalDamage,
       state: 'damage_rolled',
     })
     .eq('id', attackId)
+    .eq('state',atk.state)
     .select()
     .single();
+  if(damageWriteError||!updated)throw new Error('Damage roll was not confirmed. Refresh the attack before rolling again.');
 
   await emitCombatEvent({
     campaignId: atk.campaign_id,
