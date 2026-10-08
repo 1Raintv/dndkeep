@@ -7,6 +7,7 @@ import { supabase } from '../../../lib/supabase';
 import ChecksPanel from '../ChecksPanel';
 import type { Character } from '../../../types';
 import { useToast } from '../../shared/Toast';
+import {TokenHitPointControls} from './TokenHitPointControls';
 import { ALL_CONDITIONS, COND_COLOR } from './shared';
 
 /**
@@ -40,6 +41,8 @@ export function TokenQuickPanel(props: {
     name: string;
     class_name: string;
     level: number;
+    temp_hp?: number;
+    hit_point_revision?: number;
     current_hp: number;
     max_hp: number;
     armor_class: number;
@@ -67,9 +70,6 @@ export function TokenQuickPanel(props: {
 }) {
   const { character: c, anchorX, anchorY, isDM, campaignId, onClose, onOpenSheet } = props;
   const { showToast } = useToast();
-  const [hpInput, setHpInput] = useState('');
-  const [hpMode, setHpMode] = useState<'damage' | 'heal' | 'set'>('damage');
-  const [applying, setApplying] = useState(false);
   // v2.227 — guard for in-flight condition writes. Prevents double-click
   // from racing two updates against an out-of-date base array.
   const [condBusy, setCondBusy] = useState(false);
@@ -120,10 +120,6 @@ export function TokenQuickPanel(props: {
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  // HP percent for the bar fill.
-  const pct = c.max_hp > 0 ? Math.max(0, Math.min(1, c.current_hp / c.max_hp)) : 0;
-  const hpColor = pct > 0.5 ? '#34d399' : pct > 0.25 ? '#fbbf24' : pct > 0 ? '#f87171' : '#6b7280';
-
   // Position calc: clamp inside viewport so panel doesn't fall off
   // the bottom or right edge. Width 280, max height ~360.
   const PANEL_W = 280;
@@ -148,30 +144,6 @@ export function TokenQuickPanel(props: {
   // Modifier helper — D&D 5e ability modifier formula.
   const mod = (score: number) => abilityModifier(score);
   const modStr = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
-
-  async function applyHp() {
-    const n = parseInt(hpInput.trim(), 10);
-    if (!Number.isFinite(n) || n <= 0) return;
-    setApplying(true);
-    try {
-      let next = c.current_hp;
-      if (hpMode === 'damage') next = Math.max(0, c.current_hp - n);
-      else if (hpMode === 'heal') next = Math.min(c.max_hp, c.current_hp + n);
-      else next = Math.max(0, Math.min(c.max_hp, n));
-      const { error } = await supabase
-        .from('characters')
-        .update({ current_hp: next })
-        .eq('id', c.id);
-      if (error) {
-        console.error('[TokenQuickPanel] HP update failed', error);
-        showToast('Failed to update HP. Check console for details.', 'error');
-        return;
-      }
-      setHpInput('');
-    } finally {
-      setApplying(false);
-    }
-  }
 
   // v2.227 — Direct write to characters.active_conditions (matches
   // v1's approach in BattleMap.tsx). Cascade rules from
@@ -237,8 +209,9 @@ export function TokenQuickPanel(props: {
         style={{
           position: 'fixed',
           left, top,
-          width: PANEL_W,
-          maxHeight: PANEL_H,
+          width: 'min(280px, calc(100vw - 16px))',
+          maxHeight: 'min(600px, calc(100dvh - 16px))',
+          boxSizing: 'border-box',
           overflowY: 'auto',
           background: 'var(--c-card)',
           border: '1px solid var(--c-border)',
@@ -275,109 +248,7 @@ export function TokenQuickPanel(props: {
           >×</button>
         </div>
 
-        {/* HP bar */}
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase' }}>HP</span>
-            <span style={{ fontSize: 14, fontWeight: 700, color: hpColor }}>
-              {c.current_hp}<span style={{ fontSize: 10, color: 'var(--t-3)' }}>/{c.max_hp}</span>
-            </span>
-          </div>
-          <div style={{
-            height: 8, background: 'rgba(15,16,18,0.85)',
-            border: '1px solid var(--c-border)',
-            borderRadius: 4, overflow: 'hidden' as const,
-          }}>
-            <div style={{
-              width: `${pct * 100}%`, height: '100%',
-              background: hpColor, transition: 'width 0.2s, background 0.2s',
-            }} />
-          </div>
-        </div>
-
-        {/* v2.280.0 — Reordered. New flow:
-              1. Header (above)
-              2. HP bar (above)
-              3. DM Controls (damage/heal/set)
-              4. Open Character Sheet button (immediately below DM controls)
-              5. Apply Condition picker (DM-only)
-              6. Default Stats (AC, Speed, ability mods) — COLLAPSIBLE
-              7. Ability Checks (ChecksPanel) — COLLAPSIBLE
-              8. Active Conditions chips — moved to the bottom
-            Pre-2.280 layout had Default Stats and ability mods up
-            top (always visible) and Conditions just below them; that
-            burned vertical real estate on info DMs rarely act on
-            mid-combat. The frequently-needed surfaces (HP, DM
-            controls, Open Sheet) are now above the fold; the
-            informational surfaces collapse to a one-line header. */}
-
-        {/* DM controls — damage / heal / set */}
-        {isDM && (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
-              DM Controls
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, marginBottom: 6 }}>
-              {(['damage', 'heal', 'set'] as const).map(m => (
-                <button
-                  key={m}
-                  onClick={() => setHpMode(m)}
-                  style={{
-                    padding: '6px 4px',
-                    background: hpMode === m
-                      ? (m === 'damage' ? 'rgba(248,113,113,0.25)' : m === 'heal' ? 'rgba(52,211,153,0.25)' : 'rgba(167,139,250,0.25)')
-                      : 'var(--c-raised)',
-                    border: `1px solid ${hpMode === m
-                      ? (m === 'damage' ? 'rgba(248,113,113,0.6)' : m === 'heal' ? 'rgba(52,211,153,0.6)' : 'rgba(167,139,250,0.6)')
-                      : 'var(--c-border)'}`,
-                    borderRadius: 'var(--r-sm, 4px)',
-                    color: hpMode === m
-                      ? (m === 'damage' ? '#f87171' : m === 'heal' ? '#34d399' : '#a78bfa')
-                      : 'var(--t-2)',
-                    fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-                    textTransform: 'capitalize' as const, cursor: 'pointer',
-                  }}
-                >{m}</button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <input
-                type="number"
-                value={hpInput}
-                onChange={(e) => setHpInput(e.target.value)}
-                placeholder="Amount"
-                min={0}
-                style={{
-                  flex: 1,
-                  padding: '6px 8px',
-                  background: 'var(--c-raised)',
-                  border: '1px solid var(--c-border)',
-                  borderRadius: 'var(--r-sm, 4px)',
-                  color: 'var(--t-1)',
-                  fontFamily: 'var(--ff-body)', fontSize: 12,
-                  boxSizing: 'border-box' as const,
-                }}
-                onKeyDown={(e) => { if (e.key === 'Enter') applyHp(); }}
-              />
-              <button
-                onClick={applyHp}
-                disabled={applying || !hpInput.trim()}
-                style={{
-                  padding: '6px 14px',
-                  background: 'rgba(167,139,250,0.22)',
-                  border: '1px solid rgba(167,139,250,0.5)',
-                  borderRadius: 'var(--r-sm, 4px)',
-                  color: '#a78bfa',
-                  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700,
-                  cursor: (applying || !hpInput.trim()) ? 'not-allowed' : 'pointer',
-                  opacity: (applying || !hpInput.trim()) ? 0.5 : 1,
-                }}
-              >
-                {applying ? '…' : 'Apply'}
-              </button>
-            </div>
-          </div>
-        )}
+        <TokenHitPointControls key={c.id} character={c} isDM={isDM}/>
 
         {/* v2.280.0 — Open full character sheet, moved up to sit
             directly below the DM Controls per spec. Renders for both

@@ -593,7 +593,7 @@ export default function CampaignDashboard({ campaign: campaignProp, onBack }: Ca
       // for now; a character-level override (Goggles of Night, the
       // Artificer infusion) would land on this line.
       darkvision: SPECIES_MAP[c.species]?.darkvision ?? 0,
-      current_hp: c.current_hp, max_hp: c.max_hp, armor_class: c.armor_class,
+      current_hp: c.current_hp, max_hp: c.max_hp, temp_hp: c.temp_hp, hit_point_revision: c.hit_point_revision, armor_class: c.armor_class,
       active_conditions: c.active_conditions ?? [],
       strength: c.strength, dexterity: c.dexterity, constitution: c.constitution,
       intelligence: c.intelligence, wisdom: c.wisdom, charisma: c.charisma,
