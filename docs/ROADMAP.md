@@ -1,5 +1,26 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.835 — Recoverable campaign time controls
+
+Both Party-tab time panels now use one shared component and the atomic time API.
+Requests are saved before sending, with separate keys per user/campaign/request.
+Unknown results survive reload; confirmation reuses the original request, and
+new advances stay disabled while recovery is pending. Cancellation creates a
+server-side fence against delayed requests and preserves time already applied.
+The display reads the current server clock and time scale. This control advances
+game time only; it never grants rest benefits or restores resources.
+
+Storage failures block submission. Late responses cannot update a different
+campaign, and saved requests are checked again before sending. The extracted
+panel removes the duplicate read/modify/write paths and their separate buff
+sweeps. Combat round-wrap writes still need their own transactional follow-up.
+
+Validation: full gate (2,466 units; TypeScript baseline ratcheted to 200; hooks
+clean; 255.1 KB entry), 15 database cases and four desktop/mobile recovery cases.
+Screenshots and overflow probes reviewed; bottom controls pass browser hit-testing
+above fixed navigation. Local migration applied; no changed-object lint/advisor
+findings. The storage-failure test uses the environment's actual storage object.
+
 ### v2.834 — Atomic manual campaign time backend
 
 A DM-only, replay-safe transaction now advances the campaign clock, decrements

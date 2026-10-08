@@ -33,8 +33,8 @@ import ChecksPanel from './ChecksPanel';
 // (RP / one-off) loot. See ./LootItemPicker.tsx.
 import LootItemPicker from './LootItemPicker';
 import type { MagicItem } from '../../data/magicItems';
-// v2.494.0 — Per-campaign buff duration sweep for Advance Time button.
-import { elapseCampaignBuffDurations, hoursToRounds } from '../../lib/buffDuration';
+// v2.835 — One recoverable time control for populated and empty campaigns.
+import CampaignTimePanel from './CampaignTimePanel';
 import { v4 as uuidv4 } from 'uuid';
 
 // v2.334.0 — P3: shared max-width for all DM tool panels (AoE, Party
@@ -167,30 +167,6 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
       catch { /* localStorage quota / private mode — selection still works in-session */ }
     }
   }
-
-  // v2.489.0 — Local mirror of campaigns.combat_rounds_elapsed.
-  //
-  // Pre-v2.489 both Advance Time panels (the slim empty-state one
-  // and the full DM-tools one) read directly from
-  // `campaign.combat_rounds_elapsed`. That prop is cached at the
-  // parent's mount and never refetches after the clock advances —
-  // so clicking "24 hours" wrote +14400 to the DB correctly but
-  // the displayed value stayed at the pre-click number until a
-  // full page reload. Surface-only bug (write was right; readout
-  // was wrong) but noisy in playtest.
-  //
-  // The fix: keep a local `clockRounds` state seeded from the prop
-  // and bumped explicitly on each successful write. The useEffect
-  // re-seeds from the prop if the parent ever passes a fresh
-  // campaign object (currently never, but defends against future
-  // realtime subscription work landing in CampaignDashboard).
-  const [clockRounds, setClockRounds] = useState<number>(
-    (campaign as { combat_rounds_elapsed?: number } | undefined)?.combat_rounds_elapsed ?? 0,
-  );
-  useEffect(() => {
-    const next = (campaign as { combat_rounds_elapsed?: number } | undefined)?.combat_rounds_elapsed;
-    if (typeof next === 'number') setClockRounds(next);
-  }, [campaign]);
 
   // AoE
   // Passive perception
@@ -646,105 +622,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: 'var(--sp-8)', color: 'var(--t-2)', gap: 'var(--sp-4)' }}>
       <div style={{ fontSize: 36, marginBottom: 4 }}></div>
       <div style={{ fontSize: 'var(--fs-sm)' }}>No characters in this campaign yet. Players need to assign their characters to this campaign.</div>
-      {isOwner && (
-        <div style={{ marginTop: 'var(--sp-4)', display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
-          <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#67e8f9' }}>
-            Advance Time (DM)
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--t-3)' }}>
-            {(() => {
-              // v2.489.0 — Was reading from prop; now uses local state
-              // that bumps after each successful write.
-              const rounds = clockRounds;
-              const days = Math.floor(rounds / 14400);
-              const hours = Math.floor((rounds % 14400) / 600);
-              const mins = Math.floor((rounds % 600) / 10);
-              const parts: string[] = [];
-              if (days) parts.push(`${days}d`);
-              if (hours) parts.push(`${hours}h`);
-              if (mins || (!days && !hours)) parts.push(`${mins}m`);
-              return `Campaign clock: ${rounds} rounds (~${parts.join(' ')})`;
-            })()}
-          </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 480 }}>
-            {([
-              // v2.494.0 — Was {label, rounds: 600/4800/14400}. Now stores
-              // intent as seconds and converts at click time via the
-              // campaign's seconds_per_round setting. At RAW (6 s/r) the
-              // round counts match the legacy hard-codes; at the default
-              // 10 s/r they scale down (360/2880/8640).
-              { label: '1 hour',    seconds: 3600 },
-              { label: '8 hours',   seconds: 28800 },
-              { label: '24 hours',  seconds: 86400 },
-            ]).map(({ label, seconds }) => (
-              <button
-                key={label}
-                onClick={async () => {
-                  const spr =
-                    (campaign as { seconds_per_round?: number } | undefined)?.seconds_per_round ?? 10;
-                  const rounds = hoursToRounds(seconds / 3600, spr);
-                  const { data: row } = await supabase
-                    .from('campaigns')
-                    .select('combat_rounds_elapsed')
-                    .eq('id', campaignId)
-                    .maybeSingle();
-                  const current = (row as { combat_rounds_elapsed?: number } | null)?.combat_rounds_elapsed ?? 0;
-                  const next = current + rounds;
-                  const { error: upErr } = await (supabase as any)
-                    .from('campaigns')
-                    .update({ combat_rounds_elapsed: next })
-                    .eq('id', campaignId);
-                  // v2.489.0 — bump local state ONLY after the write
-                  // confirms (no error). If the UPDATE failed we keep
-                  // the old value so the display stays honest about
-                  // what's actually in the DB.
-                  if (!upErr) setClockRounds(next);
-                  try {
-                    const { data: expired } = await (supabase as any)
-                      .from('campaign_condition_immunities')
-                      .select('id')
-                      .eq('campaign_id', campaignId)
-                      .not('expires_at_rounds', 'is', null)
-                      .lte('expires_at_rounds', next);
-                    const ids = (expired ?? []).map((r: { id: string }) => r.id);
-                    if (ids.length) {
-                      await (supabase as any)
-                        .from('campaign_condition_immunities')
-                        .delete()
-                        .in('id', ids);
-                    }
-                  } catch (pruneErr) {
-                    console.warn('[advance-time] immunity prune failed', pruneErr);
-                  }
-                  // v2.494.0 — Sweep all buff-bearing tables and
-                  // decrement durations by the elapsed round count.
-                  // Fire-and-forget; the helper collects errors and
-                  // never throws.
-                  try {
-                    const { errors: buffErrs } = await elapseCampaignBuffDurations(
-                      supabase, campaignId, rounds,
-                    );
-                    if (buffErrs.length) {
-                      console.warn('[advance-time] buff sweep had errors', buffErrs);
-                    }
-                  } catch (sweepErr) {
-                    console.warn('[advance-time] buff sweep crashed', sweepErr);
-                  }
-                }}
-                style={{
-                  fontSize: 11, fontWeight: 700, padding: '5px 12px',
-                  borderRadius: 7, cursor: 'pointer', minHeight: 0,
-                  border: '1px solid rgba(34,211,238,0.4)',
-                  background: 'rgba(34,211,238,0.08)',
-                  color: '#67e8f9',
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {isOwner && <CampaignTimePanel campaignId={campaignId} active style={{width:'100%',maxWidth:760}}/>}
     </div>
   );
 
@@ -1205,169 +1083,7 @@ export default function PartyDashboard({ campaignId, isOwner, campaign }: PartyD
               })()}
             </div>
 
-          {/* v2.483.0 — ADVANCE TIME PANEL.
-              Bumps campaigns.combat_rounds_elapsed by N. The campaign
-              clock is what cross-encounter immunity expiry is keyed
-              against (1 round = 6 sec, 14400 rounds = 24h per RAW).
-              MVP scope: only advance the clock; don't auto-decrement
-              buff/concentration timers — that's the player's job per
-              the original design note. Once they're in their sheet,
-              they manage spell durations themselves.
-
-              Common presets cover the actions a DM typically calls
-              between encounters: short rest (1h), long rest (8h),
-              full day (24h). 10 rounds (= 1 minute) covers
-              "everyone takes a moment to catch their breath." */}
-          <div style={{ ...DM_PANEL_STYLE, ...panelLayoutStyle(dmPanel === 'time'), padding: '14px 16px', background: 'var(--c-card)', border: '1px solid rgba(34,211,238,0.3)', borderRadius: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#67e8f9' }}>
-                Advance Time
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--t-2)' }}>
-                Move the campaign clock forward. Cross-encounter
-                immunities (e.g. 24h Frightful Presence) expire on
-                schedule. Players manage their own spell durations
-                from their character sheet.
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--t-3)' }}>
-                {(() => {
-                  // v2.489.0 — Was reading from prop; uses local state now.
-                  const rounds = clockRounds;
-                  // Cheap human-readable summary of total elapsed.
-                  // 1 round = 6 sec → 10 rounds = 1 minute → 600 = 1h → 14400 = 24h.
-                  const days = Math.floor(rounds / 14400);
-                  const hours = Math.floor((rounds % 14400) / 600);
-                  const mins = Math.floor((rounds % 600) / 10);
-                  const parts: string[] = [];
-                  if (days) parts.push(`${days}d`);
-                  if (hours) parts.push(`${hours}h`);
-                  if (mins || (!days && !hours)) parts.push(`${mins}m`);
-                  return `Campaign clock: ${rounds} rounds elapsed (~${parts.join(' ')} of combat-equivalent time)`;
-                })()}
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {(([
-                  // v2.494.0 — Discriminated union: `rounds` entries
-                  // tick a literal number of rounds (no Time Scale
-                  // conversion — "10 rounds" means 10 rounds at any
-                  // s/r setting), `seconds` entries scale via the
-                  // campaign's seconds_per_round. Note "1 minute"
-                  // moved to the seconds path: at 10 s/r it's
-                  // 6 rounds, at 6 s/r (RAW) it's 10 rounds.
-                  { label: '10 rounds',  rounds: 10,    hint: 'literal rounds (Time Scale–independent)' },
-                  { label: '1 minute',   seconds: 60,   hint: 'scales with Time Scale' },
-                  { label: '10 minutes', seconds: 600,  hint: 'short skill challenge' },
-                  { label: '1 hour',     seconds: 3600, hint: 'short rest' },
-                  { label: '8 hours',    seconds: 28800, hint: 'long rest' },
-                  { label: '24 hours',   seconds: 86400, hint: 'full day; expires Frightful Presence et al.' },
-                ]) as Array<{ label: string; rounds?: number; seconds?: number; hint: string }>).map((item) => (
-                  <button
-                    key={item.label}
-                    title={item.hint}
-                    onClick={async () => {
-                      const spr =
-                        (campaign as { seconds_per_round?: number } | undefined)?.seconds_per_round ?? 10;
-                      const rounds =
-                        typeof item.rounds === 'number'
-                          ? item.rounds
-                          : hoursToRounds((item.seconds ?? 0) / 3600, spr);
-                      // Read-modify-write. We could use Supabase's
-                      // raw_sql/RPC for an atomic increment, but the
-                      // DM is the only writer to combat_rounds_elapsed
-                      // outside of advanceTurn (which only ticks during
-                      // active combat — and you wouldn't fast-forward
-                      // mid-combat). So racing isn't a real risk.
-                      const { data: row, error: readErr } = await supabase
-                        .from('campaigns')
-                        .select('combat_rounds_elapsed')
-                        .eq('id', campaignId)
-                        .maybeSingle();
-                      if (readErr) {
-                        console.error('[advance-time] read failed', readErr);
-                        return;
-                      }
-                      const current = (row as { combat_rounds_elapsed?: number } | null)?.combat_rounds_elapsed ?? 0;
-                      const next = current + rounds;
-                      const { error: upErr } = await (supabase as any)
-                        .from('campaigns')
-                        .update({ combat_rounds_elapsed: next })
-                        .eq('id', campaignId);
-                      if (upErr) {
-                        console.error('[advance-time] write failed', upErr);
-                        return;
-                      }
-                      // v2.489.0 — Mirror the write into local state
-                      // so the readout above refreshes immediately.
-                      // Mirror of the same setClockRounds(next) used
-                      // in the empty-state panel.
-                      setClockRounds(next);
-                      // Best-effort: also prune immunity rows that
-                      // have expired so they stop showing up on
-                      // sheets. The isImmune check filters them out
-                      // anyway, but the active_immunities snapshot
-                      // on character sheets only refreshes at end-
-                      // of-encounter — without pruning, expired chips
-                      // would linger visually until the next combat.
-                      //
-                      // Two-pass: query expired rows for this
-                      // campaign, then DELETE them. Could be one
-                      // .delete() with .lt() but the SQL filter
-                      // would also need to handle the null case
-                      // (no expiry); easier to read in two steps
-                      // and the row count is tiny.
-                      try {
-                        const { data: expired } = await (supabase as any)
-                          .from('campaign_condition_immunities')
-                          .select('id, expires_at_rounds')
-                          .eq('campaign_id', campaignId)
-                          .not('expires_at_rounds', 'is', null)
-                          .lte('expires_at_rounds', next);
-                        const ids = (expired ?? []).map((r: { id: string }) => r.id);
-                        if (ids.length) {
-                          await (supabase as any)
-                            .from('campaign_condition_immunities')
-                            .delete()
-                            .in('id', ids);
-                        }
-                      } catch (pruneErr) {
-                        // Pruning is cosmetic; isImmune still does
-                        // the right thing without it. Don't surface.
-                        console.warn('[advance-time] immunity prune failed', pruneErr);
-                      }
-                      // v2.494.0 — Sweep buff durations across the
-                      // campaign by the elapsed round count. Same
-                      // fire-and-forget pattern as the immunity prune
-                      // above. Out-of-combat catch-up for buffs that
-                      // would have ticked down naturally in combat.
-                      try {
-                        const { errors: buffErrs } = await elapseCampaignBuffDurations(
-                          supabase, campaignId, rounds,
-                        );
-                        if (buffErrs.length) {
-                          console.warn('[advance-time] buff sweep had errors', buffErrs);
-                        }
-                      } catch (sweepErr) {
-                        console.warn('[advance-time] buff sweep crashed', sweepErr);
-                      }
-                      setDmPanel(null);
-                    }}
-                    style={{
-                      fontSize: 11, fontWeight: 700, padding: '6px 14px',
-                      borderRadius: 7, cursor: 'pointer', minHeight: 0,
-                      border: '1px solid rgba(34,211,238,0.4)',
-                      background: 'rgba(34,211,238,0.08)',
-                      color: '#67e8f9',
-                    }}
-                  >
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-              <div style={{ fontSize: 10, color: 'var(--t-3)', fontStyle: 'italic' as const }}>
-                Note: only this campaign's clock advances. The world
-                date doesn't change in any other system; this is
-                purely for tracking spell/effect duration math.
-              </div>
-            </div>
+          <CampaignTimePanel campaignId={campaignId} active={dmPanel==='time'} style={{...panelLayoutStyle(dmPanel==='time'),...DM_PANEL_STYLE}}/>
 
           {/* v2.496.0 — close stacked-panel grid wrapper */}
           </div>

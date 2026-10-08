@@ -1,3 +1,4 @@
+import {supabase} from '../supabase';
 import {hoursToRounds} from '../buffDuration';
 import {psionicRpc,PsionicRequestError} from './psionicTurns';
 export interface CampaignTimeRequest {requestId:string;campaignId:string;unit:'rounds'|'seconds';amount:number;scale:number}
@@ -21,4 +22,16 @@ export async function advanceCampaignTime(input:CampaignTimeRequest):Promise<Cam
   throw new PsionicRequestError('Time advance could not be confirmed. Keep the saved request and retry it.',false);
  if(typeof window!=='undefined')window.dispatchEvent(new Event('dndkeep:sharpened-roll-changed'));
  return value;
+}
+
+export async function cancelCampaignTime(input:CampaignTimeRequest):Promise<boolean>{
+ if(!validCampaignTimeRequest(input))throw new Error('Invalid saved time advance.');const r=structuredClone(input);
+ const value=await psionicRpc('cancel_campaign_time',{p_campaign_id:r.campaignId,p_request_id:r.requestId,p_unit:r.unit,p_amount:r.amount,p_expected_scale:r.scale},true) as {requestId?:string;campaignId?:string;canceled?:boolean}|null;
+ if(!value||value.requestId!==r.requestId||value.campaignId!==r.campaignId||typeof value.canceled!=='boolean')throw new Error('Cancellation could not be confirmed. Keep the saved request.');return value.canceled;
+}
+export async function loadCampaignClock(campaignId:string):Promise<{rounds:number;scale:number}>{
+ const {data,error}=await supabase.from('campaigns').select('combat_rounds_elapsed,seconds_per_round').eq('id',campaignId).single();
+ if(error)throw error;
+ if(!data||!count(data.combat_rounds_elapsed)||!count(data.seconds_per_round)||data.seconds_per_round<1||data.seconds_per_round>600)throw new Error('Campaign clock could not be verified.');
+ return {rounds:data.combat_rounds_elapsed,scale:data.seconds_per_round};
 }
