@@ -1,5 +1,35 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.810 sheet integration — durable standalone damage and saves
+
+The solo sheet now submits one saved damage identity that pays HP and queues its
+concentration check together. It keeps full damage when temporary HP absorbs a
+hit, preserves separate checks for separate hits, and accepts only ordered server
+HP/concentration receipts. Pending damage locks the HP/rest controls until it is
+confirmed or the server proves cancellation. Reloads recover the original hit
+and dice; a failed reply never becomes a second hit or a reroll. Saved checks have
+no dismiss action. Old-casting checks retire without touching the current spell.
+
+War Caster keeps both dice, captured effective Constitution and total-level
+proficiency remain authoritative for that check, and server logs are not written
+a second time by the animation. Auto/prompt/off are respected; zero HP ends
+concentration without a die even with ordinary saves off. Realtime observers
+recognize the atomic damage marker and read the existing queue. Whole-number HP
+input now rejects decimals/partial strings rather than removing punctuation.
+
+Validation: 2,198 unit tests; TS 203/203; hooks, RAW, coordinates/anchors, build,
+service worker and 254 KB entry budget passed. All 13 scenarios passed on desktop
+and phone (26 total), including lost damage/save replies and reloads, multiple
+hits, War Caster, zero HP, auto/off, delayed animations/new casts, and two open
+sheets. The phone prompt screenshot was inspected. Backend marker regression
+coverage passed all 43 compound/manual HP database cases.
+
+Release dependency: PR150 must merge and apply migration 20261008063321 before
+this UI is merged. At this checkpoint the UI is verified locally, not deployed.
+Campaign damage and external legacy HP writers still need their own durable
+consequence integration; this does not certify death-save/instant-death automation.
+
+
 ### v2.810 damage backend candidate — one hit, one concentration identity
 
 apply_standalone_damage composes the existing HP adjustment and concentration

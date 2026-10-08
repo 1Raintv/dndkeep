@@ -18,12 +18,14 @@ import {addClassSpellSelection,removeClassSpellSelection} from '../../rules/clas
 import {createPsionicRestRequest} from '../../lib/psionicRestRequest';
 import {pendingPsionicPayments} from '../../lib/psionicPaymentRecovery';
 import {hasWarCaster,rollConcentrationCheck} from '../../rules/concentrationSave';
+import {StandaloneConcentrationPanel} from './StandaloneConcentrationPanel';
+import {useStandaloneConcentration} from '../../lib/hooks/useStandaloneConcentration';
 import {ConcentrationCheckPrompt} from './ConcentrationCheckPrompt';
 import {longRestHitDice} from '../../rules/restRecovery';
 import PsionicPaymentRecoveryPanel from './_shared/PsionicPaymentRecoveryPanel';
 import {usePsionicEnhancements} from '../../lib/hooks/usePsionicEnhancements';
 import {useOptimisticCharacterRef} from '../../lib/hooks/useOptimisticCharacterRef';
-import {acceptConcentrationReceipt,isCombatHpCarryover,preservePsionicResources,acceptSavedCharacterResources,reconcileCharacterUpdate,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
+import {acceptHitPointReceipt,acceptConcentrationReceipt,isCombatHpCarryover,preservePsionicResources,acceptSavedCharacterResources,reconcileCharacterUpdate,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
 import { attacksPerAction } from '../../rules/extraAttack';
 import PsionCastingNote from './_shared/PsionCastingNote';
 import { useState, useCallback, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
@@ -321,6 +323,19 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  // ── Sync external HP/condition changes (e.g. from BattleMap) ──────
  // Uses a ref to avoid stale closure — always reads current character value
  const characterRef = useOptimisticCharacterRef(character);
+ // v2.810 — server receipts acknowledge HP and concentration together; never
+ // queue them again or let a delayed animation clear a newer casting.
+ const standaloneConcentration=useStandaloneConcentration(userId,characterRef,saveQueue,frozen,receipt=>{
+  const pending=saveQueue.getPending();
+  const patch={...acceptHitPointReceipt(characterRef,receipt,pending).patch,...acceptConcentrationReceipt(characterRef,receipt,pending).patch};
+  if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
+ },receipt=>{
+  if(receipt.d20===null)return;
+  triggerRoll({result:receipt.d20,dieType:20,advantage:receipt.advantage,
+   allDice:(receipt.rolls??[]).map(value=>({die:20,value})),expression:receipt.advantage?'2d20kh1':'1d20',
+   flatBonus:receipt.bonus,modifier:receipt.bonus,total:receipt.total!,
+   label:`${spellMap[receipt.spell]?.name??receipt.spell} — Concentration Save (DC ${receipt.dc}) · ${receipt.outcome==='passed'?'Maintained':'Broken'}`});
+ });
  const acceptedSave=useRef<typeof acknowledged>(null);
  useEffect(()=>{
   if(!acknowledged||acceptedSave.current===acknowledged)return;acceptedSave.current=acknowledged;
@@ -448,7 +463,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  // and the concentration save was silently skipped. Detect total damage
  // (current_hp delta + temp_hp delta) and fire the save here too.
  const currentConcSpell = (newConcSpell !== undefined ? newConcSpell : oldConcSpell) as string;
- if (currentConcSpell && currentConcSpell !== '' && !isCombatHpCarryover(current, patch)) {
+ if (currentConcSpell && currentConcSpell !== '' && !updated.last_standalone_damage_id && !isCombatHpCarryover(current, patch)) {
  const oldHP = (current['current_hp'] as number) ?? 0;
  const newHP = (patch['current_hp'] !== undefined ? (patch['current_hp'] as number) : oldHP);
  const oldTemp = (current['temp_hp'] as number) ?? 0;
@@ -767,6 +782,8 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  // regardless of whether it landed on temp HP or current HP.
  const inferredDamage = Math.max(0, character.current_hp - current_hp);
  const totalDamage = damageDealt ?? inferredDamage;
+ if(frozen||(!characterRef.current.campaign_id&&standaloneConcentration.blockedHP))return;
+ if(!characterRef.current.campaign_id&&totalDamage>0){standaloneConcentration.applyDamage(totalDamage);return;}
  if (totalDamage > 0 && concentrationSpellId) {
  // RAW: DC = max(10, floor(damage / 2)), capped at 30
  const dc = concentrationDC(totalDamage);
@@ -1161,7 +1178,8 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  onUpdateXP={xp => applyUpdate({ experience_points: xp })}
  onOpenAvatarPicker={() => setShowAvatarPicker(true)}
  onToggleInspiration={() => applyUpdate({ inspiration: !character.inspiration }, true)}
- onOpenRest={() => setShowRest(true)}
+ onOpenRest={() => {if(!standaloneConcentration.blockedHP)setShowRest(true);}}
+ hpDisabled={frozen||standaloneConcentration.blockedHP}
  onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)}
  onUpdateSpeed={speed => applyUpdate({ speed }, true)}
  onShare={character.share_token && character.share_enabled ? () => {
@@ -1643,6 +1661,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
      v2.56.0: Now shows the actual damage that triggered the prompt + the formula
      breakdown so users can see why the DC is what it is. RAW: DC = max(10, floor(damage/2)),
      capped at 30. */}
+ <StandaloneConcentrationPanel controller={standaloneConcentration} frozen={frozen} spellName={id=>spellMap[id]?.name??id}/>
  {concentrationSaveDC !== null && concentrationSpellId && <ConcentrationCheckPrompt
  spellName={spellMap[concentrationSpellId]?.name ?? 'Concentration'} damage={concentrationSaveDamage??0}
  dc={concentrationSaveDC} bonus={computed.saving_throws.constitution.total} advantage={hasWarCaster(character.gained_feats)}

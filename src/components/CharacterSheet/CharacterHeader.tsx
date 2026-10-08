@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import {parseHitPointAdjustment} from '../../rules/hp';
 import type { Character, ComputedStats } from '../../types';
 
 interface CharacterHeaderProps {
@@ -9,6 +10,7 @@ interface CharacterHeaderProps {
  onOpenAvatarPicker?: () => void;
  onToggleInspiration?: () => void;
  onOpenRest?: () => void;
+ hpDisabled?: boolean;
  onUpdateHP?: (delta: number, tempHP?: number) => void;
  onUpdateAC?: (ac: number) => void;
  onUpdateSpeed?: (speed: number) => void;
@@ -30,7 +32,7 @@ function hpColor(current: number, max: number): string {
 export default function CharacterHeader({
  character, onOpenSettings, onOpenAvatarPicker,
  onToggleInspiration, onOpenRest, onShare,
- onUpdateHP,
+ onUpdateHP, hpDisabled=false,
 }: CharacterHeaderProps) {
 
  const [hpInput, setHpInput] = useState('');
@@ -61,9 +63,9 @@ export default function CharacterHeader({
  const hpCol = hpColor(character.current_hp, character.max_hp);
  const hpPct = character.max_hp > 0 ? Math.min(1, character.current_hp / character.max_hp) : 0;
 
- function applyDamage() { const n = parseInt(hpInput); if (!isNaN(n) && n > 0) { onUpdateHP?.(-n); setHpInput(''); } }
- function applyHeal() { const n = parseInt(hpInput); if (!isNaN(n) && n > 0) { onUpdateHP?.(n); setHpInput(''); } }
- function applyTemp() { const n = parseInt(hpInput); if (!isNaN(n) && n >= 0) { onUpdateHP?.(0, n); setHpInput(''); } }
+ function applyDamage() { const n = parseHitPointAdjustment(hpInput,'damage'); if (!hpDisabled && n !== null) { onUpdateHP?.(-n); setHpInput(''); } }
+ function applyHeal() { const n = parseHitPointAdjustment(hpInput,'heal'); if (!hpDisabled && n !== null) { onUpdateHP?.(n); setHpInput(''); } }
+ function applyTemp() { const n = parseHitPointAdjustment(hpInput,'set'); if (!hpDisabled && n !== null) { onUpdateHP?.(0, n); setHpInput(''); } }
 
  function handleKey(e: React.KeyboardEvent) {
  if (e.key === 'Enter') applyDamage();
@@ -123,7 +125,7 @@ export default function CharacterHeader({
      Battle Map chip (CharacterPage, v2.580–582) is now the single
      entry point, with the combat pulse. */}
  {/* v2.33.3: Rest — sits immediately left of the HP block */}
- <button className="btn-secondary btn-sm" onClick={onOpenRest} style={{ fontSize: 12, flexShrink: 0 }}>
+ <button className="btn-secondary btn-sm" disabled={hpDisabled} onClick={onOpenRest} style={{ fontSize: 12, flexShrink: 0 }}>
  Rest
  </button>
 
@@ -149,7 +151,8 @@ export default function CharacterHeader({
      common small deltas (recurring tick damage, gradual healing).
      Steppers call onUpdateHP directly with a fixed delta — no typing. */}
  {onUpdateHP && (
- <div style={{
+ <fieldset disabled={hpDisabled} style={{
+ margin:0,minWidth:0,
  display: 'flex', flexDirection: 'column' as const, gap: 4, flexShrink: 0,
  padding: '6px 10px', borderRadius: 'var(--r-md)',
  background: 'var(--c-card)',
@@ -178,7 +181,10 @@ export default function CharacterHeader({
  type="text"
  inputMode="numeric"
  value={hpInput}
- onChange={e => setHpInput(e.target.value.replace(/[^0-9]/g, ''))}
+ onChange={e => setHpInput(e.target.value)}
+ aria-label="HP adjustment amount"
+ aria-invalid={hpInput.trim()!==''&&parseHitPointAdjustment(hpInput,'set')===null}
+ title="Enter a whole number"
  onKeyDown={handleKey}
  placeholder="0"
  style={{
@@ -231,7 +237,7 @@ export default function CharacterHeader({
  style={{ flex: 1, fontSize: 10, fontWeight: 700, padding: '3px 0', borderRadius: 5, cursor: 'pointer', minHeight: 0, border: '1px solid var(--stat-dex-bdr)', background: 'var(--stat-dex-bg)', color: 'var(--stat-dex)', fontFamily: 'var(--ff-stat)' }}
  >+5</button>
  </div>
- </div>
+ </fieldset>
  )}
 
  {/* v2.33.3: Settings — pinned to the far right of the header, aligned with the character sheet edge */}

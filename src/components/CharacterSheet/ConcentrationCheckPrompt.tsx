@@ -1,4 +1,4 @@
-interface Props {spellName:string;damage:number;dc:number;bonus:number;advantage:boolean;onRoll:()=>void;onDismiss:()=>void}
+interface Props {spellName:string;damage:number;dc:number;bonus:number;advantage:boolean;onRoll:()=>void;onDismiss?:()=>void}
 /** v2.809 — give the explanation its own row so narrow sheets keep readable
  * text and usable save controls instead of squeezing them beside one another. */
 export function ConcentrationCheckPrompt({spellName,damage,dc,bonus,advantage,onRoll,onDismiss}:Props){
@@ -15,8 +15,8 @@ export function ConcentrationCheckPrompt({spellName,damage,dc,bonus,advantage,on
   <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
    <button onClick={onRoll} style={{fontWeight:800,fontSize:12,padding:'8px 14px',minHeight:44,borderRadius:'var(--r-md)',cursor:'pointer',
     background:'rgba(167,139,250,0.2)',border:'1px solid rgba(167,139,250,0.5)',color:'#c4b5fd'}}>Roll CON Save ({bonus>=0?'+':''}{bonus})</button>
-   <button onClick={onDismiss} style={{fontSize:12,padding:'8px 12px',minHeight:44,borderRadius:'var(--r-sm)',cursor:'pointer',
-    background:'transparent',border:'1px solid var(--c-border)',color:'var(--t-2)'}}>Dismiss</button>
+   {onDismiss&&<button onClick={onDismiss} style={{fontSize:12,padding:'8px 12px',minHeight:44,borderRadius:'var(--r-sm)',cursor:'pointer',
+    background:'transparent',border:'1px solid var(--c-border)',color:'var(--t-2)'}}>Dismiss</button>}
   </div>
  </section>;
 }
