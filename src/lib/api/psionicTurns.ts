@@ -1,3 +1,5 @@
+import type {DisciplineRequest,DisciplineOutcomeRequest} from '../psionicDisciplineRequest';
+import type {DisciplineReceipt,DisciplineTurn} from './psionicDisciplines';
 import {shortRestHealing} from '../../rules/restRecovery';
 import {validHitDiceHealingRequest,type HitDiceHealingRequest} from '../hitDiceHealingRequest';
 import {isHitDiceAllocation,type HitDie} from '../../rules/hitDice';
@@ -14,6 +16,9 @@ export interface SurgeReceipt {hitDiceSpentByType?:Record<string,number>|null;re
 /** Injected into roll controls so a paid server result can refresh the sheet
  * without being enqueued as another optimistic absolute-value write. */
 export interface PsionicEnhancementPersistence {
+ getDisciplineTurn?:()=>Promise<DisciplineTurn>;
+ beginDiscipline?:(request:DisciplineRequest)=>Promise<DisciplineReceipt>;
+ finishDiscipline?:(request:DisciplineOutcomeRequest)=>Promise<DisciplineReceipt>;
  heal?:(request:HitDiceHealingRequest)=>Promise<HitDiceHealingReceipt>;
  chooseHitDie?:(character:Character,message:string)=>Promise<HitDie|null>;
  rest?:(request:PsionicRestRequest)=>Promise<PsionicRestReceipt>;

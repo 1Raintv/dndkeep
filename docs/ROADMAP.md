@@ -1,5 +1,36 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.813 candidate — recover discipline attempts and outcomes
+
+The sheet now reads the shared discipline record and lists unresolved conditional
+bonuses, including earlier turns. It can confirm whether a saved bonus changed
+the outcome without rerolling or reapplying its effect. An uncertain begin/finish
+request stays in browser recovery; its original decision cannot be overwritten
+or dismissed. Confirmed solo End Turn refreshes the record immediately. Reads
+also refresh on focus and explicit refresh; external combat turn updates are not
+yet subscribed directly.
+
+The resource hook freezes every request before queued edits flush. Recovery
+rejects payload changes under a saved identity, while allowing semantically
+identical key order/omitted optional fields. Discipline receipts acknowledge only
+current, revision-ordered Psion resource fields, preserving unrelated edits.
+
+Validation: full gate passed 2,272 units, TS 203/203, hooks/RAW/coordinates/anchors,
+build/SW and 254 KB entry. Real desktop/phone tests hold successful outcome replies,
+reload, confirm the original decision with exactly one charge, and advance the
+solo turn. Screenshots inspected. The official overflow algorithm found no page
+sideways scroll or clipping in the changed panel. Whole-sheet reports retain
+existing compact/sidebar/Misty Step clipping findings for later polish.
+
+Required next: connect all eleven activation controls to begin/finish, capture
+turn context before rolling, and verify competing tabs plus exceptions. Current
+activation buttons still use the old Energy Dice path, so complete shared
+one-discipline-per-turn enforcement is NOT yet claimed. Browser tests for this
+batch create the pending attempt through the real backend, then drive recovery.
+PR155 hosted gates passed but preview was rate-limited. Production website was
+last confirmed at v2.809 despite the applied discipline database migration.
+
+
 ### Psion discipline client candidate — verified request/response contract
 
 Added typed begin, finish and turn-state calls for the new discipline ledger.

@@ -1,3 +1,4 @@
+import {createDisciplineRequest} from '../psionicDisciplineRequest';
 import {createHitDiceHealingRequest} from '../hitDiceHealingRequest';
 import {createPsionicRestRequest} from '../psionicRestRequest';
 import type {Character} from '../../types';
@@ -82,4 +83,36 @@ it('persists a complete healing request and confirms the original result after a
  const accept=vi.fn();mocks.rpc.mockRejectedValue(new Error('Lost response'));const hook=renderHook(()=>usePsionicEnhancements('hero',queue(),accept));
  await expect(hook.result.current.heal!(healing)).rejects.toMatchObject({definitelyNotPaid:false});expect(pendingPsionicPayments('hero')).toEqual([{kind:'healing',request:healing}]);expect(accept).not.toHaveBeenCalled();
  mocks.rpc.mockResolvedValue({data:paid,error:null});await expect(hook.result.current.heal!(healing)).resolves.toEqual(paid);expect(accept).toHaveBeenCalledWith(paid);expect(pendingPsionicPayments('hero')).toEqual([]);expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[2]);
+});
+
+const disciplineHero={id:'hero',class_name:'Psion',level:5,intelligence:18,inventory:[],class_resources:{'psionic-energy-dice':6,'psion-disciplines':['inerrant-aim']},feature_uses:{},psionic_energy_revision:0} as unknown as Character;
+const discipline=createDisciplineRequest(disciplineHero,{soloTurn:0},'inerrant-aim',[3],1,4,'attempt');
+const disciplineReceipt={requestId:'attempt',turn:{soloTurn:0},discipline:'inerrant-aim',sourceFeature:'Inerrant Aim',rolls:[3],count:1,conditional:true,energy:null,outcome:null,replayed:false,character:disciplineHero};
+it('saves a discipline claim before sending and retains it through unknown confirmation',async()=>{
+ const accept=vi.fn();mocks.rpc.mockImplementation(async()=>{expect(pendingPsionicPayments('hero',true)).toEqual([{kind:'discipline-begin',request:discipline}]);throw new Error('Offline');});
+ const hook=renderHook(()=>usePsionicEnhancements('hero',queue(),accept));
+ await expect(hook.result.current.beginDiscipline!(discipline)).rejects.toMatchObject({definitelyNotPaid:false});
+ expect(pendingPsionicPayments('hero')).toEqual([{kind:'discipline-begin',request:discipline}]);
+ mocks.rpc.mockResolvedValue({data:{...disciplineReceipt,replayed:true},error:null});
+ await hook.result.current.beginDiscipline!(discipline);expect(pendingPsionicPayments('hero')).toEqual([]);expect(accept).toHaveBeenCalledWith({...disciplineReceipt,replayed:true});
+});
+it('freezes the discipline before pending edits finish saving',async()=>{
+ let resolve!:()=>void;const saves=queue();saves.flush.mockImplementation(()=>new Promise(done=>{resolve=done;}));
+ const original=structuredClone(discipline),hook=renderHook(()=>usePsionicEnhancements('hero',saves,vi.fn()));mocks.rpc.mockResolvedValue({data:disciplineReceipt,error:null});
+ const pending=hook.result.current.beginDiscipline!(original);original.rolls[0]=8;original.expected.intelligence=20;
+ resolve();await pending;expect(mocks.rpc.mock.calls[0][1]).toMatchObject({p_rolls:[3],p_expected:{intelligence:18}});
+});
+it('persists a keep-die decision before sending and never substitutes a paid decision',async()=>{
+ const outcome={...discipline,changedOutcome:false},hook=renderHook(()=>usePsionicEnhancements('hero',queue(),vi.fn()));
+ mocks.rpc.mockRejectedValue(new Error('lost'));await expect(hook.result.current.finishDiscipline!(outcome)).rejects.toMatchObject({definitelyNotPaid:false});
+ expect(pendingPsionicPayments('hero')).toEqual([{kind:'discipline-finish',request:outcome}]);
+ mocks.rpc.mockResolvedValue({data:{...disciplineReceipt,outcome:{spent:false,energy:null}},error:null});await hook.result.current.finishDiscipline!(outcome);
+ expect(mocks.rpc.mock.calls[2][1].p_changed_outcome).toBe(false);expect(pendingPsionicPayments('hero')).toEqual([]);
+});
+
+it('cannot overwrite an unknown paid outcome with a keep-die decision',async()=>{
+ const original={...discipline,changedOutcome:true};rememberPsionicPayment('hero',{kind:'discipline-finish',request:original});
+ const hook=renderHook(()=>usePsionicEnhancements('hero',queue(),vi.fn()));
+ await expect(hook.result.current.finishDiscipline!({...original,changedOutcome:false})).rejects.toMatchObject({definitelyNotPaid:false});
+ expect(mocks.rpc).not.toHaveBeenCalled();expect(pendingPsionicPayments('hero')).toEqual([{kind:'discipline-finish',request:original}]);
 });
