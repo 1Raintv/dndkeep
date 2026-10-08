@@ -15,13 +15,13 @@
 //   - Paralyzed   ⇒ also apply Incapacitated
 //   - Stunned     ⇒ also apply Incapacitated
 //   - Petrified   ⇒ also apply Incapacitated
-//   - Removing the parent removes cascaded children iff their source is
-//     tagged 'cascade:{parent}'.
+//   - Derived Incapacitated lasts until the last parent ends; waking leaves Prone.
 
 import { supabase } from './supabase';
 import { checkedWrite } from './api/checked';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { CONDITION_MAP } from '../data/conditions';
+import { CONDITION_CASCADES, removeConditions } from '../rules/conditionRemoval';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
 // via JOIN. See src/lib/combatParticipantNormalize.ts.
@@ -66,13 +66,6 @@ export interface ApplyConditionInput {
    *  on a successful re-save. */
   sourceAttackerId?: string;
 }
-
-const CASCADE: Record<string, string[]> = {
-  Unconscious: ['Prone', 'Incapacitated'],
-  Paralyzed:   ['Incapacitated'],
-  Stunned:     ['Incapacitated'],
-  Petrified:   ['Incapacitated'],
-};
 
 export async function applyCondition(input: ApplyConditionInput): Promise<void> {
   if (!CONDITION_MAP[input.conditionName]) return;
@@ -150,7 +143,7 @@ export async function applyCondition(input: ApplyConditionInput): Promise<void> 
   toApply.add(input.conditionName);
 
   // Walk cascade tree (depth 1 — no deep recursion; PHB cascades never chain)
-  const cascaded = CASCADE[input.conditionName] ?? [];
+  const cascaded = CONDITION_CASCADES[input.conditionName] ?? [];
 
   // v2.119.0 — Phase I: respect the 'condition_cascade_auto' automation.
   // When resolved to 'off', only the named condition is applied — cascades
@@ -298,28 +291,23 @@ export async function removeCondition(input: RemoveConditionInput): Promise<void
     return;
   }
 
-  const { data: partRaw } = await (supabase as any)
+  const { data: partRaw, error: readError } = await (supabase as any)
     .from('combat_participants')
     .select('combatant_id, name, participant_type, campaign_id, encounter_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .single();
+  if (readError) throw new Error(readError.message);
   const part = partRaw ? normalizeParticipantRow(partRaw) : partRaw;
   if (!part) return;
 
   const existing: string[] = (part.active_conditions ?? []) as string[];
   if (!existing.includes(input.conditionName)) return;
 
-  const sources = { ...((part.condition_sources ?? {}) as Record<string, any>) };
-
-  // Remove the named condition and anything sourced as cascade:{name}
-  const cascadeTag = `cascade:${input.conditionName}`;
-  const toRemove = new Set<string>([input.conditionName]);
-  for (const [cond, meta] of Object.entries(sources)) {
-    if (meta?.source === cascadeTag) toRemove.add(cond);
-  }
-
-  const nextConditions = existing.filter(c => !toRemove.has(c));
-  for (const c of toRemove) delete sources[c];
+  const removal = removeConditions(existing, part.condition_sources ?? {}, [input.conditionName]);
+  const nextConditions = removal.conditions;
+  const sources = removal.sources;
+  const toRemove = new Set(removal.removed);
+  if (toRemove.size === 0) return; // A remaining parent still requires Incapacitated.
 
   // v2.318: writes go to combatants.
   const combatantIdR = part.combatant_id as string | null;
@@ -327,13 +315,14 @@ export async function removeCondition(input: RemoveConditionInput): Promise<void
     console.warn('[removeCondition] participant missing combatant_id; skipping write', input.participantId);
     return;
   }
-  await checkedWrite('combatants.update remove-condition', { combatantId: combatantIdR }, (supabase as any)
+  const write = await checkedWrite('combatants.update remove-condition', { combatantId: combatantIdR }, (supabase as any)
     .from('combatants')
     .update({
       active_conditions: nextConditions,
       condition_sources: sources,
     })
     .eq('id', combatantIdR));
+  if (write.error) throw new Error(write.error.message);
 
   if (input.emitEvent !== false) {
     const chainId = newChainId();

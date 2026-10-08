@@ -45,3 +45,21 @@ it('keeps hidden participant rolls hidden',async()=>{
 it('participants without conditions do no work',async()=>{
  m.row!.combatants={active_conditions:[],condition_sources:{}};await processEndOfTurnConditions(input);expect(m.guards).not.toHaveBeenCalled();expect(m.bonus).not.toHaveBeenCalled();expect(m.die).not.toHaveBeenCalled();
 });
+
+it('processes only the parent save; stale child timers cannot stand a waking creature up',async()=>{
+ m.die.mockReturnValue(20);
+ m.row!.combatants={active_conditions:['Unconscious','Prone','Incapacitated'],condition_sources:{
+  Unconscious:{source:'spell:sleep',save_to_end:{ability:'WIS',dc:10}},
+  Prone:{source:'cascade:Unconscious',save_to_end:{ability:'WIS',dc:10},expires_at_round:1},
+  Incapacitated:{source:'cascade:Unconscious',expires_at_round:1},
+ }};
+ expect(await processEndOfTurnConditions(input)).toEqual({endedBySave:['Unconscious'],expired:[],persisted:[]});
+ expect(m.remove).toHaveBeenCalledTimes(1);expect(m.die).toHaveBeenCalledTimes(1);
+ expect(m.remove).toHaveBeenCalledWith(expect.objectContaining({conditionName:'Unconscious'}));
+});
+it('expires only active parent effects, ignoring stale source entries and derived timers',async()=>{
+ m.row!.combatants={active_conditions:['Stunned','Incapacitated'],condition_sources:{
+  Stunned:{expires_at_round:1},Incapacitated:{source:'cascade:Stunned',expires_at_round:1},Poisoned:{expires_at_round:1},
+ }};
+ expect((await processEndOfTurnConditions(input)).expired).toEqual(['Stunned']);expect(m.remove).toHaveBeenCalledTimes(1);
+});

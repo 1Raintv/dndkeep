@@ -1,6 +1,28 @@
 # DNDKeep — Two-Track Roadmap
 
-### v2.846 candidate — Consistent 2024 condition movement
+### v2.847 candidate — Correct condition removal and concentration cleanup
+
+Waking leaves Prone (SRD 5.2.1 p.191). Removing one incapacitating condition
+preserves derived Incapacitated while another remains and transfers its parent
+tracking. Independent sources remain intact. End-of-turn upkeep skips inherited
+save/expiry metadata, so an old child timer cannot stand a waking creature up.
+Failed client condition reads/writes now stop removal instead of reporting success.
+
+Migration `20261008142532_condition_removal_lifecycle.sql` applies the same rules
+inside the shared concentration transaction used by damage and failed saves.
+The helper remains inaccessible to application roles; existing authorization,
+locking and rollback stay in the transaction endpoints. Local database checks
+compare all nonempty removal subsets across the four incapacitating parents.
+Actual concentration settlement also covers waking and simultaneous parent removal.
+
+Validation: full gate green (2,651 units, TypeScript 200/200, entry 255.1 KB);
+43 database cases pass; no lint findings in either new/replaced SQL function.
+Restoring the old cleanup makes the waking/overlap regression fail; fixed SQL
+restored afterward. This does not solve multiple independent applications of the
+same condition (the current source map has one entry), concurrent client condition
+writes, automatic healing wake-up, or the map quick-panel's separate writes.
+
+### v2.846 — Consistent 2024 condition movement
 
 The 2024 Stunned condition does not prevent movement; the condition data and map
 had retained the old restriction. Remove that restriction while retaining action,
@@ -20,8 +42,8 @@ movement and log values, Paralyzed blocking and desktop/phone views. Reintroduci
 the old Stunned restriction makes the real-player test fail. Full gate passes:
 2,636 units, TypeScript 200/200, entry 255.1 KB; both desktop/phone runs pass.
 
-Follow-ups: removing Unconscious must leave Prone (SRD p.191); shared Incapacitated
-sources must survive removal of one parent condition. Map quick-condition writes
+Merged as PR #190 (`288d4ff`). Vercel rejected deployment with a 24-hour rate limit.
+Condition-removal follow-ups are addressed in v2.847. Map quick-condition writes
 still need synchronization/cascade handling. Dash/Disengage eligibility needs
 server-authorized action settlement, including incapacitation and spent actions.
 

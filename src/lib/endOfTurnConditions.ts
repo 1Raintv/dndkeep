@@ -113,11 +113,11 @@ export async function processEndOfTurnConditions(
 
   // Phase A — Re-save for any condition with a save_to_end spec.
   // Iterate over a snapshot of `conds` because removeCondition mutates
-  // the underlying combatants row asynchronously; we'll re-read at the
-  // end if any changed.
+  // underlying combatants row. Derived entries are skipped in both phases.
   for (const condName of conds.slice()) {
     const src = sources[condName];
-    if (!src || !src.save_to_end) continue;
+    // v2.847: derived effects follow their parent, never a second save/expiry.
+    if (!src || src.source?.startsWith('cascade:') || !src.save_to_end) continue;
 
     const { ability, dc } = src.save_to_end;
     const sb = await getTargetSaveBonus(input.participantId, ability);
@@ -184,6 +184,7 @@ export async function processEndOfTurnConditions(
   // Re-read active_conditions from the local sources map (we deleted
   // entries above for resolved conditions).
   for (const [condName, src] of Object.entries(sources)) {
+    if (!conds.includes(condName) || src.source?.startsWith('cascade:')) continue;
     if (typeof src.expires_at_round !== 'number') continue;
     if (input.currentRound < src.expires_at_round) continue;
     // Already-ended-via-save case is filtered by the `delete sources[...]`
