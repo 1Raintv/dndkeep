@@ -95,7 +95,7 @@ test.describe('Sharpened saved activation rolls',()=>{
  test('read previews match paid enhancements and finalized results exactly',()=>{
  run(enhance());run(enhance(randomUUID(),'surge','null','6'));const preview=run(`select get_sharpened_roll_records('${char}')`)[0];
  expect(preview).toMatchObject({originalRolls:[2,3,8],rolls:[4,4,8],total:16,finalized:false});
- const final=run(finalize());expect({...preview,finalized:undefined}).toEqual({...final,replayed:undefined,finalized:undefined});
+ const final=run(finalize());expect({...preview,finalized:undefined,incapacitationTracked:undefined,endedByIncapacitation:undefined}).toEqual({...final,replayed:undefined,finalized:undefined,incapacitationTracked:undefined,endedByIncapacitation:undefined});
  });
  test('unrelated users and anonymous callers cannot list records',()=>{
  expect(()=>run(`select get_sharpened_roll_records('${char}')`,other)).toThrow(/Character is unavailable/);
@@ -109,5 +109,50 @@ test.describe('Sharpened saved activation rolls',()=>{
  for(const id of ids)run(finalize(id));
  const rows=run(`select get_sharpened_roll_records('${char}')`);expect(rows).toHaveLength(5);expect(rows.every((r:{finalized:boolean})=>r.finalized)).toBe(true);expect(rows.map((r:{requestId:string})=>r.requestId)).toEqual(ids.slice(2).reverse());
  });
+
+ const record=()=>run(`select get_sharpened_roll_records('${char}')`).find((r:{requestId:string})=>r.requestId===activation);
+ for(const condition of ['Incapacitated','Unconscious','Paralyzed','Petrified','Stunned'])test(`${condition} permanently ends the activation even after removal and delayed confirmation`,()=>{
+ expect(record().endedByIncapacitation).toBe(false);sql(`update characters set active_conditions=array['${condition}'] where id='${char}'`);
+ sql(`update characters set active_conditions='{}' where id='${char}'`);expect(record().endedByIncapacitation).toBe(true);
+ run(finalize());expect(record()).toMatchObject({total:2,finalized:true,endedByIncapacitation:true});
+ });
+ test('incapacitation rolls back a new enhancement but preserves paid replay',()=>{
+ const paid=enhance();run(paid);sql(`update characters set active_conditions=array['Stunned'] where id='${char}';update characters set active_conditions='{}' where id='${char}'`);
+ expect(run(paid).replayed).toBe(true);expect(()=>run(enhance(randomUUID(),'surge','null','6'))).toThrow(/ended on incapacitation/);
+ expect(spent()).toBe(2);expect(sql(`select count(*) from psionic_surge_uses where character_id='${char}'`)).toBe('0');expect(run(finalize()).total).toBe(13);
+ });
+ test('a fresh activation after recovery uses the new epoch; unrelated conditions do not expire it',()=>{
+ sql(`update characters set active_conditions=array['Stunned'] where id='${char}';update characters set active_conditions=array['Prone','Poisoned'] where id='${char}'`);
+ run(`select advance_psionic_solo_turn('${char}','${randomUUID()}',0)`);const next=randomUUID();begin(next,1);
+ const latest=run(`select get_sharpened_roll_records('${char}')`).find((r:{requestId:string})=>r.requestId===next);expect(latest.endedByIncapacitation).toBe(false);expect(record().endedByIncapacitation).toBe(true);
+ });
+ test('activation while already incapacitated cannot become active after the condition clears',()=>{
+ sql(`update characters set active_conditions=array['Stunned'] where id='${char}'`);run(`select advance_psionic_solo_turn('${char}','${randomUUID()}',0)`);const next=randomUUID();begin(next,1);
+ sql(`update characters set active_conditions='{}' where id='${char}'`);expect(run(`select get_sharpened_roll_records('${char}')`).find((r:{requestId:string})=>r.requestId===next).endedByIncapacitation).toBe(true);
+ });
+ function combat(check:(cb:string,encounter:string,participant:string)=>void){
+ const campaign=randomUUID(),cb=randomUUID(),encounter=randomUUID(),participant=randomUUID();try{
+ sql(`insert into campaigns(id,owner_id,name) values('${campaign}','${owner}','Sharp conditions');update characters set campaign_id='${campaign}' where id='${char}';
+ insert into combatants(id,campaign_id,owner_id,name,definition_type,definition_id,current_hp,max_hp,is_dead) values('${cb}','${campaign}','${owner}','Sharp','character','${char}',20,20,false);
+ insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaign}','active',1,0);
+ insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,combatant_id) values('${participant}','${encounter}','${campaign}','character','${char}','Sharp',0,'${cb}')`);
+ check(cb,encounter,participant);
+ }finally{sql(`delete from campaigns where id='${campaign}'`);}
+ }
+ test('active combatant incapacitation remains ended after combat recovery',()=>combat(cb=>{
+ sql(`update combatants set active_conditions=array['Stunned'] where id='${cb}';update combatants set active_conditions='{}' where id='${cb}'`);expect(record().endedByIncapacitation).toBe(true);
+ }));
+ test('healthy active combatant takes precedence over stale sheet conditions',()=>combat(cb=>{
+ sql(`update characters set active_conditions=array['Stunned'] where id='${char}'`);expect(record().endedByIncapacitation).toBe(false);
+ sql(`update combatants set is_dead=true where id='${cb}';update combatants set is_dead=false where id='${cb}'`);expect(record().endedByIncapacitation).toBe(true);
+ }));
+ test('reactivating an encounter with an incapacitated combatant latches expiration',()=>combat((cb,encounter)=>{
+ sql(`update combat_encounters set status='ended' where id='${encounter}';update combatants set active_conditions=array['Stunned'] where id='${cb}'`);expect(record().endedByIncapacitation).toBe(false);
+ sql(`update combat_encounters set status='active' where id='${encounter}';update combatants set active_conditions='{}' where id='${cb}'`);expect(record().endedByIncapacitation).toBe(true);
+ }));
+ test('removing a healthy roster entry reveals and latches sheet incapacitation',()=>combat((_cb,_encounter,participant)=>{
+ sql(`update characters set active_conditions=array['Stunned'] where id='${char}'`);expect(record().endedByIncapacitation).toBe(false);
+ sql(`delete from combat_participants where id='${participant}';update characters set active_conditions='{}' where id='${char}'`);expect(record().endedByIncapacitation).toBe(true);
+ }));
 
 });
