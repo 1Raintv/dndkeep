@@ -1,5 +1,39 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.810 damage backend candidate — one hit, one concentration identity
+
+apply_standalone_damage composes the existing HP adjustment and concentration
+queue under one character lock/transaction. It captures the pre-damage casting,
+uses a separate save ID from the HP/history ID, and preserves full damage even
+when temporary HP absorbs it. A stale HP or casting snapshot rolls back both
+operations. Exact retry returns the original damage receipt plus current character
+state; it never charges HP again or rebases the old check onto a newer spell.
+The returned check is the original snapshot, not proof it is still pending: the
+UI must reload the authoritative queue after confirmation.
+
+The server captures the allowed character automation override (default prompt,
+locked overrides ignored). Off suppresses ordinary saves; zero HP/incapacitation
+still ends the matching concentration immediately, in the damage transaction.
+Cancellation seals both underlying request identities and never reverses a paid
+hit. Save identities are unique even when no check was needed. No death-save,
+instant-death, campaign damage, or condition-cascade implementation is claimed.
+
+Local validation includes temporary HP, full damage/DC, multiple clients, retry
+with later healing/casting, stale snapshots, automation modes, cancellation races,
+identity reuse, access control, and rollback when HP or zero-HP concentration
+history fails. All 22 database cases passed. Full gate passed 2,170 units, TS 203/203,
+hooks, RAW, coordinates/anchors, build/SW and 254 KB entry. Local advisors show
+only the standing keep_warm/client_errors warnings.
+
+Client/controller integration remains the next step; the sheet
+still uses its legacy damage writer until that work is connected and verified.
+
+Release update: PR149 merged at 7c7be3d2; workflow 37738544820 explicitly applied
+20261008061734 and finished db push. PR148 main CI and production Vercel
+dwYmjrriJnWZRn9PnCoRT2N1jEM5 succeeded; public SW verified at 2.809.0.
+Migration 20261008063321 is local only at this checkpoint.
+
+
 ### v2.810 client groundwork — durable standalone request transport
 
 standaloneConcentration now persists each creation and roll by account, character
