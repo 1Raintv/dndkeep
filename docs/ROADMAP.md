@@ -1,5 +1,43 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.810 backend candidate — persistent standalone concentration queue
+
+A private, character-owned ledger now supports queue/read/settle RPCs for saves
+outside campaigns. Creation checks the exact casting/stat/inventory snapshot,
+uses total-level proficiency and captures damage/DC, modifier, War Caster and the
+natural-extreme preference. The effective item modifier follows the existing
+paid-roll client calculation contract; the server validates its captured inputs,
+not the entire item catalogue. Pending hits remain separate and readable after
+reload. Reusing a creation ID with changed arguments is rejected.
+
+Settlement locks character then request, records one winning result, and updates
+concentration, action log and character history atomically. Old casts and checks
+from before joining a campaign retire without changing the current spell. Zero
+HP/incapacitation ends the matching concentration without a die. No HP is changed.
+The ledger is not exposed; anonymous and other-character callers cannot read or
+resolve it. Twenty-three local DB cases passed, including concurrent clients, separate
+hits, snapshot drift, malformed dice, permissions, and rollback of either history
+failure. Full gate passed 2,146 units, TS 203/203, hooks, RAW, coordinates/anchors,
+build/SW and 254 KB entry. Local advisors retain only standing warnings.
+
+Unconfirmed creation requests can be canceled only with a server receipt; a
+tombstone blocks late creation. Existing pending checks/results cannot be canceled
+through that API. Stale unsent requests can be dismissed without rebasing them.
+
+Migration 20261008061734 is local only. This is groundwork, not live sheet
+integration: add durable creation/roll requests and the recoverable queue UI,
+replace the standalone local roll/history writes, and preserve all pending hits.
+Linking manual HP damage to this queue atomically, deduplicating realtime echoes,
+and carrying damage-time context still require work. Campaign effects use their
+existing path; these RPCs reject creating new checks for campaign characters.
+
+Release checkpoint: PR146 merged at f49a5867; main CI 37736018320 and production
+Vercel CegocThF7z4F6Ln819YcBSBfwPxQ succeeded. Public SW reports 2.807.0.
+PR147 merged at 12227776. Production workflow 37737090158 explicitly applied
+20261008060147 and finished db push. Its client deployment/main CI and PR148
+release are still pending at this checkpoint.
+
+
 ### v2.809 candidate — War Caster on the standalone sheet
 
 The sheet's own concentration roll now keeps the higher of two d20s for War
