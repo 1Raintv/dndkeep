@@ -19,11 +19,13 @@ export function saveSpellDeclaration(request:SpellDeclarationRequest){
  return existing??JSON.parse(JSON.stringify(request)) as SpellDeclarationRequest;
 }
 /** Acknowledgment is explicit. Never clear a newer request written by another tab. */
-export function acknowledgeSpellDeclaration(request:SpellDeclarationRequest){
+export function acknowledgeSpellDeclaration(request:SpellDeclarationRequest){forgetDeclaration(request,false);}
+function forgetDeclaration(request:SpellDeclarationRequest,canceled:boolean){
  const recordKey=key(request.userId,request.characterId);
- if(active.has(recordKey))throw new Error('Wait for the casting request to finish.');
+ if(!canceled&&active.has(recordKey))throw new Error('Wait for the casting request to finish.');
  const current=savedSpellDeclaration(request.userId,request.characterId);
  if(current&&JSON.stringify(current)!==JSON.stringify(request))throw new Error('Another casting request replaced this one.');
+ if(canceled&&active.get(recordKey)?.request===JSON.stringify(request))active.delete(recordKey);
  if(current){localStorage.removeItem(recordKey);notify();}
 }
 const client=supabase as unknown as {rpc:(name:string,args:Record<string,unknown>)=>PromiseLike<{data:unknown;error:{code?:string;message:string}|null}>};
@@ -43,12 +45,8 @@ export function declarePaidSpell(request:SpellDeclarationRequest):Promise<Pendin
   const data=await rpc('declare_spell_cast_atomic',{p_cast_id:captured.castId,p_character_id:captured.characterId,p_participant_id:captured.participantId,
    p_spell_id:captured.spellId,p_spell_name:captured.spellName,p_slot:captured.slotLevel,p_expected_slot:captured.expectedSlot,p_context:captured.context});
   const row=(data as {cast?:Partial<PendingSpellCast>}|null)?.cast;
-  if(!row||row.id!==captured.castId||row.caster_character_id!==captured.characterId||row.caster_participant_id!==captured.participantId
-   ||row.campaign_id!==captured.campaignId||row.spell_level!==captured.slotLevel||row.spell_name!==captured.spellName
-   ||!['declared','counterspell_offered','countered','resolved','canceled'].includes(row.state??'')
-   ||typeof row.chain_id!=='string'||!row.chain_id||!Number.isFinite(Date.parse(row.expires_at??'')))throw new Error('The spell declaration receipt could not be verified.');
-  return row as PendingSpellCast;
- })().finally(()=>active.delete(recordKey));
+  return verifiedCast(row,captured);
+ })().finally(()=>{if(active.get(recordKey)?.promise===promise)active.delete(recordKey);});
  active.set(recordKey,{request:serialized,promise});return promise;
 }
 export interface SpellSettlementReceipt{castId:string;outcome:'went_off'|'saved_through'|'countered';slotReturned:boolean;replayed:boolean}
@@ -59,4 +57,47 @@ export async function settlePaidSpell(castId:string):Promise<SpellSettlementRece
  if(!receipt||receipt.castId!==castId||!['went_off','saved_through','countered'].includes(receipt.outcome??'')
   ||typeof receipt.slotReturned!=='boolean'||typeof receipt.replayed!=='boolean')throw new Error('The spell settlement receipt could not be verified.');
  return receipt as SpellSettlementReceipt;
+}
+
+function verifiedCast(row:Partial<PendingSpellCast>|null|undefined,request:SpellDeclarationRequest):PendingSpellCast{
+  if(!row||row.id!==request.castId||row.caster_character_id!==request.characterId||row.caster_participant_id!==request.participantId
+   ||row.campaign_id!==request.campaignId||row.spell_level!==request.slotLevel||row.spell_name!==request.spellName
+   ||!['declared','counterspell_offered','countered','resolved','canceled'].includes(row.state??'')
+   ||typeof row.chain_id!=='string'||!row.chain_id||!Number.isFinite(Date.parse(row.expires_at??'')))throw new Error('The spell declaration receipt could not be verified.');
+ return row as PendingSpellCast;
+}
+/** A read may decide when to ask for settlement, never its outcome or refund.
+ * The transaction rechecks the linked save and private payment before changing it. */
+export async function readDeclaredSpell(request:SpellDeclarationRequest):Promise<{cast:PendingSpellCast;readyToSettle:boolean}>{
+ const {data,error}=await supabase.from('pending_spell_casts').select('*').eq('id',request.castId).maybeSingle();
+ if(error)throw new Error(error.message);
+ const cast=verifiedCast(data as unknown as PendingSpellCast|null,request);
+ if(cast.state==='countered'||cast.state==='resolved')return {cast,readyToSettle:true};
+ if(cast.state==='declared')return {cast,readyToSettle:Date.parse(cast.expires_at)<=Date.now()};
+ if(cast.state==='canceled')throw new Error('This declaration was canceled. Review its payment before continuing.');
+ if(!cast.counterspell_attack_id)throw new Error('The Counterspell save is not linked yet. Retry to confirm it.');
+ const save=await supabase.from('pending_attacks').select('save_result,pending_lr_decision').eq('id',cast.counterspell_attack_id)
+  .eq('campaign_id',request.campaignId).eq('target_participant_id',request.participantId).maybeSingle();
+ if(save.error)throw new Error(save.error.message);
+ if(!save.data)throw new Error('The Counterspell save could not be loaded.');
+ return {cast,readyToSettle:['passed','failed'].includes(save.data.save_result??'')&&!save.data.pending_lr_decision};
+}
+
+export async function declarationParticipant(characterId:string,campaignId:string):Promise<string|null>{
+ const encounter=await supabase.from('combat_encounters').select('id').eq('campaign_id',campaignId).eq('status','active').maybeSingle();
+ if(encounter.error)throw new Error(encounter.error.message);if(!encounter.data)return null;
+ const participant=await supabase.from('combat_participants').select('id').eq('encounter_id',encounter.data.id).eq('entity_id',characterId).eq('participant_type','character').maybeSingle();
+ if(participant.error)throw new Error(participant.error.message);return participant.data?.id??null;
+}
+
+/** Only a verified server tombstone permits forgetting a still-in-flight request.
+ * Its late completion must not remove a newer declaration from the active map. */
+export async function cancelUnpaidDeclaration(request:SpellDeclarationRequest):Promise<boolean>{
+ if(!isSpellDeclarationRequest(request))throw new Error('Invalid spell declaration.');
+ const data=await rpc('cancel_unpaid_spell_atomic',{p_cast_id:request.castId,p_character_id:request.characterId});
+ const receipt=data as {castId?:string;characterId?:string;canceled?:boolean;replayed?:boolean}|null;
+ if(!receipt||receipt.castId!==request.castId||receipt.characterId!==request.characterId||typeof receipt.canceled!=='boolean'||typeof receipt.replayed!=='boolean')
+  throw new Error('The cancellation receipt could not be verified.');
+ if(receipt.canceled)forgetDeclaration(request,true);
+ return receipt.canceled;
 }

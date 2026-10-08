@@ -1,3 +1,5 @@
+import {SpellDeclarationPanel} from './SpellDeclarationPanel';
+import {useSavedSpellDeclaration} from '../../lib/hooks/useSavedSpellDeclaration';
 import {useHitDiceHealing} from '../../lib/hooks/useHitDiceHealing';
 import {HitDiceHealingRecovery} from './_shared/HitDiceHealingRecovery';
 import {HitDiceRestControls} from './_shared/HitDiceRestControls';
@@ -330,7 +332,8 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
   const {patch}=acceptConcentrationReceipt(characterRef,receipt,saveQueue.getPending());
   if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
  },frozen);
- const castingBlocked=frozen||concentrationRecording.blocked||Object.prototype.hasOwnProperty.call(saveQueue.getPending(),'concentration_spell');
+ const savedDeclaration=useSavedSpellDeclaration(userId,character.id);
+ const castingBlocked=frozen||savedDeclaration.blocked||concentrationRecording.blocked||Object.prototype.hasOwnProperty.call(saveQueue.getPending(),'concentration_spell');
  const hitDieChoice=useHitDieChoice();
  const psionicPayments=usePsionicEnhancements(character.id,saveQueue,receipt=>{
   const {patch}='healing' in receipt?acceptSavedCharacterResources(characterRef,receipt.character,saveQueue.getPending()):'character' in receipt?acceptPsionicRestReceipt(characterRef,receipt,saveQueue.getPending()):'energyRevision' in receipt?acceptPsionicEnergyReceipt(characterRef,receipt,saveQueue.getPending()):acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
@@ -1439,6 +1442,9 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
 
  {hitDieChoice.dialog}
  <ConcentrationRecordingNotice recording={concentrationRecording}/>
+ <SpellDeclarationPanel saved={savedDeclaration} character={character} spells={spellMap}
+  onAction={bonus=>{if(bonus)setBonusActionSpellCast(true);else setSpellCastThisTurn(true);}}
+  onConcentration={(id,slot,source)=>setConcentration(id,slot,true,source)}/>
  {/* v2.377.0 — Persistent concentration banner. Renders whenever
      concentration is active (character.concentration_spell set);
      gives the player a constant visual anchor for "I'm concentrating

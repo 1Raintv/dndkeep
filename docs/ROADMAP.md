@@ -1,6 +1,35 @@
 # DNDKeep — Two-Track Roadmap
 
-### Backend prepared — cancel unpaid casting without delayed charges
+### v2.804 candidate — recover paid casting and safely cancel unpaid requests
+
+The sheet owns durable recovery independently of spell rows. Captured source,
+ability, DC and request identity survive reload, last-slot use and preparation
+changes. Queued character edits flush before the transaction pays the slot. The
+modal is presentation-only; recorded Counterspell saves use verified settlement,
+including the original slot refund when its save fails.
+
+Unconfirmed casts can be canceled only with a verified server receipt. A tombstone
+blocks delayed payment, including after a lost cancellation response. Already-paid
+casts resume instead. A late old response cannot erase a newer pending request.
+The phone error state no longer shows a fictitious reaction countdown.
+
+Deferred effects share normal casting choices. Browser locking and a durable
+started marker prevent automatic replay after interruption; partial effects require
+explicit review. Cross-device atomic effects, persistent turn/action usage, wider
+declaration coverage (attack/heal, compact mode and cantrips), and sight/components
+remain follow-ups. This release does not claim those are finished.
+
+Validation: full gate 2,088 units, TS 203/203 (ratcheted), zero hook violations,
+RAW/coordinates/anchors/build/SW and 254.0 KB entry. Six local desktop/phone cases
+cover lost responses, reload, last slot, removed preparation, actual client save/
+settlement, and cancel/recast. Two focused visual checks passed after correcting
+the error wording. v2.804 build and service-worker version synchronized.
+
+**Release pending:** PR141 merged at 96942719. Production workflow 37732224515
+explicitly applied 20261008051748 and finished the database push. Production UI is
+still v2.803 until the candidate's PR/deployment checks finish.
+
+### Backend applied — cancel unpaid casting without delayed charges
 
 Migration `20261008051748_cancel_unpaid_spell_declaration.sql` adds an explicit
 owner/current-DM cancellation receipt and private request tombstone. Declaration
@@ -15,12 +44,16 @@ concurrent declaration/cancel, concurrent cancel retries, delayed and cross-char
 requests, permissions, legacy casts, and unchanged payment/refund regressions.
 Full gate: 2,030 unit tests, TS 204/204, hooks/RAW/coordinates/anchors/build/SW
 and 253.7 KB entry. Local migration applied; security advisors have only the
-existing keep_warm/client_errors warnings. Production application still pending.
-The separately committed client integration remains local until this backend is
-applied and explicit cancel/retry recovery is wired and browser-verified.
+existing keep_warm/client_errors warnings. Production workflow 37732224515 applied
+the migration successfully. The v2.804 client above is wired and browser-verified;
+its pull request and deployment remain pending.
 
 
-### Candidate — durable casting requests and retry-safe Counterspell prompts
+### Backend applied — durable casting requests and retry-safe Counterspell prompts
+
+PR140 merged at a36f9b2f. Production workflow 37729372230 explicitly applied
+20261008043752 and finished db push. Main CI 37729372254 and production Vercel
+passed. The browser is still v2.803; the paid-casting UI has not shipped.
 
 Migration `20261008043752_counterspell_offer_retries.sql` adds a narrowly
 caster/DM-authorized transaction. Retries lock the same declaration and reuse
