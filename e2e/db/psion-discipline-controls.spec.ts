@@ -220,7 +220,7 @@ test.describe('Psionic Discipline activation controls',()=>{
   await page.getByRole('button',{name:'Use discipline',exact:true}).locator('visible=true').first().click();
   const extra=page.getByRole('dialog',{name:'Enkindled Life Force'});await extra.getByRole('textbox').fill('2');await extra.getByRole('button',{name:'Continue'}).click();
   const endpoint='**/rest/v1/rpc/enhance_sharpened_roll';
-  await page.route(endpoint,async route=>{const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort('failed');});
+  await page.route(endpoint,async route=>{if(route.request().postDataJSON()?.p_kind!=='surge'){await route.continue();return;}const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort('failed');});
   await page.getByRole('dialog',{name:'Psionic Surge'}).getByRole('button',{name:'Spend 1 Hit Point Die'}).click();
   await page.getByRole('dialog',{name:'Dice cost not confirmed'}).getByRole('button',{name:'Resolve later'}).click();
   const spent=()=>sql(`select hit_dice_spent from characters where id='${charId}'`);expect(spent()).toBe('3');
@@ -236,6 +236,8 @@ test.describe('Psionic Discipline activation controls',()=>{
   await page.getByRole('button',{name:/End Turn/}).locator('visible=true').first().click();await expect(record).toContainText('Time remaining: 54 seconds');
   sql(`update characters set active_conditions=array['Stunned'] where id='${charId}'`);await expect(record).toContainText('Effect ended on incapacitation');
   sql(`update characters set active_conditions='{}' where id='${charId}'`);await page.reload();await expect(record).toContainText('Effect ended on incapacitation');
+  await record.getByText('How the recorded number changes damage',{exact:true}).click();
+  await expect(record).toContainText('Immunity still applies.');await expect(record).toContainText('including psychic damage from other sources');await expect(record).toContainText('do not add the whole number');
   await record.scrollIntoViewIfNeeded();await record.screenshot({path:info.outputPath('sharpened-record.png')});
   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
    const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();

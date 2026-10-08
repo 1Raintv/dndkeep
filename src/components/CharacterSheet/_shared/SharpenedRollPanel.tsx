@@ -43,6 +43,11 @@ export default function SharpenedRollPanel({characterId,persistence,frozen=false
  return <section aria-label="Sharpened Mind rolls" style={{padding:12,marginBottom:12,border:'1px solid #a78bfa',borderRadius:10,minWidth:0,overflowWrap:'anywhere'}}>
   <div style={{display:'flex',gap:8,justifyContent:'space-between',alignItems:'center'}}><strong>Sharpened Mind rolls</strong><button className="btn-ghost" disabled={busy} onClick={()=>void refresh()}>Refresh rolls</button></div>
   <p style={{fontSize:12}}>Saved numbers only. Apply the effect at the table; this record does not mean it is still active.</p>
+  <details style={{fontSize:12,marginBottom:8}}><summary>How the recorded number changes damage</summary>
+   <p>While the effect lasts, psychic damage from weapon attacks, Psion spells, and Psion features ignores resistance. Immunity still applies.</p>
+   <p>Once per turn, you may replace one psychic damage die with the recorded number, including psychic damage from other sources. Replace the die; do not add the whole number to the total. A shared damage roll uses the replacement once before each target’s save reduction or damage defenses.</p>
+   <p>This panel does not apply damage or mark that turn’s replacement as used.</p>
+  </details>
   {error&&<p role="alert">{error}</p>}
   {rows.map(row=><div key={row.requestId} style={{borderTop:'1px solid var(--c-border)',paddingTop:8,marginTop:8,fontSize:12}}>
    <strong>{row.finalized?'Recorded number':'Paid dice total'}: {row.total}</strong><div>Original dice: {row.originalRolls.join(', ')} · Final dice: {row.rolls.join(', ')}</div>
