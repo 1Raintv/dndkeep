@@ -5,9 +5,9 @@ vi.mock('../supabase',()=>({supabase:{from:mocks.from}}));
 vi.mock('../pendingAttack',()=>({declareAttack:mocks.declare}));
 import {loadPsionicDamageContext,queuePsionicDamage} from './psionicDamage';
 const self={id:'self',participant_type:'character',entity_id:'psion'} as CombatParticipant;
-const target={id:'target',name:'Goblin',participant_type:'creature'} as CombatParticipant;
+const target={id:'target',entity_id:'goblin',combatant_id:'goblin-combatant',name:'Goblin',participant_type:'creature'} as CombatParticipant;
 const input={requestId:'paid',context:{campaignId:'camp',encounterId:'enc',self,participants:[self,target]},target,characterId:'psion',characterName:'Psion',amount:12,psionicDamageDice:{version:1 as const,sides:8,originalRolls:[3,5],rolls:[3,5],modifier:4}};
-const existingAttack=()=>({id:'paid',attacker_participant_id:'self',target_participant_id:'target',attack_kind:'auto_hit',attack_name:'Destructive Thoughts',damage_dice:'12',damage_type:'Psychic',psionic_damage_dice:input.psionicDamageDice});
+const existingAttack=()=>({id:'paid',campaign_id:'camp',encounter_id:'enc',attack_source:'ability',attacker_type:'character',target_type:'creature',attacker_participant_id:'self',target_participant_id:'target',attack_kind:'auto_hit',attack_name:'Destructive Thoughts',damage_dice:'12',damage_type:'Psychic',psionic_damage_dice:input.psionicDamageDice});
 function query(data:unknown,error:unknown=null){
  const q={select:vi.fn(()=>q),eq:vi.fn(()=>q),maybeSingle:async()=>({data,error}),then:(resolve:(value:unknown)=>unknown)=>Promise.resolve({data,error}).then(resolve)};return q;
 }
@@ -40,3 +40,31 @@ it('does not queue malformed damage',async()=>{
 it('rejects a total that differs from saved dice before declaring damage',async()=>{await expect(queuePsionicDamage({...input,amount:13})).rejects.toThrow(/do not match/);expect(mocks.from).not.toHaveBeenCalled();});
 
 it('cannot confirm an existing ID with a different target or original dice',async()=>{mocks.from.mockReturnValue(query({...existingAttack(),target_participant_id:'other'}));await expect(queuePsionicDamage(input)).rejects.toThrow(/differs/);expect(mocks.declare).not.toHaveBeenCalled();});
+
+it.each([
+ ['another encounter',{encounter_id:'other'}],['another campaign',{campaign_id:'other'}],
+ ['another source',{attack_source:'spell'}],['another target kind',{target_type:'character'}],
+])('does not confirm a saved request belonging to %s',async(_label,patch)=>{
+ mocks.from.mockReturnValue(query({...existingAttack(),...patch}));
+ await expect(queuePsionicDamage(input)).rejects.toThrow(/differs/);expect(mocks.declare).not.toHaveBeenCalled();
+});
+it.each([
+ ['replaced actor',[{...self,id:'replacement'},target]],
+ ['repointed target',[self,{...target,entity_id:'dragon'}]],
+ ['replaced combatant',[self,{...target,combatant_id:'other'}]],
+ ['changed target kind',[self,{...target,participant_type:'character'}]],
+])('retains the paid result after %s',async(_label,participants)=>{
+ mocks.from.mockReturnValueOnce(query(null)).mockReturnValueOnce(query({id:'enc'})).mockReturnValueOnce(query(participants));
+ await expect(queuePsionicDamage(input)).rejects.toThrow(/encounter or target changed/);expect(mocks.declare).not.toHaveBeenCalled();
+});
+it('allows a target rename without changing the paid identity',async()=>{
+ mocks.from.mockReturnValueOnce(query(null)).mockReturnValueOnce(query({id:'enc'})).mockReturnValueOnce(query([self,{...target,name:'Renamed goblin'}]));
+ await queuePsionicDamage(input);expect(mocks.declare).toHaveBeenCalledWith(expect.objectContaining({targetParticipantId:'target',targetName:'Renamed goblin'}));
+});
+it('rejects a saved actor from another character before querying',async()=>{
+ await expect(queuePsionicDamage({...input,characterId:'someone-else'})).rejects.toThrow(/participants do not match/);expect(mocks.from).not.toHaveBeenCalled();
+});
+it('checks the returned declaration identity as well as an existing receipt',async()=>{
+ mocks.from.mockReturnValueOnce(query(null)).mockReturnValueOnce(query({id:'enc'})).mockReturnValueOnce(query([self,target]));mocks.declare.mockResolvedValue({...existingAttack(),encounter_id:'other'});
+ await expect(queuePsionicDamage(input)).rejects.toThrow(/differs/);
+});
