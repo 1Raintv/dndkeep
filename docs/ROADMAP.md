@@ -1,5 +1,17 @@
 # DNDKeep — Two-Track Roadmap
 
+### Migration release-tool recovery
+
+The v2.841 production workflow failed before connecting to the database: the
+old setup action hit GitHub's unauthenticated latest-release API limit. Pin the
+current official setup action by commit and use its lockfile version resolution
+(2.111.0, matching local verification), avoiding the latest-release lookup. The
+existing secret gate, dry run and pending-only production apply stay in place.
+Typed-defense integration work is retained locally while this rollout is repaired.
+
+Validation: full gate passes (2,563 units; TypeScript 200/200; 255.1 KB entry).
+Hosted setup and actual migration application remain to be verified after merge.
+
 ### v2.841 — Destructive Thoughts retains actual damage dice
 
 The paid result now carries original Energy Dice, effective Surge-adjusted values,
