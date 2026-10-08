@@ -991,6 +991,7 @@ export interface PendingAttack {
   damage_dice: string | null;
   damage_type: string | null;
   damage_rolls: number[] | null;
+  damage_components?: import('../rules/damageComponents').DamageComponentRecord | null;
   damage_raw: number | null;
   damage_final: number | null;
   damage_was_fudged: boolean;

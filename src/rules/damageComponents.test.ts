@@ -1,0 +1,8 @@
+import {expect,it} from 'vitest';
+import {damageRollComponent,readDamageComponents} from './damageComponents';
+const base={key:'base',source:'base' as const,label:'Psychic hit',damageType:' Psychic ',expression:'2d6+3',rolls:[2,5],modifier:3,rawTotal:10};
+it('normalizes types and clones natural dice without losing flat modifiers',()=>{const c=damageRollComponent(base);expect(c.damageType).toBe('psychic');expect(c.dieKinds).toEqual(['rolled','rolled']);c.rolls[0]=6;expect(base.rolls).toEqual([2,5]);});
+it('preserves fixed critical maxima and marks legacy dice unknown',()=>{expect(damageRollComponent({...base,dieKinds:['rolled','maximum']}).dieKinds).toEqual(['rolled','maximum']);expect(damageRollComponent({...base,dieKinds:['unknown','unknown']}).dieKinds).toEqual(['unknown','unknown']);});
+it.each([{rawTotal:11},{rolls:[0,7]},{modifier:0.5},{dieKinds:['rolled']},{rawTotal:NaN}])('rejects inconsistent component %j',bad=>{expect(()=>damageRollComponent({...base,...bad} as Parameters<typeof damageRollComponent>[0])).toThrow(/verified/);});
+it('does not fabricate a breakdown for legacy, corrupt or duplicate records',()=>{const c=damageRollComponent(base);for(const r of [null,{}, {version:2,components:[c]},{version:1,components:[c,c]}])expect(readDamageComponents(r)).toBeNull();});
+it('retains separately typed riders and clones their history',()=>{const c=damageRollComponent(base),rider=damageRollComponent({...base,key:'rider:fire',source:'rider',damageType:'fire'});const record=readDamageComponents({version:1,components:[c,rider]})!;expect(record.components.map(r=>r.damageType)).toEqual(['psychic','fire']);record.components[1].dieKinds[0]='unknown';expect(rider.dieKinds[0]).toBe('rolled');});

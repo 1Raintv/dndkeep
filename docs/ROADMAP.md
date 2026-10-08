@@ -1,5 +1,32 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.838 — Typed damage dice survive recording
+
+Pending attacks now retain versioned base/rider components: damage type,
+expression, individual values, flat modifier and raw total. Fixed maximums from
+the critical-hit house rule are distinguished from actual rolls. Shared legacy
+rolls remain explicitly unknown instead of inventing die provenance. Old attack
+rows stay null because lost rider data cannot be reconstructed safely.
+
+Fixed a malformed attacker-buff select that could silently omit bonus damage.
+A failed bonus read now stops recording. Successful recording checks the original
+attack state; a failed/stale write cannot consume a single-use rider or emit a
+successful damage event. Existing final damage, reactions and DM overrides retain
+their separate fields; these components describe original raw damage, not a claim
+that final damage can be recomputed without those later adjustments.
+
+Next: apply defenses per typed component and persist actual spell/feature origin
+before enabling Sharpened resistance bypass or once-per-turn replacement.
+Recording and single-use rider consumption still need a shared transaction to
+cover a committed write whose response is lost.
+
+Validation: full gate (2,526 units; TypeScript 200/200; hooks clean; 255.1 KB
+entry). Two signed-in browser/database cases exercise the real damage pipeline
+for normal and fixed-maximum critical hits, typed riders and stored-roll reuse.
+Local migration applied; no pending ledger entries or changed-table advisor
+findings. Unit checks cover stale writes, missing bonus reads and legacy/shared
+dice provenance.
+
 ### v2.837 — Sharpened damage rules distinguish the two benefits
 
 Rechecked the supplied UA2025 Psion Update pp.4-5: psychic-resistance bypass is
