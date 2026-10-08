@@ -1,5 +1,36 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.810 client groundwork — durable standalone request transport
+
+standaloneConcentration now persists each creation and roll by account, character
+and request ID before sending. Multiple hits remain separate. Requests clone their
+snapshot; retries keep original identities/dice, coalesce in-flight calls, and
+verify returned DC, proficiency, advantage, natural-rule outcome and casting
+revision. Saved malformed data is surfaced, not silently discarded. A 15-second
+deadline releases hung requests for explicit retry; late responses cannot erase
+recovery. Unconfirmed creations are forgotten only after verified creation or
+server cancellation proof. Pending/read/result APIs are ready for the sheet hook.
+
+Validation: 24 focused API cases and a real authenticated local browser test of
+lost creation and roll responses across reloads; the same pair and one history
+entry survived. Full gate passed 2,170 units, TS 203/203, hooks, RAW, coordinates,
+anchors, build/SW and 254 KB entry. No visible integration yet; this branch keeps
+the transport groundwork until the controller/panel are connected and verified.
+
+Integration must preserve one identity per damage event across live updates and
+multiple tabs. Prefer linking pending saves to the atomic HP adjustment rather
+than adding another independent HP-delta-triggered request: deltas lose overkill
+and parallel observers can duplicate checks. Capture/store before any outgoing
+work, retain queued hits, prevent stale results from replacing newer concentration,
+and never replay HP to recover a missing save.
+
+Release update: PR148 merged at adfb20aa after both hosted gates/preview passed;
+main CI 37737473934 succeeded, its production deployment remains pending.
+PR147 main CI 37737090230 and production Vercel APLmdC58XJ1SQWSmZTfSs7bhq7JM
+succeeded; public SW verified at 2.808.0. PR149 now includes cancellation and
+23 database cases; updated checks/preview are pending before merge.
+
+
 ### v2.810 backend candidate — persistent standalone concentration queue
 
 A private, character-owned ledger now supports queue/read/settle RPCs for saves
