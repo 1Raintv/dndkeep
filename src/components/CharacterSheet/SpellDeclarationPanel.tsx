@@ -1,3 +1,6 @@
+import {useCombatSelector} from '../../context/CombatContext';
+import {useRecoveredSpellAction} from '../../lib/hooks/useRecoveredSpellAction';
+import type {SpellActionKind} from '../../rules/spellActionCost';
 import {Suspense,useEffect,useRef,useState} from 'react';
 import type {Character,SpellData} from '../../types';
 import type {ConcentrationCastSource} from '../../rules/concentrationCasting';
@@ -14,7 +17,7 @@ import {logAction} from '../shared/ActionLog';
 import {lazyWithRetry as lazy} from '../../lib/lazyWithRetry';
 const DeclareSpellCastModal=lazy(()=>import('../Combat/DeclareSpellCastModal'));
 interface Props {saved:ReturnType<typeof useSavedSpellDeclaration>;character:Character;spells:Record<string,SpellData>;
- onAction:(bonus:boolean)=>void;onConcentration:(spellId:string,slot:number|undefined,source?:ConcentrationCastSource)=>void}
+ onAction:(kind:SpellActionKind)=>void;onConcentration:(spellId:string,slot:number|undefined,source?:ConcentrationCastSource)=>void}
 export function SpellDeclarationPanel(props:Props){
  const [current,setCurrent]=useState<SpellDeclarationRequest|null>(props.saved.request);
  useEffect(()=>{if(props.saved.request)setCurrent(props.saved.request);},[props.saved.request]);
@@ -28,7 +31,9 @@ function ActiveDeclaration({request,spell,character,onAction,onConcentration,onF
  const [open,setOpen]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(''),[applied,setApplied]=useState(false);
  const [reviewRequired,setReviewRequired]=useState(()=>{try{return spellEffectsStage(request)==='started';}catch{return true;}});
  const finishing=useRef(false);
- const status=useSpellDeclaration(request,()=>onAction(request.context.isBonusAction),()=>flushCharacterSaves(request.userId,request.characterId));
+ const status=useSpellDeclaration(request,undefined,()=>flushCharacterSaves(request.userId,request.characterId));
+ const encounter=useCombatSelector(s=>s.encounter);
+ useRecoveredSpellAction(request.castId,status.actionContext,encounter,onAction);
  const effects=useSpellEffects({spell,character,campaignId:request.campaignId,casting:request.context,saveDC:request.context.saveDC??0,
   onConcentrationCast:(slot,source)=>onConcentration(request.spellId,slot,source)});
  async function finish(){

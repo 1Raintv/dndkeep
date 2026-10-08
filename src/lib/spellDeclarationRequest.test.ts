@@ -44,3 +44,8 @@ it('requires real attack values and no saving throw on attack-roll intents',()=>
  expect(isSpellDeclarationRequest({...request,context:{...request.context,combat}})).toBe(true);
  for(const invalid of [{...combat,targetAC:null},{...combat,attackBonus:Infinity},{...combat,attackBonus:0.5},{...combat,saveAbility:'WIS'}])expect(isSpellDeclarationRequest({...request,context:{...request.context,combat:invalid}})).toBe(false);
 });
+
+it.each([['1 Action','action'],['1 Bonus Action','bonusAction'],['Reaction','reaction'],['Reaction, when a creature uses a Bonus Action','reaction']] as const)('saves the action kind for %s',(time,kind)=>{
+ const r=createSpellDeclarationRequest(character,{...spell,casting_time:time},uuid,uuid,3,source,'',uuid);expect(r.context.actionKind).toBe(kind);
+ expect(isSpellDeclarationRequest(r)).toBe(true);expect(isSpellDeclarationRequest({...r,context:{...r.context,isBonusAction:!r.context.isBonusAction}})).toBe(false);
+});

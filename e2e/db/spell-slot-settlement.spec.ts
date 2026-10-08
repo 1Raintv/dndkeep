@@ -104,6 +104,33 @@ test.describe('Paid spell declaration and settlement (local stack)',()=>{
   expect(sql("select has_function_privilege('authenticated','dndkeep_private.record_spell_turn_slot_spend()','execute')")).toBe('f');
  });
 
+
+ for(const kind of ['action','bonusAction','reaction'])test(`immutable ${kind} receipt preserves its original turn across replay`,()=>{
+  const q=declare().replace('"target":"Self"',`"target":"Self","actionKind":"${kind}","isBonusAction":${kind==='bonusAction'}`);
+  const first=JSON.parse(sql(auth(dm,q))).actionContext;expect(first).toMatchObject({encounterId:encounter,kind});expect(first.turnId).toBe(first.currentTurnId);
+  expect(spends()[0].turn_id).toBe(first.turnId);nextTurn();const replay=JSON.parse(sql(auth(dm,q)));expect(replay.replayed).toBe(true);
+  expect(replay.actionContext.turnId).toBe(first.turnId);expect(replay.actionContext.currentTurnId).not.toBe(first.turnId);
+  sql(`update dndkeep_private.declared_spell_payments set casting_action='bonusAction',casting_turn_id=gen_random_uuid() where cast_id='${cast}'`);
+  expect(JSON.parse(sql(auth(dm,q))).actionContext).toEqual(replay.actionContext);
+ });
+ test('cantrip receipts capture action context without consuming a slot',()=>{
+  const q=declare(cast,0).replace('"target":"Self"','"target":"Self","actionKind":"action","isBonusAction":false');
+  expect(JSON.parse(sql(auth(dm,q))).actionContext.kind).toBe('action');expect(spends()).toHaveLength(0);
+ });
+ test('unknown legacy action context is not invented and unauthorized readers are rejected',()=>{
+  const q=declare();expect(JSON.parse(sql(auth(dm,q))).actionContext).toBeNull();
+  expect(()=>sql(auth(outsider,`select dndkeep_private.declared_spell_action_context('${cast}')`))).toThrow(/unavailable/);
+  expect(sql("select has_function_privilege('anon','dndkeep_private.declared_spell_action_context(uuid)','execute')")).toBe('f');
+ });
+ test('invalid action context rejects the whole payment, not just the tracking metadata',()=>{
+  const q=declare().replace('"target":"Self"','"target":"Self","actionKind":"reaction","isBonusAction":true');
+  expect(()=>sql(auth(dm,q))).toThrow(/action context is invalid/);expect(character().spell_slots['3'].used).toBe(0);expect(spends()).toHaveLength(0);
+ });
+ test('a substituted public caster cannot read another character action receipt',()=>{
+  const q=declare().replace('"target":"Self"','"target":"Self","actionKind":"action","isBonusAction":false');sql(auth(dm,q));
+  sql(`update pending_spell_casts set caster_character_id='${hero}' where id='${cast}'`);
+  expect(()=>sql(auth(owner,`select dndkeep_private.declared_spell_action_context('${cast}')`))).toThrow(/identity changed/);
+ });
  const events=()=>sql(`select count(*) from combat_events where campaign_id='${campaign}' and event_type='spell_counterspell_resolved'`);
  const cancel=(id=cast,characterId=caster)=>`select cancel_unpaid_spell_atomic('${id}','${characterId}')`;
  test('cancels an unpaid request durably and blocks delayed declarations',()=>{

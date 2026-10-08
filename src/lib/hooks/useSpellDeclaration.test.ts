@@ -81,3 +81,10 @@ it('does not start payment if the dialog unmounts while saves are flushing',asyn
  let flush!:()=>void;const view=renderHook(()=>useSpellDeclaration(request,vi.fn(),()=>new Promise<void>(resolve=>{flush=resolve;})));
  view.unmount();await act(async()=>flush());expect(declarePaidSpell).not.toHaveBeenCalled();
 });
+
+it('retains the paid action context when later public status reads omit it',async()=>{
+ const actionContext={encounterId:'encounter',turnId:'original',currentTurnId:'original',kind:'reaction'} as const;
+ vi.mocked(declarePaidSpell).mockResolvedValue({...cast,actionContext});
+ const view=renderHook(()=>useSpellDeclaration(request,undefined));await waitFor(()=>expect(view.result.current.loading).toBe(false));
+ expect(view.result.current.actionContext).toEqual(actionContext);
+});

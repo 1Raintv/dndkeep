@@ -10,7 +10,7 @@ const dm='11111111-1111-1111-1111-111111111111',player='12121212-1212-1212-1212-
 
 test.describe('Paid casting recovery (local stack)',()=>{
  gateDbSuite();test.use({serviceWorkers:'block'});
- for(const scenario of ['recovered','countered','canceled','limited'])test(scenario==='limited'?'current-turn slot limit survives reload and permits casting next turn':scenario==='countered'?'failed Counterspell returns the caster slot without applying effects':scenario==='canceled'?'cancel rejected casting after a lost cancellation response and start again':'last-slot casting survives a lost response and reload',async({page,browser},info)=>{
+ for(const scenario of ['recovered','countered','canceled','limited','oldturn'])test(scenario==='oldturn'?'recovering an old casting leaves the new turn action available':scenario==='limited'?'current-turn slot limit survives reload and permits casting next turn':scenario==='countered'?'failed Counterspell returns the caster slot without applying effects':scenario==='canceled'?'cancel rejected casting after a lost cancellation response and start again':'last-slot casting survives a lost response and reload',async({page,browser},info)=>{
   const countered=scenario==='countered';
   test.setTimeout(90_000);
   const camp=randomUUID(),scene=randomUUID(),enc=randomUUID(),hero=randomUUID(),target=randomUUID();
@@ -48,7 +48,7 @@ test.describe('Paid casting recovery (local stack)',()=>{
    }
    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
    const bodies:string[]=[];
-   if(scenario==='recovered')await page.route('**/rest/v1/rpc/declare_spell_cast_atomic',async route=>{
+   if(scenario==='recovered'||scenario==='oldturn')await page.route('**/rest/v1/rpc/declare_spell_cast_atomic',async route=>{
     bodies.push(route.request().postData()??'');if(bodies.length===1){const response=await route.fetch();expect(response.status()).toBe(200);await route.abort('failed');}else await route.continue();
    });
    const cancellations:string[]=[];
@@ -113,10 +113,20 @@ test.describe('Paid casting recovery (local stack)',()=>{
    expect(bounds.left).toBeGreaterThanOrEqual(8);expect(bounds.right).toBeLessThanOrEqual(bounds.width-8);expect(bounds.padding).toBeGreaterThanOrEqual(16);
    await page.screenshot({path:info.outputPath('saved-casting.png')});
    await dialog.getByRole('button',{name:'Close and resume later'}).click();await expect(dialog).toBeHidden();
+   if(scenario==='oldturn')await expect(page.getByRole('button',{name:'Action Used',exact:true})).toBeVisible();
    await page.getByRole('button',{name:'Resume Fly',exact:true}).click();await expect(dialog).toBeVisible();
    if(countered)sql(`update characters set known_spells='{}',prepared_spells='{}',spell_sources='{}',spell_preparation_sources='{}' where id='${hero}'`);
+   if(scenario==='oldturn')sql(`update combat_encounters set current_turn_index=1 where id='${enc}'`);
    await page.reload();await expect(dialog).toBeVisible();
    await expect(dialog.getByText(/seconds left/)).toBeVisible();
+   if(scenario==='oldturn'){
+    await dialog.getByRole('button',{name:'Close and resume later'}).click();
+    await expect(page.getByRole('button',{name:'Action Available',exact:true})).toBeVisible();
+    await page.getByRole('button',{name:'Action Available',exact:true}).evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));
+    await expect(page.getByRole('button',{name:'Action Available',exact:true})).toBeInViewport();
+    await page.screenshot({path:info.outputPath('recovered-old-turn.png')});
+    await page.getByRole('button',{name:'Resume Fly',exact:true}).click();
+   }
    expect(sql(`select count(*) from pending_spell_casts where campaign_id='${camp}'`)).toBe('1');
    expect(sql(`select expires_at from pending_spell_casts where id='${cast}'`)).toBe(expires);
    expect(sql(`select spell_slots->'3'->>'used' from characters where id='${hero}'`)).toBe('1');
@@ -146,6 +156,7 @@ test.describe('Paid casting recovery (local stack)',()=>{
     expect(sql(`select spell_slots->'3'->>'used' from characters where id='${hero}'`)).toBe('1');
    }
    await expect(dialog).toBeHidden();
+   if(scenario==='oldturn')await expect(page.getByRole('button',{name:'Action Available',exact:true})).toBeVisible();
    await expect.poll(()=>page.evaluate(({player,hero})=>localStorage.getItem(`dndkeep:declared-spell:${player}:${hero}`),{player,hero})).toBeNull();
    expect(sql(`select count(*) from combat_events where campaign_id='${camp}' and event_type='spell_counterspell_resolved'`)).toBe('1');
    expect(errors).toEqual([]);

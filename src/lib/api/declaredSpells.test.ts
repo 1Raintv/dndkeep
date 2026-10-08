@@ -122,3 +122,13 @@ it('delivers only the saved cast ID and recovers a lost response without a new a
  vi.mocked(supabase.rpc).mockResolvedValue({data:{castId:id,attackId:other,characterId:id,kind:'save',replayed:false},error:null} as never);
  await expect(queueDeclaredSpellAttack(r)).rejects.toThrow('could not be confirmed');
 });
+
+it('preserves captured action context separately from a mutable catalog or current turn',async()=>{
+ const action={encounterId:other,turnId:id,currentTurnId:other,kind:'reaction'};
+ vi.mocked(supabase.rpc).mockResolvedValueOnce({data:{cast:{...row,encounter_id:other},actionContext:action},error:null} as never);
+ expect((await declarePaidSpell({...request,context:{...request.context,actionKind:'reaction'}})).actionContext).toEqual(action);
+});
+it.each([{kind:'bonusAction'},{turnId:'invalid'},{encounterId:id},{currentTurnId:'invalid'}])('rejects an invalid action receipt %j',async patch=>{
+ vi.mocked(supabase.rpc).mockResolvedValueOnce({data:{cast:{...row,encounter_id:other},actionContext:{encounterId:other,turnId:id,currentTurnId:id,kind:'action',...patch}},error:null} as never);
+ await expect(declarePaidSpell({...request,context:{...request.context,actionKind:'action'}})).rejects.toThrow('action receipt');
+});

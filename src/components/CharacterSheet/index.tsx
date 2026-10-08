@@ -1470,7 +1470,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  {hitDieChoice.dialog}
  <ConcentrationRecordingNotice recording={concentrationRecording}/>
  <SpellDeclarationPanel saved={savedDeclaration} character={character} spells={spellMap}
-  onAction={bonus=>{if(bonus)setBonusActionSpellCast(true);else setSpellCastThisTurn(true);}}
+  onAction={kind=>{if(kind==='bonusAction')setBonusActionSpellCast(true);else if(kind==='reaction')setReactionUsedThisTurn(true);else setSpellCastThisTurn(true);}}
   onConcentration={(id,slot,source)=>setConcentration(id,slot,true,source)}/>
  {/* v2.377.0 — Persistent concentration banner. Renders whenever
      concentration is active (character.concentration_spell set);
