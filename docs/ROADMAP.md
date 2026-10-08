@@ -1,5 +1,26 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.840 — Combat dialog recovers after failed actions
+
+Attack/save/damage/application/cancellation controls share a same-frame duplicate
+click guard and release loading after failures. Errors remain visible with a
+refresh control. Every completed request reloads saved state, so a committed but
+lost damage response shows its recorded damage instead of inviting another roll.
+
+Attack/reaction reads publish together; failed reaction reads lock action buttons
+instead of appearing as no pending reactions. Outstanding reaction offers also
+block Apply Damage, with the waiting participant and reaction displayed. Newer
+refreshes supersede older
+reads, and campaign/role changes retire late callbacks. Cancellation is disabled
+while another write is pending. Long dialogs scroll within the phone viewport.
+This improves recovery presentation; it does not make HP application transactional
+or restore reaction offers that were never created. Those remain follow-ups.
+
+Validation: full gate (2,548 units; TypeScript 200/200; hooks clean; 255.1 KB
+entry). Four signed-in desktop/phone cases cover rejected requests, lost committed
+responses, retry controls and outstanding reactions. Screenshots/overflow checks
+passed; temporarily restoring the old damage handler makes the regression fail.
+
 ### v2.839 — Damage rolls consume one-use bonuses atomically
 
 Damage recording now locks the attacker and commits the typed dice, attack state,

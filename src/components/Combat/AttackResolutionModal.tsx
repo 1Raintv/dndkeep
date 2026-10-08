@@ -1,3 +1,4 @@
+import {isNetworkError} from '../../lib/authErrors';
 import {useToast} from '../shared/Toast';
 // v2.97.0 — Phase E of the Combat Backbone
 //
@@ -5,7 +6,7 @@ import {useToast} from '../shared/Toast';
 // (declared / attack_rolled / damage_rolled). Walks through the state machine
 // with one button per step. Fudge edit + cancel available.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import {
@@ -19,11 +20,19 @@ interface Props {
   isDM: boolean;
 }
 
-export default function AttackResolutionModal({ campaignId, isDM }: Props) {
+export default function AttackResolutionModal(props: Props) {
+  // v2.840: a campaign/role change retires all in-flight dialog callbacks.
+  return <AttackResolutionContent key={`${props.campaignId}:${props.isDM}`} {...props} />;
+}
+function AttackResolutionContent({ campaignId, isDM }: Props) {
   const {showToast}=useToast();
   const [atk, setAtk] = useState<PendingAttack | null>(null);
   const [reactions, setReactions] = useState<PendingReaction[]>([]);
   const [loading, setLoading] = useState(false);
+  const busy=useRef(false),alive=useRef(true),loadSequence=useRef(0);
+  const [actionError,setActionError]=useState('');
+  const [loadError,setLoadError]=useState('');
+  useEffect(()=>{alive.current=true;return()=>{alive.current=false;loadSequence.current++;};},[]);
   const [fudgeValue, setFudgeValue] = useState<string>('');
   // v2.104.0 — Phase F: AoE sibling progress indicator
   const [groupProgress, setGroupProgress] = useState<{ remaining: number; total: number } | null>(null);
@@ -34,46 +43,48 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
   const [saveBonusBreakdown, setSaveBonusBreakdown] = useState<string>('');
 
   async function load() {
-    const { data } = await supabase
-      .from('pending_attacks')
-      .select('*')
-      .eq('campaign_id', campaignId)
-      .in('state', ['declared', 'attack_rolled', 'damage_rolled'])
-      .order('declared_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    const next = (data as PendingAttack) ?? null;
-    setAtk(next);
-
-    // Load associated reactions to gate Roll Damage
-    if (next) {
-      const { data: rdata } = await supabase
-        .from('pending_reactions')
-        .select('*')
-        .eq('pending_attack_id', next.id)
-        .order('offered_at', { ascending: false });
-      setReactions((rdata ?? []) as PendingReaction[]);
-
-      // v2.104.0 — Phase F: surface AoE sibling progress. Count total vs
-      // still-pending siblings in the same damage_group_id.
-      if (next.damage_group_id) {
-        const { count: totalCount } = await supabase
-          .from('pending_attacks')
-          .select('*', { count: 'exact', head: true })
-          .eq('damage_group_id', next.damage_group_id);
-        const { count: remainingCount } = await supabase
-          .from('pending_attacks')
-          .select('*', { count: 'exact', head: true })
-          .eq('damage_group_id', next.damage_group_id)
-          .in('state', ['declared', 'attack_rolled', 'damage_rolled']);
-        setGroupProgress({ remaining: remainingCount ?? 0, total: totalCount ?? 0 });
-      } else {
-        setGroupProgress(null);
+    const sequence=++loadSequence.current;
+    const current=()=>alive.current&&sequence===loadSequence.current;
+    try {
+      const {data,error}=await supabase.from('pending_attacks').select('*')
+        .eq('campaign_id',campaignId).in('state',['declared','attack_rolled','damage_rolled'])
+        .order('declared_at',{ascending:false}).limit(1).maybeSingle();
+      if(error)throw error;
+      const next=(data as PendingAttack)??null;
+      let offers:PendingReaction[]=[],progress:{remaining:number;total:number}|null=null;
+      if(next){
+        const {data:rdata,error:reactionError}=await supabase.from('pending_reactions').select('*')
+          .eq('pending_attack_id',next.id).order('offered_at',{ascending:false});
+        if(reactionError)throw reactionError;
+        offers=(rdata??[]) as PendingReaction[];
+        if(next.damage_group_id){
+          const [total,remaining]=await Promise.all([
+            supabase.from('pending_attacks').select('*',{count:'exact',head:true}).eq('damage_group_id',next.damage_group_id),
+            supabase.from('pending_attacks').select('*',{count:'exact',head:true}).eq('damage_group_id',next.damage_group_id).in('state',['declared','attack_rolled','damage_rolled']),
+          ]);
+          if(total.error)throw total.error;if(remaining.error)throw remaining.error;
+          progress={remaining:remaining.count??0,total:total.count??0};
+        }
       }
-    } else {
-      setReactions([]);
-      setGroupProgress(null);
+      // Publish attack and reactions together; a failed reaction read must not
+      // masquerade as no reactions and unlock Apply Damage.
+      if(current()){setAtk(next);setReactions(offers);setGroupProgress(progress);setLoadError('');}
+    } catch {
+      if(current())setLoadError('Combat state could not be refreshed. Refresh before continuing.');
     }
+  }
+
+  // v2.840: serialize even same-frame clicks, report failures, and reload the
+  // committed state after either outcome. Never automatically repeat a write.
+  async function runAction(action:()=>Promise<unknown>) {
+    if(!alive.current||busy.current||loadError)return;
+    busy.current=true;setLoading(true);setActionError('');
+    try {await action();}
+    catch(error){if(alive.current){
+      const message=isNetworkError(error instanceof Error?error:null)?'The response was interrupted. The action may already be saved; review the refreshed combat state.':error instanceof Error?error.message:'Combat action could not be confirmed. Refresh its saved state before continuing.';
+      setActionError(message);showToast(message,'error');
+    }}
+    finally {if(alive.current){await load();if(alive.current){busy.current=false;setLoading(false);}}}
   }
 
   // Subscribe to realtime so any change (including another client's declare)
@@ -104,7 +115,7 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
     if (atk?.state === 'damage_rolled' && atk.damage_final != null) {
       setFudgeValue(String(atk.damage_final));
     }
-  }, [atk?.state, atk?.damage_final]);
+  }, [atk?.id, atk?.state, atk?.damage_final]);
 
   // v2.102.0 — Phase F pt 3a: auto-fetch the target's save bonus when a
   // save-kind attack is in flight. Skips if save already rolled.
@@ -129,51 +140,19 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
     return false;
   }, [isDM]);
 
-  if (!atk) return null;
+  if (!atk) return visibleToPlayer&&loadError?<div role="alert" style={{position:'fixed',bottom:90,left:16,right:16,zIndex:20002,padding:12,background:'var(--c-card)',color:'var(--t-1)',border:'1px solid #f87171',borderRadius:10}}>{loadError} <button onClick={()=>void load()}>Refresh combat</button></div>:null;
   if (!visibleToPlayer) return null;
 
-  async function onRollAttack() {
-    setLoading(true);
-    if (!atk) return;
-    await rollAttackRoll(atk.id);
-    setLoading(false);
-  }
-
-  async function onRollSave() {
-    if (!atk || loading) return;
-    setLoading(true);
-    try {
-      const bonus = parseInt(saveBonus, 10) || 0;
-      await rollSave(atk.id, bonus);
-    } catch (error) {
-      showToast(error instanceof Error ? error.message : 'The saving throw could not be confirmed. Try again.', 'error');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function onRollDamage() {
-    setLoading(true);
-    if (!atk) return;
-    await rollDamage(atk.id);
-    setLoading(false);
-  }
-
-  async function onApply() {
-    setLoading(true);
-    if (!atk) return;
-    const typed = parseInt(fudgeValue, 10);
-    if (Number.isFinite(typed) && typed !== atk.damage_final) {
-      await fudgeDamage(atk.id, typed);
-    }
+  const onRollAttack=()=>runAction(()=>rollAttackRoll(atk.id));
+  const onRollSave=()=>runAction(()=>rollSave(atk.id,parseInt(saveBonus,10)||0));
+  const onRollDamage=()=>runAction(()=>rollDamage(atk.id));
+  const onApply=()=>{if(reactions.some(r=>r.state==='offered'))return;return runAction(async()=>{
+    const typed=parseInt(fudgeValue,10);
+    if(Number.isFinite(typed)&&typed!==atk.damage_final)await fudgeDamage(atk.id,typed);
     await applyDamage(atk.id);
-    setLoading(false);
-  }
-
-  async function onCancel() {
-    if (!atk) return;
-    await cancelAttack(atk.id);
-  }
+  });};
+  const onCancel=()=>runAction(()=>cancelAttack(atk.id));
+  const controlsDisabled=loading||!!loadError;
 
   const isAttackRoll = atk.attack_kind === 'attack_roll';
   const isSaveBased  = atk.attack_kind === 'save';
@@ -219,11 +198,11 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
         pointerEvents: 'none',
       }}
     >
-      <div
+      <div role="region" aria-label="Resolve attack"
         style={{
           background: 'var(--c-card)', borderRadius: 14,
           border: '1px solid var(--c-gold-bdr)',
-          maxWidth: 620, width: '100%',
+          maxWidth: 620, width: '100%', maxHeight:'calc(100dvh - 110px)', overflowY:'auto',
           display: 'flex', flexDirection: 'column',
           boxShadow: '0 10px 40px rgba(0,0,0,0.6)',
           pointerEvents: 'auto',
@@ -246,11 +225,15 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
             </span>
             <span style={{ color: 'var(--t-3)', fontSize: 11 }}>· {atk.attack_name}</span>
           </div>
-          <button onClick={onCancel} style={{ fontSize: 10, padding: '3px 8px', minHeight: 0, color: '#f87171' }}>
+          <button onClick={onCancel} disabled={controlsDisabled} style={{ fontSize: 10, padding: '3px 8px', minHeight: 0, color: '#f87171' }}>
             Cancel
           </button>
         </div>
 
+        {(actionError||loadError)&&<div role="alert" style={{padding:'10px 18px',color:'#fca5a5',fontSize:12,overflowWrap:'anywhere'}}>
+          {actionError&&<div>{actionError}</div>}{loadError&&<div>{loadError}</div>}
+          <button onClick={()=>void load()} disabled={loading} style={{marginTop:6}}>Refresh combat</button>
+        </div>}
         {/* Summary chips */}
         <div style={{
           padding: '10px 18px 0',
@@ -277,7 +260,7 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
               {isAttackRoll && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <span style={{ color: 'var(--t-2)', fontSize: 13 }}>Ready to roll the attack.</span>
-                  <button className="btn-gold" onClick={onRollAttack} disabled={loading} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
+                  <button className="btn-gold" onClick={onRollAttack} disabled={controlsDisabled} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
                     ⚄ Roll Attack
                   </button>
                 </div>
@@ -285,7 +268,7 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
               {isAutoHit && (
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <span style={{ color: 'var(--t-2)', fontSize: 13 }}>Auto-hit — roll damage.</span>
-                  <button className="btn-gold" onClick={onRollDamage} disabled={loading} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
+                  <button className="btn-gold" onClick={onRollDamage} disabled={controlsDisabled} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
                     ⚄ Roll Damage
                   </button>
                 </div>
@@ -329,7 +312,7 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
                       <button
                         className="btn-gold"
                         onClick={onRollSave}
-                        disabled={loading}
+                        disabled={controlsDisabled}
                         style={{ fontSize: 12, fontWeight: 800, padding: '6px 14px' }}
                       >
                         ⚄ Roll Save
@@ -343,7 +326,7 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
                 <>
                   <SaveBanner atk={atk} />
                   <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <button className="btn-gold" onClick={onRollDamage} disabled={loading} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
+                    <button className="btn-gold" onClick={onRollDamage} disabled={controlsDisabled} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
                       ⚄ Roll Damage
                     </button>
                   </div>
@@ -382,13 +365,13 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
                 </div>
               ) : (atk.hit_result === 'hit' || atk.hit_result === 'crit') && atk.damage_dice ? (
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button className="btn-gold" onClick={onRollDamage} disabled={loading} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
+                  <button className="btn-gold" onClick={onRollDamage} disabled={controlsDisabled} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
                     ⚄ Roll Damage
                   </button>
                 </div>
               ) : (
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <button onClick={onRollDamage} disabled={loading} style={{ fontSize: 12, padding: '6px 14px' }}>
+                  <button onClick={onRollDamage} disabled={controlsDisabled} style={{ fontSize: 12, padding: '6px 14px' }}>
                     Skip & Close
                   </button>
                 </div>
@@ -399,6 +382,9 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
           {/* Damage rolled: show total, let DM edit (fudge), then Apply */}
           {atk.state === 'damage_rolled' && (
             <>
+              {isWaitingForReactions&&<div role="status" style={{fontSize:12,color:'var(--c-gold-l)',overflowWrap:'anywhere'}}>
+                Waiting on reactions: {outstandingOffers.map(o=>`${o.reactor_name} (${o.reaction_name})`).join(', ')}
+              </div>}
               <div style={{
                 padding: 12, borderRadius: 8,
                 background: '#0d1117', border: '1px solid var(--c-border)',
@@ -441,8 +427,8 @@ export default function AttackResolutionModal({ campaignId, isDM }: Props) {
                 </div>
               )}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                <button onClick={onCancel} style={{ fontSize: 12, padding: '6px 14px' }}>Cancel</button>
-                <button className="btn-gold" onClick={onApply} disabled={loading} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
+                <button onClick={onCancel} disabled={controlsDisabled} style={{ fontSize: 12, padding: '6px 14px' }}>Cancel</button>
+                <button className="btn-gold" onClick={onApply} disabled={controlsDisabled||isWaitingForReactions} style={{ fontSize: 12, fontWeight: 800, padding: '6px 18px' }}>
                   ✶ Apply Damage
                 </button>
               </div>
