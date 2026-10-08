@@ -139,3 +139,31 @@ it.each([2,3])('retains damage defined only in the slot table at spell slot %i',
  render(<SpellCastButton spell={{...spell,id:'mind-spike',name:'Mind Spike',level:2,save_type:'WIS',damage_at_char_level:undefined,damage_dice:undefined,damage_at_slot_level:{2:'3d8',3:'4d8'},higher_levels:'The damage increases by 1d8 for each spell slot level above 2.'}} character={c} userId="owner" campaignId="campaign" onUpdateSlots={vi.fn()} compact forceSlotLevel={slot}/>);
  expect(mocks.attack).toHaveBeenLastCalledWith(expect.objectContaining({slotLevel:slot,damageDice:slot===2?'3d8':'4d8',saveSuccessEffect:'half'}));
 });
+
+const utility:SpellData={...spell,id:'detect-magic',name:'Detect Magic',level:1,concentration:true,save_type:undefined,damage_at_char_level:undefined};
+const utilityHero:Character={...character,known_spells:['detect-magic'],prepared_spells:['detect-magic'],spell_sources:{'detect-magic':['class:Psion']},spell_slots:{1:{total:4,used:4},3:{total:2,used:0}}};
+it.each([true,false])('casts a non-scaling spell with the remaining higher slot in compact=%s',async compact=>{
+ const update=vi.fn(),action=vi.fn(),concentration=vi.fn();
+ render(<SpellCastButton spell={utility} character={utilityHero} userId="owner" compact={compact} onUpdateSlots={update} onLeveledSpellCast={action} onConcentrationCast={concentration}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Cast'}));
+ if(!compact)fireEvent.click(screen.getByRole('button',{name:'Cast (Lvl 3)'}));
+ await waitFor(()=>expect(update).toHaveBeenCalledOnce());expect(update).toHaveBeenCalledWith({1:{total:4,used:4},3:{total:2,used:1}});
+ expect(action).toHaveBeenCalledOnce();expect(concentration).toHaveBeenCalledWith(3,{source:'class:Psion',ability:'intelligence'});
+});
+it('opens a non-scaling higher-slot picker at a real remaining tier and cancels without payment',()=>{
+ const update=vi.fn();render(<SpellCastButton spell={utility} character={utilityHero} userId="owner" upcastTrigger onUpdateSlots={update}/>);
+ fireEvent.click(screen.getByRole('button',{name:/Upcast at higher slot/}));
+ expect(screen.getByRole('button',{name:/Upcast at Level 3/})).toBeTruthy();expect(screen.getByText(/A higher slot is allowed/)).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(update).not.toHaveBeenCalled();expect(mocks.log).not.toHaveBeenCalled();
+});
+it('never substitutes another tier for an exhausted forced-slot row',()=>{
+ const update=vi.fn();render(<SpellCastButton spell={utility} character={utilityHero} userId="owner" forceSlotLevel={1} compact onUpdateSlots={update}/>);
+ expect(screen.getByText('No Slots')).toBeTruthy();expect(screen.queryByRole('button',{name:'Cast'})).toBeNull();expect(update).not.toHaveBeenCalled();
+});
+it('manual upcast damage pays, consumes the action, and starts concentration once',async()=>{
+ const update=vi.fn(),action=vi.fn(),concentration=vi.fn();
+ render(<SpellCastButton spell={{...utility,description:'',damage_dice:'1d6',damage_type:'Psychic',attack_type:'ranged'}} character={utilityHero} userId="owner" upcastTrigger onUpdateSlots={update} onLeveledSpellCast={action} onConcentrationCast={concentration}/>);
+ fireEvent.click(screen.getByRole('button',{name:/Upcast at higher slot/}));fireEvent.click(screen.getByRole('button',{name:/Upcast at Level 3.*Roll Damage/}));
+ await waitFor(()=>expect(mocks.log).toHaveBeenCalledOnce());expect(update).toHaveBeenCalledOnce();expect(action).toHaveBeenCalledOnce();expect(concentration).toHaveBeenCalledOnce();
+ expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({diceExpression:'1d6',notes:'Level 3 slot'}));
+});

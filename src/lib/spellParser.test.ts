@@ -2,7 +2,7 @@
 // buttons (damage/save/attack/heal detection) and concentration timers.
 import { describe, expect, it } from 'vitest';
 import {
-  canUpcastSpell, computeUpcastDice, formatRoundsRemaining,
+  computeUpcastDice, formatRoundsRemaining,
   parseDurationToRounds, parseSpellMechanics, rollDice,
 } from './spellParser';
 
@@ -106,17 +106,6 @@ describe('formatRoundsRemaining', () => {
   it('handles expiry and null', () => {
     expect(formatRoundsRemaining(0)).toBe('Expired');
     expect(formatRoundsRemaining(null)).toBe('');
-  });
-});
-
-describe('canUpcastSpell (2024 PHB: explicit higher-level clause required)', () => {
-  it('requires a non-empty higher_levels on a leveled spell', () => {
-    expect(canUpcastSpell({ level: 1, higher_levels: 'The healing increases by 1d8...' })).toBe(true);
-    expect(canUpcastSpell({ level: 1, higher_levels: null })).toBe(false);
-    expect(canUpcastSpell({ level: 1 })).toBe(false);
-  });
-  it('is false for cantrips (they scale by character level instead)', () => {
-    expect(canUpcastSpell({ level: 0, higher_levels: 'anything' })).toBe(false);
   });
 });
 

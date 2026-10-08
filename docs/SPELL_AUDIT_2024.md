@@ -22,10 +22,20 @@ Apply these **globally** during audit:
 | **"No effect on undead/constructs" removed** | All healing spells | Healing now works on all creature types |
 | **Healing dice doubled** | Cure Wounds (1d8→2d8), Healing Word (1d4→2d4) | Upcast scaling also doubled |
 | **Prayer of Healing gains Short Rest benefit** | Prayer of Healing only | Targets gain short rest alongside 2d8 heal |
-| **One spell slot per turn** | All leveled spells | New 2024 restriction: can't cast 2 leveled spells per turn |
+| **One spell slot per turn** | Casting with a slot | A caster can expend only one slot to cast a spell on a turn. Slot-free spells do not consume this allowance; reaction casts count on the turn they occur. Current-turn enforcement remains queued. |
 | **Cloud of Daggers** | Movable with Magic action | No longer stationary after cast |
 
 ---
+
+## Higher-slot eligibility — corrected v2.858
+
+[SRD 5.2.1](https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf),
+pp.104-105, permits a level 1+ spell to use a slot at least as high as its base
+level. A higher-level effects paragraph is not required. The casting takes the
+slot's level; additional effects depend on the spell description. Cantrips use
+no slots. The picker now follows this rule, including non-scaling spells and
+exhausted lower tiers. This eligibility correction does not complete the queued
+current-turn slot ledger or the remaining durable casting paths.
 
 ## Tier 1 — Most-cast spells (priority)
 

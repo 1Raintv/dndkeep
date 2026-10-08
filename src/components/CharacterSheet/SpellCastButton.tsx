@@ -1,3 +1,4 @@
+import {canUpcastSpell,availableSpellSlots} from '../../rules/spellSlots';
 import {createSpellDeclarationRequest} from '../../lib/spellDeclarationRequest';
 import {declarationParticipant,saveSpellDeclaration} from '../../lib/api/declaredSpells';
 import {useSpellEffects} from './useSpellEffects';
@@ -16,7 +17,7 @@ import { createPortal } from 'react-dom';
 import type { Character, SpellSlots } from '../../types';
 import type { SpellData } from '../../types';
 import { logAction } from '../shared/ActionLog';
-import { parseSpellMechanics, parseUpcastScaling, computeUpcastDice, canUpcastSpell } from '../../lib/spellParser';
+import { parseSpellMechanics, parseUpcastScaling, computeUpcastDice } from '../../lib/spellParser';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { CONDITION_MAP } from '../../data/conditions';
 import { rollDie, computeStats } from '../../lib/gameUtils';
@@ -86,14 +87,13 @@ function ResolvedSpellCastButton({
 }: SpellCastButtonProps & {casting:NonNullable<SpellCastingState['selected']>}) {
  const isBonusActionCast = /bonus action/i.test(spell.casting_time);
  const [showModal, setShowModal] = useState(false);
- // v2.34: if a specific upcast slot is forced by the parent row, start with it
- // v2.64.0: in upcastTrigger mode, default to spell.level + 1 (lowest upcast tier)
- // since the user explicitly opened the UPCAST modal — defaulting to base level
- // wouldn't be upcasting at all and the confirm button would say "↑ Upcast at
- // Level 1" which is misleading.
- const [selectedSlot, setSelectedSlot] = useState<number>(
- forceSlotLevel ?? (upcastTrigger ? spell.level + 1 : spell.level)
- );
+ // v2.858: select a real remaining slot, including when base/intermediate
+ // tiers are exhausted. Explicit tier rows never fall back to a different cost.
+ const availableSlots=availableSpellSlots(spell.level,character.spell_slots);
+ const [slotChoice,setSelectedSlot]=useState<number|undefined>(undefined);
+ const selectedSlot=forceSlotLevel ?? (availableSlots.some(s=>s.level===slotChoice)?slotChoice!:
+  (upcastTrigger?availableSlots.find(s=>s.level>spell.level)?.level:undefined)??availableSlots[0]?.level??spell.level);
+ const selectedSlotAvailable=spell.level===0||availableSlots.some(s=>s.level===selectedSlot);
  const [target, setTarget] = useState('');
  const { triggerRoll } = useDiceRoll();
  const declaring=useRef(false);
@@ -147,24 +147,8 @@ function ResolvedSpellCastButton({
  spell.level,
  );
 
- // Available slots at spell.level or higher.
- // v2.44.0: If the spell cannot be upcast (no higher_levels text), the picker
- // is restricted to ONLY the spell's base level — even if higher slots exist.
- // This matches RAW: spells like Jump, Find Familiar, Mage Armor can't benefit
- // from a higher-level slot, so showing those options would be misleading.
- const availableSlots: { level: number; remaining: number }[] = [];
- if (!isCantrip) {
- const allowsUpcast = canUpcastSpell(spell);
- const maxSlotLevel = allowsUpcast ? 9 : spell.level;
- for (let lvl = spell.level; lvl <= maxSlotLevel; lvl++) {
- const slot = character.spell_slots[String(lvl)];
- if (slot && slot.total > 0) {
- const remaining = slot.total - (slot.used ?? 0);
- if (remaining > 0) availableSlots.push({ level: lvl, remaining });
- }
- }
- }
- const canCast = isCantrip || availableSlots.length > 0;
+ // Higher slots remain valid even without an extra scaling benefit.
+ const canCast = (isCantrip || availableSlots.length > 0) && (forceSlotLevel===undefined || selectedSlotAvailable);
 
  // v2.794 — source choice governs every targeted/manual/healing casting path.
  const stats = computeStats(character);
@@ -199,6 +183,7 @@ function ResolvedSpellCastButton({
  if (!mechanics.damageDice) return;
  // Compute actual dice to roll considering upcast scaling
  const effectiveSlot = slotLevel ?? (isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level));
+ if(!isCantrip&&!availableSlots.some(s=>s.level===effectiveSlot))return;
  const effectiveDice = damageForSlot(effectiveSlot)!;
  const rolled=rollDiceGroups(effectiveDice);
  if(!rolled)return;
@@ -317,6 +302,7 @@ function ResolvedSpellCastButton({
   *  existing callsites that want the full cast-and-resolve behavior work
   *  unchanged. */
  async function castUtility(slotLevel: number, targetName?: string) {
+ if(!isCantrip&&!availableSlots.some(s=>s.level===slotLevel))return;
  burnSlot(slotLevel);
  await applyEffect(slotLevel, targetName);
  }
@@ -386,7 +372,7 @@ function ResolvedSpellCastButton({
  }}
  onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.22)'; }}
  onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(167,139,250,0.12)'; }}
- title="Cast this spell using a higher-level spell slot for greater effect"
+ title="Choose a higher-level spell slot for this casting"
  >
  ↑ Upcast at higher slot
  </button>
@@ -420,7 +406,7 @@ function ResolvedSpellCastButton({
  </h3>
  {healingPreview}
  <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 6 }}>
- Base level {spell.level} · Cast with a higher slot for greater effect
+ Base level {spell.level} · Casting at level {selectedSlot}
  </div>
  </div>
 
@@ -429,6 +415,7 @@ function ResolvedSpellCastButton({
  {/* v2.63.0: full spell description (one big block) so player has full
      context on what the spell does without closing the modal. */}
  <SpellDescription spell={spell} />
+ {!spell.higher_levels?.trim()&&<p style={{fontSize:12,color:'var(--t-2)'}}>A higher slot is allowed. Apply extra effects only when the spell description specifies them.</p>}
  {/* v2.64.0: Unified slot picker. When the spell has per-tier damage/healing
      data, show a rich grid where each tile = one slot tier with the rolled
      dice for that tier. Tiles are clickable picker buttons. Tiles without an
@@ -445,7 +432,7 @@ function ResolvedSpellCastButton({
 
  if (tiers) {
  // Rich tier grid: show every tier the spell scales to, picker behavior
- const tierKeys = Object.keys(tiers).map(k => parseInt(k, 10)).filter(k => !isNaN(k) && k >= spell.level).sort((a, b) => a - b);
+ const tierKeys = [...new Set([...Object.keys(tiers).map(Number),...availableSlots.map(s=>s.level)])].filter(k => Number.isInteger(k) && k >= spell.level && k<=9).sort((a,b)=>a-b);
  if (tierKeys.length === 0) return null;
  return (
  <div style={{
@@ -478,7 +465,7 @@ function ResolvedSpellCastButton({
  title={isAvailable ? `Cast at level ${lvl} (${remaining} slot${remaining === 1 ? '' : 's'} left)` : `No level ${lvl} slots available`}
  >
  <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--t-3)', letterSpacing: '0.04em' }}>LVL {lvl}</div>
- <div style={{ fontFamily: 'var(--ff-stat)', fontSize: 13, fontWeight: 800, color: isSelected ? '#fbbf24' : 'var(--t-2)', marginTop: 1 }}>{tiers[String(lvl)]}</div>
+ <div style={{ fontFamily: 'var(--ff-stat)', fontSize: 13, fontWeight: 800, color: isSelected ? '#fbbf24' : 'var(--t-2)', marginTop: 1 }}>{tiers[String(lvl)]??(dasl?damageForSlot(lvl):spell.heal_dice)??'See description'}</div>
  <div style={{ fontSize: 8, fontWeight: 600, color: isAvailable ? 'var(--t-3)' : 'var(--c-red-l)', marginTop: 2 }}>
  {isAvailable ? `${remaining} left` : 'no slot'}
  </div>
@@ -538,11 +525,10 @@ function ResolvedSpellCastButton({
      burning a slot (e.g. concentration spell tick) is handled elsewhere. */}
  <button
  onClick={() => {
+ if(!selectedSlotAvailable)return;
  if(mechanics.healDice)rollHeal(selectedSlot);
- else {
- castUtility(selectedSlot, target);
- if (mechanics.damageDice) rollDamage(selectedSlot);
- }
+ else if(mechanics.damageDice)rollDamage(selectedSlot);
+ else castUtility(selectedSlot, target);
  setShowModal(false);
  setTarget('');
  }}
@@ -1101,11 +1087,10 @@ function ResolvedSpellCastButton({
  }}>
  <button
  onClick={() => {
+ if(!selectedSlotAvailable)return;
  if(mechanics.healDice)rollHeal(selectedSlot);
- else {
- castUtility(selectedSlot, target);
- if (mechanics.damageDice) rollDamage(selectedSlot);
- }
+ else if(mechanics.damageDice)rollDamage(selectedSlot);
+ else castUtility(selectedSlot, target);
  setShowModal(false);
  setTarget('');
  }}
