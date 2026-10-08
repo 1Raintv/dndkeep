@@ -19,6 +19,53 @@ test.describe('Shared Psionic Discipline turns',()=>{
  const finish=(id:string,changed:boolean)=>`select finish_psionic_discipline('${char}','${id}',${changed})`;
  const pool=()=>Number(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${char}'`));
  const state=()=>run(`select get_psionic_discipline_turn('${char}')`);
+ // v2.816 — real combat order, with a separate creature before the Psion.
+ function withCombat(check:(fixture:{encounter:string;creature:string;creatureParticipant:string;hero:string})=>void){
+  const campaign=randomUUID(),encounter=randomUUID(),hero=randomUUID(),creature=randomUUID(),creatureParticipant=randomUUID();
+  try{
+   sql(`insert into campaigns(id,owner_id,name) values('${campaign}','${other}','Own-turn fixture');
+    update characters set campaign_id='${campaign}' where id='${char}';
+    insert into combatants(id,campaign_id,owner_id,name,definition_type,definition_id,current_hp,max_hp,is_dead) values
+     ('${hero}','${campaign}','${owner}','Psion','character','${char}',20,20,false),
+     ('${creature}','${campaign}','${other}','Creature','srd_monster','fixture',10,10,false);
+    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaign}','active',1,0);
+    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,combatant_id) values
+     ('${creatureParticipant}','${encounter}','${campaign}','creature','fixture','Creature',0,'${creature}'),
+     (gen_random_uuid(),'${encounter}','${campaign}','character','${char}','Psion',1,'${hero}');`);
+   check({encounter,creature,creatureParticipant,hero});
+  }finally{sql(`delete from campaigns where id='${campaign}'`);}
+ }
+ for(const discipline of ['psionic-guards','sharpened-mind'])test(`${discipline} requires its owners combat turn but replays a paid use after advancing`,()=>withCombat(({encounter})=>{
+  const rolls=discipline==='psionic-guards'?'array[]':'array[4]';
+  const offTurn=begin(discipline,randomUUID(),JSON.stringify(state().turn),1,rolls);
+  expect(()=>run(offTurn)).toThrow(/own turn/);expect(()=>run(offTurn,other)).toThrow(/own turn/);
+  expect(pool()).toBe(6);expect(state().uses).toHaveLength(0);
+  sql(`update combat_encounters set current_turn_index=1 where id='${encounter}'`);
+  const paid=begin(discipline,randomUUID(),JSON.stringify(state().turn),1,rolls);expect(run(paid,other).replayed).toBe(false);expect(pool()).toBe(5);
+  sql(`update combat_encounters set current_turn_index=0,round_number=2 where id='${encounter}'`);
+  expect(run(paid).replayed).toBe(true);expect(pool()).toBe(5);
+ }));
+ test('dead creatures are excluded before choosing the owners turn',()=>withCombat(({creature})=>{
+  sql(`update combatants set is_dead=true where id='${creature}'`);
+  expect(run(begin('psionic-guards',randomUUID(),JSON.stringify(state().turn),1,'array[]')).replayed).toBe(false);
+ }));
+ test('zero HP without death and hidden creatures still occupy their turns',()=>withCombat(({creature,creatureParticipant})=>{
+  sql(`update combatants set current_hp=0,is_dead=false where id='${creature}';update combat_participants set hidden_from_players=true where id='${creatureParticipant}'`);
+  expect(()=>run(begin('psionic-guards',randomUUID(),JSON.stringify(state().turn),1,'array[]'))).toThrow(/own turn/);expect(pool()).toBe(6);
+ }));
+ test('legacy orphan recovery uses the combatants death state',()=>withCombat(({creature,hero,encounter})=>{
+  sql(`update combatants set is_dead=true where id in('${creature}','${hero}');update combat_participants set combatant_id=null where encounter_id='${encounter}' and entity_id='${char}'`);
+  expect(()=>run(begin('sharpened-mind',randomUUID(),JSON.stringify(state().turn)))).toThrow(/own turn/);
+  sql(`update combatants set is_dead=false where id='${hero}'`);
+  expect(run(begin('sharpened-mind',randomUUID(),JSON.stringify(state().turn))).replayed).toBe(false);
+ }));
+ test('an out-of-range actor cannot claim a start-of-turn exception',()=>withCombat(({encounter})=>{
+  sql(`update combat_encounters set current_turn_index=99 where id='${encounter}'`);
+  expect(()=>run(begin('psionic-guards',randomUUID(),JSON.stringify(state().turn),1,'array[]'))).toThrow(/own turn/);expect(pool()).toBe(6);
+ }));
+ test('ordinary triggered disciplines remain available on another creatures turn',()=>withCombat(()=>{
+  expect(run(begin('inerrant-aim',randomUUID(),JSON.stringify(state().turn))).conditional).toBe(true);expect(pool()).toBe(6);
+ }));
  test('one paid discipline owns the turn and retry returns current resources without another charge',()=>{
   const id=randomUUID(),q=begin('biofeedback',id);expect(run(q)).toMatchObject({replayed:false,discipline:'biofeedback',rolls:[3],energy:{remaining:5}});expect(pool()).toBe(5);
   expect(()=>run(begin('destructive-thoughts'))).toThrow(/already used/);expect(()=>run(begin('biofeedback'))).toThrow(/already used/);
