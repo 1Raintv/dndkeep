@@ -83,7 +83,9 @@ test.describe('Psion Biofeedback', () => {
     if(level===7)await expect(activate).toBeDisabled();
     // A second grant cannot stack with a higher existing temporary-HP total.
     sql(`update characters set temp_hp=20,class_resources=class_resources || '{"psionic-energy-dice":2}'::jsonb where id='${charId}'`);
-    await page.reload();await activate.click();await dialog.getByRole('textbox').fill('2');await dialog.getByRole('button',{name:'Spend and roll'}).click();
+    await page.reload();await page.getByRole('button',{name:/End Turn/}).locator('visible=true').first().click();
+    await expect.poll(()=>sql(`select turn_number from psionic_solo_turns where character_id='${charId}'`)).toBe('1');
+    await activate.click();await dialog.getByRole('textbox').fill('2');await dialog.getByRole('button',{name:'Spend and roll'}).click();
     if(level===7)await page.getByRole('button',{name:'Keep these rolls',exact:true}).click();
     await expect.poll(state).toEqual({pool:0,temp:20,spent:level===5?0:1,other:9});
     await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Biofeedback'`)).toBe('2');

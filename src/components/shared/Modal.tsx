@@ -57,16 +57,20 @@ interface ConfirmOptions {
 interface ModalContextValue {
   prompt: (opts: PromptOptions) => Promise<string | null>;
   confirm: (opts: ConfirmOptions) => Promise<boolean>;
+  /** v2.814: false is an explicit negative decision; dismissal returns null. */
+  decide: (opts: ConfirmOptions) => Promise<boolean | null>;
 }
 
 const ModalContext = createContext<ModalContextValue>({
   prompt: async () => null,
   confirm: async () => false,
+  decide: async () => null,
 });
 
 type ActiveState =
   | { id:number; kind: 'prompt'; opts: PromptOptions; resolve: (v: string | null) => void }
-  | { id:number; kind: 'confirm'; opts: ConfirmOptions; resolve: (v: boolean) => void };
+  | { id:number; kind: 'confirm'; opts: ConfirmOptions; resolve: (v: boolean) => void }
+  | { id:number; kind: 'decision'; opts: ConfirmOptions; resolve: (v: boolean | null) => void };
 
 export function ModalProvider({ children }: { children: ReactNode }) {
   const [active, setActive] = useState<ActiveState | null>(null);
@@ -82,7 +86,7 @@ export function ModalProvider({ children }: { children: ReactNode }) {
       // Cancel any prior modal.
       const prior = activeRef.current;
       if (prior) {
-        if (prior.kind === 'prompt') prior.resolve(null);
+        if (prior.kind !== 'confirm') prior.resolve(null);
         else prior.resolve(false);
       }
       const next:ActiveState={id:++requestId.current,kind:'prompt',opts,resolve};
@@ -94,10 +98,19 @@ export function ModalProvider({ children }: { children: ReactNode }) {
     return new Promise<boolean>((resolve) => {
       const prior = activeRef.current;
       if (prior) {
-        if (prior.kind === 'prompt') prior.resolve(null);
+        if (prior.kind !== 'confirm') prior.resolve(null);
         else prior.resolve(false);
       }
       const next:ActiveState={id:++requestId.current,kind:'confirm',opts,resolve};
+      activeRef.current=next;setActive(next);
+    });
+  }, []);
+
+  const decide = useCallback((opts: ConfirmOptions) => {
+    return new Promise<boolean | null>((resolve) => {
+      const prior=activeRef.current;
+      if(prior){if(prior.kind==='confirm')prior.resolve(false);else prior.resolve(null);}
+      const next:ActiveState={id:++requestId.current,kind:'decision',opts,resolve};
       activeRef.current=next;setActive(next);
     });
   }, []);
@@ -108,7 +121,7 @@ export function ModalProvider({ children }: { children: ReactNode }) {
     return () => {
       const a = activeRef.current;
       if (a) {
-        if (a.kind === 'prompt') a.resolve(null);
+        if (a.kind !== 'confirm') a.resolve(null);
         else a.resolve(false);
       }
     };
@@ -120,17 +133,18 @@ export function ModalProvider({ children }: { children: ReactNode }) {
     if (!a || a!==active) return;
     activeRef.current=null;setActive(null);
     if (a.kind === 'prompt') a.resolve(value as string | null);
+    else if(a.kind==='decision')a.resolve(value as boolean | null);
     else a.resolve(value as boolean);
   }
 
   return (
-    <ModalContext.Provider value={{ prompt, confirm }}>
+    <ModalContext.Provider value={{ prompt, confirm, decide }}>
       {children}
       {active && (
         <ModalOverlay
           key={active.id}
           state={active}
-          onCancel={() => close(active.kind === 'prompt' ? null : false)}
+          onCancel={() => close(active.kind === 'confirm' ? false : null)}
           onSubmit={(v) => close(v)}
         />
       )}
@@ -299,7 +313,7 @@ function ModalOverlay(props: {
           }}
         >
           <button
-            onClick={onCancel}
+            onClick={state.kind==='decision'?()=>onSubmit(false):onCancel}
             style={{
               padding: '8px 16px',
               borderRadius: 'var(--r-md, 8px)',

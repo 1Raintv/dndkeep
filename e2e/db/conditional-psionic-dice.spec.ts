@@ -26,9 +26,14 @@ test.describe('Conditional Psion dice', () => {
       commit;`);
   });
   test.afterEach(() => {
-    if (userId) sql(`delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
+    if (userId) sql(`delete from action_logs where character_id='${charId}'; delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
   });
 
+  const nextTurn=async(page:import('@playwright/test').Page)=>{
+    const before=Number(sql(`select coalesce((select turn_number from psionic_solo_turns where character_id='${charId}'),0)`));
+    await page.getByRole('button',{name:/End Turn/}).locator('visible=true').first().click();
+    await expect.poll(()=>Number(sql(`select turn_number from psionic_solo_turns where character_id='${charId}'`))).toBe(before+1);
+  };
   test('four disciplines roll first and spend only on confirmed changed outcomes',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
     page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
@@ -43,13 +48,13 @@ test.describe('Conditional Psion dice', () => {
     await page.screenshot({path:info.outputPath('conditional-die.png')});
     await dialog.getByRole('button',{name:'Keep die'}).click();await expect(dialog).not.toBeVisible();
     expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('3');
-    await row.getByRole('button',{name:'Roll bonus'}).click();await dialog.getByRole('button',{name:'Changed to hit · spend 1'}).click();
+    await nextTurn(page);await row.getByRole('button',{name:'Roll bonus'}).click();await dialog.getByRole('button',{name:'Changed to hit · spend 1'}).click();
     await expect.poll(()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('2');
     expect(sql(`select class_resources->>'other' from characters where id='${charId}'`)).toBe('9');
-    const check=page.locator('.arow-grid').filter({has:page.getByText('Expanded Awareness',{exact:true})});
+    await nextTurn(page);const check=page.locator('.arow-grid').filter({has:page.getByText('Expanded Awareness',{exact:true})});
     await check.getByRole('button',{name:'Roll bonus'}).click();
     await expect(page.getByRole('dialog',{name:'Expanded Awareness'})).toContainText('ability check');
-    await page.getByRole('button',{name:'Keep die'}).click();
+    await page.getByRole('dialog').getByRole('button',{name:'Keep die',exact:true}).click();
     expect(errors).toEqual([]);
   });
   test('Surge spends Hit Point Dice independently of the conditional Energy Die',async({page},info)=>{
@@ -73,12 +78,12 @@ test.describe('Conditional Psion dice', () => {
     await expect.poll(resources).toBe('1:3');
     await page.screenshot({path:info.outputPath('surged-outcome.png')});
     await outcome.getByRole('button',{name:'Keep die'}).click();
-    await expect(outcome).not.toBeVisible();expect(resources()).toBe('1:3');
+    await expect(outcome).not.toBeVisible();expect(resources()).toBe('1:3');await nextTurn(page);
     await row.getByRole('button',{name:'Roll bonus'}).click();
     await surge.getByRole('button',{name:'Keep roll of 1'}).click();
     await expect(outcome).toContainText('Rolled 1 on 1d8');
     await outcome.getByRole('button',{name:'Keep die'}).click();
-    await expect(outcome).not.toBeVisible();expect(resources()).toBe('1:3');
+    await expect(outcome).not.toBeVisible();expect(resources()).toBe('1:3');await nextTurn(page);
     await row.getByRole('button',{name:'Roll bonus'}).click();
     await surge.getByRole('button',{name:'Spend 1 Hit Point Die'}).click();
     await outcome.getByRole('button',{name:'Changed to hit · spend 1'}).click();

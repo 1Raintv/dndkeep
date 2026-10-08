@@ -1,3 +1,4 @@
+import {DISCIPLINE_NAMES} from '../rules/psionicDisciplineUse';
 /**
  * Psion Psionic Disciplines — UA 2025 v2
  * Disciplines are chosen at level 2 and additional ones at 5, 10, 13, 17.
@@ -35,7 +36,7 @@ export interface PsionDiscipline {
 export const PSION_DISCIPLINES: PsionDiscipline[] = [
   {
     id: 'biofeedback',
-    name: 'Biofeedback',
+    name: DISCIPLINE_NAMES['biofeedback'],
     type: 'active',
     actionType: 'free',
     dieCost: 'up to INT mod dice',
@@ -43,7 +44,7 @@ export const PSION_DISCIPLINES: PsionDiscipline[] = [
   },
   {
     id: 'bolstering-precognition',
-    name: 'Bolstering Precognition',
+    name: DISCIPLINE_NAMES['bolstering-precognition'],
     type: 'active',
     actionType: 'free',
     dieCost: '1 die',
@@ -51,7 +52,7 @@ export const PSION_DISCIPLINES: PsionDiscipline[] = [
   },
   {
     id: 'destructive-thoughts',
-    name: 'Destructive Thoughts',
+    name: DISCIPLINE_NAMES['destructive-thoughts'],
     type: 'active',
     actionType: 'free',
     dieCost: 'up to INT mod dice',
@@ -60,7 +61,7 @@ export const PSION_DISCIPLINES: PsionDiscipline[] = [
   {
     id: 'devilish-tongue',
     conditionalOutcome: 'success',
-    name: 'Devilish Tongue',
+    name: DISCIPLINE_NAMES['devilish-tongue'],
     type: 'active',
     actionType: 'free',
     dieCost: '1 die (expended only on success)',
@@ -69,7 +70,7 @@ export const PSION_DISCIPLINES: PsionDiscipline[] = [
   {
     id: 'expanded-awareness',
     conditionalOutcome: 'success',
-    name: 'Expanded Awareness',
+    name: DISCIPLINE_NAMES['expanded-awareness'],
     type: 'active',
     actionType: 'free',
     dieCost: '1 die (expended only on success)',
@@ -77,7 +78,7 @@ export const PSION_DISCIPLINES: PsionDiscipline[] = [
   },
   {
     id: 'id-insinuation',
-    name: 'Id Insinuation',
+    name: DISCIPLINE_NAMES['id-insinuation'],
     type: 'active',
     actionType: 'free',
     dieCost: '1 die',
@@ -86,7 +87,7 @@ export const PSION_DISCIPLINES: PsionDiscipline[] = [
   {
     id: 'inerrant-aim',
     conditionalOutcome: 'hit',
-    name: 'Inerrant Aim',
+    name: DISCIPLINE_NAMES['inerrant-aim'],
     type: 'active',
     actionType: 'free',
     dieCost: '1 die (expended only on hit)',
@@ -95,7 +96,7 @@ export const PSION_DISCIPLINES: PsionDiscipline[] = [
   {
     id: 'observant-mind',
     conditionalOutcome: 'success',
-    name: 'Observant Mind',
+    name: DISCIPLINE_NAMES['observant-mind'],
     type: 'active',
     actionType: 'free',
     dieCost: '1 die (expended only on success)',
@@ -103,7 +104,7 @@ export const PSION_DISCIPLINES: PsionDiscipline[] = [
   },
   {
     id: 'psionic-backlash',
-    name: 'Psionic Backlash',
+    name: DISCIPLINE_NAMES['psionic-backlash'],
     type: 'active',
     actionType: 'reaction',
     dieCost: '1 die',
@@ -111,7 +112,7 @@ export const PSION_DISCIPLINES: PsionDiscipline[] = [
   },
   {
     id: 'psionic-guards',
-    name: 'Psionic Guards',
+    name: DISCIPLINE_NAMES['psionic-guards'],
     type: 'active',
     actionType: 'free',
     dieCost: '1 die',
@@ -119,7 +120,7 @@ export const PSION_DISCIPLINES: PsionDiscipline[] = [
   },
   {
     id: 'sharpened-mind',
-    name: 'Sharpened Mind',
+    name: DISCIPLINE_NAMES['sharpened-mind'],
     type: 'active',
     actionType: 'free',
     dieCost: '1 die',

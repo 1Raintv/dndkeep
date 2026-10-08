@@ -1,3 +1,4 @@
+import PsionicDisciplineTurnPanel from './_shared/PsionicDisciplineTurnPanel';
 import {SpellDeclarationPanel} from './SpellDeclarationPanel';
 import {useSavedSpellDeclaration} from '../../lib/hooks/useSavedSpellDeclaration';
 import {useHitDiceHealing} from '../../lib/hooks/useHitDiceHealing';
@@ -16,7 +17,7 @@ import {automaticSpellGrantPatch} from '../../lib/automaticSpellGrants';
 import {setSpellSourcePrepared} from '../../rules/spellPreparation';
 import {addClassSpellSelection,removeClassSpellSelection} from '../../rules/classSpellSelection';
 import {createPsionicRestRequest} from '../../lib/psionicRestRequest';
-import {pendingPsionicPayments} from '../../lib/psionicPaymentRecovery';
+import {pendingPsionicPayments,PSIONIC_PAYMENT_CHANGED} from '../../lib/psionicPaymentRecovery';
 import {hasWarCaster,rollConcentrationCheck} from '../../rules/concentrationSave';
 import {StandaloneConcentrationPanel} from './StandaloneConcentrationPanel';
 import {useStandaloneConcentration} from '../../lib/hooks/useStandaloneConcentration';
@@ -25,7 +26,7 @@ import {longRestHitDice} from '../../rules/restRecovery';
 import PsionicPaymentRecoveryPanel from './_shared/PsionicPaymentRecoveryPanel';
 import {usePsionicEnhancements} from '../../lib/hooks/usePsionicEnhancements';
 import {useOptimisticCharacterRef} from '../../lib/hooks/useOptimisticCharacterRef';
-import {acceptHitPointReceipt,acceptConcentrationReceipt,isCombatHpCarryover,preservePsionicResources,acceptSavedCharacterResources,reconcileCharacterUpdate,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
+import {acceptSavedPsionicResources,acceptHitPointReceipt,acceptConcentrationReceipt,isCombatHpCarryover,preservePsionicResources,acceptSavedCharacterResources,reconcileCharacterUpdate,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
 import { attacksPerAction } from '../../rules/extraAttack';
 import PsionCastingNote from './_shared/PsionCastingNote';
 import { useState, useCallback, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
@@ -352,7 +353,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  const castingBlocked=frozen||savedDeclaration.blocked||concentrationRecording.blocked||Object.prototype.hasOwnProperty.call(saveQueue.getPending(),'concentration_spell');
  const hitDieChoice=useHitDieChoice();
  const psionicPayments=usePsionicEnhancements(character.id,saveQueue,receipt=>{
-  const {patch}='healing' in receipt?acceptSavedCharacterResources(characterRef,receipt.character,saveQueue.getPending()):'character' in receipt?acceptPsionicRestReceipt(characterRef,receipt,saveQueue.getPending()):'energyRevision' in receipt?acceptPsionicEnergyReceipt(characterRef,receipt,saveQueue.getPending()):acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
+  const {patch}='discipline' in receipt?acceptSavedPsionicResources(characterRef,receipt.character,saveQueue.getPending()):'healing' in receipt?acceptSavedCharacterResources(characterRef,receipt.character,saveQueue.getPending()):'character' in receipt?acceptPsionicRestReceipt(characterRef,receipt,saveQueue.getPending()):'energyRevision' in receipt?acceptPsionicEnergyReceipt(characterRef,receipt,saveQueue.getPending()):acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
   if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
  },frozen);
  const psionicPersistence={...psionicPayments,chooseHitDie:hitDieChoice.choose};
@@ -2031,7 +2032,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  return (
  <div style={{ marginBottom: 'var(--sp-3)' }}>
  <ActionEconomy
- trackPsionicTurns={character.class_name==='Psion'&&character.level===20}
+ trackPsionicTurns={(psionProgression(character)?.level??0)>=2}
  speedFeet={effectiveSpeed}
  characterId={character.id}
  actionUsedExternal={spellCastThisTurn}
@@ -2045,6 +2046,8 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  if (action === 'action' && !used) setCombatFilter('all');
  }}
  onNewTurn={() => {
+ // Refresh the shared discipline budget only after ActionEconomy confirms advancement.
+ window.dispatchEvent(new Event(PSIONIC_PAYMENT_CHANGED));
  setSpellCastThisTurn(false);
  setBonusActionSpellCast(false);
  setReactionUsedThisTurn(false);
@@ -2995,6 +2998,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  )}
  {(contentFilters.size === 0 || contentFilters.has('ability')) && (<>
  <PsionicPaymentRecoveryPanel characterId={character.id} persistence={psionicPersistence}/>
+ {(character.class_name==='Psion'||character.secondary_class==='Psion')&&<PsionicDisciplineTurnPanel characterId={character.id} persistence={psionicPersistence} frozen={frozen}/>}
  <ClassAbilitiesSection
  persistence={psionicPersistence}
  character={character}

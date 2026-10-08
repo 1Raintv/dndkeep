@@ -53,3 +53,9 @@ it('retains healing snapshots and lets mutation guards see active requests',()=>
  finally{setPsionicPaymentActive('hero',request.requestId,false);}
  expect(pendingPsionicPayments('hero')).toEqual([payment]);
 });
+
+it('accepts semantically identical requests with reordered keys and omitted optional fields',()=>{
+ rememberPsionicPayment('hero',payment);
+ rememberPsionicPayment('hero',{request:{sourceFeature:'Biofeedback',rolls:[1,3,6],requestId:'saved',recoveryNote:undefined},kind:'surge'});
+ expect(pendingPsionicPayments('hero')).toEqual([payment]);
+});

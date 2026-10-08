@@ -14,6 +14,16 @@ export default function PsionicPaymentRecoveryPanel({characterId,persistence,kin
  useEffect(()=>{const update=()=>setPending(readPending(characterId,kindFilter));update();setMessage('');setBusy(false);window.addEventListener('storage',update);window.addEventListener(PSIONIC_PAYMENT_CHANGED,update);return()=>{window.removeEventListener('storage',update);window.removeEventListener(PSIONIC_PAYMENT_CHANGED,update);};},[characterId,kindFilter]);
  async function recover(payment:PsionPayment){
   if(busy)return;setBusy(true);
+  if(payment.kind==='discipline-begin'||payment.kind==='discipline-finish'){
+   try{
+    const result=payment.kind==='discipline-begin'
+     ?await persistence.beginDiscipline?.(payment.request):await persistence.finishDiscipline?.(payment.request);
+    if(!result)throw new Error('Discipline recovery is unavailable on this sheet.');
+    if(mounted.current&&current.current===characterId)setMessage(`${payment.request.sourceFeature}: attempt confirmed. Original rolls: ${result.rolls.join(', ')||'none'}. ${result.outcome===null?'The bonus outcome is still pending. Resolve it in discipline turn tracking.':result.outcome.spent?'The base Energy Dice were spent once.':'The Energy Die was kept; the discipline remains used for its turn.'} ${payment.request.recoveryNote??''} This confirmation does not apply the feature effect. Do not roll or pay again.`);
+   }catch(error){if(mounted.current&&current.current===characterId)setMessage(error instanceof Error?error.message:'Discipline is still unconfirmed.');}
+   finally{if(mounted.current&&current.current===characterId)setBusy(false);}
+   return;
+  }
   if(payment.kind==='rest'){
    try{
     if(!persistence.rest)throw new Error('Rest recovery is unavailable on this sheet.');
@@ -49,8 +59,8 @@ export default function PsionicPaymentRecoveryPanel({characterId,persistence,kin
    <div>{payment.request.sourceFeature} · {payment.kind==='rest'?'saved recovery':payment.kind==='enkindled'?`base ${payment.request.baseRolls.join(', ')}; proposed extra ${payment.request.extraRolls.join(', ')}`:`original rolls ${payment.request.rolls.join(', ')}`}</div>
    <p>{payment.kind==='rest'?'Rest was not confirmed. Its recovery and item rolls are saved.':'Dice cost was not confirmed. Your rolls are saved.'} {payment.request.recoveryNote}</p>
    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-    <button className="btn-secondary btn-sm" disabled={busy} onClick={()=>void recover(payment)}>{payment.kind==='rest'?'Confirm rest':'Confirm dice cost'}</button>
-    <button className="btn-ghost btn-sm" disabled={busy} onClick={()=>void dismiss(payment)}>Dismiss recovery</button>
+    <button className="btn-secondary btn-sm" disabled={busy} onClick={()=>void recover(payment)}>{payment.kind==='rest'?'Confirm rest':payment.kind.startsWith('discipline-')?'Confirm saved attempt':'Confirm dice cost'}</button>
+    {!payment.kind.startsWith('discipline-')&&<button className="btn-ghost btn-sm" disabled={busy} onClick={()=>void dismiss(payment)}>Dismiss recovery</button>}
    </div>
   </div>)}
   {message&&<p style={{fontSize:12}}>{message}</p>}

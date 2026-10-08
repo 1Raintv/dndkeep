@@ -36,3 +36,9 @@ it('reveals a timed-out saved payment and ignores its late success until explici
  finish({data:result,error:null});await Promise.resolve();expect(pendingPsionicPayments('hero')).toEqual([payment]);
  transport.rpc.mockResolvedValue({data:result,error:null});await settleSavedPsionicPayment('hero',payment,()=>settlePsionicEnergy('hero',payment.request));expect(pendingPsionicPayments('hero')).toEqual([]);
 });
+
+it('does not replace an uncertain request with changed rolls under the same identity',async()=>{
+ rememberPsionicPayment('hero',payment);const send=vi.fn();
+ await expect(settleSavedPsionicPayment('hero',{...payment,request:{...payment.request,rolls:[6]}},send)).rejects.toMatchObject({definitelyNotPaid:false});
+ expect(send).not.toHaveBeenCalled();expect(pendingPsionicPayments('hero')).toEqual([payment]);
+});

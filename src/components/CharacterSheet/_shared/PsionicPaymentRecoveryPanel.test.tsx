@@ -1,3 +1,4 @@
+import type {DisciplineReceipt} from '../../../lib/api/psionicDisciplines';
 // @vitest-environment happy-dom
 import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
@@ -36,4 +37,13 @@ it('confirms Restoration as an already-applied recovery without telling the play
  vi.mocked(persistence.energy).mockImplementation(async()=>{forgetPsionicPayment('hero','restore');return {requestId:'restore',remaining:6,restorationResource:0,restorationUsed:1,energyRevision:1,rolls:[],replayed:true};});
  render(ui(persistence));fireEvent.click(screen.getByRole('button',{name:'Confirm dice cost'}));
  await screen.findByText(/Psionic Restoration confirmed/);expect(screen.getByText(/do not restore them again/)).toBeTruthy();expect(persistence.energy).toHaveBeenCalledWith(request);
+});
+
+it('confirms a saved discipline decision without offering to discard or reverse it',async()=>{
+ localStorage.clear();const request={requestId:'attempt',sourceFeature:'Inerrant Aim',discipline:'inerrant-aim' as const,turn:{soloTurn:0},rolls:[3],count:1,changedOutcome:false};
+ rememberPsionicPayment('hero',{kind:'discipline-finish',request});
+ const persistence=service();persistence.finishDiscipline=vi.fn(async()=>{forgetPsionicPayment('hero','attempt');return {...request,outcome:{spent:false,energy:null}} as unknown as DisciplineReceipt;});
+ render(ui(persistence));expect(screen.queryByRole('button',{name:'Dismiss recovery'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Confirm saved attempt'}));await screen.findByText(/Energy Die was kept/);
+ expect(persistence.finishDiscipline).toHaveBeenCalledWith(request);expect(persistence.energy).not.toHaveBeenCalled();
 });

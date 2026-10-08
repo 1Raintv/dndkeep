@@ -1,3 +1,5 @@
+import type {DisciplineRequest,DisciplineOutcomeRequest} from '../psionicDisciplineRequest';
+import type {DisciplineReceipt,DisciplineTurn} from './psionicDisciplines';
 import {shortRestHealing} from '../../rules/restRecovery';
 import {validHitDiceHealingRequest,type HitDiceHealingRequest} from '../hitDiceHealingRequest';
 import {isHitDiceAllocation,type HitDie} from '../../rules/hitDice';
@@ -14,6 +16,9 @@ export interface SurgeReceipt {hitDiceSpentByType?:Record<string,number>|null;re
 /** Injected into roll controls so a paid server result can refresh the sheet
  * without being enqueued as another optimistic absolute-value write. */
 export interface PsionicEnhancementPersistence {
+ getDisciplineTurn?:()=>Promise<DisciplineTurn>;
+ beginDiscipline?:(request:DisciplineRequest)=>Promise<DisciplineReceipt>;
+ finishDiscipline?:(request:DisciplineOutcomeRequest)=>Promise<DisciplineReceipt>;
  heal?:(request:HitDiceHealingRequest)=>Promise<HitDiceHealingReceipt>;
  chooseHitDie?:(character:Character,message:string)=>Promise<HitDie|null>;
  rest?:(request:PsionicRestRequest)=>Promise<PsionicRestReceipt>;
@@ -29,7 +34,7 @@ function failure(error:unknown,definitelyNotPaid=false):Error {
  return new PsionicRequestError(error instanceof Error?error.message:error&&typeof error==='object'&&'message' in error?String(error.message):'Psion request could not be confirmed.',definitelyNotPaid);
 }
 const REQUEST_DEADLINE_MS=15000;
-async function rpc(name:string,args:Record<string,unknown>,idempotent=false):Promise<unknown>{
+export async function psionicRpc(name:string,args:Record<string,unknown>,idempotent=false):Promise<unknown>{
  for(let attempt=0;;attempt++){
   try{
    // v2.812 — a silent connection is an unknown payment, not a cancellation.
@@ -53,7 +58,7 @@ async function rpc(name:string,args:Record<string,unknown>,idempotent=false):Pro
  }
 }
 export async function getEnkindledTurn(characterId:string):Promise<EnkindledTurn>{
- return await rpc('get_enkindled_turn',{p_character_id:characterId}) as EnkindledTurn;
+ return await psionicRpc('get_enkindled_turn',{p_character_id:characterId}) as EnkindledTurn;
 }
 function receipt(value:unknown,requestId:string):asserts value is Record<string,unknown>{
  const r=value as Record<string,unknown>|null;
@@ -62,7 +67,7 @@ function receipt(value:unknown,requestId:string):asserts value is Record<string,
 function validRolls(value:unknown):value is number[]{return Array.isArray(value)&&value.length>0&&value.length<=14&&value.every(n=>Number.isInteger(n)&&n>=1&&n<=12);}
 export async function spendEnkindledLifeForce(characterId:string,input:EnkindledRequest):Promise<EnkindledReceipt>{
  const request=structuredClone(input);
- const data=await rpc('spend_enkindled_life_force',{
+ const data=await psionicRpc('spend_enkindled_life_force',{
   p_character_id:characterId,p_request_id:request.requestId,p_turn:request.turn,p_count:request.count,
   p_base_rolls:request.baseRolls,p_extra_rolls:request.extraRolls,p_source_feature:request.sourceFeature,
  },true);
@@ -71,13 +76,13 @@ export async function spendEnkindledLifeForce(characterId:string,input:Enkindled
  return data as unknown as EnkindledReceipt;
 }
 export async function advancePsionicSoloTurn(characterId:string,requestId:string,expectedTurn:number):Promise<number>{
- return await rpc('advance_psionic_solo_turn',{p_character_id:characterId,p_request_id:requestId,p_expected_turn:expectedTurn},true) as number;
+ return await psionicRpc('advance_psionic_solo_turn',{p_character_id:characterId,p_request_id:requestId,p_expected_turn:expectedTurn},true) as number;
 }
 
 export async function spendPsionicSurge(characterId:string,input:SurgeRequest):Promise<SurgeReceipt>{
  const request=structuredClone(input);
  if(request.hitDie!==undefined&&![6,8,10,12].includes(request.hitDie))throw new PsionicRequestError('Choose a valid Hit Die size.',true);
- const data=await rpc(request.hitDie===undefined?'spend_psionic_surge':'spend_psionic_surge_from_pool',{...(request.hitDie===undefined?{}:{p_hit_die:request.hitDie}),p_character_id:characterId,p_request_id:request.requestId,
+ const data=await psionicRpc(request.hitDie===undefined?'spend_psionic_surge':'spend_psionic_surge_from_pool',{...(request.hitDie===undefined?{}:{p_hit_die:request.hitDie}),p_character_id:characterId,p_request_id:request.requestId,
   p_rolls:request.rolls,p_source_feature:request.sourceFeature},true);
  receipt(data,request.requestId);
  if(request.hitDie!==undefined&&data.hitDiceSpentByType!==null&&!isHitDiceAllocation(data.hitDiceSpentByType,Number(data.hitDiceSpent)))throw new PsionicRequestError('The saved Hit Die pool could not be verified. Keep the saved request.',false);
@@ -90,7 +95,7 @@ export interface EnergyReceipt {mistyStepUsed?:number|null;connectionUsed?:numbe
 /** v2.784 — exact request replay charges once; recovery returns the current pool. */
 export async function settlePsionicEnergy(characterId:string,input:EnergyRequest):Promise<EnergyReceipt>{
  const request=structuredClone(input);
- const data=await rpc('settle_psionic_energy',{p_character_id:characterId,p_request_id:request.requestId,
+ const data=await psionicRpc('settle_psionic_energy',{p_character_id:characterId,p_request_id:request.requestId,
   p_operation:request.operation,p_count:request.count,p_rolls:request.rolls,p_source_feature:request.sourceFeature},true);
  const r=data as Partial<EnergyReceipt>|null;
  const counter=(n:unknown)=>n===null||(typeof n==='number'&&Number.isSafeInteger(n)&&n>=0);
@@ -109,7 +114,7 @@ export interface PsionicRestReceipt {requestId:string;character:Character;replay
 export async function completePsionicRest(characterId:string,input:PsionicRestRequest):Promise<PsionicRestReceipt>{
  const request=structuredClone(input);
  if(!validPsionicRestRequest(request))throw new PsionicRequestError('Invalid saved rest. No request was sent.',true);
- const data=await rpc('complete_psionic_rest',{p_character_id:characterId,p_request_id:request.requestId,p_rest_kind:request.restKind,p_expected:request.expected,p_updates:request.updates},true);
+ const data=await psionicRpc('complete_psionic_rest',{p_character_id:characterId,p_request_id:request.requestId,p_rest_kind:request.restKind,p_expected:request.expected,p_updates:request.updates},true);
  const result=data as Partial<PsionicRestReceipt>|null,c=result?.character;
  if(!result||result.requestId!==request.requestId||typeof result.replayed!=='boolean'||!c||c.id!==characterId
   ||!Number.isSafeInteger(c.psionic_energy_revision)||Number(c.psionic_energy_revision)<0
@@ -130,7 +135,7 @@ export interface HitDiceHealingReceipt {
 export async function spendRestHitDice(characterId:string,input:HitDiceHealingRequest):Promise<HitDiceHealingReceipt>{
  const request=structuredClone(input);
  if(!validHitDiceHealingRequest(request))throw new PsionicRequestError('Invalid saved healing. No request was sent.',true);
- const data=await rpc('spend_rest_hit_dice',{p_character_id:characterId,p_request_id:request.requestId,
+ const data=await psionicRpc('spend_rest_hit_dice',{p_character_id:characterId,p_request_id:request.requestId,
   p_hit_die:request.hitDie,p_rolls:request.rolls,p_constitution_modifier:request.constitutionModifier,p_expected:request.expected},true);
  const r=data as Partial<HitDiceHealingReceipt>|null,c=r?.character;
  const healing=shortRestHealing(request.rolls,request.constitutionModifier)!;

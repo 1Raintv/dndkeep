@@ -37,7 +37,7 @@ test.describe('Psion saved payment recovery', () => {
     test.setTimeout(90_000);await page.addInitScript(()=>{Math.random=()=>0.01;});
     sql(`update characters set intelligence=18,temp_hp=0,hit_dice_spent=0,class_resources='{"psion-disciplines":["Biofeedback"],"psionic-energy-dice":12}' where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
-    const endpoint=kind==='energy'?'**/rest/v1/rpc/settle_psionic_energy':kind==='enkindled'?'**/rest/v1/rpc/spend_enkindled_life_force':'**/rest/v1/rpc/spend_psionic_surge_from_pool';
+    const endpoint=kind==='energy'?'**/rest/v1/rpc/begin_psionic_discipline':kind==='enkindled'?'**/rest/v1/rpc/spend_enkindled_life_force':'**/rest/v1/rpc/spend_psionic_surge_from_pool';
     const spent=kind==='energy'?0:kind==='enkindled'?2:3;let calls=0;await page.route(endpoint,async route=>{calls++;if(kind==='surge')expect(route.request().postDataJSON().p_hit_die).toBe(6);const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort();});
     await page.getByRole('button',{name:'Gain temp HP',exact:true}).locator('visible=true').first().click();
     const base=page.getByRole('dialog',{name:'Biofeedback',exact:true});await base.getByRole('textbox').fill('2');await base.getByRole('button',{name:'Spend and roll'}).click();
@@ -49,7 +49,7 @@ test.describe('Psion saved payment recovery', () => {
     await page.unroute(endpoint);await page.reload();
     const recovery=page.getByRole('status',{name:'Psion roll recovery'});await expect(recovery).toContainText(kind==='enkindled'?'proposed extra 1, 1':kind==='energy'?'original rolls 1, 1':'original rolls 1, 1, 1, 1');await expect(recovery).toContainText('Intelligence 4');
     await recovery.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('saved-psion-payment.png')});
-    await recovery.getByRole('button',{name:'Confirm dice cost'}).click();await expect(recovery).toContainText('dice cost confirmed');
+    await recovery.getByRole('button',{name:kind==='energy'?'Confirm saved attempt':'Confirm dice cost'}).click();await expect(recovery).toContainText(kind==='energy'?'attempt confirmed':'dice cost confirmed');
     expect(state()).toEqual({spent,pool:10,temp:0});
     expect(sql(`select count(*) from psionic_feature_uses where character_id='${charId}'`)).toBe(kind==='energy'?'0':'1');
     expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Enkindled Life Force'`)).toBe(kind==='energy'?'0':'1');

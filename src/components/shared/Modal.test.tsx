@@ -54,3 +54,15 @@ it('a delayed click on an old dialog cannot answer its replacement',async()=>{
  expect(second).not.toHaveBeenCalled();expect(screen.getByRole('dialog',{name:'Replacement'})).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'OK'}));await waitFor(()=>expect(second).toHaveBeenCalledWith(true));
 });
+
+it.each(['escape','replace','unmount'])('a decision dismissed by %s remains undecided',async mode=>{
+ const settled=vi.fn();const view=render(<ModalProvider><Expose/></ModalProvider>);
+ act(()=>{void modal.decide({title:'Outcome',confirmLabel:'Spend',cancelLabel:'Keep'}).then(settled);});
+ if(mode==='escape')fireEvent.keyDown(window,{key:'Escape'});else if(mode==='unmount')view.unmount();else act(()=>{void modal.confirm({title:'Other'});});
+ await waitFor(()=>expect(settled).toHaveBeenCalledWith(null));expect(settled).toHaveBeenCalledTimes(1);
+});
+it.each([['Spend',true],['Keep',false]] as const)('a decision explicitly answered %s returns %s',async(label,result)=>{
+ const settled=vi.fn();render(<ModalProvider><Expose/></ModalProvider>);
+ act(()=>{void modal.decide({title:'Outcome',confirmLabel:'Spend',cancelLabel:'Keep'}).then(settled);});
+ fireEvent.click(screen.getByRole('button',{name:label}));await waitFor(()=>expect(settled).toHaveBeenCalledWith(result));
+});

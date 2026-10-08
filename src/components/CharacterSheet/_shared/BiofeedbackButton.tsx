@@ -1,5 +1,5 @@
 import {psionProgression} from '../../../rules/psionProgression';
-import {payPsionicEnergy} from './payPsionicEnergy';
+import {prepareDiscipline,beginDiscipline} from './disciplinePayment';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
 import {acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
 import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharacterRef';
@@ -35,11 +35,13 @@ export default function BiofeedbackButton({persistence,character,onUpdate}:{pers
   try{
    const answer=await modal.prompt({title:'Biofeedback',message:`Use immediately after casting a Psion Necromancy or Transmutation spell. Choose 1–${before.maxDice} Energy Dice to expend. Add your Intelligence modifier once to the total for temporary HP; keep higher existing temporary HP. Only one Discipline each turn, once that turn, unless an option says otherwise. This does not cast or spend the spell for you.`,defaultValue:'1',confirmLabel:'Spend and roll'});
    if(answer===null||!mounted.current||latest.current.id!==id)return;
-   const count=Number(answer),current=latest.current,now=capacity(current);
+   const options={active:()=>mounted.current&&latest.current.id===id,confirm:modal.confirm,warn:(message:string)=>showToast(message,'warn')};
+   const prepared=await prepareDiscipline(persistence,latest,options);if(!prepared)return;
+   const count=Number(answer),current=prepared.character,now=capacity(current);
    if(!Number.isInteger(count)||count<1||!now||count>now.maxDice){showToast('Check your dice count, Intelligence and available Psionic Energy Dice.','warn');return;}
    const intelligence=computeStats(current).modifiers.intelligence;
    const rolls=Array.from({length:count},()=>rollDie(now.sides));
-   if(!await payPsionicEnergy(persistence,latest,{requestId:crypto.randomUUID(),operation:'spend',count,rolls,sourceFeature:'Biofeedback',recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for temporary HP (minimum 1); keep higher existing temporary HP.`.slice(0,1000)},{active:()=>mounted.current&&latest.current.id===id,confirm:modal.confirm,warn:message=>showToast(message,'warn')}))return;
+   if(!await beginDiscipline(persistence!,latest,prepared,'biofeedback',rolls,count,{...options,recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for temporary HP (minimum 1); keep higher existing temporary HP.`}))return;
    const surged=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:rolls[0],rolls,sides:now.sides,feature:'Biofeedback',recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for temporary HP (minimum 1); keep higher existing temporary HP.`,campaignId:current.campaign_id,
     current:()=>latest.current,active:()=>mounted.current,eligible:c=>!!capacity(c),
     prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});

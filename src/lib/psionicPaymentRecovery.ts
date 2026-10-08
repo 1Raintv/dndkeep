@@ -1,7 +1,8 @@
+import {validDisciplineRequest,validDisciplineOutcomeRequest,type DisciplineRequest,type DisciplineOutcomeRequest} from './psionicDisciplineRequest';
 import {validHitDiceHealingRequest,type HitDiceHealingRequest} from './hitDiceHealingRequest';
 import {validPsionicRestRequest,type PsionicRestRequest} from './psionicRestRequest';
 import type {EnkindledRequest,SurgeRequest,EnergyRequest} from './api/psionicTurns';
-export type PendingPsionicPayment={kind:'healing';request:HitDiceHealingRequest}|{kind:'rest';request:PsionicRestRequest}|{kind:'enkindled';request:EnkindledRequest}|{kind:'surge';request:SurgeRequest}|{kind:'energy';request:EnergyRequest};
+export type PendingPsionicPayment={kind:'discipline-begin';request:DisciplineRequest}|{kind:'discipline-finish';request:DisciplineOutcomeRequest}|{kind:'healing';request:HitDiceHealingRequest}|{kind:'rest';request:PsionicRestRequest}|{kind:'enkindled';request:EnkindledRequest}|{kind:'surge';request:SurgeRequest}|{kind:'energy';request:EnergyRequest};
 export const PSIONIC_PAYMENT_CHANGED='dndkeep:psionic-payment-changed';
 const activePayments=new Set<string>();
 const prefix=(characterId:string)=>`dndkeep:psionic-payment:${characterId}:`;
@@ -11,6 +12,8 @@ function valid(value:unknown):value is PendingPsionicPayment{
  const v=value as Record<string,unknown>,r=v.request as Record<string,unknown>|undefined;
  if(!r||typeof r!=='object'||typeof r.requestId!=='string'||!r.requestId||typeof r.sourceFeature!=='string'||r.sourceFeature.length>120)return false;
  if(r.recoveryNote!==undefined&&(typeof r.recoveryNote!=='string'||r.recoveryNote.length>1000))return false;
+ if(v.kind==='discipline-begin')return validDisciplineRequest(r);
+ if(v.kind==='discipline-finish')return validDisciplineOutcomeRequest(r);
  if(v.kind==='healing')return validHitDiceHealingRequest(r);
  if(v.kind==='rest')return validPsionicRestRequest(r);
  if(v.kind==='surge')return dice(r.rolls,14)&&(r.hitDie===undefined||[6,8,10,12].includes(r.hitDie as number));
@@ -33,9 +36,18 @@ export function setPsionicPaymentActive(characterId:string,requestId:string,acti
 }
 /** Save before sending payment. A closed tab must not lose the request ID or
  * roll values needed to safely confirm an ambiguous server response. */
+export class SavedPsionicPaymentConflict extends Error {}
+function stable(value:unknown):string {
+ if(Array.isArray(value))return '['+value.map(stable).join(',')+']';
+ if(value&&typeof value==='object')return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+stable((value as Record<string,unknown>)[k])).join(',')+'}';
+ return JSON.stringify(value);
+}
 export function rememberPsionicPayment(characterId:string,payment:PendingPsionicPayment){
  if(!valid(payment))throw new Error('Invalid saved Psion payment');
- localStorage.setItem(prefix(characterId)+payment.request.requestId,JSON.stringify(payment));
+ const encoded=JSON.stringify(payment);
+ const previous=localStorage.getItem(prefix(characterId)+payment.request.requestId);
+ if(previous!==null&&stable(JSON.parse(previous))!==stable(JSON.parse(encoded)))throw new SavedPsionicPaymentConflict('Confirm the original saved request before changing its rolls or outcome.');
+ localStorage.setItem(prefix(characterId)+payment.request.requestId,encoded);
  window.dispatchEvent(new Event(PSIONIC_PAYMENT_CHANGED));
 }
 export function forgetPsionicPayment(characterId:string,requestId:string){

@@ -1,5 +1,101 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.814 candidate — connect all discipline activation controls
+
+All eleven discipline controls now capture the shared turn before rolling and
+record the original attempt through the ledger. Conditional bonuses record a
+use even when their Energy Die is kept. Guards spends one die without rolling
+or offering Surge/Enkindled. The previously missing free-action discipline
+buttons now appear. Base costs and turn claims commit together; enhancements
+retain their separate Hit Dice costs. Saved recovery notes retain target/INT
+context and the final conditional bonus.
+
+Secondary Psion controls now send the original class order to the checked
+snapshot, rather than the display-only projection. Effective Intelligence
+continues to honor attuned item overrides. Solo End Turn tracks every Psion
+from level 2, not only the level-20 capstone. A new three-way modal decision
+keeps closing/replacing an outcome dialog distinct from explicitly keeping the
+die: dismissal leaves the original outcome pending for later recovery.
+
+Validation: all eleven controls plus secondary Psion checked on desktop and
+phone; six additional two-tab, start-of-turn exception and dismissed-outcome
+cases passed. Twenty related desktop scenarios passed across conditional dice,
+selected Hit Dice, Biofeedback, Destructive Thoughts, Enkindled, Headband cache
+and interrupted payment/rest recovery. Earlier tests now advance a real solo
+turn between repeated discipline uses. Full gate: 2,286 units, TS 203/203,
+hooks/RAW/coordinates/anchors/build/SW, 254.3 KB entry. Screenshots inspected.
+
+CI follow-up: four discipline component suites now explicitly mock the database
+client imported through the item-bonus helper. All 46 focused cases pass with
+intentionally invalid database credentials; the full gate passes unchanged.
+This prevents local environment files from masking missing test isolation.
+
+Remaining: Guards condition removal/immunities/INT-save Advantage and Sharpened
+Mind's lasting effects are still manual; activation messages say so. Spell
+trigger/visibility and exact start-of-turn timing are tabletop declarations.
+The both-specials-plus-one-ordinary interpretation remains documented below.
+External combat turn refresh, broader effect settlement and existing sheet
+clipping remain queued. This completes the normal controls' turn/cost wiring,
+not a claim that every Psion effect is fully automated. Depends on PR155/156;
+PR156 gates and preview passed, while production last remained v2.809.
+
+
+### v2.813 candidate — recover discipline attempts and outcomes
+
+The sheet now reads the shared discipline record and lists unresolved conditional
+bonuses, including earlier turns. It can confirm whether a saved bonus changed
+the outcome without rerolling or reapplying its effect. An uncertain begin/finish
+request stays in browser recovery; its original decision cannot be overwritten
+or dismissed. Confirmed solo End Turn refreshes the record immediately. Reads
+also refresh on focus and explicit refresh; external combat turn updates are not
+yet subscribed directly.
+
+The resource hook freezes every request before queued edits flush. Recovery
+rejects payload changes under a saved identity, while allowing semantically
+identical key order/omitted optional fields. Discipline receipts acknowledge only
+current, revision-ordered Psion resource fields, preserving unrelated edits.
+
+Validation: full gate passed 2,272 units, TS 203/203, hooks/RAW/coordinates/anchors,
+build/SW and 254 KB entry. Real desktop/phone tests hold successful outcome replies,
+reload, confirm the original decision with exactly one charge, and advance the
+solo turn. Screenshots inspected. The official overflow algorithm found no page
+sideways scroll or clipping in the changed panel. Whole-sheet reports retain
+existing compact/sidebar/Misty Step clipping findings for later polish.
+
+Required next: connect all eleven activation controls to begin/finish, capture
+turn context before rolling, and verify competing tabs plus exceptions. Current
+activation buttons still use the old Energy Dice path, so complete shared
+one-discipline-per-turn enforcement is NOT yet claimed. Browser tests for this
+batch create the pending attempt through the real backend, then drive recovery.
+PR155 hosted gates passed but preview was rate-limited. Production website was
+last confirmed at v2.809 despite the applied discipline database migration.
+
+
+### Psion discipline client candidate — verified request/response contract
+
+Added typed begin, finish and turn-state calls for the new discipline ledger.
+Requests freeze the original rolls, turn, ability/inventory snapshot and outcome
+before sending. Responses must match that identity, validate payment counters,
+and include current character resources. Historical payment counters remain
+separate so a replay cannot overwrite newer resources. Current/pending lists
+must agree; malformed or timed-out responses stay uncertain instead of inviting
+a new roll. All calls share the existing bounded retry/deadline behavior.
+
+Discipline names and conditional-cost classification now have a shared pure
+registry used by the data table and request validation. Full gate: 2,259 units,
+TS 203/203, hooks/RAW/coordinates/anchors/build/SW and 254 KB entry. The 53 added
+cases cover captured requests, paid/free outcomes, contradictory receipts,
+timeouts and cross-list consistency. These calls are not yet wired to buttons
+or durable browser recovery; that is the next required integration step.
+
+Release checkpoint: PR154 merged at 17849e03 after both hosted gates and its
+Vercel preview succeeded. This includes the preceding map HP preview and Psion
+request deadlines. Production migration run 37743138039 confirmed application of
+20261008071136_psionic_discipline_turns.sql. The production website build was
+rejected by Vercel's build-rate limit; a successful preview did not lift that
+production restriction.
+
+
 ### Psion discipline ledger candidate — backend groundwork
 
 A private ledger now records a discipline attempt and its original rolls once

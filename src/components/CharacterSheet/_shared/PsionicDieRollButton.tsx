@@ -1,3 +1,5 @@
+import {prepareDiscipline,beginDiscipline} from './disciplinePayment';
+import type {DisciplineId} from '../../../lib/psionicDisciplineRequest';
 import {psionProgression} from '../../../rules/psionProgression';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
 import {payPsionicEnergy} from './payPsionicEnergy';
@@ -29,9 +31,19 @@ export default function PsionicDieRollButton({persistence,character,feature,labe
   const c=latest.current,pool=psionicPoolRemaining(psionProgression(c)?.level??0,c.class_resources?.['psionic-energy-dice']);
   if(busy.current||!eligible(c)||!pool)return;busy.current=true;setPending(true);
   try{
-   const sides=psionicDieSides(psionProgression(c)?.level??0),original=rollDie(sides);
+   const discipline=findDiscipline(feature),options={active:()=>mounted.current&&latest.current.id===c.id,confirm:modal.confirm,warn:(message:string)=>showToast(message,'warn')};
+   const prepared=discipline?await prepareDiscipline(persistence,latest,options):null;
+   if(discipline&&!prepared)return;
+   const source=prepared?.character??c,sides=psionicDieSides(psionProgression(source)?.level??0);
+   // Guards spends a die without rolling it: no Surge or Enkindled offer.
+   if(discipline?.id==='psionic-guards'){
+    if(await beginDiscipline(persistence!,latest,prepared!,discipline.id,[],1,options)&&options.active())showToast('Psionic Guards recorded. Apply its condition protections and saving-throw Advantage until your next turn.','success');
+    return;
+   }
+   const original=rollDie(sides);
    const request={requestId:crypto.randomUUID(),operation:'spend' as const,count:1,rolls:[original],sourceFeature:feature,recoveryNote:'The base Energy Die was spent. Apply this saved roll manually; do not spend it again.'};
-   if(!await payPsionicEnergy(persistence,latest,request,{active:()=>mounted.current&&latest.current.id===c.id,confirm:modal.confirm,warn:message=>showToast(message,'warn')}))return;
+   if(discipline){if(!await beginDiscipline(persistence!,latest,prepared!,discipline.id as DisciplineId,[original],1,options))return;}
+   else if(!await payPsionicEnergy(persistence,latest,request,options))return;
    const enhanced=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:original,sides,feature,recoveryNote:'The base Energy Die was already spent. Apply the rolled feature manually without spending it again.',campaignId:c.campaign_id,current:()=>latest.current,active:()=>mounted.current,eligible,prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
    if(enhanced?.unconfirmed)return;
    const total=enhanced?.roll??original,originals=enhanced?.originalRolls??[original];
