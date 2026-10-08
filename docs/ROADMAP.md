@@ -1,5 +1,40 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.856 — Saved combat spells and usable phone casting controls
+
+Single-target spell attack/save buttons now use the existing saved declaration,
+payment and Counterspell settlement flow. A private payment record keeps the
+original target identity, casting source, damage expression and slot. Delivery
+queues one attack only after successful settlement; retries return its receipt,
+even if the DM later deletes the attack. Changed/hidden targets and ended encounters
+reject new delivery. Canceled or countered spells cannot deliver damage.
+
+Mind Spike's missing combat button traced to damage stored only in its slot table.
+The base lookup now reads that table, and explicit upcast entries also govern
+combat/manual dice and previews. Phone testing also reproduced the floating dice
+tools blocking the sheet's final Cast button; CharacterPage now has measured
+bottom scroll clearance. Target-picker failures are visible inside the dialog.
+
+Four desktop/mobile browser flows pass for Psion Mind Spike and Wizard Witch Bolt:
+last-slot payment, reload, a lost delivery response, one queued attack and no
+second payment. Overflow probes pass; Mind Spike screenshots inspected. All 47 SQL
+regression cases pass. Full gate passes: 2,759 units, TypeScript 199/199,
+entry 255.1 KB. Private-function SQL lint is clean.
+Migration: `20261008175130_declared_spell_combat_delivery.sql` (local only so far).
+
+Remaining: durable area/multi-beam/healing and manual/upcast-modal paths, free
+leveled-cast receipts, a current-turn slot ledger and broader Sharpened Mind use.
+Queued attacks recover after reload; partially started concentration/buff/summon
+choices still require the existing explicit review. A changed target/ended
+encounter requires DM review; no automatic refund or retargeting is inferred.
+Spell values are captured from the selected client data, not independently
+recomputed by the database. Source/catalog accuracy remains a separate audit.
+
+Follow-up discovered: the older Destructive Thoughts SQL queue writes `character`
+as a combat-event target type, while that table expects `player`; extend its
+character-target regression coverage and normalize that event type. Witch Bolt's
+static follow-up-damage/range text also needs the existing 2024 data audit.
+
 ### v2.855 — Confirm attack declarations before charging
 
 Single-target attack declarations no longer call the cost callback when creation
@@ -15,7 +50,8 @@ component-lifetime only. Spell payment remains a separate client update here;
 durable payment/delivery and the current-turn slot ledger remain next priorities.
 Full release gate passes: 2,751 unit tests, TypeScript 199/199 (ratcheted from 200),
 entry 255.1 KB. Both recovery screenshots inspected; phone retry text stays in bounds.
-Publishing pending. No migration.
+Merged PR #199 (`4dd4aa0`), both CI gates green. Vercel rate-limited;
+v2.853.0 remains the last verified live frontend. No migration.
 
 ### v2.854 — Readable character-to-map navigation
 

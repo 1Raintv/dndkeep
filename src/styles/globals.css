@@ -954,6 +954,9 @@ body.in-combat::before {
    Panels sit above their buttons and scroll within the available viewport. */
 body { --floating-tools-bottom: var(--sp-10); }
 body.in-combat { --floating-tools-bottom: calc(var(--combat-strip-inset, 88px) + 12px); }
+/* v2.856: the sheet's final controls must scroll above fixed combat tools.
+   CharacterPage lives in app-main, so app-content padding never protected it. */
+.character-page { padding-bottom: calc(var(--floating-tools-bottom) + 72px); }
 .quickroll-fab, .rolllog-fab {
   bottom: var(--floating-tools-bottom) !important;
   /* Layout changes must not animate these controls through the combat strip. */

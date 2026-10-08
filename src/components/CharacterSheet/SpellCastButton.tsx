@@ -21,7 +21,7 @@ import { useDiceRoll } from '../../context/DiceRollContext';
 import { CONDITION_MAP } from '../../data/conditions';
 import { rollDie, computeStats } from '../../lib/gameUtils';
 import { parseRangeToFt } from '../../lib/rangeParse';
-import PlayerAttackButton from '../Combat/PlayerAttackButton';
+import SpellAttackCastButton from '../Combat/SpellAttackCastButton';
 // v2.443.0 — Lazy-load all five spell-cast modals. They open
 // conditionally based on spell type (buff / declare / AoE save /
 // multi-beam / heal), so a typical spell-cast click only ever loads
@@ -134,7 +134,8 @@ function ResolvedSpellCastButton({
  const mechanics = parseSpellMechanics(spell.description, {
  save_type: (spell as any).save_type,
  attack_type: (spell as any).attack_type,
- damage_dice: (spell as any).damage_dice,
+ // Some spells (including Mind Spike) carry their base damage only in the slot table.
+ damage_dice: spell.damage_dice ?? spell.damage_at_slot_level?.[String(spell.level)],
  damage_type: (spell as any).damage_type,
  heal_dice: (spell as any).heal_dice,
  area_of_effect: (spell as any).area_of_effect,
@@ -179,6 +180,13 @@ function ResolvedSpellCastButton({
 
 
 
+ // v2.856: explicit slot tables take precedence over prose-derived scaling.
+ // The same expression feeds manual rolls, combat targets and slot previews.
+ function damageForSlot(level:number):string|null {
+  return spell.damage_at_slot_level?.[String(level)] ?? (upcast.extraDice && mechanics.damageDice
+   ? computeUpcastDice(mechanics.damageDice,upcast.extraDice,upcast.baseLevel,level) : mechanics.damageDice);
+ }
+
  /** Deduct one slot of the given level */
  function spendSlot(slotLevel: number) {
  const slotKey = String(slotLevel);
@@ -191,9 +199,7 @@ function ResolvedSpellCastButton({
  if (!mechanics.damageDice) return;
  // Compute actual dice to roll considering upcast scaling
  const effectiveSlot = slotLevel ?? (isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level));
- const effectiveDice = upcast.extraDice
- ? computeUpcastDice(mechanics.damageDice, upcast.extraDice, upcast.baseLevel, effectiveSlot)
- : mechanics.damageDice;
+ const effectiveDice = damageForSlot(effectiveSlot)!;
  const rolled=rollDiceGroups(effectiveDice);
  if(!rolled)return;
  const allRolls=rolled.dice.map(d=>d.value);
@@ -760,9 +766,7 @@ function ResolvedSpellCastButton({
      keep the existing PlayerAttackButton path unchanged. */}
  {character.id && campaignId && mechanics.damageDice && (() => {
  const effSlot = forceSlotLevel ?? (isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level));
- const dice = upcast.extraDice
- ? computeUpcastDice(mechanics.damageDice!, upcast.extraDice, upcast.baseLevel, effSlot)
- : mechanics.damageDice!;
+ const dice = damageForSlot(effSlot)!;
  // Registry lookup — multi-beam spells open the beam-assignment picker.
  const multi = findMultiAttackSpell(spell.name);
  if (multi) {
@@ -788,22 +792,15 @@ function ResolvedSpellCastButton({
 </>
    );
  }
- // Single-target attack spell: existing PlayerAttackButton path.
+ // v2.856: single-target combat spells use the durable sheet casting host.
  return (
-   <PlayerAttackButton
-     characterId={character.id}
+   <SpellAttackCastButton
+     character={character} spell={spell} userId={userId} casting={casting} slotLevel={effSlot}
      attackKind="attack_roll"
      maxRangeFt={parseRangeToFt(spell.range)}
      attackBonus={spellAttack}
      damageDice={dice}
      damageType={mechanics.damageType ?? ''}
-     attackName={spell.name}
-     source="spell"
-     compact
-     onDeclared={() => {
-       if (!isCantrip) spendSlot(effSlot);
-       flashCast(effSlot);
-     }}
    />
  );
  })()}
@@ -826,9 +823,7 @@ function ResolvedSpellCastButton({
  const inCampaign = !!(character.id && campaignId);
  const isAoE = !!spell.area_of_effect;
  const effSlot = forceSlotLevel ?? (isCantrip ? 0 : (availableSlots[0]?.level ?? spell.level));
- const dice = upcast.extraDice
- ? computeUpcastDice(mechanics.damageDice!, upcast.extraDice, upcast.baseLevel, effSlot)
- : mechanics.damageDice!;
+ const dice = damageForSlot(effSlot)!;
 
  // In-campaign + AoE: route to SpellTargetPickerModal. Open via
  // setAoePicker just like the pre-v2.372 ⚔ AoE button did.
@@ -856,28 +851,20 @@ function ResolvedSpellCastButton({
  );
  }
 
- // In-campaign + single target: PlayerAttackButton with save kind.
+ // In-campaign + single target: save the paid casting and selected target.
  // Already declares the attack through the combat pipeline,
  // resolves saves, and handles the damage flow per target.
  if (inCampaign && !isAoE) {
  return (
- <PlayerAttackButton
- characterId={character.id}
+ <SpellAttackCastButton
+ character={character} spell={spell} userId={userId} casting={casting} slotLevel={effSlot}
  attackKind="save"
  maxRangeFt={parseRangeToFt(spell.range)}
- saveDC={saveDC}
  saveAbility={mechanics.saveType as any}
  saveSuccessEffect={isCantrip?'none':'half'}
  damageDice={dice}
  damageType={mechanics.damageType ?? ''}
- attackName={spell.name}
- source="spell"
- compact
  label={recentlyCast ?? 'Cast'}
- onDeclared={() => {
- if (!isCantrip) spendSlot(effSlot);
- flashCast(effSlot);
- }}
  />
  );
  }
@@ -1212,9 +1199,7 @@ function ResolvedSpellCastButton({
  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
  {availableSlots.map(({ level, remaining }) => {
  // Show upcast damage for this slot level
- const upcastDice = upcast.extraDice && mechanics.damageDice
- ? computeUpcastDice(mechanics.damageDice, upcast.extraDice, upcast.baseLevel, level)
- : mechanics.damageDice;
+ const upcastDice = damageForSlot(level);
  const isUpcast = level > spell.level;
  return (
  <button key={level} onClick={() => setSelectedSlot(level)}
@@ -1269,9 +1254,7 @@ function ResolvedSpellCastButton({
  border: '1px solid #a78bfa60', background: 'rgba(167,139,250,0.2)',
  color: '#a78bfa', fontSize: 11, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
  {(() => {
- const dice = upcast.extraDice && mechanics.damageDice
- ? computeUpcastDice(mechanics.damageDice, upcast.extraDice, upcast.baseLevel, selectedSlot)
- : mechanics.damageDice;
+ const dice = damageForSlot(selectedSlot);
  return <> {dice} Dmg{selectedSlot > spell.level ? ' ⬆' : ''}</>;
  })()}
  </button>

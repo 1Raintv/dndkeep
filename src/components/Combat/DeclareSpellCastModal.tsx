@@ -20,6 +20,7 @@ export default function DeclareSpellCastModal({request,status,busy,error,reviewR
    <p style={{fontSize:11,color:'var(--t-3)',textTransform:'uppercase',letterSpacing:'.1em'}}>{title}</p>
    <h2>{request.spellName}{request.slotLevel>0?` · Level ${request.slotLevel}`:''}</h2>
    <p style={{lineHeight:1.6}}>{message}</p>
+   {request.context.combat&&<p>Target: <strong>{request.context.target}</strong> · {request.context.combat.damageDice} {request.context.combat.damageType}. The DM resolves the saved attack.</p>}
    {!receipt&&status.offers!==null&&<p style={{color:'var(--t-2)',fontSize:12}}>{status.offers} reaction prompt{status.offers===1?'':'s'} issued.</p>}
    {(status.error||error)&&<p role="alert" style={{color:'#fca5a5'}}>{error||status.error}</p>}
    {reviewRequired&&<p role="status">Effects were started earlier. Check concentration, buffs and summoned pieces; finishing here will not apply them again.</p>}

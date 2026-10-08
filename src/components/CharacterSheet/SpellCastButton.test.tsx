@@ -8,7 +8,7 @@ vi.mock('../../lib/supabase',()=>({supabase:{from:()=>{throw new Error('Unit tes
 vi.mock('../../lib/gameUtils',()=>({rollDie:()=>3,computeStats:()=>({modifiers:{intelligence:4,wisdom:1,charisma:-1},proficiency_bonus:3})}));
 vi.mock('../../context/DiceRollContext',()=>({useDiceRoll:()=>({triggerRoll:mocks.roll})}));
 vi.mock('../shared/ActionLog',()=>({logAction:mocks.log}));
-vi.mock('../Combat/PlayerAttackButton',()=>({default:(props:unknown)=>{mocks.attack(props);return null;}}));
+vi.mock('../Combat/SpellAttackCastButton',()=>({default:(props:unknown)=>{mocks.attack(props);return null;}}));
 vi.mock('../../lib/summonTokens',()=>({SUMMON_TOKEN_SPELLS:{},placeSummonToken:vi.fn()}));
 vi.mock('../../lib/auras',()=>({AURA_SPELLS:{}}));
 vi.mock('../../lib/buffs',()=>({BUFF_SPELL_REGISTRY:{'mage hand':{}}}));
@@ -23,7 +23,7 @@ const spell:SpellData={school:'Enchantment',components:'V',duration:'1 round',co
 afterEach(cleanup);beforeEach(()=>vi.clearAllMocks());
 it.each([true,false])('declares scaled Psion damage and no damage on successful save in compact=%s',compact=>{
  render(<SpellCastButton spell={spell} character={character} userId="owner" campaignId="campaign" onUpdateSlots={vi.fn()} compact={compact}/>);
- expect(mocks.attack).toHaveBeenLastCalledWith(expect.objectContaining({characterId:'caster',damageDice:'2d6+4',saveDC:15,saveSuccessEffect:'none',attackKind:'save'}));
+ expect(mocks.attack).toHaveBeenLastCalledWith(expect.objectContaining({character:expect.objectContaining({id:'caster'}),damageDice:'2d6+4',casting:expect.objectContaining({saveDC:15}),saveSuccessEffect:'none',attackKind:'save'}));
 });
 it('sends a flat INT bonus that crit doubling does not multiply',()=>{
  render(<SpellCastButton spell={{...spell,save_type:undefined,attack_type:'ranged',damage_dice:'1d6'}} character={character} userId="owner" campaignId="campaign" onUpdateSlots={vi.fn()}/>);
@@ -84,13 +84,13 @@ it('repairs an unreviewed cantrip beside its casting control without inventing o
  fireEvent.click(screen.getByRole('checkbox',{name:'Learned through Psion'}));
  fireEvent.click(screen.getByRole('button',{name:'Save spell sources'}));
  expect(saved).toHaveBeenCalledWith(expect.objectContaining({spell_sources:{'mind-sliver':['class:Psion']}}));
- expect(mocks.attack).toHaveBeenLastCalledWith(expect.objectContaining({damageDice:'2d6+4',saveDC:15}));
+ expect(mocks.attack).toHaveBeenLastCalledWith(expect.objectContaining({damageDice:'2d6+4',casting:expect.objectContaining({saveDC:15})}));
 });
 it('casts a feat spell with its explicitly chosen ability and no Psion-only bonus',()=>{
  render(<SpellCastButton spell={spell} character={{...character,spell_sources:{'mind-sliver':['feat']}}} userId="owner" campaignId="campaign" onUpdateSlots={vi.fn()}/>);
  expect(mocks.attack).not.toHaveBeenCalled();
  fireEvent.change(screen.getByRole('combobox',{name:'Cast Mind Sliver through'}),{target:{value:'feat:wisdom'}});
- expect(mocks.attack).toHaveBeenLastCalledWith(expect.objectContaining({damageDice:'2d6',saveDC:12}));
+ expect(mocks.attack).toHaveBeenLastCalledWith(expect.objectContaining({damageDice:'2d6',casting:expect.objectContaining({saveDC:12})}));
 });
 
 it('records a concentration utility cast once with its actual source and slot',async()=>{
@@ -133,4 +133,9 @@ it.each(['area','beams'])('opens only one compact %s target dialog and cancels w
  const dialogs=await screen.findAllByRole('dialog');expect(dialogs).toHaveLength(1);
  fireEvent.click(screen.getByRole('button',{name:'Cancel targets'}));
  expect(screen.queryByRole('dialog')).toBeNull();expect(update).not.toHaveBeenCalled();
+});
+it.each([2,3])('retains damage defined only in the slot table at spell slot %i',slot=>{
+ const c:Character={...character,known_spells:['mind-spike'],prepared_spells:['mind-spike'],spell_sources:{'mind-spike':['class:Psion']},spell_slots:{2:{total:2,used:0},3:{total:2,used:0}}};
+ render(<SpellCastButton spell={{...spell,id:'mind-spike',name:'Mind Spike',level:2,save_type:'WIS',damage_at_char_level:undefined,damage_dice:undefined,damage_at_slot_level:{2:'3d8',3:'4d8'},higher_levels:'The damage increases by 1d8 for each spell slot level above 2.'}} character={c} userId="owner" campaignId="campaign" onUpdateSlots={vi.fn()} compact forceSlotLevel={slot}/>);
+ expect(mocks.attack).toHaveBeenLastCalledWith(expect.objectContaining({slotLevel:slot,damageDice:slot===2?'3d8':'4d8',saveSuccessEffect:'half'}));
 });
