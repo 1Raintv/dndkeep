@@ -1,5 +1,16 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.805 candidate — keep melee reach visible after viewport recreation
+
+ReachOverlayLayer created new Graphics when the viewport changed, but its drawing
+effect depended only on hover data/grid size. An already-hovered attack therefore
+stayed invisible on the new viewport. Redraw now follows viewport identity, and
+already-destroyed viewports never receive new Graphics. Four focused component
+cases cover delayed availability, replacement/cleanup, destroyed scenes and hover
+exit. Full gate passed: 2,092 units, TS 203/203, hooks, RAW, coordinate/anchor
+checks, build/SW and 254.0 KB entry. This does not change attack eligibility math.
+
+
 ### v2.804 candidate — recover paid casting and safely cancel unpaid requests
 
 The sheet owns durable recovery independently of spell rows. Captured source,
