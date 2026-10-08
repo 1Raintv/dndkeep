@@ -1,5 +1,27 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.816 candidate — require the owner's turn for start-of-turn disciplines
+
+Guards and Sharpened Mind now reject a fresh combat activation on another
+creature's turn before charging an Energy Die or claiming the discipline. A
+confirmed request still replays after combat advances without charging again.
+Ordinary triggered disciplines remain usable during another creature's turn.
+
+Actor selection follows the existing combat UI: order living participants by
+initiative order, include hidden and zero-HP-but-not-dead participants, recover
+legacy orphan character combatants, and reject an invalid current index. Solo
+turn declarations are unchanged. Exact start-phase timing remains a tabletop
+declaration; this does not yet automate Guards protections or Sharpened effects.
+
+Validation: local migration applied; seven new real-database scenarios plus the
+existing ledger suite (29 passing cases) verify ownership timing, DM/player
+behavior, original request replay, death/order cases and ordinary off-turn
+bonuses. Security advisors report only existing keep_warm/client_errors findings.
+Full gate passed: 2,290 units, TS 203/203, hooks/RAW/coordinates/anchors/build/SW,
+254.3 KB entry. Six desktop/phone Guards, Sharpened Mind and secondary-Psion
+control scenarios passed. PR158 merged at dd5f78b after both hosted gates passed.
+
+
 ### v2.815 candidate — keep discipline records current during shared combat
 
 The discipline record follows the existing scoped combat subscription, including
