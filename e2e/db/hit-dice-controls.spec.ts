@@ -29,6 +29,11 @@ test.describe('Mixed Hit Dice controls', () => {
     if (userId) sql(`delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
   });
 
+  const nextTurn=async(page:import('@playwright/test').Page)=>{
+    const before=Number(sql(`select coalesce((select turn_number from psionic_solo_turns where character_id='${charId}'),0)`));
+    await page.getByRole('button',{name:/End Turn/}).locator('visible=true').first().click();
+    await expect.poll(()=>Number(sql(`select turn_number from psionic_solo_turns where character_id='${charId}'`))).toBe(before+1);
+  };
   for(const secondary of [false,true])test(`review and selected Surge (${secondary?'secondary':'primary'} Psion)`,async({page},info)=>{
     sql(`update characters set class_name='${secondary?'Fighter':'Psion'}',level=${secondary?3:7},secondary_class='${secondary?'Psion':'Fighter'}',secondary_level=${secondary?7:3},secondary_subclass='${secondary?'Telepath':'Champion'}',subclass='${secondary?'Champion':'Telepath'}',hit_dice_spent=2,current_hp=10,max_hp=30,class_resources='{"psion-disciplines":["Inerrant Aim"],"psionic-energy-dice":3}' where id='${charId}'`);
     const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
@@ -52,12 +57,14 @@ test.describe('Mixed Hit Dice controls', () => {
     await expect(chooser.getByRole('button',{name:'Spend 1d10 · 2 available'})).toBeVisible();
     await page.screenshot({path:info.outputPath('hit-die-choice.png')});
     await chooser.getByRole('button',{name:'Keep original roll'}).click();await outcome.getByRole('button',{name:'Keep die'}).click();expect(state().spent).toBe(2);
+    await nextTurn(page);
     await row.getByRole('button',{name:'Roll bonus'}).evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));
     await expect.poll(()=>row.getByRole('button',{name:'Roll bonus'}).evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})).toBe(true);
     await row.getByRole('button',{name:'Roll bonus'}).click();await chooser.getByRole('button',{name:'Spend 1d10 · 2 available'}).click();
     await expect(outcome).toContainText('Surge treats it as 4');await outcome.getByRole('button',{name:'Keep die'}).click();
     await expect.poll(state).toEqual({spent:3,pools:{'6':1,'10':2},hp:10,energy:3});
     await page.reload();await expect(row.getByRole('button',{name:'Roll bonus'})).toBeVisible();await page.evaluate(()=>{Math.random=()=>0.01;});
+    await nextTurn(page);
     await row.getByRole('button',{name:'Roll bonus'}).evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));
     await expect.poll(()=>row.getByRole('button',{name:'Roll bonus'}).evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})).toBe(true);
     await row.getByRole('button',{name:'Roll bonus'}).click();await expect(chooser.getByRole('button',{name:'Spend 1d10 · 1 available'})).toBeVisible();

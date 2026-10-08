@@ -19,7 +19,7 @@ export default function PsionicPaymentRecoveryPanel({characterId,persistence,kin
     const result=payment.kind==='discipline-begin'
      ?await persistence.beginDiscipline?.(payment.request):await persistence.finishDiscipline?.(payment.request);
     if(!result)throw new Error('Discipline recovery is unavailable on this sheet.');
-    if(mounted.current&&current.current===characterId)setMessage(`${payment.request.sourceFeature}: attempt confirmed. Original rolls: ${result.rolls.join(', ')||'none'}. ${result.outcome===null?'The bonus outcome is still pending. Resolve it in discipline turn tracking.':result.outcome.spent?'The base Energy Dice were spent once.':'The Energy Die was kept; the discipline remains used for its turn.'} This confirmation does not apply the feature effect. Do not roll or pay again.`);
+    if(mounted.current&&current.current===characterId)setMessage(`${payment.request.sourceFeature}: attempt confirmed. Original rolls: ${result.rolls.join(', ')||'none'}. ${result.outcome===null?'The bonus outcome is still pending. Resolve it in discipline turn tracking.':result.outcome.spent?'The base Energy Dice were spent once.':'The Energy Die was kept; the discipline remains used for its turn.'} ${payment.request.recoveryNote??''} This confirmation does not apply the feature effect. Do not roll or pay again.`);
    }catch(error){if(mounted.current&&current.current===characterId)setMessage(error instanceof Error?error.message:'Discipline is still unconfirmed.');}
    finally{if(mounted.current&&current.current===characterId)setBusy(false);}
    return;

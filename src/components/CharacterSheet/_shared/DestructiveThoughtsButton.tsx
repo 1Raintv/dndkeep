@@ -1,5 +1,5 @@
 import {psionProgression} from '../../../rules/psionProgression';
-import {payPsionicEnergy} from './payPsionicEnergy';
+import {prepareDiscipline,beginDiscipline} from './disciplinePayment';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
 import {acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
 import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharacterRef';
@@ -65,11 +65,13 @@ export default function DestructiveThoughtsButton({persistence,character}:{persi
    if(!mounted.current||latest.current.id!==id)return;
    const answer=await modal.prompt({title:'Destructive Thoughts',message:`Use immediately after your Psion Conjuration or Evocation spell forces ${targetName}, a creature you can see, to save. Choose 1–${before.maxDice} Energy Dice. Psychic damage is their total + Intelligence, regardless of that save. Only one Discipline each turn, once that turn, unless an option says otherwise. This does not cast or spend the spell for you.`,defaultValue:'1',confirmLabel:'Spend and roll'});
    if(answer===null||!mounted.current||latest.current.id!==id)return;
-   const current=latest.current,now=capacity(current),count=Number(answer);
+   const options={active:()=>mounted.current&&latest.current.id===id,confirm:modal.confirm,warn:(message:string)=>showToast(message,'warn')};
+   const prepared=await prepareDiscipline(persistence,latest,options);if(!prepared)return;
+   const count=Number(answer),current=prepared.character,now=capacity(current);
    if(current.campaign_id!==campaignId||!Number.isInteger(count)||count<1||!now||count>now.maxDice){showToast('Check your target, Intelligence and available Psionic Energy Dice.','warn');return;}
    const intelligence=computeStats(current).modifiers.intelligence;
    const rolls=Array.from({length:count},()=>rollDie(now.sides));
-   if(!await payPsionicEnergy(persistence,latest,{requestId:crypto.randomUUID(),operation:'spend',count,rolls,sourceFeature:'Destructive Thoughts',recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for Psychic damage (minimum 1) to ${targetName}. No damage was queued yet.`.slice(0,1000)},{active:()=>mounted.current&&latest.current.id===id,confirm:modal.confirm,warn:message=>showToast(message,'warn')}))return;
+   if(!await beginDiscipline(persistence!,latest,prepared,'destructive-thoughts',rolls,count,{...options,recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for Psychic damage (minimum 1) to ${targetName}. No damage was queued yet.`}))return;
    const surged=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:rolls[0],rolls,sides:now.sides,feature:'Destructive Thoughts',campaignId,recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for Psychic damage (minimum 1) to ${targetName}. No damage was queued yet.`.slice(0,1000),
     current:()=>latest.current,active:()=>mounted.current,eligible:c=>!!capacity(c),prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
    if(surged?.unconfirmed)return;

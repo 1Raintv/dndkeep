@@ -1,5 +1,40 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.814 candidate — connect all discipline activation controls
+
+All eleven discipline controls now capture the shared turn before rolling and
+record the original attempt through the ledger. Conditional bonuses record a
+use even when their Energy Die is kept. Guards spends one die without rolling
+or offering Surge/Enkindled. The previously missing free-action discipline
+buttons now appear. Base costs and turn claims commit together; enhancements
+retain their separate Hit Dice costs. Saved recovery notes retain target/INT
+context and the final conditional bonus.
+
+Secondary Psion controls now send the original class order to the checked
+snapshot, rather than the display-only projection. Effective Intelligence
+continues to honor attuned item overrides. Solo End Turn tracks every Psion
+from level 2, not only the level-20 capstone. A new three-way modal decision
+keeps closing/replacing an outcome dialog distinct from explicitly keeping the
+die: dismissal leaves the original outcome pending for later recovery.
+
+Validation: all eleven controls plus secondary Psion checked on desktop and
+phone; six additional two-tab, start-of-turn exception and dismissed-outcome
+cases passed. Twenty related desktop scenarios passed across conditional dice,
+selected Hit Dice, Biofeedback, Destructive Thoughts, Enkindled, Headband cache
+and interrupted payment/rest recovery. Earlier tests now advance a real solo
+turn between repeated discipline uses. Full gate: 2,286 units, TS 203/203,
+hooks/RAW/coordinates/anchors/build/SW, 254.3 KB entry. Screenshots inspected.
+
+Remaining: Guards condition removal/immunities/INT-save Advantage and Sharpened
+Mind's lasting effects are still manual; activation messages say so. Spell
+trigger/visibility and exact start-of-turn timing are tabletop declarations.
+The both-specials-plus-one-ordinary interpretation remains documented below.
+External combat turn refresh, broader effect settlement and existing sheet
+clipping remain queued. This completes the normal controls' turn/cost wiring,
+not a claim that every Psion effect is fully automated. Depends on PR155/156;
+PR156 gates and preview passed, while production last remained v2.809.
+
+
 ### v2.813 candidate — recover discipline attempts and outcomes
 
 The sheet now reads the shared discipline record and lists unresolved conditional

@@ -13,28 +13,32 @@ import {findDiscipline} from '../../../data/psionDisciplines';
 import type {Character} from '../../../types';
 afterEach(cleanup);beforeEach(()=>{vi.clearAllMocks();mocks.roll=4;mocks.log.mockResolvedValue(undefined);});
 const discipline=findDiscipline('inerrant-aim')!;
-const character={id:'psion',name:'Psion',class_name:'Psion',level:5,class_resources:{'psion-disciplines':['Inerrant Aim'],'psionic-energy-dice':2,other:9},feature_uses:{other:2}} as unknown as Character;
+const character={id:'psion',name:'Psion',class_name:'Psion',level:5,intelligence:10,inventory:[],class_resources:{'psion-disciplines':['Inerrant Aim'],'psionic-energy-dice':2,other:9},feature_uses:{other:2}} as unknown as Character;
 const ui=(c:Character,onUpdate:ReturnType<typeof vi.fn>)=><ModalProvider><ConditionalPsionicButton character={c} discipline={discipline} onUpdate={onUpdate}/></ModalProvider>;
 it('rolls without spending; a confirmed changed hit spends exactly one',async()=>{
  const onUpdate=vi.fn();render(ui(character,onUpdate));fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));
- expect(onUpdate).not.toHaveBeenCalled();expect(screen.getByText(/Rolled 4 on 1d8/)).toBeTruthy();
+ await screen.findByRole('dialog');
+ expect(onUpdate).not.toHaveBeenCalled();expect(await screen.findByText(/Rolled 4 on 1d8/)).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Changed to hit · spend 1'}));
  await waitFor(()=>expect(onUpdate).toHaveBeenCalledTimes(1));
  expect(onUpdate).toHaveBeenCalledWith({class_resources:{...character.class_resources,'psionic-energy-dice':1}});
 });
 it('keeps the die when the bonus does not change the outcome',async()=>{
  const onUpdate=vi.fn();render(ui(character,onUpdate));fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));
+ await screen.findByRole('dialog');
  fireEvent.click(screen.getByRole('button',{name:'Keep die'}));
  await waitFor(()=>expect(mocks.log).toHaveBeenCalled());expect(onUpdate).not.toHaveBeenCalled();
 });
 it('settles against current resources and does not overdraw after another spend',async()=>{
  const onUpdate=vi.fn();const view=render(ui(character,onUpdate));fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));
+ await screen.findByRole('dialog');
  view.rerender(ui({...character,class_resources:{...character.class_resources,'psionic-energy-dice':0}},onUpdate));
  fireEvent.click(screen.getByRole('button',{name:'Changed to hit · spend 1'}));
  await waitFor(()=>expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('Resources changed'),'warn'));expect(onUpdate).not.toHaveBeenCalled();
 });
 it('does not apply a pending bonus to a different character',async()=>{
  const onUpdate=vi.fn();const view=render(ui(character,onUpdate));fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));
+ await screen.findByRole('dialog');
  view.rerender(ui({...character,id:'other'},onUpdate));fireEvent.click(screen.getByRole('button',{name:'Changed to hit · spend 1'}));
  await waitFor(()=>expect((screen.getByRole('button',{name:'Roll bonus'}) as HTMLButtonElement).disabled).toBe(false));expect(onUpdate).not.toHaveBeenCalled();
 });
@@ -47,6 +51,7 @@ const highLevel={...character,level:7,hit_dice_spent:2};
 it('offers Surge after a low roll, charges Hit Point Die even when Energy Die is kept',async()=>{
  mocks.roll=2;const onUpdate=vi.fn();render(ui(highLevel,onUpdate));
  fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));
+ await screen.findByRole('dialog');
  expect(screen.getByRole('dialog',{name:'Psionic Surge'})).toBeTruthy();expect(onUpdate).not.toHaveBeenCalled();
  fireEvent.click(screen.getByRole('button',{name:'Spend 1 Hit Point Die'}));
  await screen.findByRole('dialog',{name:'Inerrant Aim'});
@@ -59,7 +64,7 @@ it('offers Surge after a low roll, charges Hit Point Die even when Energy Die is
 });
 it('charges the Energy Die separately when a surged bonus changes the outcome',async()=>{
  mocks.roll=1;const onUpdate=vi.fn();render(ui(highLevel,onUpdate));
- fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));fireEvent.click(screen.getByRole('button',{name:'Spend 1 Hit Point Die'}));
+ fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));await screen.findByRole('dialog');fireEvent.click(screen.getByRole('button',{name:'Spend 1 Hit Point Die'}));
  await screen.findByRole('dialog',{name:'Inerrant Aim'});fireEvent.click(screen.getByRole('button',{name:'Changed to hit · spend 1'}));
  await waitFor(()=>expect(onUpdate).toHaveBeenCalledTimes(2));
  expect(onUpdate).toHaveBeenNthCalledWith(1,{hit_dice_spent:3});
@@ -67,32 +72,34 @@ it('charges the Energy Die separately when a surged bonus changes the outcome',a
 });
 it('declining Surge keeps the original roll and costs no Hit Point Die',async()=>{
  mocks.roll=3;const onUpdate=vi.fn();render(ui(highLevel,onUpdate));
- fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));fireEvent.click(screen.getByRole('button',{name:'Keep roll of 3'}));
+ fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));await screen.findByRole('dialog');fireEvent.click(screen.getByRole('button',{name:'Keep roll of 3'}));
  await screen.findByRole('dialog',{name:'Inerrant Aim'});expect(screen.getByText(/Rolled 3 on 1d8/)).toBeTruthy();
  fireEvent.click(screen.getByRole('button',{name:'Keep die'}));await waitFor(()=>expect(mocks.log).toHaveBeenCalledTimes(1));
  expect(onUpdate).not.toHaveBeenCalled();
 });
 it('rechecks Hit Point Dice before spending after a concurrent use',async()=>{
  mocks.roll=1;const onUpdate=vi.fn();const view=render(ui(highLevel,onUpdate));
- fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));view.rerender(ui({...highLevel,hit_dice_spent:7},onUpdate));
+ fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));await screen.findByRole('dialog');view.rerender(ui({...highLevel,hit_dice_spent:7},onUpdate));
  fireEvent.click(screen.getByRole('button',{name:'Spend 1 Hit Point Die'}));
  await waitFor(()=>expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('Surge was not applied'),'warn'));
  expect(onUpdate).not.toHaveBeenCalled();expect(mocks.log).not.toHaveBeenCalled();
 });
 it('cannot spend Surge after the character changes',async()=>{
  mocks.roll=1;const onUpdate=vi.fn();const view=render(ui(highLevel,onUpdate));
- fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));view.rerender(ui({...highLevel,id:'different'},onUpdate));
+ fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));await screen.findByRole('dialog');view.rerender(ui({...highLevel,id:'different'},onUpdate));
  fireEvent.click(screen.getByRole('button',{name:'Spend 1 Hit Point Die'}));
  await waitFor(()=>expect((screen.getByRole('button',{name:'Roll bonus'}) as HTMLButtonElement).disabled).toBe(false));
  expect(onUpdate).not.toHaveBeenCalled();
 });
-it.each([{...highLevel,level:6},{...highLevel,hit_dice_spent:7}])('skips unavailable Surge',c=>{
+it.each([{...highLevel,level:6},{...highLevel,hit_dice_spent:7}])('skips unavailable Surge',async c=>{
  mocks.roll=1;render(ui(c,vi.fn()));fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));
+ await screen.findByRole('dialog');
  expect(screen.getByRole('dialog',{name:'Inerrant Aim'})).toBeTruthy();
 });
 
 it('keeps paid capstone costs separate when the enhanced bonus still fails',async()=>{
  const update=vi.fn();render(ui({...character,level:20,hit_dice_spent:0},update));fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));
+ await screen.findByRole('dialog');
  await screen.findByRole('dialog',{name:'Enkindled Life Force'});fireEvent.change(screen.getByRole('textbox'),{target:{value:'2'}});fireEvent.click(screen.getByRole('button',{name:'Continue'}));
  await screen.findByRole('dialog',{name:'Inerrant Aim'});expect(screen.getByText(/Add \+12 to/)).toBeTruthy();fireEvent.click(screen.getByRole('button',{name:'Keep die'}));
  await waitFor(()=>expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({actionName:'Inerrant Aim',total:12,individualResults:[4,4,4]})));
@@ -100,6 +107,12 @@ it('keeps paid capstone costs separate when the enhanced bonus still fails',asyn
 });
 
 it('releases a settled bonus even when its history remains pending',async()=>{
- mocks.log.mockReturnValue(new Promise(()=>{}));const update=vi.fn();render(ui(character,update));fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));fireEvent.click(screen.getByRole('button',{name:'Changed to hit · spend 1'}));
+ mocks.log.mockReturnValue(new Promise(()=>{}));const update=vi.fn();render(ui(character,update));fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));await screen.findByRole('dialog');fireEvent.click(screen.getByRole('button',{name:'Changed to hit · spend 1'}));
  await waitFor(()=>expect((screen.getByRole('button',{name:'Roll bonus'}) as HTMLButtonElement).disabled).toBe(false));expect(update).toHaveBeenCalledTimes(1);
+});
+
+it('closing an outcome leaves it pending instead of recording a failed bonus',async()=>{
+ const update=vi.fn();render(ui(character,update));fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));await screen.findByRole('dialog',{name:'Inerrant Aim'});
+ fireEvent.keyDown(window,{key:'Escape'});await waitFor(()=>expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('outcome left pending'),'warn'));
+ expect(update).not.toHaveBeenCalled();expect(mocks.log).not.toHaveBeenCalled();
 });

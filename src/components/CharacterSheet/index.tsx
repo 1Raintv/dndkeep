@@ -2032,7 +2032,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  return (
  <div style={{ marginBottom: 'var(--sp-3)' }}>
  <ActionEconomy
- trackPsionicTurns={character.class_name==='Psion'&&character.level===20}
+ trackPsionicTurns={(psionProgression(character)?.level??0)>=2}
  speedFeet={effectiveSpeed}
  characterId={character.id}
  actionUsedExternal={spellCastThisTurn}

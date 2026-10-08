@@ -32,3 +32,17 @@ it('uses a secondary Psion die rather than the higher primary level',async()=>{
  expect(update).toHaveBeenCalledWith({class_resources:{'psionic-energy-dice':0,other:9}});
  expect(screen.queryByRole('dialog',{name:'Psionic Surge'})).toBeNull();
 });
+
+it('Guards spends one die without rolling or offering roll enhancements',async()=>{
+ const update=vi.fn(),rolled=vi.fn(),c={...character,intelligence:10,inventory:[],class_resources:{'psion-disciplines':['psionic-guards'],'psionic-energy-dice':1}} as unknown as Character;
+ render(<ModalProvider><PsionicDieRollButton character={c} onUpdate={update} feature="Psionic Guards" label="Activate Guards" onRolled={rolled}/></ModalProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Activate Guards'}));await waitFor(()=>expect(update).toHaveBeenCalledTimes(1));
+ expect(update).toHaveBeenCalledWith({class_resources:{'psion-disciplines':['psionic-guards'],'psionic-energy-dice':0}});
+ expect(mocks.roll).not.toHaveBeenCalled();expect(rolled).not.toHaveBeenCalled();expect(screen.queryByRole('dialog')).toBeNull();
+});
+it('Sharpened Mind records one base roll through the discipline path',async()=>{
+ const update=vi.fn(),rolled=vi.fn(),c={...character,level:5,intelligence:10,inventory:[],class_resources:{'psion-disciplines':['sharpened-mind'],'psionic-energy-dice':1}} as unknown as Character;
+ render(<ModalProvider><PsionicDieRollButton character={c} onUpdate={update} feature="Sharpened Mind" label="Use discipline" onRolled={rolled}/></ModalProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Use discipline'}));await waitFor(()=>expect(rolled).toHaveBeenCalledWith(2,8));expect(mocks.roll).toHaveBeenCalledTimes(1);
+ expect(update).toHaveBeenCalledWith({class_resources:{'psion-disciplines':['sharpened-mind'],'psionic-energy-dice':0}});
+});
