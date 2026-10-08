@@ -1,5 +1,21 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.857 — Destructive Thoughts character targets
+
+The damage queue now maps character targets to the combat log's `player` label,
+while preserving `character` on the attack itself. The old label violated the
+log's database constraint and rolled back the queued damage and receipt.
+Creature-target behavior is unchanged. Expanded the full delivery test group to
+exercise both target kinds, including concurrent retry, deletion, identity/hidden
+target guards and receipt rollback.
+
+Before the fix, the creature delivery passed and character delivery failed with
+`combat_events_target_type_check`. Migration
+`20261008182000_psionic_character_target_delivery.sql` is applied locally;
+49 database cases pass, including both target types and Biofeedback regressions.
+Full gate passes (2,759 units, TypeScript 199/199, entry 255.1 KB); public-function
+SQL lint is clean. Publishing pending. No UI change.
+
 ### v2.856 — Saved combat spells and usable phone casting controls
 
 Single-target spell attack/save buttons now use the existing saved declaration,
@@ -20,7 +36,11 @@ last-slot payment, reload, a lost delivery response, one queued attack and no
 second payment. Overflow probes pass; Mind Spike screenshots inspected. All 47 SQL
 regression cases pass. Full gate passes: 2,759 units, TypeScript 199/199,
 entry 255.1 KB. Private-function SQL lint is clean.
-Migration: `20261008175130_declared_spell_combat_delivery.sql` (local only so far).
+Merged PR #200 (`54d3ab3`), both CI gates green. Migration
+`20261008175130_declared_spell_combat_delivery.sql` applied in production by run
+`37823592625`; actual apply log and independent ledger query confirm it.
+Publishing has resumed: public frontend currently verified at v2.854.0; v2.856
+frontend publication is still pending.
 
 Remaining: durable area/multi-beam/healing and manual/upcast-modal paths, free
 leveled-cast receipts, a current-turn slot ledger and broader Sharpened Mind use.
@@ -30,9 +50,8 @@ encounter requires DM review; no automatic refund or retargeting is inferred.
 Spell values are captured from the selected client data, not independently
 recomputed by the database. Source/catalog accuracy remains a separate audit.
 
-Follow-up discovered: the older Destructive Thoughts SQL queue writes `character`
-as a combat-event target type, while that table expects `player`; extend its
-character-target regression coverage and normalize that event type. Witch Bolt's
+The Destructive Thoughts character-target issue is addressed in v2.857 above.
+Witch Bolt's
 static follow-up-damage/range text also needs the existing 2024 data audit.
 
 ### v2.855 — Confirm attack declarations before charging
