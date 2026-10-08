@@ -1,3 +1,7 @@
+import {useConcentrationRecording} from '../../lib/hooks/useConcentrationRecording';
+import {ConcentrationRecordingNotice} from './ConcentrationRecordingNotice';
+import {concentrationCastingNumbers,type ConcentrationCastSource} from '../../rules/concentrationCasting';
+import {SpellCastingProvider,useSpellCastingResolver} from './SpellCastingContext';
 import {psionRestResources} from '../../lib/psionRestResources';
 import {psionProgression} from '../../rules/psionProgression';
 import {automaticSpellGrantPatch} from '../../lib/automaticSpellGrants';
@@ -10,7 +14,7 @@ import {longRestHitDice} from '../../rules/restRecovery';
 import PsionicPaymentRecoveryPanel from './_shared/PsionicPaymentRecoveryPanel';
 import {usePsionicEnhancements} from '../../lib/hooks/usePsionicEnhancements';
 import {useOptimisticCharacterRef} from '../../lib/hooks/useOptimisticCharacterRef';
-import {isCombatHpCarryover,preservePsionicResources,acceptSavedPsionicResources,reconcileCharacterUpdate,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
+import {acceptConcentrationReceipt,isCombatHpCarryover,preservePsionicResources,acceptSavedPsionicResources,reconcileCharacterUpdate,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../lib/characterRealtime';
 import { attacksPerAction } from '../../rules/extraAttack';
 import PsionCastingNote from './_shared/PsionCastingNote';
 import { useState, useCallback, useMemo, useEffect, useRef, Suspense, type ReactNode } from 'react';
@@ -158,7 +162,10 @@ interface CharacterSheetProps {
  onLocalToast?: (toast: { id: string; message_type: string; message: string; character_name: string | null }) => void;
 }
 
-export default function CharacterSheet({ initialCharacter, realtimeEnabled: _realtimeEnabled = false, isPro = false, userId = '', onLocalToast }: CharacterSheetProps) {
+export default function CharacterSheet(props:CharacterSheetProps){
+ return <SpellCastingProvider key={props.initialCharacter.id}><CharacterSheetContent {...props}/></SpellCastingProvider>;
+}
+function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEnabled = false, isPro = false, userId = '', onLocalToast }: CharacterSheetProps) {
  // Bundle props into a single ref we can read inside the realtime
  // closure below without re-subscribing every time the callback
  // identity shifts.
@@ -309,8 +316,16 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  useEffect(()=>{
   if(!acknowledged||acceptedSave.current===acknowledged)return;acceptedSave.current=acknowledged;
   const {patch}=acceptSavedPsionicResources(characterRef,acknowledged,saveQueue.getPending());
-  if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
+  const concentration=acceptConcentrationReceipt(characterRef,acknowledged,saveQueue.getPending()).patch;
+  if(Object.keys(patch).length||Object.keys(concentration).length)setCharacter(previous=>({...previous,...patch,...concentration}));
  },[acknowledged,characterRef,saveQueue]);
+ const concentrationRecording=useConcentrationRecording(characterRef,saveQueue,(receipt,request)=>{
+  if(receipt.concentration_revision<(characterRef.current.concentration_revision??0))return;
+  setConcentration(receipt.concentration_spell,receipt.concentration_slot_level,false,undefined,request.previousSpell);
+  const {patch}=acceptConcentrationReceipt(characterRef,receipt,saveQueue.getPending());
+  if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
+ },frozen);
+ const castingBlocked=frozen||concentrationRecording.blocked||Object.prototype.hasOwnProperty.call(saveQueue.getPending(),'concentration_spell');
  const psionicPersistence=usePsionicEnhancements(character.id,saveQueue,receipt=>{
   const {patch}='character' in receipt?acceptPsionicRestReceipt(characterRef,receipt,saveQueue.getPending()):'energyRevision' in receipt?acceptPsionicEnergyReceipt(characterRef,receipt,saveQueue.getPending()):acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
   if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
@@ -504,6 +519,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  });
 
  const computed = useMemo(() => computeStats(character), [character]);
+ const castingFor=useSpellCastingResolver(character,computed);
 
  // v2.695.0 — The queue survives navigation and drains edits made during
  // a slow request. Failed patches wait for the visible Retry action.
@@ -558,7 +574,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
 
  /** Persist concentration spell ID immediately to DB so it survives refresh.
  * v2.38.0: Also parses the spell's duration and starts a round countdown. */
- function setConcentration(spellId: string | null, slotLevel?: number, persist=true) {
+ function setConcentration(spellId: string | null, slotLevel?: number, persist=true,casting?:ConcentrationCastSource,previousSpell?:string|null) {
+ if(spellId&&persist&&casting){
+  const spell=spellMap[spellId];
+  void concentrationRecording.record({spellId,slotLevel:slotLevel??spell?.level??0,rounds:spell?parseDurationToRounds(spell.duration):null,...casting});
+  return;
+ }
  const currentCharacter = characterRef.current;
  // v2.600.0 — automation arc ship 4a: when concentration on a summon
  // spell ends (Drop button, failed CON save, timer expiry, or a new
@@ -566,7 +587,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // token. Every clear path funnels through this function, so this is
  // the single hook. Fire-and-forget — token cleanup never blocks the
  // concentration state write.
- const prevSpellId = currentCharacter.concentration_spell || null;
+ const prevSpellId = previousSpell===undefined?(currentCharacter.concentration_spell||null):previousSpell;
  if (prevSpellId && prevSpellId !== spellId && currentCharacter.campaign_id) {
  import('../../lib/summonTokens').then(({ SUMMON_TOKEN_SPELLS, removeSummonTokens }) => {
  if (!SUMMON_TOKEN_SPELLS[prevSpellId]) return;
@@ -596,7 +617,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }).catch(() => { /* aura teardown is best-effort */ });
  }
  if (!spellId) {
- if(persist)applyUpdate({ concentration_spell: '', concentration_rounds_remaining: null, concentration_slot_level: null }, true);
+ if(persist)applyUpdate({ concentration_spell: '', concentration_rounds_remaining: null, concentration_slot_level: null, concentration_casting_context:null }, true);
  return;
  }
  const spell = spellMap[spellId];
@@ -605,7 +626,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // SpellCastButton, else the spell's base level) so the active-effect
  // prompt can scale its dice. Cantrips store their base level 0.
  const slot = slotLevel ?? spell?.level ?? null;
- applyUpdate({ concentration_spell: spellId, concentration_rounds_remaining: rounds, concentration_slot_level: slot }, true);
+ if(persist)applyUpdate({ concentration_spell: spellId, concentration_rounds_remaining: rounds, concentration_slot_level: slot, concentration_casting_context:null }, true);
  }
 
  // v2.47.0: Fire a toast notifying the player they lost concentration.
@@ -1456,6 +1477,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  </div>
  )}
 
+ <ConcentrationRecordingNotice recording={concentrationRecording}/>
  {/* v2.377.0 — Persistent concentration banner. Renders whenever
      concentration is active (character.concentration_spell set);
      gives the player a constant visual anchor for "I'm concentrating
@@ -1466,6 +1488,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {character.concentration_spell && (() => {
  const concSpell = spellMap[character.concentration_spell];
  const spellName = concSpell?.name ?? 'Unknown spell';
+ const casting=concentrationCastingNumbers(character.concentration_casting_context,character.concentration_spell,computed.modifiers,computed.proficiency_bonus);
  const roundsLeft = (character as any).concentration_rounds_remaining as number | null;
  return (
  <div style={{
@@ -1482,6 +1505,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13, color: 'var(--t-1)' }}>
  {spellName}
  </span>
+ {casting&&<span aria-label="Concentration casting ability" style={{fontSize:11,color:'var(--t-3)'}}>{casting.ability.slice(0,3).toUpperCase()} · DC {casting.saveDC}</span>}
  {typeof roundsLeft === 'number' && roundsLeft > 0 && (
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)' }}>
  · {roundsLeft} {roundsLeft === 1 ? 'round' : 'rounds'} left
@@ -1540,15 +1564,17 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  // ability modifier (spell_attack_bonus − PB). Any other shape falls
  // back to a plain Use button rather than a broken roll.
  const diceParse = rawDice?.match(/^\s*(\d+d\d+)(\s*\+\s*MOD)?\s*$/i) ?? null;
- const baseDice: string | null = diceParse ? diceParse[1] : null;
- const spellMod = (computed.spell_attack_bonus ?? 0) - computed.proficiency_bonus;
+ const ongoing=concentrationCastingNumbers(character.concentration_casting_context,sp.id,computed.modifiers,computed.proficiency_bonus);
+ const needsCastSource=!ongoing&&(!!diceParse?.[2]||prompt.showSave);
+ const baseDice: string | null = diceParse&&!needsCastSource ? diceParse[1] : null;
+ const spellMod = ongoing?.modifier??0;
  const flatMod: number = diceParse && diceParse[2] ? spellMod : 0;
  const diceLabel: string | null = baseDice
  ? `${baseDice}${flatMod > 0 ? ` + ${flatMod}` : flatMod < 0 ? ` − ${Math.abs(flatMod)}` : ''}`
  : null;
  const dmgType = (sp as any).damage_type as string | undefined;
  const saveType = (sp as any).save_type as string | undefined;
- const dc = computed.spell_save_dc ?? undefined;
+ const dc = ongoing?.saveDC;
  const isBonus = prompt.economy === 'bonus';
  const econSpent = isBonus ? bonusActionSpellCast : spellCastThisTurn;
  const econLabel = isBonus ? '1BA' : '1A';
@@ -1583,6 +1609,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 12, color: 'var(--t-1)' }}>{prompt.label}</span>
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-3)', marginLeft: 8 }}>
  {prompt.detail}
+ {needsCastSource&&' · Original casting source unavailable; resolve this effect manually.'}
  {diceLabel ? ` · ${diceLabel}${prompt.rollKind === 'damage' && dmgType ? ` ${dmgType}` : ''}` : ''}
  {prompt.showSave && saveType && dc !== undefined ? ` · ${saveType.slice(0, 3).toUpperCase()} DC ${dc}` : ''}
  </span>
@@ -2474,10 +2501,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {spell.name}
  </span>
  <SpellCastButton
+ castingBlocked={castingBlocked}
+ onReviewSpellSources={patch=>applyUpdate(patch,true)}
  character={character}
  spell={spell}
  onUpdateSlots={handleUpdateSlots}
- onConcentrationCast={(sl?: number) => setConcentration(spell.id, sl)}
+ onConcentrationCast={(sl,source) => setConcentration(spell.id, sl,true,source)}
  userId={userId}
  campaignId={character.campaign_id}
  compact
@@ -2663,6 +2692,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  {/* ── SPELLS ── */}
  {activeTab === 'spells' && (
  <SpellsTab
+ castingBlocked={castingBlocked}
+ onConcentrationCast={(id,slot,source)=>setConcentration(id,slot,true,source)}
  onReviewSpellSources={patch=>applyUpdate(patch,true)}
  character={character}
  computed={computed}
@@ -2706,7 +2737,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  if(!result.ok){toast.showToast(result.reason,'warn');return;}
  applyUpdate({prepared_spells:result.prepared,spell_preparation_sources:result.preparationSources},true);
  }}
- onConcentrate={id => setConcentration(concentrationSpellId === id ? null : id)}
+ onConcentrate={id => {
+  if(concentrationSpellId===id){setConcentration(null);return;}
+  const spell=spellMap[id],source=spell?castingFor(spell).selected:null;
+  if(!source){toast.showToast('Choose this spell’s casting source first.','warn');return;}
+  setConcentration(id,undefined,true,source);
+ }}
  onTogglePinned={id => {
  // v2.380.0 — Toggle spell ID in/out of pinned_spells.
  // Always allow removal. Adding gated by 6-pin cap; toast
@@ -3137,6 +3173,12 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
    // log + emits a spell_cast combat_event with payload.free_cast=true
    // so the History tab distinguishes free vs slot-cast.
    function castFreeLegacy(spellName: string) {
+     if(castingBlocked)return;
+     const castSpell=Object.values(spellMap).find(s=>s?.name===spellName);
+     const source=castSpell?castingFor(castSpell).selected:null;
+     if(!castSpell||!source||!['species','grant:species'].includes(source.source)){
+      toast.showToast('Choose the species spell’s casting ability first.','warn');return;
+     }
      const key = legacySpellFeatureKey(spellName);
      const fu = ((character.feature_uses as Record<string, number>) ?? {});
      if ((fu[key] ?? 0) >= 1) return; // already used this long rest
@@ -3153,10 +3195,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      // matching the Spells-tab cast pipeline), starting a new
      // concentration spell auto-breaks any existing one — no confirm
      // modal, just like onConcentrationCast for slot-cast spells.
-     const castSpell = Object.values(spellMap).find(s => s?.name === spellName);
      const requiresConc = castSpell && (castSpell as any).concentration === true;
      if (castSpell && requiresConc) {
-       setConcentration(castSpell.id);
+       setConcentration(castSpell.id,undefined,true,source);
      }
      import('../shared/ActionLog').then(({ logAction }) => {
        logAction({
@@ -3166,7 +3207,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
          actionType: 'spell',
          actionName: `${spellName} (Fiendish Legacy — Free)`,
          notes: requiresConc
-           ? 'Cast without a spell slot via Tiefling Fiendish Legacy. Concentration started. Refreshes on Long Rest.'
+           ? 'Cast without a spell slot via Tiefling Fiendish Legacy. Concentration recording requested. Refreshes on Long Rest.'
            : 'Cast without a spell slot via Tiefling Fiendish Legacy. Refreshes on Long Rest.',
        });
      }).catch(() => {});
@@ -3332,8 +3373,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                  damage_type: (spell as any).damage_type,
                  heal_dice: (spell as any).heal_dice,
                });
-               const spellAttackBonus = computed.spell_attack_bonus ?? undefined;
-               const spellSaveDC = computed.spell_save_dc ?? undefined;
+               const spellCasting=castingFor(spell).selected;
+               const spellAttackBonus = spellCasting?.attack;
+               const spellSaveDC = spellCasting?.saveDC;
                const hitDC = mech.isAttack && spellAttackBonus !== undefined
                  ? `+${spellAttackBonus}`
                  : mech.saveType && spellSaveDC !== undefined
@@ -3464,6 +3506,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                      }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'wrap' as const, alignItems: 'center' }}>
                        {!isCantrip && (freeAvailable ? (
                          <button
+                           disabled={castingBlocked}
                            onClick={() => castFreeLegacy(grant.spellName)}
                            title={`Cast ${grant.spellName} for free (refreshes on Long Rest). Slot-cast also available via the Cast button.`}
                            style={{
@@ -3493,13 +3536,15 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
                          </span>
                        ))}
                        <SpellCastButton
+ castingBlocked={castingBlocked}
+ onReviewSpellSources={patch=>applyUpdate(patch,true)}
                          spell={spell}
                          character={character}
                          userId={userId ?? ''}
                          campaignId={character.campaign_id}
                          onUpdateSlots={slots => applyUpdate({ spell_slots: slots }, true)}
                          compact={true}
-                         onConcentrationCast={(sl?: number) => setConcentration(spell.id, sl)}
+                         onConcentrationCast={(sl,source) => setConcentration(spell.id, sl,true,source)}
                        />
                      </div>
                    </div>
@@ -3882,8 +3927,9 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  damage_type: (spell as any).damage_type,
  heal_dice: (spell as any).heal_dice,
  });
- const spellAttack = computed.spell_attack_bonus ?? undefined;
- const saveDC = computed.spell_save_dc ?? undefined;
+ const spellCasting=castingFor(spell).selected;
+ const spellAttack = spellCasting?.attack;
+ const saveDC = spellCasting?.saveDC;
  const hitDC = mechanics.isAttack && spellAttack !== undefined
  ? `+${spellAttack}`
  : mechanics.saveType && saveDC !== undefined
@@ -4082,6 +4128,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  if (target.closest('button')) e.stopPropagation();
  }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'wrap' as const, alignItems: 'center' }}>
  <SpellCastButton
+ castingBlocked={castingBlocked}
+ onReviewSpellSources={patch=>applyUpdate(patch,true)}
  spell={spell}
  character={character}
  userId={userId ?? ''}
@@ -4114,7 +4162,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  setSpellCastThisTurn(true);
  }
  }}
- onConcentrationCast={(sl?: number) => setConcentration(spell.id, sl)}
+ onConcentrationCast={(sl,source) => setConcentration(spell.id, sl,true,source)}
  />
  </div>
  </div>
@@ -4141,7 +4189,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  }}>{effectLabel}</span>
  </div>
  </div>
- {character.class_name === 'Psion' && (spell.classes.includes('Psion') || getSpellCounts(character).grantedIds.has(spell.id)) && <PsionCastingNote subtle={spell.id === 'mage-hand'}/>}
+ {spellCasting?.className === 'Psion' && <PsionCastingNote subtle={spell.id === 'mage-hand'}/>}
  <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: 0 }}>{spell.description}</p>
 
  {/* v2.49.0: Upcast trigger button — appears for spells that support
@@ -4149,6 +4197,8 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
      pick a higher slot via a modal, instead of always casting at base. */}
  <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
  <SpellCastButton
+ castingBlocked={castingBlocked}
+ onReviewSpellSources={patch=>applyUpdate(patch,true)}
  spell={spell}
  character={character}
  userId={userId ?? ''}
@@ -4158,7 +4208,7 @@ export default function CharacterSheet({ initialCharacter, realtimeEnabled: _rea
  onLeveledSpellCast={(isBonusAction?: boolean) => {
  if (isBonusAction) setBonusActionSpellCast(true); else setSpellCastThisTurn(true);
  }}
- onConcentrationCast={(sl?: number) => setConcentration(spell.id, sl)}
+ onConcentrationCast={(sl,source) => setConcentration(spell.id, sl,true,source)}
  />
  </div>
  </div>

@@ -1,3 +1,5 @@
+import type {ConcentrationCastSource} from '../../rules/concentrationCasting';
+import {useSpellCasting} from './SpellCastingContext';
 import {cantripDamage} from '../../rules/cantripDamage';
 import {addDiceModifier} from '../../rules/dice';
 import {hasCharacterSpellWorkspace} from '../../lib/characterSpellWorkspace';
@@ -31,6 +33,8 @@ interface SpellsTabProps {
  onTogglePrepared: (id: string) => void;
  onReviewSpellSources: (patch: Partial<Character>) => void;
  onConcentrate: (id: string) => void;
+ onConcentrationCast:(id:string,slotLevel?:number,source?:ConcentrationCastSource)=>void;
+ castingBlocked?:boolean;
  // v2.380.0 — Toggle a spell ID in/out of pinned_spells. Cap of 6
  // is enforced by the parent; this callback just handles the toggle.
  onTogglePinned: (id: string) => void;
@@ -88,7 +92,7 @@ function getEffectCategory(spell: SpellData): { label: string; color: string } {
 export default function SpellsTab({
  character, computed, knownSpellData, availableSpells, maxSpellLevel,
  concentrationSpellId, hasSpellSlots, onUpdateSlots, onAddSpell,
- onRemoveSpell, onTogglePrepared, onReviewSpellSources, onConcentrate, onTogglePinned, userId, campaignId,
+ onRemoveSpell, onTogglePrepared, onReviewSpellSources, onConcentrate, onConcentrationCast, castingBlocked=false, onTogglePinned, userId, campaignId,
  openBookRequest = null, onOpenBookHandled,
 }: SpellsTabProps) {
  const [activeLevel, setActiveLevel] = useState<number | 'all'>('all');
@@ -492,7 +496,7 @@ export default function SpellsTab({
  key={`${spell.id}-${spell.effectiveLevel}`}
  spell={spell}
  damageCharacter={character}
- intelligenceModifier={computed.modifiers.intelligence}
+ computed={computed}
  effectiveLevel={spell.effectiveLevel}
  isUpcast={spell.isUpcast}
  isExpanded={expandedSpell === `${spell.id}-${spell.effectiveLevel}`}
@@ -502,30 +506,30 @@ export default function SpellsTab({
  isConcentrating={concentrationSpellId === spell.id}
  isPreparer={isPreparer && !isKnown}
  grantedReason={grantedReasonMap[spell.id]}
- spellAttack={computed.spell_attack_bonus ?? undefined}
- saveDC={computed.spell_save_dc ?? undefined}
- subtleTelekinesis={character.class_name === 'Psion' && spell.id === 'mage-hand'}
- psionicCasting={character.class_name === 'Psion' && (spell.classes.includes('Psion') || !!grantedReasonMap[spell.id])}
  castButton={
  <SpellCastButton
+ castingBlocked={castingBlocked}
+ onReviewSpellSources={onReviewSpellSources}
  spell={spell}
  character={character}
  userId={userId}
  campaignId={campaignId}
  onUpdateSlots={onUpdateSlots}
  forceSlotLevel={spell.isUpcast ? spell.effectiveLevel : undefined}
- onConcentrationCast={() => onConcentrate(spell.id)}
+ onConcentrationCast={(slot,source) => onConcentrationCast(spell.id,slot,source)}
  />
  }
  upcastButton={
  <SpellCastButton
+ castingBlocked={castingBlocked}
+ onReviewSpellSources={onReviewSpellSources}
  spell={spell}
  character={character}
  userId={userId}
  campaignId={campaignId}
  onUpdateSlots={onUpdateSlots}
  upcastTrigger={true}
- onConcentrationCast={() => onConcentrate(spell.id)}
+ onConcentrationCast={(slot,source) => onConcentrationCast(spell.id,slot,source)}
  />
  }
  onExpand={() => {
@@ -551,17 +555,14 @@ export default function SpellsTab({
 
 // ── Level tab button ─────────────────────────────────────────────────
 // ── Spell card ───────────────────────────────────────────────────────
-function SpellCard({ spell, damageCharacter, intelligenceModifier, effectiveLevel, isUpcast, isExpanded, isPrepared, isAvailable, preparationClass, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, spellAttack, saveDC, subtleTelekinesis, psionicCasting, pinnedSpells, onTogglePinned }: {
- spell: SpellData; damageCharacter:Character; intelligenceModifier:number; effectiveLevel?: number; isUpcast?: boolean;
+function SpellCard({ spell, damageCharacter, computed, effectiveLevel, isUpcast, isExpanded, isPrepared, isAvailable, preparationClass, isConcentrating, isPreparer, castButton, upcastButton, onExpand, onTogglePrepared, onConcentrate, onRemove, grantedReason, pinnedSpells, onTogglePinned }: {
+ spell: SpellData; damageCharacter:Character; computed:ComputedStats; effectiveLevel?: number; isUpcast?: boolean;
  isAvailable: boolean; preparationClass: string;
  isExpanded: boolean; isPrepared: boolean; isConcentrating: boolean;
  isPreparer: boolean; castButton: ReactNode; upcastButton?: ReactNode; grantedReason?: string;
- spellAttack?: number; saveDC?: number;
  onExpand: () => void; onTogglePrepared: () => void;
  onConcentrate: () => void; onRemove?: () => void;
  // v2.759 — casting reminders apply only to this character's Psion spells.
- subtleTelekinesis?: boolean;
- psionicCasting?: boolean;
  // v2.380.0 — Quick-cast pin star. pinnedSpells is the live array
  // from character.pinned_spells; onTogglePinned toggles this row's
  // spell ID in/out. Cap of 6 is enforced in the parent's handler;
@@ -569,6 +570,10 @@ function SpellCard({ spell, damageCharacter, intelligenceModifier, effectiveLeve
  pinnedSpells: string[];
  onTogglePinned: (id: string) => void;
 }) {
+ const casting=useSpellCasting(damageCharacter,spell,computed);
+ const spellAttack=casting.selected?.attack,saveDC=casting.selected?.saveDC;
+ const psionicCasting=casting.selected?.className==='Psion';
+ const subtleTelekinesis=psionicCasting&&spell.id==='mage-hand';
  const schoolColor = SCHOOL_COLORS[spell.school] ?? '#94a3b8';
  const dimmed = isPreparer && spell.level > 0 && !isAvailable && !grantedReason; // isPreparer already false for known casters
  const displayLevel = effectiveLevel ?? spell.level; // for badges / labels that show the cast tier
@@ -580,7 +585,7 @@ function SpellCard({ spell, damageCharacter, intelligenceModifier, effectiveLeve
  damage_type: (spell as any).damage_type,
  heal_dice: (spell as any).heal_dice,
  });
- const damageProfile=cantripDamage(damageCharacter,spell,mechanics.damageDice,intelligenceModifier);
+ const damageProfile=cantripDamage(damageCharacter,spell,mechanics.damageDice,computed.modifiers.intelligence,casting.selected?(casting.selected.className??'other'):undefined);
  mechanics.damageDice=damageProfile.dice?addDiceModifier(damageProfile.dice,damageProfile.bonus):null;
  // Abbreviate casting time for table display.
  // v2.591.0 — shortCastingTime first: reaction spells carry their

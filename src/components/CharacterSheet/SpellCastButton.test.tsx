@@ -1,20 +1,22 @@
 // @vitest-environment happy-dom
+import {useState} from 'react';
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import type {Character,SpellData} from '../../types';
 const mocks=vi.hoisted(()=>({attack:vi.fn(),log:vi.fn(),roll:vi.fn()}));
 vi.mock('../../lib/supabase',()=>({supabase:{from:()=>{throw new Error('Unit test attempted database access');}}}));
-vi.mock('../../lib/gameUtils',()=>({rollDie:()=>3,computeStats:()=>({modifiers:{intelligence:4},proficiency_bonus:3})}));
+vi.mock('../../lib/gameUtils',()=>({rollDie:()=>3,computeStats:()=>({modifiers:{intelligence:4,wisdom:1,charisma:-1},proficiency_bonus:3})}));
 vi.mock('../../context/DiceRollContext',()=>({useDiceRoll:()=>({triggerRoll:mocks.roll})}));
 vi.mock('../shared/ActionLog',()=>({logAction:mocks.log}));
 vi.mock('../Combat/PlayerAttackButton',()=>({default:(props:unknown)=>{mocks.attack(props);return null;}}));
 vi.mock('../../lib/summonTokens',()=>({SUMMON_TOKEN_SPELLS:{},placeSummonToken:vi.fn()}));
 vi.mock('../../lib/auras',()=>({AURA_SPELLS:{}}));
-vi.mock('../../lib/buffs',()=>({BUFF_SPELL_REGISTRY:{}}));
+vi.mock('../../lib/buffs',()=>({BUFF_SPELL_REGISTRY:{'mage hand':{}}}));
+vi.mock('../Combat/BuffTargetPickerModal',()=>({default:()=> <div role="dialog">Choose buff targets</div>}));
 vi.mock('../../lib/healSpells',async importOriginal=>({...await importOriginal<typeof import('../../lib/healSpells')>(),findHealSpell:()=>undefined}));
 vi.mock('./SummonFormPickerModal',()=>({default:()=>null}));
 import SpellCastButton from './SpellCastButton';
-const character={id:'caster',class_name:'Psion',level:6,subclass:'Telepath',spell_slots:{},spell_sources:{'mind-sliver':['class:Psion']}} as unknown as Character;
+const character={id:'caster',class_name:'Psion',level:6,subclass:'Telepath',known_spells:['mind-sliver','mage-hand'],prepared_spells:[],spell_slots:{},spell_sources:{'mind-sliver':['class:Psion'],'mage-hand':['grant:class:Psion']}} as unknown as Character;
 const spell:SpellData={school:'Enchantment',components:'V',duration:'1 round',concentration:false,ritual:false,classes:['Psion'],id:'mind-sliver',name:'Mind Sliver',level:0,casting_time:'1 action',range:'60 feet',description:'',save_type:'INT',damage_type:'Psychic',damage_at_char_level:{'1':'1d6','5':'2d6','11':'3d6'}};
 afterEach(cleanup);beforeEach(()=>vi.clearAllMocks());
 it.each([true,false])('declares scaled Psion damage and no damage on successful save in compact=%s',compact=>{
@@ -26,7 +28,7 @@ it('sends a flat INT bonus that crit doubling does not multiply',()=>{
  expect(mocks.attack).toHaveBeenLastCalledWith(expect.objectContaining({damageDice:'2d6+4',attackKind:'attack_roll'}));
 });
 it('excludes a different class source from the combat damage bonus',()=>{
- render(<SpellCastButton spell={spell} character={{...character,spell_sources:{'mind-sliver':['class:Wizard']}}} userId="owner" campaignId="campaign" onUpdateSlots={vi.fn()}/>);
+ render(<SpellCastButton spell={spell} character={{...character,secondary_class:'Wizard',secondary_level:1,spell_sources:{'mind-sliver':['class:Wizard']}}} userId="owner" campaignId="campaign" onUpdateSlots={vi.fn()}/>);
  expect(mocks.attack).toHaveBeenLastCalledWith(expect.objectContaining({damageDice:'2d6',saveSuccessEffect:'none'}));
 });
 
@@ -38,7 +40,7 @@ it('logs a utility cast against the character, not the account',async()=>{
 it.each([true,false])('heals with MOD and the chosen slot exactly once in compact=%s',async compact=>{
  const update=vi.fn(),action=vi.fn();
  const healing:SpellData={...spell,id:'cure-wounds',name:'Cure Wounds',higher_levels:'The healing increases by 2d8 for each slot level above 1.',level:1,save_type:undefined,damage_at_char_level:undefined,heal_dice:'2d8+MOD',heal_at_slot_level:{'1':'2d8+MOD','2':'4d8+MOD'}};
- render(<SpellCastButton spell={healing} character={{...character,spell_slots:{'1':{total:4,used:0},'2':{total:3,used:0}}}} userId="owner" onUpdateSlots={update} onLeveledSpellCast={action} compact={compact}/>);
+ render(<SpellCastButton spell={healing} character={{...character,subclass:'Metamorph',known_spells:['cure-wounds'],spell_sources:{'cure-wounds':['grant:class:Psion']},spell_slots:{'1':{total:4,used:0},'2':{total:3,used:0}}}} userId="owner" onUpdateSlots={update} onLeveledSpellCast={action} compact={compact}/>);
  fireEvent.click(screen.getByRole('button',{name:'2d8+MOD'}));
  expect(update).not.toHaveBeenCalled();
  fireEvent.click(screen.getByRole('button',{name:/Level 2/}));
@@ -59,15 +61,60 @@ it('does not claim a hit against an invented AC for an untargeted spell attack',
 });
 it('canceling healing slot selection leaves slots, dice and history untouched',()=>{
  const update=vi.fn();
- render(<SpellCastButton spell={{...spell,level:1,save_type:undefined,damage_at_char_level:undefined,heal_dice:'2d8+MOD',higher_levels:'Heal more with a higher slot.'}} character={{...character,spell_slots:{'1':{total:4,used:0},'2':{total:3,used:0}}}} userId="owner" onUpdateSlots={update}/>);
+ render(<SpellCastButton spell={{...spell,id:'cure-wounds',name:'Cure Wounds',level:1,save_type:undefined,damage_at_char_level:undefined,heal_dice:'2d8+MOD',higher_levels:'Heal more with a higher slot.'}} character={{...character,subclass:'Metamorph',known_spells:['cure-wounds'],spell_sources:{'cure-wounds':['grant:class:Psion']},spell_slots:{'1':{total:4,used:0},'2':{total:3,used:0}}}} userId="owner" onUpdateSlots={update}/>);
  fireEvent.click(screen.getByRole('button',{name:'2d8+MOD'}));fireEvent.click(screen.getByRole('button',{name:'Cancel'}));
  expect(update).not.toHaveBeenCalled();expect(mocks.roll).not.toHaveBeenCalled();expect(mocks.log).not.toHaveBeenCalled();
 });
 
 it('records flat healing without inventing dice to animate',async()=>{
  const update=vi.fn();
- render(<SpellCastButton spell={{...spell,id:'heal',name:'Heal',level:6,save_type:undefined,damage_at_char_level:undefined,heal_dice:'70'}} character={{...character,spell_slots:{'6':{total:1,used:0}}}} userId="owner" onUpdateSlots={update}/>);
+ render(<SpellCastButton spell={{...spell,id:'heal',name:'Heal',level:6,save_type:undefined,damage_at_char_level:undefined,heal_dice:'70'}} character={{...character,class_name:'Cleric',subclass:null,level:11,known_spells:['heal'],prepared_spells:['heal'],spell_sources:{heal:['class:Cleric']},spell_slots:{'6':{total:1,used:0}}}} userId="owner" onUpdateSlots={update}/>);
  fireEvent.click(screen.getByRole('button',{name:'70'}));
  await waitFor(()=>expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({characterId:'caster',actionType:'heal',total:70,individualResults:[]})));
  expect(mocks.roll).not.toHaveBeenCalled();expect(update).toHaveBeenCalledOnce();
+});
+
+it('repairs an unreviewed cantrip beside its casting control without inventing ownership',()=>{
+ const saved=vi.fn();
+ function Legacy(){const [pc,setPc]=useState({...character,spell_sources:{}});return <SpellCastButton spell={spell} character={pc} userId="owner" campaignId="campaign" onUpdateSlots={vi.fn()} onReviewSpellSources={patch=>{saved(patch);setPc(current=>({...current,...patch}));}}/>;}
+ render(<Legacy/>);expect(mocks.attack).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'Review spell source'}));
+ fireEvent.click(screen.getByRole('checkbox',{name:'Learned through Psion'}));
+ fireEvent.click(screen.getByRole('button',{name:'Save spell sources'}));
+ expect(saved).toHaveBeenCalledWith(expect.objectContaining({spell_sources:{'mind-sliver':['class:Psion']}}));
+ expect(mocks.attack).toHaveBeenLastCalledWith(expect.objectContaining({damageDice:'2d6+4',saveDC:15}));
+});
+it('casts a feat spell with its explicitly chosen ability and no Psion-only bonus',()=>{
+ render(<SpellCastButton spell={spell} character={{...character,spell_sources:{'mind-sliver':['feat']}}} userId="owner" campaignId="campaign" onUpdateSlots={vi.fn()}/>);
+ expect(mocks.attack).not.toHaveBeenCalled();
+ fireEvent.change(screen.getByRole('combobox',{name:'Cast Mind Sliver through'}),{target:{value:'feat:wisdom'}});
+ expect(mocks.attack).toHaveBeenLastCalledWith(expect.objectContaining({damageDice:'2d6',saveDC:12}));
+});
+
+it('records a concentration utility cast once with its actual source and slot',async()=>{
+ const onConcentrationCast=vi.fn(),update=vi.fn();
+ const concentration={...spell,id:'detect-magic',name:'Detect Magic',level:1 as const,concentration:true,save_type:undefined,damage_at_char_level:undefined};
+ render(<SpellCastButton spell={concentration} character={{...character,known_spells:['detect-magic'],prepared_spells:['detect-magic'],spell_sources:{'detect-magic':['class:Psion']},spell_slots:{'1':{total:4,used:0}}}} userId="owner" onUpdateSlots={update} onConcentrationCast={onConcentrationCast} compact/>);
+ fireEvent.click(screen.getByRole('button',{name:'Cast'}));
+ await waitFor(()=>expect(onConcentrationCast).toHaveBeenCalledOnce());
+ expect(onConcentrationCast).toHaveBeenCalledWith(1,{source:'class:Psion',ability:'intelligence'});expect(update).toHaveBeenCalledOnce();
+});
+it('blocks another cast while a concentration recording needs confirmation',()=>{
+ render(<SpellCastButton spell={spell} character={character} userId="owner" onUpdateSlots={vi.fn()} castingBlocked/>);
+ expect((screen.getByRole('button',{name:'Confirm concentration first'}) as HTMLButtonElement).disabled).toBe(true);expect(mocks.attack).not.toHaveBeenCalled();
+});
+
+it.each([true,false])('keeps post-cast targets open while concentration saves in compact=%s',async compact=>{
+ function Sheet(){const [blocked,setBlocked]=useState(false);return <SpellCastButton spell={{...spell,id:'mage-hand',name:'Mage Hand',save_type:undefined,damage_at_char_level:undefined,concentration:true}} character={character} userId="owner" campaignId="campaign" compact={compact} onUpdateSlots={vi.fn()} onConcentrationCast={()=>setBlocked(true)} castingBlocked={blocked}/>;}
+ render(<Sheet/>);fireEvent.click(screen.getByRole('button',{name:'Cast'}));
+ await waitFor(()=>expect(screen.getByRole('dialog').textContent).toBe('Choose buff targets'));
+ expect((screen.getByRole('button',{name:'Confirm concentration first'}) as HTMLButtonElement).disabled).toBe(true);
+});
+
+it.each([true,false])('keeps post-cast choices when the final slot is spent in compact=%s',async compact=>{
+ function Sheet(){const [hero,setHero]=useState<Character>({...character,spell_slots:{'1':{total:1,used:0}}});return <SpellCastButton spell={{...spell,id:'mage-hand',name:'Mage Hand',level:1,save_type:undefined,damage_at_char_level:undefined,concentration:true}} character={hero} userId="owner" campaignId="campaign" compact={compact} onUpdateSlots={slots=>setHero(previous=>({...previous,spell_slots:slots}))}/>;}
+ render(<Sheet/>);fireEvent.click(screen.getByRole('button',{name:'Cast'}));
+ if(!compact)fireEvent.click(screen.getAllByRole('button',{name:'Cast'}).slice(-1)[0]);
+ await waitFor(()=>expect(screen.getByRole('dialog').textContent).toBe('Choose buff targets'));
+ expect(screen.getByText('No Slots')).toBeTruthy();
 });
