@@ -150,7 +150,7 @@ import { MapToolButton } from './battlemap/MapToolButton';
 //        pan/zoom). Currently the strip is purely informational.
 
 import { Application, extend } from '@pixi/react';
-import { Container, Graphics, Sprite, Text, TextStyle } from 'pixi.js';
+import { Container, Graphics, Sprite, Text } from 'pixi.js';
 import { Viewport } from 'pixi-viewport';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -2508,137 +2508,9 @@ function BattleMapV2(props: BattleMapV2Props) {
     };
   }, [canvasEl, liveTokens, gridSizePx, WORLD_WIDTH, WORLD_HEIGHT, props.myCharacterId, props.isDM, showToast, handleDragMove]);
 
-  // v2.349.0 — Animated hover path preview for click-to-move.
-  //
-  // BG3 shows a translucent ghost line from your active token to
-  // wherever the cursor is hovering, with the same color-coded
-  // cost-vs-budget logic as the drag preview. Click confirms; hover
-  // updates live. This is the most polished version of click-to-move
-  // feedback — the player sees exactly where they'll end up and what
-  // it'll cost BEFORE clicking.
-  //
-  // Differences from the drag preview (v2.340):
-  //   • Activated by hover, not by drag. Hidden when no active turn,
-  //     no ownership, mode active, or cursor not over the canvas.
-  //   • Uses A* (v2.348) so the preview shows the actual route, not
-  //     a straight line. Bends around walls in real time.
-  //   • Owned by the parent (this scope), separate from the drag
-  //     preview which TokensLayer owns. Both Graphics live on the
-  //     viewport but never simultaneously visible (drag is exclusive
-  //     while the mouse is held).
-  //
-  // Throttling: rAF-gated rather than fixed-interval. A fast mouse
-  // can fire pointermove 200+ Hz; we only redraw once per animation
-  // frame which caps work at ~60 Hz. A* runs in <1ms on typical
-  // scenes so the cost is negligible — but redraws aren't, and the
-  // visible result is the same.
-  const hoverPreviewRefs = useRef<{
-    gfx: Graphics | null;
-    label: Text | null;
-    rafPending: boolean;
-    lastClientX: number;
-    lastClientY: number;
-  }>({
-    gfx: null, label: null, rafPending: false,
-    lastClientX: 0, lastClientY: 0,
-  });
-  useEffect(() => {
-    if (!canvasEl) return;
-    const vp = vpRef.current;
-    if (!vp) return;
-
-    // Lazy-mount the preview Graphics + label once. They live in the
-    // viewport so they pan/zoom with the world. Both are eventMode:
-    // 'none' so they never capture pointer events.
-    const gfx = new Graphics();
-    gfx.eventMode = 'none';
-    gfx.visible = false;
-    vp.addChild(gfx);
-    const label = new Text({
-      text: '',
-      style: new TextStyle({
-        fontFamily: 'sans-serif',
-        fontWeight: '800',
-        fontSize: 13,
-        fill: 0xfde68a,
-        stroke: { color: 0x0a0c10, width: 3 },
-        align: 'center',
-      }),
-    });
-    label.anchor.set(0.5, 1);
-    label.eventMode = 'none';
-    label.visible = false;
-    vp.addChild(label);
-    hoverPreviewRefs.current.gfx = gfx;
-    hoverPreviewRefs.current.label = label;
-
-    function clearPreview() {
-      const refs = hoverPreviewRefs.current;
-      if (refs.gfx) { refs.gfx.clear(); refs.gfx.visible = false; }
-      if (refs.label) refs.label.visible = false;
-    }
-
-    function redraw(_clientX: number, _clientY: number) {
-      const refs = hoverPreviewRefs.current;
-      const gfxLocal = refs.gfx;
-      const labelLocal = refs.label;
-      if (!gfxLocal || !labelLocal) return;
-
-      // v2.359.0 — Hover-path preview disabled by default. User
-      // feedback: the path showing on every mouse move during a
-      // turn read as visual noise / "where the character can move
-      // by default." The drag-preview path (TokenLayer, fires only
-      // during an actual drag) still shows the route + cost while
-      // a token is picked up — which is what the user wanted. Click-
-      // to-move continues to work via its own handler; users just
-      // don't see the planned route until they click.
-      clearPreview();
-      return;
-
-    }
-
-    function onMove(e: PointerEvent) {
-      const refs = hoverPreviewRefs.current;
-      refs.lastClientX = e.clientX;
-      refs.lastClientY = e.clientY;
-      // rAF coalesce: a fast mouse fires pointermove 200+Hz but we
-      // only need to redraw once per animation frame. The pending
-      // flag ensures we coalesce all moves between two rAF callbacks
-      // into a single redraw at the latest cursor position.
-      if (refs.rafPending) return;
-      refs.rafPending = true;
-      requestAnimationFrame(() => {
-        refs.rafPending = false;
-        redraw(refs.lastClientX, refs.lastClientY);
-      });
-    }
-    function onLeave() { clearPreview(); }
-    function onDown() {
-      // While drag is starting, the drag preview takes over. Clear
-      // ours immediately so the two don't double-render. Drag
-      // preview is shown by TokensLayer; we just yield.
-      clearPreview();
-    }
-
-    canvasEl.addEventListener('pointermove', onMove);
-    canvasEl.addEventListener('pointerleave', onLeave);
-    canvasEl.addEventListener('pointerdown', onDown);
-    return () => {
-      if (canvasEl) {
-        canvasEl.removeEventListener('pointermove', onMove);
-        canvasEl.removeEventListener('pointerleave', onLeave);
-        canvasEl.removeEventListener('pointerdown', onDown);
-      }
-      try {
-        if (gfx.parent) gfx.parent.removeChild(gfx);
-        if (!gfx.destroyed) gfx.destroy();
-        if (label.parent) label.parent.removeChild(label);
-        if (!label.destroyed) label.destroy();
-      } catch { /* viewport torn down */ }
-      hoverPreviewRefs.current.gfx = null;
-      hoverPreviewRefs.current.label = null;
-    };
-  }, [canvasEl, vpRef.current, liveTokens, gridSizePx, widthCells, heightCells, WORLD_WIDTH, WORLD_HEIGHT, props.myCharacterId, props.isDM]);
+  // v2.791 — removed the inert hover preview (disabled since v2.359).
+  // Its empty Graphics and pointer/rAF listeners outlived scene teardown
+  // and crashed on pointerleave. TokenLayer owns the active drag preview.
 
   // v2.224 — character IDs whose linked tokens should contribute
   // vision polygons. For party-shared sight, every PC in the campaign

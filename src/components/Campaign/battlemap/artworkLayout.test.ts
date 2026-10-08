@@ -14,4 +14,23 @@ describe('artwork sizing',()=>{
     expect(()=>artworkLayout(0,200,300,300,'contain')).toThrow();
     expect(()=>artworkRaster(Infinity,700)).toThrow();
   });
+  it('retains high-resolution detail instead of baking a small scene at screen resolution',()=>{
+    expect(artworkRaster(700,700,{width:2400,height:1200},'contain')).toEqual({width:2400,height:2400});
+    expect(artworkRaster(700,700,{width:2400,height:1200},'cover')).toEqual({width:1200,height:1200});
+  });
+  it('keeps the memory ceiling for very large originals and preserves map proportions',()=>{
+    for(const fit of ['contain','cover'] as const){
+      const r=artworkRaster(1400,700,{width:20000,height:10000},fit);
+      expect(r.width).toBeLessThanOrEqual(4096);expect(r.height).toBeLessThanOrEqual(4096);
+      expect(r.width*r.height).toBeLessThan(8_010_000);expect(r.width/r.height).toBeCloseTo(2,2);
+    }
+  });
+  it('does not manufacture extra density from a low-resolution original',()=>{
+    expect(artworkRaster(700,700,{width:400,height:200})).toEqual({width:700,height:700});
+  });
+  it('rejects malformed source dimensions before preparing an export',()=>{
+    expect(()=>artworkRaster(700,700,{width:0,height:100})).toThrow();
+    expect(()=>artworkRaster(700,700,{width:100,height:NaN})).toThrow();
+  });
+
 });

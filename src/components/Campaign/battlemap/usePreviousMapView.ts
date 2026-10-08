@@ -6,10 +6,11 @@ import type {Viewport} from 'pixi-viewport';
 export function usePreviousMapView(viewport:Viewport|null,sceneId:string|null) {
   const [saved,setSaved]=useState<{viewport:Viewport;sceneId:string|null;x:number;y:number;zoom:number}|null>(null);
   useEffect(()=>setSaved(null),[viewport,sceneId]);
-  const canReturn=!!saved && saved.viewport===viewport && saved.sceneId===sceneId;
+  const canReturn=!!viewport && !viewport.destroyed && !!saved && saved.viewport===viewport && saved.sceneId===sceneId;
   return {
     canReturn,
     remember:(destination?:{x:number;y:number;zoom:number})=>{
+      if (!viewport || viewport.destroyed) return;
       // v2.727 — repeated Fit/Find must not replace the return point with
       // the view we're already in. Ignore only floating-point camera noise.
       if(viewport && destination && Math.abs(viewport.center.x-destination.x)<1e-6
@@ -18,7 +19,7 @@ export function usePreviousMapView(viewport:Viewport|null,sceneId:string|null) {
       if(viewport)setSaved({viewport,sceneId,x:viewport.center.x,y:viewport.center.y,zoom:viewport.scale.x});
     },
     restore:()=>{
-      if(!viewport || !saved || !canReturn)return null;
+      if(!viewport || viewport.destroyed || !saved || !canReturn)return null;
       viewport.plugins.get('decelerate')?.reset();
       // A previous Fit may have allowed a zoom below the usual 25% floor.
       viewport.clampZoom({minScale:Math.min(.25,saved.zoom),maxScale:4});
