@@ -397,6 +397,7 @@ export type Database = {
           wisdom: number;
           charisma: number;
           max_hp: number;
+          last_campaign_damage_id: string | null;
           current_hp: number;
           temp_hp: number;
           hit_dice_spent: number;
@@ -487,6 +488,7 @@ export type Database = {
           wisdom?: number;
           charisma?: number;
           max_hp?: number;
+          last_campaign_damage_id?: string | null;
           current_hp?: number;
           temp_hp?: number;
           hit_dice_spent?: number;
@@ -577,6 +579,7 @@ export type Database = {
           wisdom?: number;
           charisma?: number;
           max_hp?: number;
+          last_campaign_damage_id?: string | null;
           current_hp?: number;
           temp_hp?: number;
           hit_dice_spent?: number;

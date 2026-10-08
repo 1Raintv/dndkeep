@@ -120,4 +120,23 @@ test.describe('Campaign concentration recovery (local stack)', () => {
     sql(`update characters set current_hp=8 where id='${charId}'`);
     await expect(page.getByText('Concentration Check Required',{exact:true})).toBeVisible();
   });
+  for(const outside of [false,true])test(`atomic party damage creates one sheet prompt (outside encounter: ${outside})`,async({page})=>{
+    const request=randomUUID(),save=randomUUID();sql(`delete from pending_concentration_saves where id='${pending}';update characters set current_hp=50,max_hp=50,temp_hp=8,constitution=14 where id='${charId}';
+     update combatants set current_hp=50,max_hp=50,temp_hp=8 where id=(select combatant_id from combat_participants where id='${participant}')`);
+    if(outside)sql(`delete from combat_encounters where id='${encounter}'`);
+    await page.addInitScript(()=>{Math.random=()=>0.99;});await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await expect(page.getByRole('button',{name:'Rest',exact:true}).locator('visible=true').first()).toBeVisible();
+    await page.evaluate(async({campaign,charId,request,save})=>{
+      const path='/src/lib/supabase.ts';const {supabase}=await import(path);
+      const context=await supabase.rpc('get_party_damage_context',{p_campaign_id:campaign,p_character_id:charId});if(context.error)throw context.error;
+      const result=await supabase.rpc('apply_party_damage',{p_campaign_id:campaign,p_character_id:charId,p_request_id:request,p_save_id:save,p_damage:10,p_damage_type:'psychic',p_modifier:2,p_expected:context.data});if(result.error)throw result.error;
+    },{campaign,charId,request,save});
+    const dialog=page.getByRole('dialog',{name:'Concentration save',exact:true});await expect(dialog).toBeVisible();
+    expect(sql(`select current_hp||':'||temp_hp from characters where id='${charId}'`)).toBe('48:0');
+    await expect(page.getByText('Concentration Check Required',{exact:true})).toHaveCount(0);
+    await dialog.getByRole('button',{name:'Roll Save'}).click();await expect(page.getByRole('status',{name:'Concentration recovery'})).toContainText('Concentration maintained');
+    expect(sql(`select count(*) from combat_events where chain_id='${request}' and event_type='save_rolled'`)).toBe('1');
+    sql(`update characters set current_hp=47 where id='${charId}'`);await expect(page.getByText('Concentration Check Required',{exact:true})).toBeVisible();
+  });
+
 });

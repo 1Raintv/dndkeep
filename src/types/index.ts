@@ -323,6 +323,7 @@ export interface Character {
   max_hp: number;
   current_hp: number;
   temp_hp: number;
+  last_campaign_damage_id?: string | null; // v2.826: concentration queued atomically with this damage
   hit_point_revision?: number; // v2.798: server ordering for HP/max/temp changes
   hit_dice_spent: number;  // number spent since last long rest; max = total class levels
   hit_dice_spent_by_type?: Record<string,number>|null; // null = legacy allocation unknown

@@ -1,5 +1,37 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.826 — atomic party-damage backend and sheet coordination
+
+New DM-only snapshot/apply/cancel RPCs use one immutable request identity per
+character. Damage consumes temporary HP first, uses the active combatant's HP
+when present, and updates combat/sheet pools together. A changed preview rejects
+before writing. Retries return the original result without replaying HP changes;
+cancellation and damage share the same character lock. Private receipts are not
+readable by players. The caller supplies the already-adjusted damage total and
+effective CON modifier; its character/combat snapshot must still match exactly.
+
+The same transaction creates one casting-bound concentration offer, respects
+campaign/character automation settings, or ends concentration on incapacitation.
+Zero-HP damage/death failures and massive damage are recorded. Owned spell-effect
+cleanup and database HP arithmetic are shared with existing save/manual-HP flows.
+A damage marker suppresses only the sheet's duplicate HP-delta prompt; a later
+ordinary HP change clears it and still prompts normally.
+
+Validation: full gate (2,375 tests; TypeScript 201/201; 255.1 KB entry), 86 database
+regressions across party/manual/solo damage and concentration plus two final
+combat cases. Four live desktop/phone checks cover exactly one prompt during and
+between encounters, then a fresh prompt for later damage. Local migration
+20261008093955 applied; no pending ledger entries or diagnostics for changed
+functions (four existing unrelated diagnostic entries). No production application
+claimed yet. The preceding concentration migration 20261008093019 is confirmed
+applied by production workflow 37758594768, actual apply step.
+
+Next, before users can use this backend: replace PartyDashboard's legacy AoE
+write with a dedicated panel, fetch authoritative previews, persist the entire
+batch before sending, retain partial results/recovery per target, and settle
+Auto saves through the existing stored-dice API. The old AoE controls remain
+unconverted; do not describe their temporary-HP/concentration bugs as fixed yet.
+
 ### v2.825 — campaign concentration outside encounters (foundation)
 
 The existing campaign concentration queue now accepts a save with no encounter
