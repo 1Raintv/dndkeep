@@ -134,3 +134,12 @@ export function applyAbilityIncreases(
   }
   return out;
 }
+
+/** v2.819: DM prompts may use an ability's name or three-letter code. */
+export function normalizeAbilityName(value: unknown): AbilityName | null {
+  if (typeof value !== 'string') return null;
+  const name = value.trim().toLowerCase();
+  if (ABILITY_NAMES.has(name)) return name as AbilityName;
+  if (!['str','dex','con','int','wis','cha'].includes(name)) return null;
+  return ({str:'strength',dex:'dexterity',con:'constitution',int:'intelligence',wis:'wisdom',cha:'charisma'} as Record<string,AbilityName>)[name] ?? null;
+}

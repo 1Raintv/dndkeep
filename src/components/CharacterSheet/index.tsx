@@ -1,3 +1,4 @@
+import SavePromptBanner from './SavePromptBanner';
 import PsionicDisciplineTurnPanel from './_shared/PsionicDisciplineTurnPanel';
 import {SpellDeclarationPanel} from './SpellDeclarationPanel';
 import {useSavedSpellDeclaration} from '../../lib/hooks/useSavedSpellDeclaration';
@@ -2093,75 +2094,9 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  )}
 
  {/* ── Save Prompt banner ── */}
- {savePrompt && (() => {
- const abilityKey = savePrompt.ability.toLowerCase() as keyof typeof character;
- // v2.327.0 — T5: read the effective score from computed.ability_scores
- // so an attuned Headband of Intellect / Gauntlets of Ogre Power
- // actually changes the save modifier the player sees.
- const score = (computed.ability_scores as any)[abilityKey] ?? (character[abilityKey] as number) ?? 10;
- const mod = abilityModifier(score);
- // v2.260.0 — was reading computed.proficiencyBonus (camelCase),
- // but the ComputedStats field is proficiency_bonus (snake_case).
- // The ?? 2 fallback was masking the bug — every save prompt
- // computed PB=2 regardless of level.
- const pb = computed.proficiency_bonus;
- const hasSaveProf = character.saving_throw_proficiencies?.includes(savePrompt.ability.toLowerCase());
- const total = mod + (hasSaveProf ? pb : 0);
- const needsToRoll = savePrompt.dc - total;
- return (
- <div style={{
- padding: '12px 16px', borderRadius: 10,
- background: 'rgba(96,165,250,0.08)', border: '1px solid rgba(96,165,250,0.4)',
- display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
- }}>
- <div style={{ flex: 1 }}>
- <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#60a5fa', marginBottom: 4 }}>
- Saving Throw Required
- </div>
- <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--t-1)' }}>
- {savePrompt.ability} Save — DC {savePrompt.dc}
- </div>
- <div style={{ fontSize: 11, color: 'var(--t-3)', marginTop: 2 }}>
- Your modifier: {total >= 0 ? '+' : ''}{total}{hasSaveProf ? ' (proficient)' : ''}
- {' · '}Need to roll {Math.max(1, Math.min(20, needsToRoll))}+ on d20
- </div>
- </div>
- {/* v2.170.0 — Phase Q.0 pt 11: Dismiss button removed per playtest
-     feedback. A DM-required save is not optional; the player must
-     roll it. Roll button synthesizes 2d20 if adv/dis is set in the
-     future (save_prompt schema doesn't carry adv/dis today, but the
-     structure is ready). Pass/fail is surfaced via the Character
-     History log on settle (RAW result = d20 + mod vs DC). */}
- <div style={{ display: 'flex', gap: 6 }}>
- <button
- onClick={() => {
- const dc = savePrompt.dc;
- triggerRoll({
- result: 0, dieType: 20, modifier: total,
- label: `${savePrompt.ability} Save (DC ${dc})`,
- logHistory: { characterId: character.id, userId },
- onResult: (dice, rolledTotal) => {
- const pass = rolledTotal >= dc;
- // Fire a persistent history row so the Roll & Action
- // log shows whether the save succeeded.
- logHistoryEvent({
- characterId: character.id,
- userId,
- eventType: 'save',
- description: `${savePrompt.ability} save DC ${dc}: ${dice.map(d=>d.value).join(',')} + ${total >= 0 ? '+' : ''}${total} = ${rolledTotal} — ${pass ? 'SUCCESS' : 'FAIL'}`,
- newValue: rolledTotal,
- }).catch(() => {});
- },
- });
- setSavePrompt(null);
- }}
- style={{ fontSize: 12, fontWeight: 700, padding: '7px 16px', borderRadius: 7, cursor: 'pointer', minHeight: 0, border: '1px solid #60a5fa', background: '#60a5fa', color: '#fff' }}>
- Roll Save
- </button>
- </div>
- </div>
- );
- })()}
+ {savePrompt && <SavePromptBanner character={character} computed={computed} userId={userId} prompt={savePrompt}
+ onRolled={()=>setSavePrompt(current=>current===savePrompt?null:current)}/>}
+
 
  {/* v2.163.0 — Phase Q.0 pt 4: ability check prompt from DM.
      Mirrors save_prompt visually but uses purple accent so it's

@@ -77,6 +77,36 @@ test.describe('Psionic Discipline activation controls',()=>{
   }
   if(discipline==='psionic-guards'||discipline==='inerrant-aim')await page.screenshot({path:info.outputPath(discipline+'-used.png')});
  });
+ test('DM save requests apply Guards and return to normal after expiry',async({page},info)=>{
+  test.setTimeout(90000);const campaign=randomUUID();
+  sql(`insert into campaigns(id,owner_id,name) values('${campaign}','${userId}','Guards prompt fixture');
+   update characters set campaign_id='${campaign}',level=5,intelligence=18,saving_throw_proficiencies=array['intelligence'],class_resources='{"psion-disciplines":["psionic-guards"],"psionic-energy-dice":6}' where id='${charId}'`);
+  try{
+   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+   await page.getByRole('button',{name:'Activate Guards',exact:true}).locator('visible=true').first().click();
+   await expect(page.getByRole('status',{name:'Psionic Guards protection'})).toBeVisible();
+   const send=()=>sql(`insert into campaign_chat(campaign_id,user_id,character_name,message,message_type) values('${campaign}','${userId}','DM','{"ability":"INT","dc":18,"targets":["${charId}"]}','save_prompt')`);
+   const banner=page.getByRole('region',{name:'DM saving throw'});
+   send();await expect(banner).toBeVisible({timeout:20000});await expect(banner).toContainText('Your modifier: +7 (proficient)');
+   await banner.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('dm-guards-save-prompt.png')});
+   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
+    const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');
+    const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
+    const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[aria-label=\"DM saving throw\"], [aria-label=\"DM saving throw\"] *')");
+    const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways).toBe(false);expect(layout.clipped).toEqual([]);expect(layout.pastEdge).toEqual([]);
+   }
+   await banner.getByRole('button',{name:'Roll Save',exact:true}).click();await expect(banner).toHaveCount(0);
+   const history=()=>sql(`select coalesce(jsonb_agg(jsonb_build_object('description',description,'total',new_value)),'[]') from character_history where character_id='${charId}' and event_type='save'`);
+   await expect.poll(()=>JSON.parse(history()).length,{timeout:20000}).toBe(1);
+   const guarded=JSON.parse(history())[0];const match=guarded.description.match(/: (\d+) or (\d+) \(keep highest; Psionic Guards\) \+7 = (\d+) — (SUCCESS|FAIL)/);
+   expect(match).not.toBeNull();const total=Math.max(Number(match[1]),Number(match[2]))+7;expect(Number(match[3])).toBe(total);expect(Number(guarded.total)).toBe(total);expect(match[4]).toBe(total>=18?'SUCCESS':'FAIL');
+   await page.reload();await page.getByRole('button',{name:/End Turn/}).locator('visible=true').first().click();await expect(page.getByRole('status',{name:'Psionic Guards protection'})).toHaveCount(0);
+   send();await expect(banner).toBeVisible({timeout:20000});await banner.getByRole('button',{name:'Roll Save',exact:true}).click();
+   await expect.poll(()=>JSON.parse(history()).length,{timeout:20000}).toBe(2);
+   const normal=JSON.parse(history()).find((r:{description:string})=>!r.description.includes('Psionic Guards'));const normalMatch=normal.description.match(/: (\d+) \+7 = (\d+) — (SUCCESS|FAIL)/);
+   expect(normalMatch).not.toBeNull();expect(Number(normalMatch[2])).toBe(Number(normalMatch[1])+7);
+  }finally{sql(`update characters set campaign_id=null where id='${charId}';delete from campaigns where id='${campaign}'`);}
+ });
  test('secondary Psion uses the original class snapshot instead of the display projection',async({page})=>{
   sql(`update characters set class_name='Fighter',level=3,secondary_class='Psion',secondary_level=5,intelligence=18,class_resources='{"psion-disciplines":["psionic-guards"],"psionic-energy-dice":6}' where id='${charId}'`);
   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);await page.getByRole('button',{name:'Activate Guards',exact:true}).locator('visible=true').first().click();
