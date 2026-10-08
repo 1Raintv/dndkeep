@@ -464,8 +464,9 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  // our HP via realtime sync, the local handleUpdateHP path is bypassed
  // and the concentration save was silently skipped. Detect total damage
  // (current_hp delta + temp_hp delta) and fire the save here too.
+ // v2.826: atomic party damage already queued its save, including temp-HP absorption.
  const currentConcSpell = (newConcSpell !== undefined ? newConcSpell : oldConcSpell) as string;
- if (currentConcSpell && currentConcSpell !== '' && !updated.last_standalone_damage_id && !isCombatHpCarryover(current, patch)) {
+ if (currentConcSpell && currentConcSpell !== '' && !updated.last_standalone_damage_id && !updated.last_campaign_damage_id && !isCombatHpCarryover(current, patch)) {
  const oldHP = (current['current_hp'] as number) ?? 0;
  const newHP = (patch['current_hp'] !== undefined ? (patch['current_hp'] as number) : oldHP);
  const oldTemp = (current['temp_hp'] as number) ?? 0;
