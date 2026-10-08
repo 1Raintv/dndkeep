@@ -1,5 +1,48 @@
 # DNDKeep — Two-Track Roadmap
 
+### In progress — Complete weapon damage settlement (not deployed)
+
+Branch `codex/weapon-damage-resolution` builds the complete weapon transaction;
+it must retain the real objective (typed damage, Sharpened replacement, mastery,
+retaliation, life state/concentration, history, durable retry), not expose a partial
+HP-only endpoint. Local-only migration `20261008213500_weapon_damage_resolution.sql`
+currently contains:
+
+- A private generic defense reader shared by the existing Psion damage plan.
+- A private retaliation preview using pre-hit buffs/temp HP. It distinguishes
+  recorded melee/ranged delivery, requests a choice for unknown delivery, and
+  preserves cold immunity/resistance/vulnerability and conditional-defense review.
+- A private retaliation lifecycle stage composed after primary life settlement.
+  Retaliation gets an internal automatic-hit record, so it reuses death-save,
+  concentration and HP synchronization without recursively triggering retaliation.
+  Its receipt prevents duplicate damage; an outer failure rolls both directions
+  back. Temporary-HP-dependent retaliation buffs end after the last temporary HP
+  is lost, including ranged hits. A hit can retaliate even if primary damage is zero.
+  Defense changes caused by earlier life/concentration effects now abort and roll
+  back the transaction instead of silently using stale resistance. The new regression
+  fails without the guard and passes with it; full effect-order selection is pending.
+- Corrected the pure Sharpened replacement rule against the supplied UA p.5:
+  Psychic damage triggers Attack Mode, but its chosen die can be another type in
+  that same damage roll. Fixed critical maxima and adjusted/unknown values cannot
+  be selected. A mixed-packet preview recomputes each type's defenses after one
+  replacement and preserves the original roll history. This is not yet app-routed.
+
+Local evidence: 48 defense/retaliation-preview/existing Sharpened SQL cases and
+9 lifecycle cases pass (26 current defense/retaliation cases rerun together).
+The two Psion rule modules pass 59 cases, including 21 added checks for mixed
+replacement and actual rolled-die eligibility. Changed functions have no database
+lint findings. Full code gate passes (2,891 units, TS 199/199, entry 255.2 KB).
+Armor of Agathys mechanics verified against the licensed [2024 PHB entry](https://app.roll20.net/compendium/dnd5e/Spells:Armor%20of%20Agathys?expansion=32231); no spell prose copied.
+No public weapon endpoint or app routing has been added; this work is unfinished.
+The outer caller still must lock both characters/combatants in stable order,
+verify the full preview, settle mastery (including Topple/Cleave decisions), and
+publish one final application receipt. It must also resume automatic concentration
+checks from both damage directions. The licensed [2024 simultaneous-effects rule](https://roll20.net/compendium/dnd5e/Rules:Rules%20Definitions?expansion=32231)
+assigns ordering to the current turn's controller. The future complete plan must
+represent that decision when order matters, including concentration-dependent
+resistance; the current guard prevents an incorrect automatic decision but does not
+resolve the choice. Do not claim full ordinary-attack automation from these tests.
+
 ### v2.867 — Psychic saving spells use Sharpened damage resolution
 
 New paid single-target Psychic saving spells use the guarded damage preview and
@@ -22,7 +65,10 @@ screenshots inspected. The browser regression fails when restored to the old
 Destructive-Thoughts-only UI. Full gate: 2,870 units / 259 files, TypeScript 199/199,
 hooks/RAW/coordinates/anchors, production build and 255.2 KB entry. Database lint
 reports no errors or findings on changed functions; unrelated standing warnings
-remain. Publication pending.
+remain. Merged PR #211 after both CI gates passed. Production migration run
+37847224467 succeeded; ledger, source column and private guard permissions
+independently verified. Advisor counts unchanged (6 security / 4 performance).
+Vercel frontend deployment is rate-limited; v2.861.0 remains confirmed live.
 
 ### v2.866 — Preserve melee/ranged attack delivery
 

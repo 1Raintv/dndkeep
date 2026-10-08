@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {resolveTypedDamage} from './typedDamage';
+import {previewTypedSharpenedReplacement,resolveTypedDamage} from './typedDamage';
 import {damageRollComponent,type DamageComponentRecord} from './damageComponents';
 const packet=(entries:[string,number][]):DamageComponentRecord=>({version:1,components:entries.map(([type,n],i)=>damageRollComponent({key:i?'rider:'+i:'base',source:i?'rider':'base',label:'Damage',damageType:type,expression:String(n),rolls:[],modifier:n,rawTotal:n}))});
 const none={immune:[],resistant:[],vulnerable:[]};
@@ -30,4 +30,45 @@ it('immunity resolves mixed-source damage without an unnecessary allocation deci
 it('rejects unsafe aggregate damage and vulnerability multiplication',()=>{
  expect(()=>resolveTypedDamage(packet([['psychic',Number.MAX_SAFE_INTEGER],['psychic',1]]),none)).toThrow('supported number range');
  expect(()=>resolveTypedDamage(packet([['psychic',Number.MAX_SAFE_INTEGER]]),{...none,vulnerable:['psychic']})).toThrow('supported number range');
+});
+
+const mixedRoll=():DamageComponentRecord=>({version:1,components:[
+ damageRollComponent({key:'base',source:'base',label:'Weapon',damageType:'slashing',expression:'1d8+3',rolls:[2],modifier:3,rawTotal:5}),
+ damageRollComponent({key:'rider:psychic',source:'rider',label:'Psychic rider',damageType:'psychic',expression:'1d6',rolls:[3],modifier:0,rawTotal:3}),
+]});
+const active={active:true,usedThisTurn:false,recordedNumber:8,sources:{base:'weapon-attack','rider:psychic':'weapon-attack'} as const};
+const baseSelection={componentKey:'base',dieIndex:0};
+it('replaces a physical die in a mixed Psychic weapon hit, retaining its own resistance',()=>{
+ const input=mixedRoll(),snapshot=structuredClone(input);
+ const result=previewTypedSharpenedReplacement(input,{...none,resistant:['slashing','psychic']},{},active,baseSelection)!;
+ expect(result.before.total).toBe(5);expect(result.after.total).toBe(8);expect(result.after.psychicDamage).toBe(3);
+ expect(result.replacement).toMatchObject({original:2,replacement:8,delta:6});expect(input).toEqual(snapshot);
+ expect(result.components.components[0]).toMatchObject({rolls:[8],dieKinds:['adjusted'],rawTotal:11});
+});
+it('replaces one Psychic rider die while preserving source-specific resistance bypass',()=>{
+ const result=previewTypedSharpenedReplacement(mixedRoll(),{...none,resistant:['psychic']},{},
+  {...active,sources:{base:'weapon-attack','rider:psychic':'other'}},{componentKey:'rider:psychic',dieIndex:0})!;
+ expect(result.before.total).toBe(6);expect(result.after.total).toBe(9);
+});
+it.each([{immune:['psychic']},{resistant:['all'],immune:['psychic']}])('cannot trigger from physical damage when Psychic damage is prevented: %j',defense=>{
+ expect(previewTypedSharpenedReplacement(mixedRoll(),{...none,...defense},{},active,baseSelection)).toBeNull();
+});
+it('cannot trigger if the entire hit is prevented by an explicit adjustment',()=>{
+ expect(previewTypedSharpenedReplacement(mixedRoll(),none,{multiplier:0},active,baseSelection)).toBeNull();
+});
+it.each(['maximum','adjusted','unknown'] as const)('never substitutes the %s part of a critical packet',kind=>{
+ const input=mixedRoll();input.components[0].dieKinds[0]=kind;
+ expect(previewTypedSharpenedReplacement(input,none,{},active,baseSelection)).toBeNull();
+ expect(previewTypedSharpenedReplacement(input,none,{},active,{componentKey:'rider:psychic',dieIndex:0})).not.toBeNull();
+});
+it.each([{active:false},{usedThisTurn:true},{recordedNumber:0},{recordedNumber:37}])('rejects unavailable mixed-packet replacement: %j',patch=>{
+ expect(previewTypedSharpenedReplacement(mixedRoll(),none,{},{...active,...patch},baseSelection)).toBeNull();
+});
+it.each([{componentKey:'elsewhere',dieIndex:0},{componentKey:'base',dieIndex:1},{componentKey:'base',dieIndex:-1},{componentKey:'base',dieIndex:0.5}])('rejects a die outside this damage packet: %j',selection=>{
+ expect(previewTypedSharpenedReplacement(mixedRoll(),none,{},active,selection)).toBeNull();
+});
+it('recomputes each type from raw damage before save rounding and target defenses',()=>{
+ const result=previewTypedSharpenedReplacement(mixedRoll(),{...none,resistant:['slashing']},{multiplier:0.5},active,baseSelection)!;
+ expect(result.before.total).toBe(2);expect(result.after.total).toBe(3);
+ expect(result.after.groups.map(g=>[g.raw,g.adjusted,g.final])).toEqual([[11,5,2],[3,1,1]]);
 });

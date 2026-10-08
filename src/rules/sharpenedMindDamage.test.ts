@@ -23,8 +23,8 @@ it('replaces exactly one psychic die, including with a number larger than its di
 it('permits choosing a lower recorded value rather than silently maximizing',()=>{
  expect(replaceSharpenedDamageDie({...request,recordedNumber:1,dieIndex:1})?.delta).toBe(-4);
 });
-it('can replace psychic dice regardless of spell/class source, but not a fire rider',()=>{
- expect(replaceSharpenedDamageDie(request)).not.toBeNull();expect(replaceSharpenedDamageDie({...request,dieIndex:2})).toBeNull();
+it('can replace a fire rider in the same roll when Psychic damage triggers Attack Mode',()=>{
+ expect(replaceSharpenedDamageDie(request)).not.toBeNull();expect(replaceSharpenedDamageDie({...request,dieIndex:2})?.dice.map(d=>d.value)).toEqual([2,5,12]);
 });
 it('applies one shared replacement before each target save and resistance',()=>{
  const result=replaceSharpenedDamageDie({...request,dice:dice.slice(0,2)})!;const total=result.dice.reduce((sum,d)=>sum+d.value,0);expect(total).toBe(17);
@@ -36,4 +36,12 @@ it.each([{active:false},{usedThisTurn:true},{psychicDamageDealt:false},{recorded
 });
 it('allows the capstone total of three maximum d12s',()=>{
  expect(replaceSharpenedDamageDie({...request,recordedNumber:36})?.replacement).toBe(36);
+});
+
+it.each(['maximum','adjusted','unknown'] as const)('does not replace a %s value that was not rolled',kind=>{
+ expect(replaceSharpenedDamageDie({...request,dice:dice.map(d=>({...d,kind}))})).toBeNull();
+});
+it('marks the substituted value adjusted without relabeling other physical dice',()=>{
+ const result=replaceSharpenedDamageDie(request)!;
+ expect(result.dice[0].kind).toBe('adjusted');expect(result.dice[1].kind).toBeUndefined();
 });

@@ -1,6 +1,6 @@
 import {applyDamageAffinities,type DamageModifier} from './damageAffinities';
 import {readDamageComponents,type DamageComponentRecord} from './damageComponents';
-import {sharpenedIgnoresResistance,type SharpenedDamageSource} from './sharpenedMindDamage';
+import {sharpenedDamageReplacement,sharpenedIgnoresResistance,type SharpenedDamageSource} from './sharpenedMindDamage';
 /** SRD 5.2.1 p.17: combine damage of the same type before its resistance;
  * modifiers precede resistance, then vulnerability. Different types stay apart.
  * This pure stage requires explicit adjustments; never infer them from a final
@@ -45,4 +45,24 @@ export function resolveTypedDamage(record:DamageComponentRecord,defenses:TypedDa
  const total=groups.reduce((n,g)=>n+g.final,0),psychicDamage=groups.filter(g=>g.damageType==='psychic').reduce((n,g)=>n+g.final,0);
  if(!Number.isSafeInteger(total))throw new Error('Damage exceeds the supported number range.');
  return {groups,total,psychicDamage};
+}
+
+/** v2.868: preview one target's entire mixed damage packet before/after Attack
+ * Mode. Keep original history untouched; only a real die in THIS packet can be
+ * replaced. Caller still authorizes activation, current-turn use and sources. */
+export function previewTypedSharpenedReplacement(record:DamageComponentRecord,defenses:TypedDamageDefenses,adjustments:TypedDamageAdjustment,
+ sharpened:{active:boolean;usedThisTurn:boolean;recordedNumber:number;sources:Readonly<Record<string,SharpenedDamageSource>>},
+ selection:{componentKey:string;dieIndex:number}) {
+ const packet=readDamageComponents(record);
+ if(!packet)throw new Error('Typed damage inputs could not be verified.');
+ const before=resolveTypedDamage(packet,defenses,adjustments,sharpened);
+ const component=packet.components.find(c=>c.key===selection.componentKey),index=selection.dieIndex;
+ if(!component||!Number.isInteger(index)||index<0||index>=component.rolls.length)return null;
+ const replacement=sharpenedDamageReplacement({...sharpened,psychicDamageDealt:before.psychicDamage>0,original:component.rolls[index],kind:component.dieKinds[index]});
+ if(!replacement)return null;
+ component.rolls[index]=replacement.replacement;
+ component.dieKinds[index]='adjusted';
+ component.rawTotal+=replacement.delta;
+ const after=resolveTypedDamage(packet,defenses,adjustments,sharpened);
+ return {before,after,components:packet,replacement:{...selection,...replacement}};
 }
