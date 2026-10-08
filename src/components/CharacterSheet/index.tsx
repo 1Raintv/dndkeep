@@ -10,7 +10,7 @@ import {addClassSpellSelection,removeClassSpellSelection} from '../../rules/clas
 import {createPsionicRestRequest} from '../../lib/psionicRestRequest';
 import {pendingPsionicPayments} from '../../lib/psionicPaymentRecovery';
 import {savingThrowPassed} from '../../rules/savingThrows';
-import {longRestHitDice} from '../../rules/restRecovery';
+import {longRestHitDice,shortRestHealing} from '../../rules/restRecovery';
 import PsionicPaymentRecoveryPanel from './_shared/PsionicPaymentRecoveryPanel';
 import {usePsionicEnhancements} from '../../lib/hooks/usePsionicEnhancements';
 import {useOptimisticCharacterRef} from '../../lib/hooks/useOptimisticCharacterRef';
@@ -866,12 +866,12 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  // is preserved — the count input is user-controlled.
  function rollHitDice(count: number) {
  const cls = CLASS_MAP[character.class_name];
- if (!cls) return;
+ if (!cls || frozen || !Number.isInteger(count) || count < 1 || character.current_hp < 1 || character.current_hp >= character.max_hp) return;
  const hitDie = cls.hit_die;
- const conMod = abilityModifier(character.constitution);
+ const conMod = computed.modifiers.constitution;
  const spent = character.hit_dice_spent ?? 0;
  const available = Math.max(0, character.level - spent);
- const useCount = Math.max(1, Math.min(count, available));
+ const useCount = Math.min(count, available);
  if (useCount === 0) return;
  // Roll `useCount` physical dice
  const dice: { die: number; value: number }[] = [];
@@ -884,7 +884,8 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  // RAW: CON mod applies per die spent, not once per rest. Minimum
  // total HP recovered is 1 per die even if dice + CON would round
  // below zero (important for low-CON characters).
- const total = Math.max(useCount, diceSum + conMod * useCount);
+ const total = shortRestHealing(dice.map(d=>d.value),conMod);
+ if(total===null)return;
  const newHp = Math.min(character.max_hp, character.current_hp + total);
  const gained = newHp - character.current_hp;
  const newSpent = spent + useCount;
@@ -1917,8 +1918,9 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  const hitDie = cls?.hit_die ?? 8;
  const spent = character.hit_dice_spent ?? 0;
  const available = Math.max(0, character.level - spent);
- const conMod = abilityModifier(character.constitution);
+ const conMod = computed.modifiers.constitution;
  const atMax = character.current_hp >= character.max_hp;
+ const cannotRest = character.current_hp < 1 || frozen;
 
  return (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
@@ -1963,7 +1965,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  value={hitDiceToSpend}
  onChange={e => setHitDiceToSpend(e.target.value)}
  placeholder="1"
- disabled={available === 0 || atMax}
+ disabled={available === 0 || atMax || cannotRest}
  style={{ width: 50, fontSize: 14, fontFamily: 'var(--ff-stat)', fontWeight: 700, textAlign: 'center', padding: '6px', borderRadius: 6, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
  />
  <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-3)' }}>
@@ -1976,9 +1978,9 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  rollHitDice(n);
  setHitDiceToSpend('');
  }}
- disabled={available === 0 || atMax}
+ disabled={available === 0 || atMax || cannotRest}
  style={{ flex: 1, justifyContent: 'center', minWidth: 180 }}
- title={available === 0 ? 'No hit dice remaining' : atMax ? 'Already at max HP' : 'Rolls all selected dice in one go'}
+ title={cannotRest ? 'You need at least 1 HP and an editable sheet to rest' : available === 0 ? 'No hit dice remaining' : atMax ? 'Already at max HP' : 'Rolls all selected dice in one go'}
  >
  Roll Hit Dice (d{hitDie}{conMod >= 0 ? '+' : ''}{conMod})
  </button>
