@@ -1,5 +1,25 @@
 # DNDKeep — Two-Track Roadmap
 
+### Backend prepared — cancel unpaid casting without delayed charges
+
+Migration `20261008051748_cancel_unpaid_spell_declaration.sql` adds an explicit
+owner/current-DM cancellation receipt and private request tombstone. Declaration
+and cancellation serialize by request ID before existing cast/character locks,
+including when neither row exists yet. A canceled ID cannot later pay a slot;
+an existing paid or legacy declaration is preserved and returns canceled=false.
+Retries preserve identity and permissions. Source/encounter changes do not trap
+an unpaid request. No public table access or resource-write fallback was added.
+
+Local validation: 28 database cases passed (10 new cancellation cases), including
+concurrent declaration/cancel, concurrent cancel retries, delayed and cross-character
+requests, permissions, legacy casts, and unchanged payment/refund regressions.
+Full gate: 2,030 unit tests, TS 204/204, hooks/RAW/coordinates/anchors/build/SW
+and 253.7 KB entry. Local migration applied; security advisors have only the
+existing keep_warm/client_errors warnings. Production application still pending.
+The separately committed client integration remains local until this backend is
+applied and explicit cancel/retry recovery is wired and browser-verified.
+
+
 ### Candidate — durable casting requests and retry-safe Counterspell prompts
 
 Migration `20261008043752_counterspell_offer_retries.sql` adds a narrowly
