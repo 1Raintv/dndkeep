@@ -1,3 +1,4 @@
+import {spellActionKind,type SpellActionKind} from '../rules/spellActionCost';
 import type {Character,SpellData} from '../types';
 import type {ConcentrationCastSource} from '../rules/concentrationCasting';
 export interface SpellCombatIntent {
@@ -10,7 +11,7 @@ export interface SpellDeclarationRequest {
  castId:string;characterId:string;userId:string;participantId:string;campaignId:string;
  spellId:string;spellName:string;slotLevel:number;
  expectedSlot:{total:number;used:number}|null;
- context:{combat?:SpellCombatIntent;saveDC?:number;spellLevel:number;source:ConcentrationCastSource['source'];ability:ConcentrationCastSource['ability'];target:string;isBonusAction:boolean;range:string;duration:string};
+ context:{actionKind?:SpellActionKind;combat?:SpellCombatIntent;saveDC?:number;spellLevel:number;source:ConcentrationCastSource['source'];ability:ConcentrationCastSource['ability'];target:string;isBonusAction:boolean;range:string;duration:string};
 }
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const text=(value:unknown,max:number):value is string=>typeof value==='string'&&value.length<=max;
@@ -27,6 +28,7 @@ export function isSpellDeclarationRequest(value:unknown):value is SpellDeclarati
   ||!text(c.source,160)||!(/^(grant:)?class:[A-Za-z][A-Za-z -]*$/.test(c.source)||['species','grant:species','feat','other'].includes(c.source))
   ||!['intelligence','wisdom','charisma'].includes(c.ability)||!text(c.target,300)||typeof c.isBonusAction!=='boolean'
   ||!text(c.range,500)||!text(c.duration,500))return false;
+ if(c.actionKind!==undefined&&(!['action','bonusAction','reaction'].includes(c.actionKind)||(c.actionKind==='bonusAction')!==c.isBonusAction))return false;
  if(c.combat!==undefined&&!isSpellCombatIntent(c.combat))return false;
  if(c.combat?.kind==='save'&&c.saveDC===undefined)return false;
  if(c.spellLevel===0)return r.slotLevel===0&&r.expectedSlot===null;
@@ -36,9 +38,10 @@ export function isSpellDeclarationRequest(value:unknown):value is SpellDeclarati
 /** v2.804 — capture the exact paid intent, including the selected source, before
  * awaiting saves/network. JSON cloning prevents a later optimistic edit rebasing it. */
 export function createSpellDeclarationRequest(character:Character,spell:SpellData,participantId:string,userId:string,slotLevel:number,source:ConcentrationCastSource & {saveDC?:number},target:string,castId=crypto.randomUUID()):SpellDeclarationRequest{
+ const actionKind=spellActionKind(spell.casting_time);
  const request:SpellDeclarationRequest={castId,characterId:character.id,userId,participantId,campaignId:character.campaign_id??'',
   spellId:spell.id,spellName:spell.name,slotLevel,expectedSlot:slotLevel===0?null:character.spell_slots[slotLevel]??null,
-  context:{...(source.saveDC===undefined?{}:{saveDC:source.saveDC}),spellLevel:spell.level,source:source.source,ability:source.ability,target,isBonusAction:/bonus action/i.test(spell.casting_time),range:spell.range,duration:spell.duration}};
+  context:{actionKind,...(source.saveDC===undefined?{}:{saveDC:source.saveDC}),spellLevel:spell.level,source:source.source,ability:source.ability,target,isBonusAction:actionKind==='bonusAction',range:spell.range,duration:spell.duration}};
  if(!isSpellDeclarationRequest(request))throw new Error('Review the casting source and available spell slot before declaring.');
  return JSON.parse(JSON.stringify(request)) as SpellDeclarationRequest;
 }

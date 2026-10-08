@@ -1,9 +1,11 @@
+import type {ConfirmedSpellAction} from '../../rules/spellActionCost';
+export type DeclaredSpellCast=PendingSpellCast&{actionContext?:ConfirmedSpellAction|null};
 import {supabase} from '../supabase';
 import type {PendingSpellCast} from '../../types';
 import {isSpellDeclarationRequest,type SpellDeclarationRequest} from '../spellDeclarationRequest';
 export const SPELL_DECLARATION_CHANGED='dndkeep:spell-declaration-changed';
 const key=(userId:string,characterId:string)=>`dndkeep:declared-spell:${userId}:${characterId}`;
-const active=new Map<string,{request:string;promise:Promise<PendingSpellCast>}>();
+const active=new Map<string,{request:string;promise:Promise<DeclaredSpellCast>}>();
 const notify=()=>{if(typeof window!=='undefined')window.dispatchEvent(new Event(SPELL_DECLARATION_CHANGED));};
 export function savedSpellDeclaration(userId:string,characterId:string):SpellDeclarationRequest|null{
  const raw=localStorage.getItem(key(userId,characterId));if(raw===null)return null;
@@ -38,14 +40,19 @@ async function rpc(name:string,args:Record<string,unknown>){
  }
 }
 /** No optimistic slot write, no changing cast ID, no fallback to legacy inserts. */
-export function declarePaidSpell(request:SpellDeclarationRequest):Promise<PendingSpellCast>{
+export function declarePaidSpell(request:SpellDeclarationRequest):Promise<DeclaredSpellCast>{
  const captured=saveSpellDeclaration(request),recordKey=key(captured.userId,captured.characterId),serialized=JSON.stringify(captured);
  const running=active.get(recordKey);if(running)return running.request===serialized?running.promise:Promise.reject(new Error('Another declaration is still being confirmed.'));
  const promise=(async()=>{
   const data=await rpc('declare_spell_cast_atomic',{p_cast_id:captured.castId,p_character_id:captured.characterId,p_participant_id:captured.participantId,
    p_spell_id:captured.spellId,p_spell_name:captured.spellName,p_slot:captured.slotLevel,p_expected_slot:captured.expectedSlot,p_context:captured.context});
   const row=(data as {cast?:Partial<PendingSpellCast>}|null)?.cast;
-  return verifiedCast(row,captured);
+  const cast=verifiedCast(row,captured),action=(data as {actionContext?:unknown}).actionContext;
+  if(action===undefined||action===null)return {...cast,actionContext:null};
+  const a=action as Partial<ConfirmedSpellAction>,uuid=(v:unknown)=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+  if(!uuid(a.encounterId)||a.encounterId!==cast.encounter_id||!uuid(a.turnId)||(a.currentTurnId!==null&&!uuid(a.currentTurnId))
+   ||!['action','bonusAction','reaction'].includes(a.kind??'')||captured.context.actionKind!==a.kind)throw new Error('The casting action receipt could not be verified.');
+  return {...cast,actionContext:a as ConfirmedSpellAction};
  })().finally(()=>{if(active.get(recordKey)?.promise===promise)active.delete(recordKey);});
  active.set(recordKey,{request:serialized,promise});return promise;
 }

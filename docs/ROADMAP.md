@@ -1,5 +1,35 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.863 — Recover casting actions on their original turn
+
+Declared casting receipts now capture their immutable server turn and action,
+bonus-action or reaction kind, including cantrips. Replays return the captured
+turn alongside the server's current turn. Slot expenditure uses the same captured
+turn snapshot. An authorized private reader supplies the context; the public
+entry remains invoker. Altered public caster identity cannot expose another
+character's action receipt. Legacy receipts remain unknown, not backfilled.
+
+The sheet restores a confirmed action only when both server and loaded encounter
+agree it belongs to the current turn. Recovery waits for combat context and runs
+once per cast/turn; it never clears unrelated manual flags. Reactions now mark the
+reaction counter rather than the main action. Casting-time classification reads
+the leading type, so trigger text mentioning a Bonus Action does not relabel a
+Reaction. Longer castings mark their initial Magic action; ongoing casting and
+completion/payment timing still need manual handling.
+
+Ten desktop/phone casting flows pass, including an actual paid cast, lost reply,
+reload on a later turn, resumed effect resolution and a still-available current
+action. Existing refunds, cancellation and slot-limit recovery remain covered.
+All 80 SQL cases pass. Full gate passes: 2,838 units / 257 files, TypeScript
+199/199, hooks/RAW/coordinates/anchors, production build and 255.1 KB entry.
+Both SQL schemas lint clean; new and changed pure/controller modules lint clean.
+Publishing pending.
+Migration: `20261008201103_declared_spell_action_context.sql` (local applied).
+
+Remaining: fully persisted action budgets across completed-cast reloads, manual
+casting, automatic turn transitions and other action writers. This corrects saved
+casting recovery; it is not yet a unified action-economy transaction.
+
 ### v2.862 — Current-turn spell-slot accounting
 
 New declared spell payments and Counterspell acceptances share a private,
@@ -21,8 +51,11 @@ Verification: 73 SQL cases, eight desktop/phone casting/reload/refund/cancel
 flows, and scoped overflow checks pass. Screenshots inspected. Full gate passes:
 2,813 units / 255 files, TypeScript 199/199, clean hooks, RAW/coordinates/anchors,
 production build and 255.1 KB entry bundle. Both SQL schemas lint clean.
-Publishing pending. Migration: `20261008195719_spell_turn_slot_ledger.sql`
-(local applied). Existing payments have no reliable captured turn and are not
+Merged PR #206; both CI gates passed. Production migration run `37837179216`
+applied the file; ledger, both triggers and private privileges independently
+verified. Advisors unchanged (6 security / 4 performance). Frontend v2.861.0
+remains live while Vercel builds are rate-limited.
+Migration: `20261008195719_spell_turn_slot_ledger.sql` (local/production applied). Existing payments have no reliable captured turn and are not
 retroactively assigned one. Manual/legacy slot writers and free feature casts
 still need integration. Action/bonus/reaction budgets are a separate follow-up:
 local declaration callbacks can still mark today's action for an old recovered
