@@ -1,5 +1,26 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.829 — Sharpened Mind saved-roll foundation
+
+A Sharpened activation can now own its Enkindled and Surge payments. The server
+reads the paid base roll, attaches each enhancement transactionally, then freezes
+the final total. Exact retries return the same result without extra costs. Old
+unlinked payments cannot be attached retroactively; another activation cannot
+reuse them. The original activation timestamp/turn survives delayed finalization.
+Character locks serialize enhancement/finalization races. Records stay private;
+only the current owner/DM can use the authenticated entry points.
+
+Validation: 60 local database regressions (12 new Sharpened cases), full gate
+(2,404 units; TypeScript 201/201; hooks clean; 255.1 KB entry). Migration
+20261008101533 applied locally with no pending ledger entries. No advisor or
+function-lint findings on changed objects; existing unrelated findings remain.
+Production application is not yet claimed.
+
+This is backend groundwork, not completed Sharpened automation. Next: connect
+sheet/recovery requests to these entry points, track the one-minute duration and
+incapacitation, then enforce psychic-resistance bypass and once-per-turn damage
+die replacement with correct attack/spell provenance.
+
 ### v2.828 — keep delayed Psion rolls on the originating character
 
 Manual Energy Die and Sharpened Mind payments can finish after closing a sheet
