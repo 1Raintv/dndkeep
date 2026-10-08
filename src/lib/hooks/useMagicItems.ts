@@ -24,6 +24,8 @@ let pendingFetch: Promise<MagicItem[]> | null = null;
 // expose as camelCase to match the static type.
 interface DbMagicItemRow {
   id: string;
+  owner_id: string | null;
+  source: 'srd' | 'homebrew' | 'expansion';
   name: string;
   item_type: MagicItem['type'];
   rarity: MagicItem['rarity'];
@@ -55,6 +57,11 @@ function rowToMagicItem(r: DbMagicItemRow): MagicItem {
     rarity: r.rarity,
     requiresAttunement: r.requires_attunement,
     description: r.description,
+    // v2.797 — SQL rows do not carry abilityOverride. A cache refresh must not
+    // erase the canonical Headband/Gauntlet/Belt rules already used on load.
+    // Match the stable SRD id and ownership, never a homebrew item's name.
+    ...(r.owner_id === null && r.source === 'srd' && MAGIC_ITEM_MAP[r.id]?.abilityOverride
+      ? { abilityOverride: MAGIC_ITEM_MAP[r.id].abilityOverride } : {}),
     ...(r.weight !== null ? { weight: r.weight } : {}),
     ...(r.ac_bonus !== null ? { acBonus: r.ac_bonus } : {}),
     ...(r.save_bonus !== null ? { saveBonus: r.save_bonus } : {}),
@@ -71,7 +78,7 @@ function rowToMagicItem(r: DbMagicItemRow): MagicItem {
 async function fetchMagicItemsFromDb(): Promise<MagicItem[]> {
   const { data, error } = await supabase
     .from('magic_items')
-    .select('id, name, item_type, rarity, requires_attunement, description, weight, ac_bonus, save_bonus, attack_bonus, damage_bonus, max_charges, recharge, recharge_dice, base_damage_dice')
+    .select('id, owner_id, source, name, item_type, rarity, requires_attunement, description, weight, ac_bonus, save_bonus, attack_bonus, damage_bonus, max_charges, recharge, recharge_dice, base_damage_dice')
     .order('rarity', { ascending: true })
     .order('name',   { ascending: true });
   if (error) {

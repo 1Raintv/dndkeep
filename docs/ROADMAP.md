@@ -1,6 +1,29 @@
 # DNDKeep — Two-Track Roadmap
 
-### Release candidate — mixed-class Hit Dice, v2.796
+### Release candidate — preserve magic-item ability effects, v2.797
+
+The magic-item database mapper omitted abilityOverride. Loading Inventory could
+replace a canonical Headband/Gauntlet/Belt entry with one lacking its stat effect.
+Preserve the existing static rule only for its exact canonical SRD id and null
+owner; database display/bonus values still win, and homebrew/expansion collisions
+never inherit an SRD effect by name. No new item mechanic or migration is added.
+The [2024 item rules](https://www.dndbeyond.com/sources/dnd/br-2024/magic-items-a-z)
+confirm the Headband's fixed Intelligence score while worn and attuned, retaining
+a higher natural score. Existing attunement/equipment guards continue to apply.
+
+Four mocked-cache tests reproduce the lost metadata then verify the fix, including
+higher scores, unequipped/unattuned items, noncanonical collisions and database
+values. Four desktop/mobile tests exercise both Psion class orders: load the
+catalogue through Inventory, then verify Propel DC 15 and Biofeedback's 1d8 roll
+of 1 + INT 4 = 5 temporary HP, spending exactly one Energy Die. The catalogue
+response is supplied only to each test browser; shared canonical rows are not
+modified. Actual character payments use disposable local DB characters.
+
+Final versioned gate passed 1,881 unit tests, TS 206/206, zero hook violations,
+rules/coordinates/anchors/build/SW-version and entry 253.7 KB. Mobile screenshot
+inspected. App fix is prepared for a separate release from v2.796.
+
+### Released — mixed-class Hit Dice, v2.796
 
 Hit Dice now pool by size across both classes. The Rest controls display every
 pool, let the player choose its die size, and use the same allocation as Psionic
@@ -38,7 +61,10 @@ a real last-action obstruction: .app-content padding did not apply to the sheet.
 Phone sheet clearance now reserves navigation plus dice/history-button space,
 and the browser test verifies the action receives clicks. Four final versioned
 desktop/mobile tests passed after strict Surge receipt validation. Saved requests
-retain their selected die size. App changes are not live.
+retain their selected die size. PR #129 (`5cfaa4f`) passed both CI gates and preview, then merged as `527a4d3`.
+Main CI 37718957422 passed; Vercel production deployment
+9JkCWPbBKdzavDpA4stZxNQoKdeD succeeded, and the public service worker reports
+2.796.0. The controls are live.
 
 Next: replace ordinary queued Short Rest healing writes with an idempotent
 transaction covering chosen pool, HP and history. Existing absolute-value saves
