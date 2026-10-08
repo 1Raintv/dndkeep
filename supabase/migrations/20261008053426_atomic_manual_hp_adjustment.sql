@@ -26,6 +26,7 @@ begin
  select * into prior from dndkeep_private.manual_hit_point_adjustments where request_id=p_request_id;
  if found then
   if prior.character_id is distinct from c.id or prior.request is distinct from req then raise exception 'HP adjustment request changed';end if;
+  if prior.outcome->>'canceled'='true' then raise exception 'This HP adjustment was canceled';end if;
   return prior.outcome||jsonb_build_object('character',to_jsonb(c),'replayed',true);
  end if;
  if p_mode is null or p_mode not in('damage','heal','set') or p_amount is null or p_amount<0
@@ -58,3 +59,38 @@ returns jsonb language sql security invoker set search_path='' as $$
 $$;
 revoke all on function public.adjust_character_hit_points_atomic(uuid,uuid,text,integer,bigint) from public,anon;
 grant execute on function public.adjust_character_hit_points_atomic(uuid,uuid,text,integer,bigint) to authenticated;
+
+-- Cancellation shares the character lock and ledger with adjustment. A late
+-- request either has already paid (canceled=false) or can never mutate HP.
+create or replace function dndkeep_private.cancel_hit_point_adjustment(
+ p_character_id uuid,p_request_id uuid,p_mode text,p_amount integer,p_expected_revision bigint
+) returns jsonb language plpgsql security definer set search_path='' as $$
+declare c public.characters; prior dndkeep_private.manual_hit_point_adjustments; req jsonb; canceled boolean;
+begin
+ if auth.uid() is null then raise exception 'Sign in to cancel an HP adjustment';end if;
+ select * into c from public.characters ch where ch.id=p_character_id and
+  (ch.user_id=auth.uid() or exists(select 1 from public.campaigns ca where ca.id=ch.campaign_id and ca.owner_id=auth.uid())) for update;
+ if not found then raise exception 'Character is unavailable';end if;
+ if p_request_id is null or p_mode is null or p_mode not in('damage','heal','set') or p_amount is null or p_amount<0
+  or (p_mode<>'set' and p_amount=0) or p_expected_revision is null or p_expected_revision<0
+  then raise exception 'Invalid HP adjustment identity';end if;
+ req:=jsonb_build_object('mode',p_mode,'amount',p_amount,'revision',p_expected_revision);
+ select * into prior from dndkeep_private.manual_hit_point_adjustments where request_id=p_request_id;
+ if found then
+  if prior.character_id is distinct from c.id or prior.request is distinct from req then raise exception 'HP adjustment request changed';end if;
+  canceled:=coalesce(prior.outcome->>'canceled'='true',false);
+  return jsonb_build_object('requestId',p_request_id,'characterId',c.id,'canceled',canceled,'replayed',true);
+ end if;
+ insert into dndkeep_private.manual_hit_point_adjustments(request_id,character_id,request,outcome)
+ values(p_request_id,c.id,req,jsonb_build_object('requestId',p_request_id,'canceled',true));
+ return jsonb_build_object('requestId',p_request_id,'characterId',c.id,'canceled',true,'replayed',false);
+end;
+$$;
+revoke all on function dndkeep_private.cancel_hit_point_adjustment(uuid,uuid,text,integer,bigint) from public,anon;
+grant execute on function dndkeep_private.cancel_hit_point_adjustment(uuid,uuid,text,integer,bigint) to authenticated;
+create or replace function public.cancel_hit_point_adjustment_atomic(p_character_id uuid,p_request_id uuid,p_mode text,p_amount integer,p_expected_revision bigint)
+returns jsonb language sql security invoker set search_path='' as $$
+ select dndkeep_private.cancel_hit_point_adjustment(p_character_id,p_request_id,p_mode,p_amount,p_expected_revision);
+$$;
+revoke all on function public.cancel_hit_point_adjustment_atomic(uuid,uuid,text,integer,bigint) from public,anon;
+grant execute on function public.cancel_hit_point_adjustment_atomic(uuid,uuid,text,integer,bigint) to authenticated;

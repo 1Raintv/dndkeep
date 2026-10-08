@@ -18,6 +18,34 @@ test.describe('Manual HP transaction (local stack)',()=>{
  test.afterEach(()=>sql(`delete from characters where id='${character}';delete from campaigns where id='${campaign}';delete from auth.users where id in('${owner}','${dm}','${other}')`));
  const row=()=>JSON.parse(sql(`select row_to_json(c) from characters c where id='${character}'`));
  const call=(mode='damage',amount=6,revision=row().hit_point_revision,id=request)=>`select adjust_character_hit_points_atomic('${character}','${id}','${mode}',${amount},${revision})`;
+ const cancel=(q=call())=>q.replace('adjust_character_hit_points_atomic','cancel_hit_point_adjustment_atomic');
+ test('cancels an unpaid adjustment durably without history or HP changes',()=>{
+  const q=call();expect(JSON.parse(sql(auth(dm,cancel(q))))).toMatchObject({canceled:true,replayed:false});
+  expect(JSON.parse(sql(auth(dm,cancel(q))))).toMatchObject({canceled:true,replayed:true});
+  expect(()=>sql(auth(dm,q))).toThrow(/canceled/);expect(row()).toMatchObject({current_hp:10,temp_hp:4});
+  expect(sql(`select count(*) from character_history where id='${request}'`)).toBe('0');
+ });
+ test('a stale rejected adjustment remains cancelable after HP changes',()=>{
+  const q=call();sql(`update characters set current_hp=5 where id='${character}'`);
+  expect(()=>sql(auth(dm,q))).toThrow(/HP changed/);expect(JSON.parse(sql(auth(dm,cancel(q)))).canceled).toBe(true);
+ });
+ test('already-paid adjustments cannot be canceled or refunded',()=>{
+  const q=call();sql(auth(dm,q));expect(JSON.parse(sql(auth(dm,cancel(q)))).canceled).toBe(false);
+  expect(JSON.parse(sql(auth(dm,q))).replayed).toBe(true);expect(row()).toMatchObject({current_hp:8,temp_hp:0});
+ });
+ test('cancellation enforces ownership and exact request identity',()=>{
+  const q=call();expect(()=>sql(auth(other,cancel(q)))).toThrow(/unavailable/);sql(auth(dm,cancel(q)));
+  expect(()=>sql(auth(dm,cancel(call('heal',6,0))))).toThrow(/request changed/);
+ });
+ test('concurrent cancel and adjustment produce one consistent result',async()=>{
+  const q=call(),results=await Promise.all([parallel(auth(dm,q)),parallel(auth(dm,cancel(q)))]);
+  expect(results[1].code).toBe(0);const canceled=JSON.parse(results[1].out).canceled;
+  expect(results[0].code===0).toBe(!canceled);expect(row()).toMatchObject(canceled?{current_hp:10,temp_hp:4}:{current_hp:8,temp_hp:0});
+ });
+ test('simultaneous cancellations acknowledge the same tombstone',async()=>{
+  const q=cancel();const results=await Promise.all([parallel(auth(dm,q)),parallel(auth(dm,q))]);
+  expect(results.every(r=>r.code===0)).toBe(true);expect(results.map(r=>JSON.parse(r.out).replayed).sort()).toEqual([false,true]);
+ });
  test('damage consumes temporary HP first and records one history entry',()=>{
   const receipt=JSON.parse(sql(auth(dm,call())));expect(receipt).toMatchObject({beforeHP:10,beforeTempHP:4,afterHP:8,afterTempHP:0,replayed:false});
   expect(row()).toMatchObject({current_hp:8,temp_hp:0,hit_point_revision:1});expect(sql(`select count(*) from character_history where id='${request}'`)).toBe('1');
