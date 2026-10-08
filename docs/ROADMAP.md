@@ -1,5 +1,28 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.824 — party damage affinities and phone layout
+
+Party AoE now loads stored resistance, vulnerability and immunity columns; the
+old projection silently omitted all three. Shared damage math applies resistance
+(round down) before vulnerability, so 23 damage becomes 22 when both apply.
+Immunity still prevents damage; save-half remains first. Type names normalize
+case/whitespace. Preview and result labels describe the actual order. Party cards
+now fit narrow screens instead of forcing a 420px minimum and sideways scroll.
+
+Validation: full gate passes (2,373 tests; TypeScript 201/201; 255.1 KB entry).
+Real desktop/phone tests verify preview, applied HP and scoped overflow with
+isolated local accounts. Both screenshots inspected. No migration. The pure
+helper supports resistance bypass as groundwork only; Sharpened Mind is not yet
+connected to it. Rules source: SRD 5.2.1 p.17.
+
+Follow-up found during this audit: party AoE still ignores temporary HP and clears
+concentration without a saving throw. Replace that legacy write with a replay-safe
+atomic damage/concentration operation; do not reuse the solo-damage RPC, which
+explicitly rejects campaign characters. Also audit species resistance defaults
+(especially unconditional Goliath cold resistance) against the chosen lineage.
+Sharpened Mind activation must link Surge/Enkindled receipts before recording its
+number; the current discipline ledger stores the initial roll, before enhancements.
+
 ### v2.823 — class save protection and narrow client lookup
 
 All existing Guards save consumers now use the boolean-only protection RPC,
