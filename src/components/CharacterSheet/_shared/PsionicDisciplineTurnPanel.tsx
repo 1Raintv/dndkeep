@@ -1,3 +1,4 @@
+import {useCombatSelector} from '../../../context/CombatContext';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
 import type {DisciplineTurn,DisciplineUse} from '../../../lib/api/psionicDisciplines';
@@ -9,6 +10,14 @@ export default function PsionicDisciplineTurnPanel({characterId,persistence,froz
  const [busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[saved,setSaved]=useState<string[]>([]);
  const current=useRef(characterId),mounted=useRef(true),generation=useRef(0),scope=useRef(0),working=useRef(false);current.current=characterId;
  const read=persistence.getDisciplineTurn;
+ // v2.815 — reuse the campaign's existing subscription. HP/map updates
+ // must not refetch the ledger; turn UUIDs also detect rewinds to the same index.
+ const combatTurn=useCombatSelector(s=>JSON.stringify([
+  s.encounter?.id,s.encounter?.status,s.encounter?.round_number,
+  s.encounter?.current_turn_index,s.encounter?.psionic_turn_id,
+  s.participants.some(p=>p.participant_type==='character'&&p.entity_id===characterId),
+ ]));
+ const previousCombatTurn=useRef(combatTurn);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;generation.current++;};},[]);
  const refresh=useCallback(async()=>{
   if(!read)return;const ticket=++generation.current;
@@ -21,6 +30,11 @@ export default function PsionicDisciplineTurnPanel({characterId,persistence,froz
   update();window.addEventListener(PSIONIC_PAYMENT_CHANGED,update);window.addEventListener('storage',update);window.addEventListener('focus',update);
   return()=>{scope.current++;generation.current++;window.removeEventListener(PSIONIC_PAYMENT_CHANGED,update);window.removeEventListener('storage',update);window.removeEventListener('focus',update);};
  },[characterId,refresh]);
+ useEffect(()=>{
+  if(previousCombatTurn.current===combatTurn)return;
+  previousCombatTurn.current=combatTurn;void refresh();
+  // A turn transition must not cancel an in-flight outcome from an earlier turn.
+ },[combatTurn,refresh]);
  async function finish(use:DisciplineUse,changedOutcome:boolean){
   if(frozen||working.current||saved.includes(use.requestId)||!persistence.finishDiscipline)return;
   const issued=scope.current;working.current=true;setBusy(true);setNotice('');

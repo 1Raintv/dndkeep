@@ -94,6 +94,13 @@ export function CombatProvider({ campaignId, children }: CombatProviderProps) {
         table: 'combat_participants',
         filter: `campaign_id=eq.${campaignId}`,
       }, load)
+      // v2.815 — DELETE may contain only the primary key, so the campaign
+      // filter cannot match it. Only reload for an already-visible participant.
+      .on('postgres_changes', {
+        event: 'DELETE', schema: 'public', table: 'combat_participants',
+      }, payload => {
+        if (store.getState().participants.some(p => p.id === payload.old.id)) load();
+      })
       // v2.410.0 — combatants too: HP writes land there, and the joined
       // fields must refresh (see store header / git history).
       .on('postgres_changes', {

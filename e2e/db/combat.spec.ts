@@ -10,41 +10,38 @@
 // one database, and load() picks the LATEST active encounter per
 // campaign — a shared campaign would cross-talk (same class of flake as
 // telemetry.spec's shared-marker collision).
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { gateDbSuite, signInAsSeedDm } from './helpers';
 
-const PSQL = `docker exec supabase_db_dndkeep psql -U postgres -d postgres -t -A -c`;
-const sql = (q: string): string =>
-  execSync(`${PSQL} "${q.replace(/"/g, '\\"')}"`, { encoding: 'utf8' }).trim();
-
-const SEED_DM = '11111111-1111-1111-1111-111111111111';
+const sql = (q:string):string => execFileSync('docker',
+ ['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'],
+ {input:q,encoding:'utf8'}).trim();
 
 test.describe('combat lifecycle (local stack)', () => {
   gateDbSuite();
 
-  let camp = '', enc = '', campName = '';
+  let camp = '', enc = '', campName = '', userId = '', email = '';
 
   test.beforeEach(async ({}, testInfo) => {
-    const d = testInfo.project.name === 'mobile' ? '2' : '1';
-    camp = `77777777-7777-7777-7777-77777777000${d}`;
-    enc = `99999999-9999-9999-9999-99999999000${d}`;
-    const cb1 = `88888888-8888-8888-8888-8888888800${d}1`;
-    const cb2 = `88888888-8888-8888-8888-8888888800${d}2`;
-    campName = `E2E Combat ${testInfo.project.name}`;
-    // Idempotent re-seed: wipe any leftovers from a crashed run first.
-    sql(`delete from combat_participants where campaign_id='${camp}'`);
-    sql(`delete from combat_encounters where campaign_id='${camp}'`);
-    sql(`delete from combatants where campaign_id='${camp}'`);
-    sql(`delete from campaigns where id='${camp}'`);
-    sql(`insert into campaigns (id, owner_id, name, description) values ('${camp}','${SEED_DM}','${campName}','combat lifecycle fixture')`);
+    camp=randomUUID();enc=randomUUID();userId=randomUUID();
+    const cb1=randomUUID(),cb2=randomUUID();
+    email=`combat-${userId}@dndkeep.local`;campName=`E2E Combat ${testInfo.project.name}`;
+    // v2.815 — disposable accounts avoid shared seed campaign-slot limits.
+    sql(`begin;
+      insert into auth.users (instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at,confirmation_token,recovery_token,email_change,email_change_token_new)
+      values ('00000000-0000-0000-0000-000000000000','${userId}','authenticated','authenticated','${email}',extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),now(),'{"provider":"email","providers":["email"]}','{"display_name":"Combat Fixture"}',now(),now(),'','','','');
+      insert into auth.identities (id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at)
+      values (gen_random_uuid(),'${userId}','${userId}','{"sub":"${userId}","email":"${email}"}','email',now(),now(),now());commit;`);
+    sql(`insert into campaigns (id, owner_id, name, description) values ('${camp}','${userId}','${campName}','combat lifecycle fixture')`);
     sql(`insert into combatants (id, campaign_id, owner_id, name, definition_type, definition_id, current_hp, max_hp) values ` +
-        `('${cb1}','${camp}','${SEED_DM}','Fixture Goblin','srd_monster','e2e-gob-${d}',7,7),` +
-        `('${cb2}','${camp}','${SEED_DM}','Fixture Ogre','srd_monster','e2e-ogre-${d}',29,29)`);
+        `('${cb1}','${camp}','${userId}','Fixture Goblin','srd_monster','e2e-gob-${userId}',7,7),` +
+        `('${cb2}','${camp}','${userId}','Fixture Ogre','srd_monster','e2e-ogre-${userId}',29,29)`);
     sql(`insert into combat_encounters (id, campaign_id, status, current_turn_index) values ('${enc}','${camp}','active',0)`);
     sql(`insert into combat_participants (encounter_id, campaign_id, participant_type, entity_id, name, turn_order, initiative, combatant_id) values ` +
-        `('${enc}','${camp}','monster','e2e-gob-${d}','Fixture Goblin',0,15,'${cb1}'),` +
-        `('${enc}','${camp}','monster','e2e-ogre-${d}','Fixture Ogre',1,8,'${cb2}')`);
+        `('${enc}','${camp}','creature','e2e-gob-${userId}','Fixture Goblin',0,15,'${cb1}'),` +
+        `('${enc}','${camp}','creature','e2e-ogre-${userId}','Fixture Ogre',1,8,'${cb2}')`);
   });
 
   test.afterEach(() => {
@@ -54,11 +51,12 @@ test.describe('combat lifecycle (local stack)', () => {
       sql(`delete from combatants where campaign_id='${camp}'`);
       sql(`delete from campaign_members where campaign_id='${camp}'`);
       sql(`delete from campaigns where id='${camp}'`);
+      sql(`delete from auth.users where id='${userId}'`);
     } catch { /* best effort */ }
   });
 
   test('strip renders active combat; End Turn advances; End Combat completes', async ({ page }) => {
-    await signInAsSeedDm(page);
+    await signInAsSeedDm(page,email);
     await page.goto('/campaigns');
     await page.locator(`text=${campName}`).locator('visible=true').first().click();
 
