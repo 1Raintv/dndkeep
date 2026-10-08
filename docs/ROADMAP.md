@@ -1,5 +1,24 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.845 candidate — Reachable, viewport-aware map token panels
+
+The creature quick-panel handler already recognized modern creature IDs, but
+its context-menu entry checked only legacy NPC IDs. The menu now exposes the
+existing panel for supported creature-linked tokens. Placement mapping preserves
+the source type so SRD summons and custom definitions do not open a homebrew-only
+panel; unlinked markers stay unchanged.
+Character and creature panels share measured positioning that responds to screen
+rotation, content size and visual viewport changes when the keyboard opens.
+Height caps remain 600/420 pixels; smaller viewports scroll inside the panel.
+
+Local checks cover both real token types on desktop and phone, landscape/narrow
+screens and a keyboard-only viewport change. Full gate passes (2,608 units, TypeScript 200/200, entry 255.1 KB); all four
+desktop/phone browser cases pass with clean scoped overflow checks. Removing the
+visual viewport resize listener makes the keyboard-bounds assertion fail.
+Condition-button cascade handling
+remains a separate correctness follow-up; this change only restores panel access
+and keeps its controls within the visible screen.
+
 ### v2.844 — Atomic Destructive Thoughts damage application
 
 Seeded Destructive Thoughts now applies through one DM-authorized transaction:
@@ -24,8 +43,10 @@ Validation: full gate passes (2,597 units, TypeScript 200/200, entry 255.1 KB);
 cover natural and Surge-adjusted dice, actual Apply, sheet synchronization,
 replay and deliberately lost committed responses. The new browser assertion
 fails with the old branch restored (sheet HP 20 instead of 7). Release status:
-local verified work pending merge and gated production migration; frontend
-publishing remains subject to the existing Vercel quota limit.
+merged in PR #188 (`c368205`); workflow `37786678336` applied all four migrations
+to production. The only new advisor notices are expected informational RLS-without-policy
+entries for the two private receipt tables, which deliberately deny direct app access.
+Vercel subsequently confirmed the production deployment completed.
 
 Remaining: normal attack settlement must include melee retaliation and mastery
 with saved outcomes (especially Topple). Typed defenses need explicit handling

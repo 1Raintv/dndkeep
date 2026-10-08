@@ -18,7 +18,7 @@ vi.mock('../supabase', () => ({
   supabase: { from: () => ({ select: () => ({ eq: () => ({ order: () => ({ data: [], error: null }), maybeSingle:()=>flagResult }) }) }) },
 }));
 
-const { PLACEMENT_SELECT, getUseCombatantsFlag } = await import('./scenePlacements');
+const { PLACEMENT_SELECT, getUseCombatantsFlag, joinedRowToToken } = await import('./scenePlacements');
 
 describe('PLACEMENT_SELECT', () => {
   // Every column dbRowToPlacementToken reads off the placement row. If
@@ -63,4 +63,9 @@ describe('strict map routing',()=>{
     await expect(getUseCombatantsFlag('c',{throwOnError:true})).rejects.toEqual(flagResult.error);
     flagResult.error=null;
   });
+});
+
+it.each(['homebrew_monster','srd_monster','custom'])('retains the %s source for panel routing',definition_type=>{
+ const token=joinedRowToToken({id:'placement',combatant_id:'combatant',combatants:{definition_type,definition_id:'definition'}} as Parameters<typeof joinedRowToToken>[0]);
+ expect(token.definitionType).toBe(definition_type);
 });

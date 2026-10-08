@@ -1,6 +1,7 @@
 // Extracted verbatim from BattleMapV2.tsx (v2.636 decomposition step 3).
 // See that file's header changelog for this code's full history.
 
+import {useMapMenuPosition} from './useMapMenuPosition';
 import { abilityModifier } from '../../../rules/abilities';
 import { useEffect, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
@@ -120,26 +121,8 @@ export function TokenQuickPanel(props: {
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  // Position calc: clamp inside viewport so panel doesn't fall off
-  // the bottom or right edge. Width 280, max height ~360.
-  const PANEL_W = 280;
-  // v2.229 — bumped from 380 to 600 because the Checks panel adds
-  // substantial content (skills + raw + saves + adv/dis/DC + actions).
-  // With overflow:auto the panel still scrolls past this if needed.
-  const PANEL_H = 600;
-  const margin = 8;
-  let left = Math.max(margin, anchorX + 14);
-  if (typeof window !== 'undefined') {
-    if (left + PANEL_W + margin > window.innerWidth) {
-      left = Math.max(margin, anchorX - PANEL_W - 14);
-    }
-  }
-  let top = Math.max(margin, anchorY - PANEL_H / 2);
-  if (typeof window !== 'undefined') {
-    if (top + PANEL_H + margin > window.innerHeight) {
-      top = Math.max(margin, window.innerHeight - PANEL_H - margin);
-    }
-  }
+  // v2.845: follow the visible viewport, including keyboard/rotation changes.
+  const {ref:panelRef,left,top}=useMapMenuPosition(anchorX+14,anchorY-300,c.id,600);
 
   // Modifier helper — D&D 5e ability modifier formula.
   const mod = (score: number) => abilityModifier(score);
@@ -205,7 +188,7 @@ export function TokenQuickPanel(props: {
       }}
       onMouseDown={onClose}
     >
-      <div
+      <div ref={panelRef} role="dialog" aria-label={`Character token: ${c.name}`}
         style={{
           position: 'fixed',
           left, top,
@@ -213,6 +196,7 @@ export function TokenQuickPanel(props: {
           maxHeight: 'min(600px, calc(100dvh - 16px))',
           boxSizing: 'border-box',
           overflowY: 'auto',
+          overscrollBehavior: 'contain',
           background: 'var(--c-card)',
           border: '1px solid var(--c-border)',
           borderRadius: 'var(--r-lg, 12px)',

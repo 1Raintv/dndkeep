@@ -122,3 +122,19 @@ it('does not inject an old duplicate into a newly selected scene',async()=>{
 it('reports unsupported placement locking without a fake local change',()=>{
   useBattleMapStore.getState().updateTokenFields('a',{combatantId:'combatant'});setup();fireEvent.click(screen.getByRole('button',{name:'⊘ Lock Token'}));expect(screen.getByRole('alert').textContent).toContain('not available');expect(api.updateToken).not.toHaveBeenCalled();expect(useBattleMapStore.getState().tokens.a.isLocked).toBeUndefined();
 });
+
+it('opens the panel for a placements-path creature with no legacy NPC id',()=>{
+ useBattleMapStore.getState().updateTokenFields('a',{creatureId:'creature',definitionType:'homebrew_monster',npcId:null,characterId:null});const open=vi.fn(),close=vi.fn();
+ render(<TokenContextMenu state={{tokenId:'a',clientX:20,clientY:20}} isDM campaignId="c" gridSizePx={70} onClose={close} onRequestUpload={vi.fn()} onOpenQuickPanel={open}/>);
+ fireEvent.click(screen.getByRole('button',{name:/Open Quick Panel/}));expect(open).toHaveBeenCalledWith('a');expect(close).toHaveBeenCalledOnce();
+});
+it('does not offer a creature panel for an unlinked marker',()=>{
+ render(<TokenContextMenu state={{tokenId:'a',clientX:20,clientY:20}} isDM campaignId="c" gridSizePx={70} onClose={vi.fn()} onRequestUpload={vi.fn()} onOpenQuickPanel={vi.fn()}/>);
+ expect(screen.queryByRole('button',{name:/Open Quick Panel/})).toBeNull();
+});
+
+it.each(['srd_monster','custom'])('does not open a homebrew-only panel for a %s source',definitionType=>{
+ useBattleMapStore.getState().updateTokenFields('a',{creatureId:'definition',definitionType,npcId:null,characterId:null});
+ render(<TokenContextMenu state={{tokenId:'a',clientX:20,clientY:20}} isDM campaignId="c" gridSizePx={70} onClose={vi.fn()} onRequestUpload={vi.fn()} onOpenQuickPanel={vi.fn()}/>);
+ expect(screen.queryByRole('button',{name:/Open Quick Panel/})).toBeNull();
+});
