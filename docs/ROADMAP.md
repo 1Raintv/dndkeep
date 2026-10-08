@@ -1,5 +1,36 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.860 — Recoverable map conditions and accessible combat panels
+
+Map quick panels now settle condition deltas on the server. Character changes
+reach its combat bodies; creature changes remain confined to the selected
+instance. Each update, concentration cleanup, history and receipt commit together.
+Source-aware removal preserves independent effects and overlapping incapacity.
+Unconscious leaves Prone when removed and prevents standing while it remains
+(SRD 5.2.1 pp.184,191). Campaign cascade settings, unlocked character overrides,
+Psionic Guards immunity and exhaustion counters are respected.
+
+Saved requests survive reload and ambiguous responses; retry/cancel use the same
+identity. Replaying an old receipt never restores its old condition snapshot.
+The panels now render above the fullscreen map and combat turn bar: real phone
+clicks previously could not reach the lower condition controls.
+
+Six desktop/phone browser flows pass, including both lost responses followed by
+reload, actual character/combatant state, concentration, creature instance identity,
+console checks and scoped overflow checks. Screenshots inspected. Original map
+write failed the new sync check; pre-portal UI failed the real phone removal click.
+Full gate passes: 2,804 units in 253 files, TypeScript 199/199, entry 255.1 KB.
+Sixteen SQL cases pass, including auth, concurrency, replay/cancel, rollback,
+concentration cleanup and Psionic Guards. Both SQL schemas lint clean. Four
+additional desktop/phone rotation and keyboard checks pass (10 UI flows total).
+Publishing pending.
+Migration: `20261008185313_map_condition_lifecycle.sql` (local applied).
+This does not reconcile historical condition drift, replace all encounter/sheet
+condition writers, or introduce a complete multi-source condition ledger.
+Follow-up: the open monster action rail can overlap the map's Fit control;
+collapsing the rail currently exposes it. NPC condition chips still need larger
+keyboard-accessible targets and visual consistency with character chips.
+
 ### v2.859 — Detection spell details and source accuracy
 
 Audited Detect Magic, Detect Poison and Disease, and Detect Thoughts against
@@ -14,7 +45,9 @@ Nine focused data tests pass. Six desktop/mobile browser cases cover source link
 critical clauses, stale canonical records and homebrew preservation. New detection
 views pass scoped overflow checks; screenshots inspected. Restoring the old detail
 layer makes the new browser test fail on the missing barrier rule. Full gate passes:
-2,783 units in 251 files, TypeScript 199/199, entry 255.1 KB. Publishing pending.
+2,783 units in 251 files, TypeScript 199/199, entry 255.1 KB. Merged PR #203
+(`923f78f`), both CI gates passed. Frontend publication remains rate-limited;
+last public version verified v2.856.0.
 No database migration; no automated information reveal or barrier ray tracing.
 
 ### v2.858 — Legal higher slots and accurate casting cost

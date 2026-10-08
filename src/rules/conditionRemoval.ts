@@ -18,7 +18,11 @@ export function removeConditions(
   for (const name of conditions) {
     const source = sources[name]?.source;
     const parentRemoved = typeof source === 'string' && source.startsWith('cascade:') && removed.has(source.slice(8));
-    if (name === 'Incapacitated' && remainingParent && (removed.has(name) || parentRemoved)) {
+    // v2.860: Unconscious requires Prone throughout, not only on application.
+    if (name === 'Prone' && conditions.includes('Unconscious') && !removed.has('Unconscious') && removed.has(name)) {
+      removed.delete(name);
+      nextSources[name] = { source: 'cascade:Unconscious' };
+    } else if (name === 'Incapacitated' && remainingParent && (removed.has(name) || parentRemoved)) {
       removed.delete(name);
       nextSources[name] = { source: `cascade:${remainingParent}` };
     } else if (!removed.has(name) && parentRemoved) {
