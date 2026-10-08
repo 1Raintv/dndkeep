@@ -46,3 +46,10 @@ it('carries one Sharpened activation through both enhancement payments',async()=
  expect(options.persistence.spend).toHaveBeenCalledWith(expect.objectContaining({activationId:options.activationId,baseRolls:[2],extraRolls:[2,2]}));
  expect(options.persistence.surge).toHaveBeenCalledWith(expect.objectContaining({activationId:options.activationId,rolls:[2,2,2]}));
 });
+
+it('keeps the same effect parent on Enkindled and the subsequent Surge',async()=>{
+ const options=setup(),effectRollId='00000000-0000-4000-8000-000000000009';
+ const extra=vi.spyOn(options.persistence,'spend'),surge=vi.spyOn(options.persistence,'surge');
+ await offerPsionicRollEnhancements({...options,effectRollId});
+ expect(extra).toHaveBeenCalledWith(expect.objectContaining({effectRollId,sourceFeature:'Biofeedback'}));expect(surge).toHaveBeenCalledWith(expect.objectContaining({effectRollId,sourceFeature:'Biofeedback',rolls:[2,2,2]}));
+});

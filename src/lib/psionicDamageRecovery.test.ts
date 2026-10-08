@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import {beforeEach,expect,it} from 'vitest';
-import {readPaidPsionicDamage,rememberPaidPsionicDamage,forgetPaidPsionicDamage,type PaidPsionicDamage} from './psionicDamageRecovery';
+import {readPaidPsionicDamage,rememberPaidPsionicDamage,forgetPaidPsionicDamage,psionicDamageEffectContext,paidDamageFromEffect,type PaidPsionicDamage} from './psionicDamageRecovery';
 import type {CombatParticipant} from '../types';
 const self={id:'self',entity_id:'hero',participant_type:'character',name:'Psion'} as CombatParticipant;
 const target={id:'target',entity_id:'goblin',participant_type:'creature',name:'Goblin'} as CombatParticipant;
@@ -14,3 +14,12 @@ it('permits a new roll after confirmation, but rejects a late confirmation for t
 it.each(['not json','{}'])('blocks malformed storage instead of treating it as unpaid: %s',raw=>{localStorage.setItem('dndkeep:psionic-final-damage:hero',raw);expect(()=>readPaidPsionicDamage('hero')).toThrow(/could not/);});
 it('rejects a mismatched total',()=>{expect(()=>rememberPaidPsionicDamage({...result(),amount:99})).toThrow(/could not be saved/);});
 it('retains a tabletop result without claiming it was queued',()=>{rememberPaidPsionicDamage({...result(),context:null,target:null});expect(readPaidPsionicDamage('hero')!.context).toBeNull();expect(()=>rememberPaidPsionicDamage({...result(),context:null,target:null,queued:true})).toThrow();});
+
+it('recovers server dice and identity without trusting context-supplied totals or IDs',()=>{
+ const r=result(),context={...psionicDamageEffectContext(r.characterName,r.targetName,r.target,r.context),requestId:'forged',amount:99};
+ const row={requestId:'server-paid',characterId:'hero',discipline:'destructive-thoughts',context,sides:8,usedSurge:false,baseRolls:[3],enkindledRolls:[],activatedAt:'2026-10-08T00:00:00Z',turn:{soloTurn:0},originalRolls:[3],rolls:[3],modifier:4,total:7} as Parameters<typeof paidDamageFromEffect>[0];
+ expect(paidDamageFromEffect(row)).toMatchObject({requestId:'server-paid',effectRollId:'server-paid',amount:7,queued:false,target:{entity_id:'goblin'}});
+ expect(()=>paidDamageFromEffect({...row,discipline:'biofeedback'})).toThrow(/target could not/);
+});
+
+it('keeps the server effect link across reload and rejects a substituted link',()=>{rememberPaidPsionicDamage({...result(),effectRollId:'paid'});expect(readPaidPsionicDamage('hero')?.effectRollId).toBe('paid');expect(()=>rememberPaidPsionicDamage({...result(),effectRollId:'other'})).toThrow(/could not be saved/);});

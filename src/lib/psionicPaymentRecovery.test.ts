@@ -69,3 +69,9 @@ it('keeps Sharpened activation links immutable through recovery',()=>{
  localStorage.clear();expect(()=>rememberPsionicPayment('hero',{...linked,request:{...linked.request,...change}} as never)).toThrow(/Invalid saved/);
  }
 });
+
+it('retains a linked effect parent and cannot change it on recovery',()=>{
+ const linked={...payment,request:{...payment.request,effectRollId:'00000000-0000-4000-8000-000000000009',hitDie:6 as const}};
+ rememberPsionicPayment('hero',linked);expect(pendingPsionicPayments('hero')).toEqual([linked]);
+ expect(()=>rememberPsionicPayment('hero',{...linked,request:{...linked.request,effectRollId:'00000000-0000-4000-8000-000000000008'}})).toThrow(/original saved request/);
+});

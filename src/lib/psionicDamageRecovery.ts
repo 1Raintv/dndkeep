@@ -1,13 +1,14 @@
+import type {PsionicEffectRoll} from './api/psionicEffectRolls';
 import type {CombatParticipant} from '../types';
 import type {PsionicDamageContext} from './api/psionicDamage';
 import {readPsionicDamageDice,psionicDamageComponent,type PsionicDamageDice} from '../rules/psionicDamageDice';
-export interface PaidPsionicDamage {requestId:string;characterId:string;characterName:string;amount:number;psionicDamageDice:PsionicDamageDice;targetName:string;target:CombatParticipant|null;context:PsionicDamageContext|null;queued:boolean}
+export interface PaidPsionicDamage {effectRollId?:string;requestId:string;characterId:string;characterName:string;amount:number;psionicDamageDice:PsionicDamageDice;targetName:string;target:CombatParticipant|null;context:PsionicDamageContext|null;queued:boolean}
 const key=(id:string)=>`dndkeep:psionic-final-damage:${id}`;
 const text=(v:unknown):v is string=>typeof v==='string'&&v.length>0&&v.length<=200;
 function participant(v:unknown):v is CombatParticipant {const p=v as CombatParticipant|null;return !!p&&text(p.id)&&text(p.entity_id)&&['character','creature','monster','npc'].includes(p.participant_type)&&(p.combatant_id==null||text(p.combatant_id));}
 function valid(v:unknown,id:string):v is PaidPsionicDamage {
  const r=v as PaidPsionicDamage|null,d=readPsionicDamageDice(r?.psionicDamageDice);
- if(!r||r.characterId!==id||!text(r.requestId)||!text(r.characterName)||!text(r.targetName)||typeof r.queued!=='boolean'||!d||psionicDamageComponent(d).rawTotal!==r.amount)return false;
+ if(!r||(r.effectRollId!==undefined&&r.effectRollId!==r.requestId)||r.characterId!==id||!text(r.requestId)||!text(r.characterName)||!text(r.targetName)||typeof r.queued!=='boolean'||!d||psionicDamageComponent(d).rawTotal!==r.amount)return false;
  if(r.context===null)return r.target===null&&!r.queued;
  const c=r.context;
  return !!c&&text(c.campaignId)&&text(c.encounterId)&&participant(c.self)&&c.self.participant_type==='character'&&c.self.entity_id===id&&participant(r.target)&&Array.isArray(c.participants)&&c.participants.some(p=>participant(p)&&p.id===r.target!.id&&p.entity_id===r.target!.entity_id&&p.participant_type===r.target!.participant_type&&(p.combatant_id??null)===(r.target!.combatant_id??null));
@@ -32,4 +33,12 @@ export function rememberPaidPsionicDamage(result:PaidPsionicDamage){
 }
 export function forgetPaidPsionicDamage(id:string,requestId:string){
  const saved=readPaidPsionicDamage(id);if(saved?.requestId!==requestId)throw new Error('The saved Psychic damage changed. Reopen the sheet before clearing it.');localStorage.removeItem(key(id));
+}
+
+export function psionicDamageEffectContext(characterName:string,targetName:string,target:CombatParticipant|null,context:PsionicDamageContext|null):Record<string,unknown>{
+ const t=target?compact(target):null;return {characterName,targetName,target:t,context:context&&t?{campaignId:context.campaignId,encounterId:context.encounterId,self:compact(context.self),participants:[compact(context.self),t]}:null};
+}
+export function paidDamageFromEffect(row:PsionicEffectRoll):PaidPsionicDamage{
+ const r={...row.context,effectRollId:row.requestId,requestId:row.requestId,characterId:row.characterId,amount:row.total,psionicDamageDice:{version:1,sides:row.sides,originalRolls:row.originalRolls,rolls:row.rolls,modifier:row.modifier},queued:false};
+ if(row.discipline!=='destructive-thoughts'||!valid(r,row.characterId))throw new Error('The saved damage target could not be verified. Keep the dice for manual resolution.');return r;
 }

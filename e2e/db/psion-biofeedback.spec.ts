@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
@@ -44,43 +45,25 @@ test.describe('Psion Biofeedback', () => {
     expect(state().pool).toBe(level===5?6:2);
     await activate.click();await dialog.getByRole('textbox').fill(level===5?'3':'2');
     await page.screenshot({path:info.outputPath('biofeedback-cost.png')});
-    if(level===5){
-      // v2.779 — a held ability-history request must not leave the control busy.
-      let release!:()=>void;let held=false;const delivery=new Promise<void>(resolve=>{release=resolve;});
-      await page.route('**/rest/v1/action_logs*',async route=>{
-        if(route.request().method()==='POST' && route.request().postDataJSON()?.action_name==='Biofeedback'){held=true;await delivery;}
-        await route.continue();
-      });
-      try{
-        await dialog.getByRole('button',{name:'Spend and roll'}).click();
-        await expect.poll(()=>held).toBe(true);await expect.poll(()=>state().temp).toBe(7);
-        await expect(activate).toBeEnabled();
-      }finally{release();}
-    }else await dialog.getByRole('button',{name:'Spend and roll'}).click();
+    let lostApplication=false;
+    await page.route('**/rest/v1/rpc/apply_biofeedback_effect',async route=>{
+      if(!lostApplication){lostApplication=true;const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort();}else await route.continue();
+    });
+    await dialog.getByRole('button',{name:'Spend and roll'}).click();
     if(level===7){
-      const surge=page.getByRole('dialog',{name:'Psionic Surge'});await expect(surge).toContainText('rolled 1, 1 on 2d8');
-      await expect.poll(()=>state().pool).toBe(0);
-      await page.screenshot({path:info.outputPath('biofeedback-surge.png')});
-      // v2.782 — Surge history is transactional. Hold the separate final
-      // Biofeedback history delivery; applying temporary HP still must resolve.
-      let release!:()=>void;let held=false;
-      const delivery=new Promise<void>(resolve=>{release=resolve;});
-      await page.route('**/rest/v1/action_logs*',async route=>{
-        if(route.request().method()==='POST' && route.request().postDataJSON()?.action_name==='Biofeedback'){
-          held=true;await delivery;
-        }
-        await route.continue();
-      });
-      try {
-        await surge.getByRole('button',{name:'Spend 1 Hit Point Die'}).click();
-        await expect.poll(()=>held).toBe(true);
-        await expect.poll(()=>state().temp).toBe(12);
-      } finally {release();}
-
+      await expect(page.getByRole('dialog',{name:'Psionic Surge'})).toContainText('rolled 1, 1 on 2d8');await expect.poll(()=>state().pool).toBe(0);
+      await page.reload();await page.getByRole('button',{name:/Resume paid roll/}).scrollIntoViewIfNeeded();if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[aria-label=\"Biofeedback recovery\"], [aria-label=\"Biofeedback recovery\"] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped).toEqual([]);expect(layout.pastEdge).toEqual([]);}
+      await page.screenshot({path:info.outputPath('biofeedback-resume.png')});await page.getByRole('button',{name:/Resume paid roll/}).click();
+      await page.getByRole('dialog',{name:'Psionic Surge'}).getByRole('button',{name:'Spend 1 Hit Point Die'}).click();
     }
+    await expect.poll(()=>lostApplication).toBe(true);
     await expect.poll(state).toEqual({pool:level===5?3:0,temp:level===5?7:12,spent:level===5?0:1,other:9});
     await page.reload();await expect(activate).toBeVisible();
     if(level===7)await expect(activate).toBeDisabled();
+    const paid=sql(`select request_id from dndkeep_private.psionic_effect_rolls where character_id='${charId}'`);
+    sql(`update characters set temp_hp=1 where id='${charId}'`);
+    const replay=await page.evaluate(async({charId,paid})=>{const path='/src/lib/api/psionicEffectRolls.ts';return (await import(/* @vite-ignore */ path)).applyBiofeedbackEffect(charId,paid);},{charId,paid});
+    expect(replay.replayed).toBe(true);expect(state().temp).toBe(1);expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Biofeedback'`)).toBe('1');
     // A second grant cannot stack with a higher existing temporary-HP total.
     sql(`update characters set temp_hp=20,class_resources=class_resources || '{"psionic-energy-dice":2}'::jsonb where id='${charId}'`);
     await page.reload();await page.getByRole('button',{name:/End Turn/}).locator('visible=true').first().click();

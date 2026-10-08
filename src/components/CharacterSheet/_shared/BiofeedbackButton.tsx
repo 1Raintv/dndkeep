@@ -1,7 +1,10 @@
+import PsionicEffectRecoveryPanel from './PsionicEffectRecoveryPanel';
+import {continuePsionicEffectRoll} from './continuePsionicEffectRoll';
+import type {PsionicEffectReceipt} from '../../../lib/api/psionicEffectRolls';
 import {psionProgression} from '../../../rules/psionProgression';
 import {prepareDiscipline,beginDiscipline} from './disciplinePayment';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
-import {acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
+import {acceptPsionicHitDiceReceipt,acceptHitPointReceipt} from '../../../lib/characterRealtime';
 import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharacterRef';
 import {useEffect,useRef,useState} from 'react';
 import type {Character} from '../../../types';
@@ -41,10 +44,13 @@ export default function BiofeedbackButton({persistence,character,onUpdate}:{pers
    if(!Number.isInteger(count)||count<1||!now||count>now.maxDice){showToast('Check your dice count, Intelligence and available Psionic Energy Dice.','warn');return;}
    const intelligence=computeStats(current).modifiers.intelligence;
    const rolls=Array.from({length:count},()=>rollDie(now.sides));
-   if(!await beginDiscipline(persistence!,latest,prepared,'biofeedback',rolls,count,{...options,recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for temporary HP (minimum 1); keep higher existing temporary HP.`}))return;
-   const surged=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:rolls[0],rolls,sides:now.sides,feature:'Biofeedback',recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for temporary HP (minimum 1); keep higher existing temporary HP.`,campaignId:current.campaign_id,
-    current:()=>latest.current,active:options.active,eligible:c=>!!capacity(c),
-    prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
+   const linked=!!persistence?.getEffectRolls&&!!persistence?.finalizeEffectRoll&&!!persistence?.applyBiofeedback;
+   const claim=await beginDiscipline(persistence!,latest,prepared,'biofeedback',rolls,count,{...options,...(linked?{effectContext:{characterName:current.name}}:{}),recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for temporary HP (minimum 1); keep higher existing temporary HP.`});if(!claim)return;
+   const enhancementOptions={persistence,accept:(receipt:Parameters<typeof acceptPsionicHitDiceReceipt>[1])=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:rolls[0],rolls,sides:now.sides,feature:'Biofeedback',recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for temporary HP (minimum 1); keep higher existing temporary HP.`,campaignId:current.campaign_id,
+    current:()=>latest.current,active:options.active,eligible:(c:Character)=>!!capacity(c),
+    prompt:modal.prompt,confirm:modal.confirm,warn:(message:string)=>showToast(message,'warn')};
+   if(linked){const saved=await continuePsionicEffectRoll(claim.requestId,enhancementOptions);if(saved&&options.active())await applySaved(saved);return;}
+   const surged=await offerPsionicRollEnhancements(enhancementOptions);
    // v2.779 — retain the paid roll in history if its sheet closes during Surge.
    if(surged?.unconfirmed)return;
    const active=mounted.current&&latest.current.id===id;
@@ -56,7 +62,22 @@ export default function BiofeedbackButton({persistence,character,onUpdate}:{pers
    const warnLog=()=>showToast(`Biofeedback rolled ${result.gained} temporary HP, but its log could not be saved.${active?' Temporary HP was applied.':' Apply manually; do not spend dice again.'}`,'warn');
    void logAction({campaignId:current.campaign_id??null,characterId:id,characterName:current.name,actionType:'roll',actionName:'Biofeedback',diceExpression:`${(surged?.originalRolls??rolls).length}d${now.sides}`,individualResults:surged?.originalRolls??rolls,total:result.gained,notes})
     .then(result=>{if(result?.error)warnLog();}).catch(warnLog);
-  }finally{busy.current=false;if(mounted.current)setPending(false);}
+  }catch(error){if(mounted.current&&latest.current.id===id)showToast(error instanceof Error?error.message:'Biofeedback could not be confirmed. Resume its saved roll.','warn');}finally{busy.current=false;if(mounted.current)setPending(false);}
  }
- return <button className="btn-ghost" style={{fontSize:11,minHeight:36,padding:'4px 8px',color:'#c4b5fd'}} disabled={pending||!state?.maxDice} onClick={()=>void run()}>Gain temp HP</button>;
+ async function applySaved(row:PsionicEffectReceipt){
+  if(!persistence?.applyBiofeedback)throw new Error('Biofeedback application is unavailable.');
+  const result=await persistence.applyBiofeedback(row.requestId);
+  if(mounted.current&&latest.current.id===row.characterId){acceptHitPointReceipt(latest,result.character);showToast(result.replayed?'Biofeedback was already applied. Temporary HP was not granted again.':`Biofeedback grants ${result.granted} temporary HP. Kept ${result.afterTempHP}; temporary HP does not stack.`,'success');}
+
+ }
+ async function resume(activationId:string){
+  if(busy.current||!persistence)return;const id=latest.current.id;busy.current=true;setPending(true);
+  try{
+   const active=()=>mounted.current&&latest.current.id===id;
+   const row=await continuePsionicEffectRoll(activationId,{persistence,current:()=>latest.current,active,eligible:c=>!!capacity(c),accept:r=>acceptPsionicHitDiceReceipt(latest,r),roll:1,sides:6,feature:'Biofeedback',prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
+   if(row&&active())await applySaved(row);
+  }catch(error){if(mounted.current&&latest.current.id===id)showToast(error instanceof Error?error.message:'Saved Biofeedback could not be applied.','warn');}
+  finally{busy.current=false;if(mounted.current&&latest.current.id===id)setPending(false);}
+ }
+ return <div role="group" aria-label="Biofeedback recovery" style={{display:'grid',gap:4,minWidth:0}}><button className="btn-ghost" style={{fontSize:11,minHeight:36,padding:'4px 8px',color:'#c4b5fd'}} disabled={pending||!state?.maxDice} onClick={()=>void run()}>Gain temp HP</button><PsionicEffectRecoveryPanel characterId={character.id} persistence={persistence} discipline="biofeedback" disabled={pending} onResume={id=>void resume(id)}/></div>;
 }

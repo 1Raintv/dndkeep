@@ -1,3 +1,4 @@
+import {getPsionicEffectRollRecords,finalizePsionicEffectRoll,applyBiofeedbackEffect,type BiofeedbackEffectReceipt} from '../api/psionicEffectRolls';
 import {getSharpenedRollRecords,finalizeSharpenedRoll} from '../api/sharpenedRolls';
 import {beginPsionicDiscipline,finishPsionicDiscipline,getPsionicDisciplineTurn,type DisciplineReceipt} from '../api/psionicDisciplines';
 import {settleSavedPsionicPayment} from '../settleSavedPsionicPayment';
@@ -5,7 +6,7 @@ import {hasSavedPsionicPayment,type PendingPsionicPayment} from '../psionicPayme
 import {useEffect,useMemo,useRef} from 'react';
 import {spendRestHitDice,type HitDiceHealingReceipt,completePsionicRest,type PsionicRestReceipt,settlePsionicEnergy,type EnergyReceipt,getEnkindledTurn,spendEnkindledLifeForce,spendPsionicSurge,PsionicRequestError,type PsionicEnhancementPersistence} from '../api/psionicTurns';
 interface SaveQueue {flush:()=>Promise<void>;getSnapshot:()=>{pending:boolean;error:string|null}}
-type Receipt=DisciplineReceipt|HitDiceHealingReceipt|PsionicRestReceipt|{hitDiceSpent:number;hitDiceRevision:number}|EnergyReceipt;
+type Receipt=BiofeedbackEffectReceipt|DisciplineReceipt|HitDiceHealingReceipt|PsionicRestReceipt|{hitDiceSpent:number;hitDiceRevision:number}|EnergyReceipt;
 /** v2.782 — settle queued edits before the server charges dice; acknowledge its
  * snapshot locally rather than writing the same absolute resource value again. */
 export function usePsionicEnhancements(characterId:string,queue:SaveQueue,accept:(receipt:Receipt)=>void,frozen=false):PsionicEnhancementPersistence{
@@ -28,7 +29,18 @@ export function usePsionicEnhancements(characterId:string,queue:SaveQueue,accept
    if(mounted.current&&live.current.characterId===characterId)live.current.accept(receipt);
    return receipt;
   }
-  return {getSharpenedRolls:()=>getSharpenedRollRecords(characterId),finalizeSharpenedRoll:async activationId=>{
+  return {applyBiofeedback:async activationId=>{
+   const active=()=>mounted.current&&live.current.characterId===characterId&&!live.current.frozen;
+   if(!active()||queue.getSnapshot().error)throw new PsionicRequestError('Save your character changes before applying Biofeedback.',false);
+   await queue.flush();const state=queue.getSnapshot();
+   if(!active()||state.pending||state.error)throw new PsionicRequestError('The sheet changed or has unsaved edits. Biofeedback remains recoverable.',false);
+   const result=await applyBiofeedbackEffect(characterId,activationId);
+   if(active())live.current.accept(result);window.dispatchEvent(new Event('dndkeep:psionic-effect-roll-changed'));return result;
+  },getEffectRolls:()=>getPsionicEffectRollRecords(characterId),finalizeEffectRoll:async activationId=>{
+   if(!mounted.current||live.current.characterId!==characterId||live.current.frozen)throw new PsionicRequestError('This sheet is not available to confirm rolls.',true);
+   const result=await finalizePsionicEffectRoll(characterId,activationId);
+   window.dispatchEvent(new Event('dndkeep:psionic-effect-roll-changed'));return result;
+  },getSharpenedRolls:()=>getSharpenedRollRecords(characterId),finalizeSharpenedRoll:async activationId=>{
    if(!mounted.current||live.current.characterId!==characterId||live.current.frozen)throw new PsionicRequestError('This sheet is not available to confirm rolls.',true);
    const result=await finalizeSharpenedRoll(characterId,activationId);
    window.dispatchEvent(new Event('dndkeep:sharpened-roll-changed'));return result;

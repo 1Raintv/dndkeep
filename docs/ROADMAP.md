@@ -1,6 +1,47 @@
 # DNDKeep — Two-Track Roadmap
 
-### v2.851 candidate — Finalized Psychic damage survives refresh
+### v2.852 — Recoverable Psion rolls and exactly-once delivery
+
+Release verification is complete; PR/production rollout pending.
+
+Destructive Thoughts and Biofeedback now save their base payment and recovery
+context together. Enkindled and Surge payments belong to that original roll;
+finalization uses recorded dice and adds the original Intelligence modifier once.
+Reloading during an enhancement prompt resumes unpaid choices without repeating
+paid ones. New enhancements stop after the original turn; existing receipts remain
+readable. Old generic payments are not adopted retroactively.
+
+Biofeedback applies its finalized temporary HP once, retaining a higher pool and
+updating the sheet, current campaign map pieces and history in one transaction.
+Replaying a receipt never restores consumed HP. A later long rest expires an
+unapplied benefit and prevents further enhancement costs; short rests retain it.
+Disagreeing sheet/map pools require reconciliation rather than silently restoring
+a stale ward. Existing applied results remain readable after rests.
+
+Destructive Thoughts delivers server-recorded dice to its saved target atomically
+with roster validation and a delivery receipt. Changed participants, repointed map
+pieces, hidden player targets and ended encounters are rejected. Concurrent or
+lost-response retries create one attack; deleting an attack does not recreate it.
+The DM still resolves damage normally. All unresolved records remain discoverable;
+only delivered history is limited. Payment recovery directs users to the saved
+roll rather than suggesting a second manual application.
+
+Validation: full gate passes (2,741 units, TypeScript 200/200, entry 255.1 KB),
+39 local database cases, six Destructive Thoughts and four Biofeedback desktop/
+mobile flows. Scoped overflow probes pass; recovery screenshots inspected at both
+sizes. Removing the recovery control makes its reload check fail; bypassing the
+Biofeedback receipt makes its duplicate-benefit check fail. Correct code restored
+and corresponding checks passed. New SQL functions have no lint findings.
+Migration: `20261008160020_psionic_effect_roll_records.sql` (local applied).
+
+Qualifying spell, school and line-of-sight declarations still rely on the player;
+this is not a spell-cast trigger ledger. Legacy generic payments keep their old
+manual-effect recovery. Tabletop damage remains manual. Full Sharpened Mind
+weapon/spell/AoE integration and broader map polish remain next priorities.
+
+### v2.851 — Finalized Psychic damage survives refresh
+
+Merged PR #195 (`c134c55`), both CI gates green. Vercel publishing remains rate-limited.
 
 Destructive Thoughts saves its finalized dice, amount, original target and stable
 queue request ID in browser storage before delivery. Reopening the same character
