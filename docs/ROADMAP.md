@@ -1,6 +1,43 @@
 # DNDKeep — Two-Track Roadmap
 
-### Release candidate — spell targeting recovery and single dialogs, v2.801
+### Release candidate — Counterspell casting sources and DC, v2.802
+
+Counterspell now uses the reacting character's selected spellcasting source,
+effective ability modifier (including active ability-setting items), and total
+multiclass proficiency. The interrupted spell's level and the slot used for
+Counterspell do not alter its DC. Offers and acceptance reuse the sheet's
+reviewed ownership/preparation rather than treating a known spell as prepared.
+The reaction prompt loads current choices, requires an explicit shared-source
+choice, blocks unavailable slots, and recovers from failed/hung reads with retry.
+Acceptance checks source, slot and still-declared cast before spending.
+
+Desktop/mobile real-player checks selected Sorcerer DC 17 versus Psion DC 16
+for the same ninth-level target, upcast Counterspell without increasing its DC,
+and verified the recorded CON save and exactly one selected-slot expenditure.
+The phone source picker was inspected. Focused tests also cover effective
+Headband INT, missing sources, unprepared spells, stale choices, failed/reopened/
+hung lookups, invalid slots and already-resolved casts. Two standing type errors
+were removed; CI baseline is ratcheted from 206 to 204. Final v2.802 gate passed:
+1,985 unit tests, TS 204/204, zero hook violations, RAW/coordinates/anchors,
+build/SW check and 253.7 KB entry. New files are lint-clean. No migration.
+
+**Next: complete Counterspell lifecycle transaction.** The existing reactor
+client cannot update another caster's pending_spell_casts row under current RLS;
+its attack-link write can affect zero rows. The target also currently pays its
+slot at declaration and receives no refund when countered. These are pre-existing
+open issues, not covered by the successful DC/slot-choice browser checks. Replace
+the scattered acceptance/settlement writes with an authorized, idempotent database
+transaction; cover concurrent reactors, expired offers, stale slot/reaction state,
+interrupted response recovery, and the caster's retained slot after a failed save.
+Also audit perceptible components (including Psion waivers), line of sight and
+cantrip/attack-spell declaration coverage. Do not claim full Counterspell automation.
+Rule source: https://www.dndbeyond.com/spells/2619072-counterspell
+
+### Released — spell targeting recovery and single dialogs, v2.801
+
+PR135 merged at f875f5d after hosted gates 37724508181/37724504287 and
+preview passed. Main CI 37724966306 and production Vercel passed; public SW
+2.801.0 confirmed.
 
 Player weapon and area-save spell pickers now share one strict map-loading hook
 and recovery notice. Spell selection/declaration and automatic area selection
@@ -22,10 +59,10 @@ rules/coordinates/anchors/build/SW-version and 253.7 KB entry. All four final
 versioned desktop/mobile browser cases passed. New shared files are lint-clean.
 No migration.
 
-### Merged — secondary Psion Actions with missing slots, v2.800
+### Released — secondary Psion Actions with missing slots, v2.800
 
 PR134 merged at e002e778 after both hosted gates and preview passed.
-Main CI 37724185332 passed; production verification pending.
+Main CI 37724185332 and production Vercel passed; public SW 2.800.0 confirmed.
 
 Actions no longer hides ready spell rows just because the primary class is
 martial and imported slot records are empty. Known cantrips remain available;
