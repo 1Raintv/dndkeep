@@ -6,16 +6,16 @@
 //
 //   1. Open target picker
 //   2. On target selected: declareAttack()
-//   3. Immediately rollAttackRoll() — gets hit/miss, triggers Shield offer
+//   3. Confirm the cost callback, then rollAttackRoll() — gets hit/miss, triggers Shield offer
 //   4. Stop here. DM's AttackResolutionModal picks up from attack_rolled and
 //      walks through damage + apply once all reactions resolve.
 //
 // Kept deliberately lean — spells, AoE, and multi-target attacks come in
 // v2.101+.
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useCombatSelector } from '../../context/CombatContext';
-import { declareAttack, rollAttackRoll } from '../../lib/pendingAttack';
+import { declareAttack, rollAttackRoll, type DeclareAttackInput } from '../../lib/pendingAttack';
 import TargetPickerModal from './TargetPickerModal';
 import type { CombatParticipant } from '../../types';
 
@@ -47,7 +47,7 @@ interface Props {
   compact?: boolean;
   /** Custom button label override. */
   label?: string;
-  /** Called after the attack is declared + rolled — lets parent spend a spell slot etc. */
+  /** Called once after declaration is confirmed, before rolling — lets parent record its cost. */
   onDeclared?: () => void;
 }
 
@@ -73,6 +73,11 @@ export default function PlayerAttackButton({
   const participants = useCombatSelector(s => s.participants);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const inFlight = useRef(false);
+  // v2.855: preserve the original request and callback across ambiguous responses.
+  // This is component-lifetime recovery; durable atomic spell payment is separate.
+  const pending = useRef<{input: DeclareAttackInput; onDeclared?: () => void} | null>(null);
 
   // Find my participant row in the active encounter
   const myParticipant = participants.find(
@@ -84,12 +89,10 @@ export default function PlayerAttackButton({
   if (!encounter || encounter.status !== 'active' || !myParticipant) return null;
 
   async function handlePick(target: CombatParticipant) {
-    if (busy || !encounter || !myParticipant) return;
+    if (inFlight.current || pending.current || !encounter || !myParticipant) return;
     setPicking(false);
-    setBusy(true);
-
-    try {
-      const attack = await declareAttack({
+    pending.current = {onDeclared, input: {
+        requestId: crypto.randomUUID(),
         campaignId: encounter.campaign_id,
         encounterId: encounter.id,
         attackerParticipantId: myParticipant.id,
@@ -111,20 +114,36 @@ export default function PlayerAttackButton({
         // Damage (always defined for attack pipelines)
         damageDice,
         damageType,
-      });
+      }};
+    await submitDeclaration();
+  }
 
-      if (attack) {
-        // Auto-roll based on kind. attack_roll → rollAttackRoll (hit/miss +
-        // Shield offer). save / auto_hit → DM handles from the modal (there's
-        // no attack roll to make for these paths).
-        if (attackKind === 'attack_roll') {
-          await rollAttackRoll(attack.id);
-        }
+  async function submitDeclaration() {
+    const request = pending.current;
+    if (inFlight.current || !request) return;
+    inFlight.current = true; setBusy(true); setError('');
+    let confirmed = false, costRecorded = false;
+    try {
+      const attack = await declareAttack(request.input);
+      if (!attack) {
+        setError('Attack declaration not confirmed. Retry the same request before choosing another target.');
+        return;
       }
-
-      onDeclared?.();
+      confirmed = true;
+      // Clear before calling the parent: a callback failure must never replay cost.
+      pending.current = null;
+      request.onDeclared?.(); costRecorded = true;
+      if (request.input.attackKind === 'attack_roll' && !await rollAttackRoll(attack.id)) {
+        setError('Attack declared, but its roll was not confirmed. Ask the DM to finish the existing attack.');
+      }
+    } catch {
+      setError(!confirmed
+        ? 'Attack declaration not confirmed. Retry the same request before choosing another target.'
+        : !costRecorded
+          ? 'Attack declared, but sheet resources could not be confirmed. Review the cost and ask the DM to finish the existing attack.'
+          : 'Attack declared, but its roll was not confirmed. Ask the DM to finish the existing attack.');
     } finally {
-      setBusy(false);
+      inFlight.current = false; setBusy(false);
     }
   }
 
@@ -149,21 +168,22 @@ export default function PlayerAttackButton({
       };
 
   return (
-    <>
+    <span style={{display:'inline-flex',flexDirection:'column',alignItems:'flex-end',gap:4,minWidth:0,maxWidth:180}}>
       <button
-        onClick={() => setPicking(true)}
+        onClick={() => {if (pending.current) void submitDeclaration(); else setPicking(true);}}
         disabled={busy}
         title={`Attack a target with ${attackName} — runs full combat resolution`}
         style={buttonStyle}
       >
-        {busy ? '…' : (label ?? '⚔ Attack')}
+        {busy ? '…' : pending.current ? 'Retry declaration' : (label ?? '⚔ Attack')}
       </button>
+      {error && <span role="alert" style={{display:'block',fontSize:12,color:'var(--red)',overflowWrap:'anywhere'}}>{error}</span>}
       {picking && (
         <TargetPickerModal
           participants={participants}
           excludeParticipantId={myParticipant.id}
           title={`Attack with ${attackName}`}
-          subtitle={`${attackBonus >= 0 ? '+' : ''}${attackBonus} to hit · ${damageDice} ${damageType}`}
+          subtitle={`${attackKind === 'save' ? `${saveAbility ?? ''} DC ${saveDC ?? '—'} save · ` : attackKind === 'attack_roll' ? `${(attackBonus ?? 0) >= 0 ? '+' : ''}${attackBonus ?? 0} to hit · ` : ''}${damageDice} ${damageType}`}
           onPick={handlePick}
           onCancel={() => setPicking(false)}
           fromParticipant={myParticipant}
@@ -172,6 +192,6 @@ export default function PlayerAttackButton({
           normalRangeFt={normalRangeFt}
         />
       )}
-    </>
+    </span>
   );
 }
