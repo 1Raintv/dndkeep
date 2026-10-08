@@ -213,7 +213,7 @@ test.describe('Psionic Discipline activation controls',()=>{
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('6');
  });
 
- test('Sharpened linked enhancements survive lost response and reload without another charge',async({page})=>{
+ test('Sharpened linked enhancements survive lost response and reload without another charge',async({page},info)=>{
   await page.addInitScript(()=>{Math.random=()=>0.1;});
   sql(`update characters set intelligence=18,hit_dice_spent=0,class_resources='{"psion-disciplines":["sharpened-mind"],"psionic-energy-dice":12}' where id='${charId}'`);
   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
@@ -227,6 +227,18 @@ test.describe('Psionic Discipline activation controls',()=>{
   await page.unroute(endpoint);await page.reload();
   const recovery=page.getByRole('status',{name:'Psion roll recovery'});await recovery.getByRole('button',{name:'Confirm dice cost',exact:true}).click();
   await expect(recovery).toContainText('Surged rolls: 4, 4, 4');expect(spent()).toBe('3');
+  const record=page.getByRole('region',{name:'Sharpened Mind rolls'});
+  await expect(record).toContainText('Paid dice total: 12');await record.getByRole('button',{name:'Confirm saved roll',exact:true}).click();
+  await page.getByRole('dialog',{name:'Confirm Sharpened roll?'}).getByRole('button',{name:'Confirm final number'}).click();
+  await expect(record).toContainText('Recorded number: 12');await page.reload();await expect(record).toContainText('Recorded number: 12');
+  await expect(record.getByRole('button',{name:'Confirm saved roll',exact:true})).toHaveCount(0);expect(spent()).toBe('3');
+  await record.scrollIntoViewIfNeeded();await record.screenshot({path:info.outputPath('sharpened-record.png')});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
+   const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
+   const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[aria-label=\"Sharpened Mind rolls\"], [aria-label=\"Sharpened Mind rolls\"] *')");
+   const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways).toBe(false);expect(layout.clipped).toEqual([]);expect(layout.pastEdge).toEqual([]);
+  }
+
   expect(sql(`select count(*) from dndkeep_private.sharpened_enhancements e join dndkeep_private.sharpened_rolls r on r.request_id=e.activation_id where r.character_id='${charId}'`)).toBe('2');
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('11');
  });
