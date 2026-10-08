@@ -1,6 +1,31 @@
 # DNDKeep — Two-Track Roadmap
 
-### v2.847 candidate — Correct condition removal and concentration cleanup
+### v2.848 candidate — Species-aware damage resistance
+
+Tiefling resistance follows the saved Fiendish Legacy: Abyssal Poison, Chthonic
+Necrotic, Infernal Fire. Missing/unknown choices grant no guessed automatic trait.
+2024 Goliath no longer receives blanket Cold resistance. Manual resistances remain
+intact, and custom names no longer inherit traits through arbitrary substring
+matches. Source: [SRD 5.2.1](https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf),
+Goliath and Tiefling (pp.85–86).
+
+Sheet defenses and party damage use the corrected pure resolver. Migration
+`20261008143826_party_damage_species_choices.sql` includes choices in the saved
+party-damage context, so a changed legacy invalidates an uncommitted preview.
+New saved requests identify the corrected rules; pre-upgrade requests retain
+frozen calculation validation for exact receipt replay/cancellation. They are
+not silently recalculated or dropped. Existing server snapshot checks still reject
+uncommitted requests with an old context.
+
+Full gate: 2,663 units, TypeScript 200/200, entry 255.1 KB.
+Local checks: 21 database transactions, six desktop/phone browser cases including
+lost-response recovery, and a final two-platform legacy rerun pass. Screenshots
+show 23 Poison becoming 11 damage and HP 50→39. Replacing the Abyssal resistance
+with Fire makes the actual browser regression fail. No SQL lint findings for the
+updated context function. Other species-choice automation and typed attack damage,
+including Sharpened Mind, remain follow-ups; this does not claim they are integrated.
+
+### v2.847 — Correct condition removal and concentration cleanup
 
 Waking leaves Prone (SRD 5.2.1 p.191). Removing one incapacitating condition
 preserves derived Incapacitated while another remains and transfers its parent
@@ -21,6 +46,10 @@ Restoring the old cleanup makes the waking/overlap regression fail; fixed SQL
 restored afterward. This does not solve multiple independent applications of the
 same condition (the current source map has one entry), concurrent client condition
 writes, automatic healing wake-up, or the map quick-panel's separate writes.
+
+Merged as PR #191 (`3dab0e3`). Production migration run `37793791024`
+applied the condition-removal migration at 14:36 UTC on October 8. Preview deployed;
+production frontend was rejected by Vercel's 24-hour deployment rate limit.
 
 ### v2.846 — Consistent 2024 condition movement
 

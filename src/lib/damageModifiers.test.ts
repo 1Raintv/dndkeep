@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {applyDamageTypeModifiers} from './damageModifiers';
+import {applyDamageTypeModifiers,resolveResistances} from './damageModifiers';
 const target={species:'Human',damage_resistances:['psychic'],damage_vulnerabilities:['psychic'],damage_immunities:[]};
 it('routes odd typed damage through ordered resistance/vulnerability math',()=>{
  expect(applyDamageTypeModifiers(23,'psychic',target)).toEqual({final:22,modifier:'resistant-vulnerable'});
@@ -20,4 +20,13 @@ it('all-damage resistance applies once and respects the untyped override',()=>{
  expect(applyDamageTypeModifiers(23,'psychic',target,{resistanceAll:true}).final).toBe(22);
  expect(applyDamageTypeModifiers(23,'fire',target,{resistanceAll:true}).final).toBe(11);
  expect(applyDamageTypeModifiers(23,null,target,{resistanceAll:true}).final).toBe(23);
+});
+
+it('uses selected legacy in damage math instead of giving every Tiefling fire resistance',()=>{
+ const c={...target,species:'Tiefling',species_choices:{tieflingLegacy:'chthonic'}};
+ expect(applyDamageTypeModifiers(23,'necrotic',c).final).toBe(11);expect(applyDamageTypeModifiers(23,'fire',c).final).toBe(23);
+});
+it('preserves manual resistance for legacy/custom characters and deduplicates normalized entries',()=>{
+ expect(resolveResistances({...target,species:'Goliath',damage_resistances:[' Cold ','cold']})).toEqual(['cold']);
+ expect(resolveResistances({...target,species:'Tiefling',species_choices:{tieflingLegacy:'abyssal'},damage_resistances:['POISON','fire']})).toEqual(['poison','fire']);
 });

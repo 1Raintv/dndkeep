@@ -23,6 +23,12 @@ test.describe('Atomic party damage',()=>{
  const apply=(ctx=context(),damage=10)=>JSON.parse(sql(auth(dm,call(ctx,damage))));
  const state=()=>JSON.parse(sql(`select jsonb_build_object('hp',current_hp,'temp',temp_hp,'spell',concentration_spell,'marker',last_campaign_damage_id,'failures',death_saves_failures,'conditions',active_conditions) from characters where id='${char}'`));
  const count=(table:string)=>sql(`select count(*) from ${table} where character_id='${char}'`);
+ test('captures species choices and rejects a legacy changed after preview',()=>{
+  sql(`update characters set species='Tiefling',species_choices='{"tieflingLegacy":"abyssal"}' where id='${char}'`);
+  const ctx=context();expect(ctx.character.species_choices).toEqual({tieflingLegacy:'abyssal'});
+  sql(`update characters set species_choices='{"tieflingLegacy":"infernal"}' where id='${char}'`);
+  expect(()=>apply(ctx)).toThrow(/Party state changed/);expect(state().hp).toBe(50);expect(count('dndkeep_private.party_damage_events')).toBe('0');
+ });
  test('temporary HP is consumed first and full damage determines one concentration check',()=>{
   const r=apply(undefined,23);expect(r).toMatchObject({beforeHP:50,beforeTempHP:8,afterHP:35,afterTempHP:0,checkId:save,concentrationBroken:false,replayed:false});
   expect(state()).toMatchObject({hp:35,temp:0,spell:'detect-magic',marker:request});

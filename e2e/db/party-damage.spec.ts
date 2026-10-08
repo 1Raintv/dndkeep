@@ -7,7 +7,7 @@ test.use({serviceWorkers:'block'});
 const sql=(q:string)=>execFileSync('docker',['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'],{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 test.describe('party damage affinity order',()=>{
  gateDbSuite();
- for(const recovery of [false,true]) test(recovery?'lost damage response survives reload without applying twice':'odd damage applies resistance before vulnerability in preview and HP',async({page},info)=>{
+ for(const {recovery,legacy} of [{recovery:false,legacy:false},{recovery:true,legacy:false},{recovery:false,legacy:true}]) test(legacy?'chosen Tiefling legacy changes preview and applied HP':recovery?'lost damage response survives reload without applying twice':'odd damage applies resistance before vulnerability in preview and HP',async({page},info)=>{
   const user=randomUUID(),character=randomUUID(),campaign=randomUUID(),email='damage-'+user+'@dndkeep.local';
   try{
    sql(`begin;
@@ -18,14 +18,16 @@ test.describe('party damage affinity order',()=>{
     insert into campaigns(id,owner_id,name) values('${campaign}','${user}','Damage fixture');
     insert into characters(id,user_id,campaign_id,name,species,class_name,background,level,current_hp,max_hp,temp_hp,damage_resistances,damage_vulnerabilities)
     values('${character}','${user}','${campaign}','Affinity Fixture','Human','Fighter','Soldier',5,50,50,0,array['psychic'],array['psychic']);commit;`);
+   if(legacy)sql(`update characters set species='Tiefling',species_choices='{"tieflingLegacy":"abyssal"}' where id='${character}'`);
+   const final=legacy?11:22,hp=50-final,label=legacy?'resistant':'resistance then vulnerability';
    await signInAsSeedDm(page,email);await page.goto('/campaigns/'+campaign);
    await page.getByRole('button',{name:'Party',exact:true}).click();await page.getByRole('button',{name:'AoE Damage',exact:true}).click();
    const panel=page.getByRole('region',{name:'Party area damage'});
    await panel.getByRole('button',{name:/Affinity Fixture/}).click();
    await panel.getByPlaceholder('Damage amount…').fill('23');
-   await panel.getByTitle('Damage type — untyped ignores resistance/vulnerability').selectOption('psychic');
-   await expect(panel).toContainText('Affinity Fixture takes 22');await expect(panel).toContainText('(50→28)');await expect(panel).toContainText('resistance then vulnerability');
-   await panel.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('damage-preview.png')});
+   await panel.getByTitle('Damage type — untyped ignores resistance/vulnerability').selectOption(legacy?'poison':'psychic');
+   await expect(panel).toContainText(`Affinity Fixture takes ${final}`);await expect(panel).toContainText(`(50→${hp})`);await expect(panel).toContainText(label);
+   await panel.getByText(`Affinity Fixture takes ${final}`,{exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('damage-preview.png')});
    if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
     const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');
     const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
@@ -36,7 +38,7 @@ test.describe('party damage affinity order',()=>{
     const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort('failed');
    });
    await panel.getByRole('button',{name:'Apply to 1 target',exact:true}).click();
-   await expect.poll(()=>sql(`select current_hp from characters where id='${character}'`)).toBe('28');
+   await expect.poll(()=>sql(`select current_hp from characters where id='${character}'`)).toBe(String(hp));
    if(recovery){
     await expect(panel).toContainText('Some results need confirmation');
     await page.unroute('**/rest/v1/rpc/apply_party_damage');await page.reload();
@@ -44,11 +46,11 @@ test.describe('party damage affinity order',()=>{
     await expect(panel).toContainText('Saved damage needs confirmation');
     await panel.getByRole('button',{name:'Confirm saved damage',exact:true}).click();
     await expect(panel).toContainText('Party damage confirmed.');
-    expect(sql(`select current_hp from characters where id='${character}'`)).toBe('28');
+    expect(sql(`select current_hp from characters where id='${character}'`)).toBe(String(hp));
     expect(sql(`select count(*) from dndkeep_private.party_damage_events where character_id='${character}'`)).toBe('1');
     expect(await page.evaluate(()=>Object.keys(localStorage).filter(k=>k.startsWith('dndkeep:party-damage:')))).toEqual([]);
    }
-   await expect(panel).toContainText('resistance then vulnerability');
+   await expect(panel).toContainText(label);
    await page.screenshot({path:info.outputPath('damage-applied.png')});
   }finally{sql(`delete from characters where id='${character}';delete from campaigns where id='${campaign}';delete from auth.users where id='${user}';`);}
  });

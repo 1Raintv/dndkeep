@@ -35,3 +35,18 @@ it('verifies original pool math while accepting newer current HP on replay',()=>
  const receipt={requestId:r.requestId,saveId:r.saveId,damage:22,damageType:'psychic',beforeHP:40,beforeTempHP:5,afterHP:23,afterTempHP:0,checkId:r.saveId,concentrationBroken:false,automation:'prompt',participantId:null,replayed:true,character:{id:char,current_hp:45,max_hp:50,temp_hp:0,hit_point_revision:2}};
  expect(verifyPartyDamageReceipt(receipt,r).character.current_hp).toBe(45);expect(()=>verifyPartyDamageReceipt({...receipt,afterHP:22},r)).toThrow();expect(()=>verifyPartyDamageReceipt({...receipt,checkId:null},r)).toThrow();expect(()=>verifyPartyDamageReceipt({...receipt,concentrationBroken:true,checkId:null},r)).toThrow();
 });
+
+it('captures the chosen legacy in party damage previews and saved requests',()=>{
+ const ctx=context();ctx.character.species='Tiefling';ctx.character.species_choices={tieflingLegacy:'abyssal'};
+ const r=createPartyDamageRequest(ctx,23,'poison',false);expect(r.damage).toBe(11);expect(r.expected.character.species_choices).toEqual({tieflingLegacy:'abyssal'});
+ ctx.character.species_choices.tieflingLegacy='infernal';expect(r.expected.character.species_choices?.tieflingLegacy).toBe('abyssal');
+ expect(previewPartyDamage(ctx,23,'poison',false).final).toBe(23);
+});
+
+it('preserves pre-upgrade saved calculation validation without reintroducing old defaults into new previews',()=>{
+ const ctx=context();ctx.character.species='Goliath';
+ const fresh=createPartyDamageRequest(ctx,23,'cold',false);expect(fresh.damage).toBe(23);expect(fresh.affinityRules).toBe(2);
+ const legacy={...fresh,affinityRules:undefined,damage:11,affinity:'resistant' as const};
+ expect(validPartyDamageRequest(legacy)).toBe(true);expect(validPartyDamageRequest({...legacy,damage:10})).toBe(false);
+ expect(validPartyDamageRequest({...legacy,affinityRules:2})).toBe(false);
+});

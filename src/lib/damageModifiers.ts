@@ -1,6 +1,7 @@
 // v2.41.0: Damage modifier helpers — RAW 13 damage types and species defaults.
 
 import type { Character } from '../types';
+import {speciesResistances} from '../rules/speciesResistances';
 
 /** All 13 damage types per the 2024 PHB. Lowercase canonical form. */
 export const DAMAGE_TYPES = [
@@ -32,25 +33,10 @@ export const DAMAGE_TYPE_COLORS: Record<string, string> = {
   thunder: '#a78bfa',
 };
 
-/** Species damage resistances per 2024 PHB. Keys are case-insensitive species name fragments. */
-export const SPECIES_RESISTANCES: Record<string, DamageType[]> = {
-  tiefling: ['fire'],
-  dwarf: ['poison'],
-  goliath: ['cold'],
-  yuanti: ['poison'],
-  'yuan-ti': ['poison'],
-};
-
-/** Resolve effective resistances — merges manual overrides + species defaults. */
-export function resolveResistances(character: Pick<Character, 'species' | 'damage_resistances'>): string[] {
-  const manual = character.damage_resistances ?? [];
-  const species = (character.species ?? '').toLowerCase();
-  const defaults: string[] = [];
-  for (const [key, types] of Object.entries(SPECIES_RESISTANCES)) {
-    if (species.includes(key)) defaults.push(...types);
-  }
-  // Deduplicate
-  return Array.from(new Set([...manual, ...defaults]));
+/** Manual entries remain authoritative; automatic traits use saved choices. */
+export function resolveResistances(character: Pick<Character, 'species' | 'species_choices' | 'damage_resistances'>): string[] {
+ return Array.from(new Set([...(character.damage_resistances ?? []),
+  ...speciesResistances(character.species ?? '', character.species_choices)].map(t=>t.trim().toLowerCase()).filter(Boolean)));
 }
 
 export function resolveImmunities(character: Pick<Character, 'damage_immunities'>): string[] {
@@ -73,7 +59,7 @@ import {applyDamageAffinities,type AppliedDamage} from '../rules/damageAffinitie
 export function applyDamageTypeModifiers(
   baseDamage: number,
   dmgType: string | null | undefined,
-  character: Pick<Character, 'species' | 'damage_resistances' | 'damage_vulnerabilities' | 'damage_immunities'>,
+  character: Pick<Character, 'species' | 'species_choices' | 'damage_resistances' | 'damage_vulnerabilities' | 'damage_immunities'>,
   options:{resistanceAll?:boolean}={},
 ): AppliedDamage {
   const type=dmgType?.trim().toLowerCase();
