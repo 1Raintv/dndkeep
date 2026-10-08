@@ -8,7 +8,7 @@ vi.mock('../../../lib/gameUtils',()=>({computeStats:(c:{intelligence:number})=>(
 vi.mock('../../../lib/api/psionicDamage',()=>({loadPsionicDamageContext:mocks.load,queuePsionicDamage:mocks.queue}));
 vi.mock('../../shared/ActionLog',()=>({logAction:mocks.log}));
 vi.mock('../../shared/Toast',()=>({useToast:()=>({showToast:mocks.toast})}));
-vi.mock('../../Combat/TargetPickerModal',()=>({default:({onPick}:{onPick:(p:unknown)=>void})=><button onClick={()=>onPick({id:'target',name:'Goblin',participant_type:'creature'})}>Pick Goblin</button>}));
+vi.mock('../../Combat/TargetPickerModal',()=>({default:({onPick}:{onPick:(p:unknown)=>void})=><button onClick={()=>onPick({id:'target',entity_id:'goblin',name:'Goblin',participant_type:'creature'})}>Pick Goblin</button>}));
 import RealDestructiveThoughtsButton from './DestructiveThoughtsButton';
 import {withTestPsionicPersistence} from './psionicPersistence.testSupport';
 const DestructiveThoughtsButton=withTestPsionicPersistence(RealDestructiveThoughtsButton);
@@ -16,7 +16,7 @@ import {ModalProvider} from '../../shared/Modal';
 import type {Character} from '../../../types';
 const character={id:'psion',name:'Psion',class_name:'Psion',level:5,intelligence:18,class_resources:{'psion-disciplines':['Destructive Thoughts'],'psionic-energy-dice':6,other:9}} as unknown as Character;
 const ui=(c:Character,update:ReturnType<typeof vi.fn>)=><ModalProvider><DestructiveThoughtsButton character={c} onUpdate={update}/></ModalProvider>;
-afterEach(cleanup);beforeEach(()=>{vi.clearAllMocks();mocks.load.mockResolvedValue(null);mocks.queue.mockResolvedValue(undefined);mocks.log.mockResolvedValue(undefined);});
+afterEach(cleanup);beforeEach(()=>{localStorage.clear();vi.clearAllMocks();mocks.load.mockResolvedValue(null);mocks.queue.mockResolvedValue(undefined);mocks.log.mockResolvedValue(undefined);});
 async function choose(count:string){
  fireEvent.click(screen.getByRole('button',{name:'Roll damage'}));await screen.findByRole('dialog',{name:'Destructive Thoughts target'});
  fireEvent.change(screen.getByRole('textbox'),{target:{value:'Goblin'}});fireEvent.click(screen.getByRole('button',{name:'Choose target'}));
@@ -42,7 +42,7 @@ it('supports last-die Surge for every low roll at one Hit Point Die',async()=>{
  expect(update).toHaveBeenCalledTimes(2);expect(update).toHaveBeenLastCalledWith({hit_dice_spent:1});
 });
 it('retries a failed delivery with the same paid result and no second charge',async()=>{
- mocks.load.mockResolvedValue({campaignId:'camp',encounterId:'enc',self:{id:'self'},participants:[]});mocks.queue.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);
+ mocks.load.mockResolvedValue({campaignId:'camp',encounterId:'enc',self:{id:'self',entity_id:'psion',participant_type:'character'},participants:[]});mocks.queue.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);
  const update=vi.fn();render(ui({...character,campaign_id:'camp'},update));fireEvent.click(screen.getByRole('button',{name:'Roll damage'}));fireEvent.click(await screen.findByRole('button',{name:'Pick Goblin'}));
  await screen.findByRole('dialog',{name:'Destructive Thoughts'});fireEvent.click(screen.getByRole('button',{name:'Spend and roll'}));
  await waitFor(()=>expect(screen.getByRole('status').textContent).toContain('Not queued'));const first=mocks.queue.mock.calls[0][0];expect(first.psionicDamageDice).toEqual({version:1,sides:8,originalRolls:[2],rolls:[2],modifier:4});
@@ -65,4 +65,12 @@ it('preserves a paid roll in history when the sheet closes during Surge',async()
 it('does not hold a paid tabletop result behind history delivery',async()=>{
  mocks.log.mockReturnValue(new Promise(()=>{}));const update=vi.fn();render(ui(character,update));await choose('1');
  await waitFor(()=>expect(screen.getByRole('status').textContent).toContain('6 Psychic'));expect((screen.getByRole('button',{name:'Roll damage'}) as HTMLButtonElement).disabled).toBe(false);
+});
+
+it('restores finalized failed delivery after remount without rerolling or repayment',async()=>{
+ mocks.load.mockResolvedValue({campaignId:'camp',encounterId:'enc',self:{id:'self',entity_id:'psion',participant_type:'character'},participants:[]});mocks.queue.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);
+ const update=vi.fn(),c={...character,campaign_id:'camp'};const view=render(ui(c,update));fireEvent.click(screen.getByRole('button',{name:'Roll damage'}));fireEvent.click(await screen.findByRole('button',{name:'Pick Goblin'}));await screen.findByRole('dialog',{name:'Destructive Thoughts'});fireEvent.click(screen.getByRole('button',{name:'Spend and roll'}));
+ await waitFor(()=>expect(mocks.queue).toHaveBeenCalledTimes(1));const first=mocks.queue.mock.calls[0][0];view.unmount();render(ui(c,update));
+ await screen.findByRole('button',{name:'Retry queue'});fireEvent.click(screen.getByRole('button',{name:'Retry queue'}));await waitFor(()=>expect(screen.getByRole('status').textContent).toContain('Queued in combat'));
+ expect(mocks.queue.mock.calls[1][0]).toEqual(expect.objectContaining({requestId:first.requestId,amount:first.amount,psionicDamageDice:first.psionicDamageDice}));expect(update).toHaveBeenCalledTimes(1);expect(mocks.roll).toHaveBeenCalledTimes(1);
 });

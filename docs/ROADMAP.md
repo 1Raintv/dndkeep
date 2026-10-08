@@ -1,6 +1,28 @@
 # DNDKeep — Two-Track Roadmap
 
-### v2.850 candidate — Paid damage delivery identity checks
+### v2.851 candidate — Finalized Psychic damage survives refresh
+
+Destructive Thoughts saves its finalized dice, amount, original target and stable
+queue request ID in browser storage before delivery. Reopening the same character
+restores the result, including a retry after a committed response is lost. Only
+minimal actor/target identities are saved; the rest of the roster is excluded.
+Unresolved damage cannot be overwritten by a new roll. Clearing an unresolved
+result asks the user to check combat and record manual damage first. Saved data
+is recovery context, never proof of payment or authorization to change HP.
+
+Validation: full gate passes (2,693 units, TypeScript 200/200, entry 255.1 KB). Six desktop/mobile browser flows pass, plus two restored-code reload/layout checks. Disabling persistence makes the new post-reload assertion fail; correct code is restored. Screenshots inspected at both viewports.
+
+This covers finalized results in the same browser. Closing during base payment
+or enhancement prompts still uses the existing payment-confirmation/manual-effect
+recovery. Cross-device recovery, server payment/trigger association, atomic roster
+validation/declaration, and concurrent-tab initiation remain follow-up work.
+Storage failure leaves the current displayed result and attempts history logging,
+but cannot promise refresh recovery. No migration is included.
+
+### v2.850 — Paid damage delivery identity checks
+
+Merged PR #194 (`83bfd2a`). Frontend publishing reported Vercel's 24-hour rate
+limit; no database migration was required.
 
 Before submitting a paid Destructive Thoughts roll, the client now rechecks the
 original actor and target participant, entity, type and combatant identity. A
