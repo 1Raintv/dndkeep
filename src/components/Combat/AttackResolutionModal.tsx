@@ -1,5 +1,5 @@
+import {psychicDamageRoll} from '../../rules/psychicDamageRoll';
 import PsionicDamageResolutionPanel from './PsionicDamageResolutionPanel';
-import {readPsionicDamageDice} from '../../rules/psionicDamageDice';
 import {readDamageComponents} from '../../rules/damageComponents';
 import {isNetworkError} from '../../lib/authErrors';
 import {useToast} from '../shared/Toast';
@@ -389,7 +389,7 @@ function AttackResolutionContent({ campaignId, isDM }: Props) {
               {isWaitingForReactions&&<div role="status" style={{fontSize:12,color:'var(--c-gold-l)',overflowWrap:'anywhere'}}>
                 Waiting on reactions: {outstandingOffers.map(o=>`${o.reactor_name} (${o.reaction_name})`).join(', ')}
               </div>}
-              {isAutoHit&&atk.attack_name==='Destructive Thoughts'&&readPsionicDamageDice(atk.psionic_damage_dice)
+              {psychicDamageRoll(atk)
                ?<PsionicDamageResolutionPanel key={atk.id} attack={atk} disabled={controlsDisabled||isWaitingForReactions} runAction={runAction} onCancel={onCancel}/>
                :<>
               <div style={{
