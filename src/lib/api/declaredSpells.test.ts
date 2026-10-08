@@ -2,7 +2,7 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 import {supabase} from '../supabase';
 import type {SpellDeclarationRequest} from '../spellDeclarationRequest';
-import {acknowledgeSpellDeclaration,declarePaidSpell,saveSpellDeclaration,savedSpellDeclaration,settlePaidSpell,readDeclaredSpell,cancelUnpaidDeclaration} from './declaredSpells';
+import {acknowledgeSpellDeclaration,declarePaidSpell,saveSpellDeclaration,savedSpellDeclaration,settlePaidSpell,readDeclaredSpell,cancelUnpaidDeclaration,queueDeclaredSpellAttack} from './declaredSpells';
 vi.mock('../supabase',()=>({supabase:{rpc:vi.fn(),from:vi.fn()}}));
 const id='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222';
 const request:SpellDeclarationRequest={castId:id,characterId:id,userId:id,participantId:id,campaignId:id,spellId:'fly',spellName:'Fly',slotLevel:3,expectedSlot:{total:2,used:0},context:{spellLevel:3,source:'class:Psion',ability:'intelligence',target:'Ally',isBonusAction:false,range:'Touch',duration:'10 minutes'}};
@@ -112,4 +112,13 @@ it('verified cancellation releases a hung request without letting its late resul
  const pending=declarePaidSpell(newer);oldResolve({data:null,error:{code:'P0001',message:'Canceled'}});await expect(old).rejects.toThrow('Canceled');
  expect(declarePaidSpell(newer)).toBe(pending);expect(()=>acknowledgeSpellDeclaration(newer)).toThrow('finish');
  newResolve({data:{cast:{...row,id:other}},error:null});await pending;
+});
+
+it('delivers only the saved cast ID and recovers a lost response without a new attack insert',async()=>{
+ const r={...request,context:{...request.context,combat:{kind:'save' as const,damageDice:'3d8',damageType:'Psychic',attackBonus:null,targetAC:null,saveAbility:'WIS' as const,saveSuccessEffect:'half' as const,actorCombatantId:id,target:{participantId:other,entityId:other,type:'character' as const,combatantId:other}}}};
+ vi.mocked(supabase.rpc).mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce({data:{castId:id,attackId:id,characterId:id,kind:'save',replayed:true},error:null} as never);
+ await expect(queueDeclaredSpellAttack(r)).resolves.toMatchObject({replayed:true});
+ expect(supabase.rpc).toHaveBeenCalledTimes(2);expect(supabase.rpc).toHaveBeenLastCalledWith('queue_declared_spell_attack',{p_cast_id:id});expect(supabase.from).not.toHaveBeenCalled();
+ vi.mocked(supabase.rpc).mockResolvedValue({data:{castId:id,attackId:other,characterId:id,kind:'save',replayed:false},error:null} as never);
+ await expect(queueDeclaredSpellAttack(r)).rejects.toThrow('could not be confirmed');
 });

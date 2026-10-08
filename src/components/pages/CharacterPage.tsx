@@ -160,7 +160,7 @@ export default function CharacterPage() {
   }
 
   return (
-    <div>
+    <div className="character-page">
       {/* Breadcrumb */}
       {/* v2.587.0 — top bar evenly distributed: breadcrumb, campaign
           chip, battle map chip, and live-sync each sit as their own

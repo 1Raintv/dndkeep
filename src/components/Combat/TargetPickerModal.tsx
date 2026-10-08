@@ -42,6 +42,7 @@ interface Props {
   allowSelfTarget?: boolean;
   title?: string;
   subtitle?: string;
+  error?: string;
   onPick: (participant: CombatParticipant) => void;
   onCancel: () => void;
   /** v2.480.0 — Source participant for distance display. When omitted,
@@ -70,6 +71,7 @@ export default function TargetPickerModal({
   allowSelfTarget = false,
   title = 'Pick a target',
   subtitle,
+  error,
   onPick,
   onCancel,
   fromParticipant,
@@ -131,6 +133,7 @@ export default function TargetPickerModal({
         }}>
           <div>
             <h3 style={{ margin: 0, fontFamily: 'var(--ff-body)' }}>{title}</h3>
+            {error && <p role="alert" style={{color:'#fca5a5',fontSize:12,overflowWrap:'anywhere'}}>{error}</p>}
             {subtitle && (
               <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--t-2)' }}>{subtitle}</p>
             )}

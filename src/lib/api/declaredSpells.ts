@@ -101,3 +101,13 @@ export async function cancelUnpaidDeclaration(request:SpellDeclarationRequest):P
  if(receipt.canceled)forgetDeclaration(request,true);
  return receipt.canceled;
 }
+export interface SpellAttackReceipt {castId:string;attackId:string;characterId:string;kind:'attack_roll'|'save'|'auto_hit';replayed:boolean}
+/** The server delivers only the immutable paid intent after settlement. */
+export async function queueDeclaredSpellAttack(request:SpellDeclarationRequest):Promise<SpellAttackReceipt>{
+ if(!request.context.combat)throw new Error('This casting has no saved combat target.');
+ const data=await rpc('queue_declared_spell_attack',{p_cast_id:request.castId});
+ const receipt=data as Partial<SpellAttackReceipt>|null;
+ if(!receipt||receipt.castId!==request.castId||receipt.attackId!==request.castId||receipt.characterId!==request.characterId
+  ||receipt.kind!==request.context.combat.kind||typeof receipt.replayed!=='boolean')throw new Error('Spell attack delivery could not be confirmed. Resume the saved casting.');
+ return receipt as SpellAttackReceipt;
+}

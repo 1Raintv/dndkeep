@@ -1,10 +1,16 @@
 import type {Character,SpellData} from '../types';
 import type {ConcentrationCastSource} from '../rules/concentrationCasting';
+export interface SpellCombatIntent {
+ kind:'attack_roll'|'save'|'auto_hit';damageDice:string;damageType:string;
+ attackBonus:number|null;targetAC:number|null;saveAbility:'STR'|'DEX'|'CON'|'INT'|'WIS'|'CHA'|null;saveSuccessEffect:'half'|'none'|'other'|null;
+ actorCombatantId:string|null;
+ target:{participantId:string;entityId:string;type:'character'|'creature';combatantId:string|null};
+}
 export interface SpellDeclarationRequest {
  castId:string;characterId:string;userId:string;participantId:string;campaignId:string;
  spellId:string;spellName:string;slotLevel:number;
  expectedSlot:{total:number;used:number}|null;
- context:{saveDC?:number;spellLevel:number;source:ConcentrationCastSource['source'];ability:ConcentrationCastSource['ability'];target:string;isBonusAction:boolean;range:string;duration:string};
+ context:{combat?:SpellCombatIntent;saveDC?:number;spellLevel:number;source:ConcentrationCastSource['source'];ability:ConcentrationCastSource['ability'];target:string;isBonusAction:boolean;range:string;duration:string};
 }
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const text=(value:unknown,max:number):value is string=>typeof value==='string'&&value.length<=max;
@@ -21,6 +27,8 @@ export function isSpellDeclarationRequest(value:unknown):value is SpellDeclarati
   ||!text(c.source,160)||!(/^(grant:)?class:[A-Za-z][A-Za-z -]*$/.test(c.source)||['species','grant:species','feat','other'].includes(c.source))
   ||!['intelligence','wisdom','charisma'].includes(c.ability)||!text(c.target,300)||typeof c.isBonusAction!=='boolean'
   ||!text(c.range,500)||!text(c.duration,500))return false;
+ if(c.combat!==undefined&&!isSpellCombatIntent(c.combat))return false;
+ if(c.combat?.kind==='save'&&c.saveDC===undefined)return false;
  if(c.spellLevel===0)return r.slotLevel===0&&r.expectedSlot===null;
  const slot=r.expectedSlot;
  return !!slot&&Number.isInteger(slot.total)&&Number.isInteger(slot.used)&&slot.total>0&&slot.used>=0&&slot.used<slot.total;
@@ -33,4 +41,19 @@ export function createSpellDeclarationRequest(character:Character,spell:SpellDat
   context:{...(source.saveDC===undefined?{}:{saveDC:source.saveDC}),spellLevel:spell.level,source:source.source,ability:source.ability,target,isBonusAction:/bonus action/i.test(spell.casting_time),range:spell.range,duration:spell.duration}};
  if(!isSpellDeclarationRequest(request))throw new Error('Review the casting source and available spell slot before declaring.');
  return JSON.parse(JSON.stringify(request)) as SpellDeclarationRequest;
+}
+
+/** v2.856: saved target identity is immutable across payment, reload and delivery.
+ * Dice syntax is checked by the server before payment; this validates disk shape. */
+export function isSpellCombatIntent(value:unknown):value is SpellCombatIntent {
+ if(!value||typeof value!=='object')return false;
+ const v=value as Partial<SpellCombatIntent>,t=v.target;
+ const bounded=(n:unknown,min:number,max:number)=>typeof n==='number'&&Number.isInteger(n)&&n>=min&&n<=max;
+ return ['attack_roll','save','auto_hit'].includes(v.kind??'')
+  &&text(v.damageDice,100)&&v.damageDice.length>0&&text(v.damageType,40)&&v.damageType.length>0
+  &&(v.actorCombatantId===null||uuid(v.actorCombatantId))
+  &&!!t&&uuid(t.participantId)&&text(t.entityId,160)&&t.entityId.length>0
+  &&['character','creature'].includes(t.type)&&(t.combatantId===null||uuid(t.combatantId))
+  &&(v.kind==='attack_roll'?bounded(v.attackBonus,-100,100)&&bounded(v.targetAC,0,100):v.attackBonus===null&&v.targetAC===null)
+  &&(v.kind==='save'?['STR','DEX','CON','INT','WIS','CHA'].includes(v.saveAbility??'')&&['half','none','other'].includes(v.saveSuccessEffect??''):v.saveAbility===null&&v.saveSuccessEffect===null);
 }

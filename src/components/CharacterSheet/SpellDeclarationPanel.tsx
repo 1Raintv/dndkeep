@@ -4,10 +4,12 @@ import type {ConcentrationCastSource} from '../../rules/concentrationCasting';
 import type {SpellDeclarationRequest} from '../../lib/spellDeclarationRequest';
 import type {useSavedSpellDeclaration} from '../../lib/hooks/useSavedSpellDeclaration';
 import {useSpellDeclaration} from '../../lib/hooks/useSpellDeclaration';
-import {cancelUnpaidDeclaration} from '../../lib/api/declaredSpells';
+import {cancelUnpaidDeclaration,queueDeclaredSpellAttack} from '../../lib/api/declaredSpells';
 import {flushCharacterSaves} from '../../lib/hooks/useCharacterSaves';
 import {finishDeclaredSpellEffects,runDeclaredSpellEffects,spellEffectsStage,InterruptedSpellEffectsError} from '../../lib/api/spellDeclarationEffects';
 import {useSpellEffects} from './useSpellEffects';
+import {rollAttackRoll} from '../../lib/pendingAttack';
+import {log} from '../../lib/log';
 import {logAction} from '../shared/ActionLog';
 import {lazyWithRetry as lazy} from '../../lib/lazyWithRetry';
 const DeclareSpellCastModal=lazy(()=>import('../Combat/DeclareSpellCastModal'));
@@ -48,6 +50,15 @@ function ActiveDeclaration({request,spell,character,onAction,onConcentration,onF
   if(busy||!status.receipt)return;setBusy(true);setError('');
   try{
    if(status.receipt.outcome==='countered'){await finish();return;}
+   if(request.context.combat){
+    const delivery=await queueDeclaredSpellAttack(request);
+    // v2.856: only a fresh delivery auto-rolls. Replays keep the original queued
+    // attack for the DM; a lost response must never roll a new attack implicitly.
+    if(delivery.kind==='attack_roll'&&!delivery.replayed){
+     try{await rollAttackRoll(delivery.attackId);}
+     catch(e){log.error('Declared spell attack roll needs DM resolution',e,{castId:request.castId});}
+    }
+   }
    await runDeclaredSpellEffects(request,async()=>{
     if(request.context.saveDC===undefined)throw new Error('This saved casting has no captured spell DC. Review its effects before finishing.');
     effects.flashCast(request.slotLevel);
