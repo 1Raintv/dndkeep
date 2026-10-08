@@ -31,7 +31,7 @@ test.describe('Atomic standalone damage and concentration',()=>{
  test('damage consumes temp HP and creates one damage-bound check in the same transaction',()=>{
   sql(`update characters set temp_hp=4 where id='${character}'`);const r=run(damage());
   expect(r.hp).toMatchObject({amount:6,beforeHP:20,beforeTempHP:4,afterHP:18,afterTempHP:0});
-  expect(r.check).toMatchObject({damage:6,dc:10,save_bonus:5,automation_mode:'prompt'});expect(r.character.current_hp).toBe(18);expect(pending()).toHaveLength(1);
+  expect(r.check).toMatchObject({damage:6,dc:10,save_bonus:5,automation_mode:'prompt'});expect(r.character.current_hp).toBe(18);expect(r.character.last_standalone_damage_id).toBe(request);expect(pending()).toHaveLength(1);
   expect(sql(`select count(*) from character_history where id='${request}'`)).toBe('1');
  });
  test('damage entirely absorbed by temp HP still creates a save',()=>{
@@ -128,6 +128,11 @@ test.describe('Atomic standalone damage and concentration',()=>{
  test('anonymous execution and direct damage ledger access are denied',()=>{
   expect(()=>sql(`set role anon;${damage()}`)).toThrow(/permission denied/);
   expect(()=>sql(auth(owner,'select * from dndkeep_private.standalone_damage_events'))).toThrow(/permission denied/);
+ });
+
+ test('ordinary later HP changes clear the standalone marker',()=>{
+  run(damage());sql(`update characters set current_hp=13 where id='${character}'`);
+  expect(sql(`select last_standalone_damage_id is null from characters where id='${character}'`)).toBe('t');
  });
 
 });
