@@ -1,5 +1,22 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.855 — Confirm attack declarations before charging
+
+Single-target attack declarations no longer call the cost callback when creation
+returns no attack. Confirmed declarations record their cost before rolling, so a
+roll failure does not silently skip payment. An ambiguous response offers a retry
+with the original request ID, target and callback; repeated clicks are serialized.
+Roll failures direct players to the DM's existing attack instead of declaring again.
+
+Eight component tests cover absent receipts, lost responses, save/auto-hit attacks,
+roll failures and callback failures. Desktop/mobile local database flows confirm
+one row after a real committed insert whose response is lost. Recovery is currently
+component-lifetime only. Spell payment remains a separate client update here;
+durable payment/delivery and the current-turn slot ledger remain next priorities.
+Full release gate passes: 2,751 unit tests, TypeScript 199/199 (ratcheted from 200),
+entry 255.1 KB. Both recovery screenshots inspected; phone retry text stays in bounds.
+Publishing pending. No migration.
+
 ### v2.854 — Readable character-to-map navigation
 
 Phone navigation now separates breadcrumbs, campaign/map actions and sync status.
@@ -11,7 +28,8 @@ positions no longer animate through the initiative strip during layout changes.
 Validation: reproduced 39px of clipped map-button content before the fix; four
 phone/desktop long-name and solo join-form flows pass, plus two final polish
 reruns. Screenshots inspected. Full release gate passes (2,743 units,
-TypeScript 200/200, entry 255.1 KB). No migration; publishing pending.
+TypeScript 200/200, entry 255.1 KB). Merged PR #198 (`db4e54a`), both CI gates green.
+No migration. Vercel rate-limited; last verified live frontend remains v2.853.0.
 
 Next mechanics work: connect spell-slot payment and spell-source identity to
 combat declarations. Current single-target attack declarations call the cost
