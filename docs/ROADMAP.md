@@ -1,6 +1,17 @@
 # DNDKeep — Two-Track Roadmap
 
-### In progress — Psion multiclass automation, planned v2.792
+### In progress — ruler scene teardown, planned v2.793
+
+Two focused tests reproduced null-scale crashes when mounting against an already
+destroyed scene or receiving its final frame callback. Ruler mounting, pointer
+conversion and redraw now skip destroyed viewports/display objects; cleanup
+still removes listeners. Replacement scenes retain the correct measured path.
+Both lifecycle tests and nine label-position tests pass. Full gate passed with
+1,769 unit tests, TS 207/207 and a 254 KB entry; all four desktop/mobile ruler
+zoom/edge checks passed. Mobile screenshot inspected. Release awaiting CI.
+
+
+### Merged — Psion multiclass automation, v2.792
 
 Owner-provided UA Update p.2 grants features by Psion level, regardless of
 class order. The shared progression resolver now validates either position and
@@ -26,9 +37,12 @@ All 28 final desktop/mobile checks passed without retries, including secondary
 Psion meditation from Actions and Features, correct INT-save DCs, Surge costs,
 persistence, daily limits and party-rest recovery after unknown responses.
 Desktop/mobile screenshots inspected. The final versioned gate passed.
-App release awaiting CI. Follow-up: per-spell multiclass casting ability/source
+App PR #122 (`778863b`) passed both CI gates and preview deployment; merged
+as `70b8f30`. Production deployment confirmation pending. Follow-up: per-spell multiclass casting ability/source
 selection and the general mixed-class Short Rest Hit Die chooser still need
-separate audits.
+separate audits. Confirmed casting call sites: SpellsTab card stats and sheet
+manual/targeted spell paths still consume character-wide computed spell stats;
+fix them together so displayed DC, actual save/attack and healing modifier agree.
 
 ### Released — map detail and stability, v2.791
 
