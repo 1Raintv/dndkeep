@@ -1,7 +1,8 @@
 import {isHitDiceAllocation} from '../rules/hitDice';
 import type {Character} from '../types';
+// Keep the healing ceiling current when another sheet changes maximum HP.
 const fields = [
- 'spell_preparation_sources','spell_sources','known_spells','prepared_spells','combat_hp_sync_id','current_hp','temp_hp','active_conditions','concentration_spell','concentration_rounds_remaining',
+ 'spell_preparation_sources','spell_sources','known_spells','prepared_spells','combat_hp_sync_id','current_hp','max_hp','temp_hp','hit_point_revision','active_conditions','concentration_spell','concentration_rounds_remaining',
  'exhaustion_level','concentration_revision','concentration_casting_context','concentration_slot_level','spell_slots','death_saves_successes','death_saves_failures','inspiration',
  'hit_dice_spent','hit_dice_spent_by_type','psionic_hit_dice_revision','psionic_energy_revision','class_resources','feature_uses','currency','inventory','experience_points',
 ] as const;
@@ -13,6 +14,8 @@ const fields = [
 export function reconcileCharacterUpdate(ref:{current:Character},incoming:Record<string,unknown>,pending:Partial<Character>) {
  const previous=ref.current;
  const patch:Partial<Character>={};
+ const hpRevision=incoming.hit_point_revision;
+ const staleHp=typeof hpRevision==='number'&&hpRevision<(previous.hit_point_revision??0);
  const revision=incoming.psionic_hit_dice_revision;
  const staleHitDice=typeof revision==='number'&&revision<(previous.psionic_hit_dice_revision??0);
  const energyRevision=incoming.psionic_energy_revision;
@@ -20,6 +23,7 @@ export function reconcileCharacterUpdate(ref:{current:Character},incoming:Record
  const concentrationRevision=incoming.concentration_revision;
  const staleConcentration=typeof concentrationRevision==='number'&&concentrationRevision<(previous.concentration_revision??0);
  for(const field of fields) {
+  if(staleHp&&['current_hp','max_hp','temp_hp','hit_point_revision'].includes(field))continue;
   if(staleConcentration&&field.startsWith('concentration_'))continue;
   // v2.782 — late acknowledgements/events cannot refund a newer paid cost.
   if(staleHitDice&&(field==='hit_dice_spent'||field==='hit_dice_spent_by_type'||field==='psionic_hit_dice_revision'))continue;
@@ -70,6 +74,7 @@ export function acceptPsionicEnergyReceipt(ref:{current:Character},receipt:{mist
 export function acceptPsionicRestReceipt(ref:{current:Character},receipt:{character:Character;expected:Record<string,unknown>},pending:Partial<Character>={}){
  const current=ref.current as unknown as Record<string,unknown>,saved=receipt.character as unknown as Record<string,unknown>;
  const incoming:Record<string,unknown>={psionic_energy_revision:saved.psionic_energy_revision};
+ if('current_hp' in receipt.expected||'temp_hp' in receipt.expected)incoming.hit_point_revision=saved.hit_point_revision;
  if('hit_dice_spent' in receipt.expected)incoming.psionic_hit_dice_revision=saved.psionic_hit_dice_revision;
  for(const key of fields){
   if(!(key in receipt.expected))continue;
@@ -123,4 +128,12 @@ export function acceptConcentrationReceipt(ref:{current:Character},incoming:Part
  if(!Number.isSafeInteger(incoming.concentration_revision)||(incoming.concentration_revision??-1)<0)return {previous:ref.current,patch:{} as Partial<Character>};
  const concentration=Object.fromEntries(Object.entries(incoming).filter(([field])=>field.startsWith('concentration_')));
  return reconcileCharacterUpdate(ref,concentration,pending);
+}
+
+/** v2.798 — ordered HP acknowledgment for healing and ordinary saves. The
+ * receipt is never queued again, and cannot replace newer remote damage. */
+export function acceptHitPointReceipt(ref:{current:Character},saved:Partial<Character>,pending:Partial<Character>={}){
+ if(saved.id!==ref.current.id||!Number.isSafeInteger(saved.hit_point_revision)||(saved.hit_point_revision??-1)<0
+  ||![saved.current_hp,saved.max_hp,saved.temp_hp].every(n=>typeof n==='number'&&Number.isSafeInteger(n)&&n>=0))return {previous:ref.current,patch:{} as Partial<Character>};
+ return reconcileCharacterUpdate(ref,{current_hp:saved.current_hp,max_hp:saved.max_hp,temp_hp:saved.temp_hp,hit_point_revision:saved.hit_point_revision},pending);
 }

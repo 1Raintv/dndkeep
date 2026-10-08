@@ -39,13 +39,13 @@ it.each(['switch','close'])('retains a paid receipt without applying it to a cha
  await act(async()=>{finish({data:receipt,error:null});expect(await pending).toEqual(receipt);});expect(accept).not.toHaveBeenCalled();
 });
 
-it('retains unknown payment across navigation but removes a definite rejection',async()=>{
+it('retains unknown payment across navigation and a later rejection',async()=>{
  const saves=queue(),accept=vi.fn();mocks.rpc.mockRejectedValue(new Error('Offline'));
  const hook=renderHook(()=>usePsionicEnhancements('hero',saves,accept));
  await expect(hook.result.current.spend(request)).rejects.toMatchObject({definitelyNotPaid:false});
  expect(pendingPsionicPayments('hero')).toEqual([{kind:'enkindled',request}]);expect(accept).not.toHaveBeenCalled();
  mocks.rpc.mockResolvedValue({data:null,error:{code:'P0001',message:'Turn changed'}});
- await expect(hook.result.current.spend(request)).rejects.toMatchObject({definitelyNotPaid:true});expect(pendingPsionicPayments('hero')).toEqual([]);
+ await expect(hook.result.current.spend(request)).rejects.toMatchObject({definitelyNotPaid:false});expect(pendingPsionicPayments('hero')).toEqual([{kind:'enkindled',request}]);
 });
 
 it('does not mislabel an older unknown payment as unpaid when a retry is blocked',async()=>{

@@ -1,6 +1,6 @@
 # DNDKeep — Two-Track Roadmap
 
-### Backend candidate — atomic Hit Dice healing
+### Backend applied — atomic Hit Dice healing
 
 Migration 20261008025100 adds a server-owned HP revision and spend_rest_hit_dice.
 The new endpoint locks an owner/DM-authorized character, checks the captured HP,
@@ -28,6 +28,19 @@ owner/DM/unrelated/anon access, mixed/non-Psion pools, stale context including H
 returning to its old value, changed and concurrent retries, last-die competition,
 zero/full HP, per-die minimum, capped healing, malformed rolls, protected ledger,
 server-owned revisions and rollback when history fails.
+
+PR #131 (`67c7b56`) passed both CI gates and preview, then merged as `208fd84`.
+Production migration run 37720583173 actually applied 20261008025100. Main CI
+37720583102 is being verified separately.
+
+Client foundation on codex/rest-healing-recovery passes 1,913 unit tests and the
+full gate (TS 206/206, zero hooks, 253.7 KB entry). It freezes/validates healing
+requests, verifies immutable results and current receipt counters, orders HP
+realtime/acknowledgments, preserves newer HP when delayed Long Rest receipts
+arrive, and retains an uncertain payment after a later rejection. The last case
+also protects existing Psion payment recovery. The API and acknowledgment
+helpers are not connected to the Rest controls yet. Browser regression checks
+are running before integration continues.
 
 Client integration is still required: freeze and persist requests, confirm saved
 healing after a lost response, accept only ordered HP/dice receipts, omit the old
