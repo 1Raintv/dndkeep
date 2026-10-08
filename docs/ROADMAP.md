@@ -1,5 +1,39 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.842 — Preserve active Sharpened records
+
+The existing saved-roll lookup now retains every duration/condition-tracked
+activation that has not ended, even beyond five finalized rolls. Unfinished
+paid rolls remain recoverable. Only inactive or untracked finalized history is
+limited to five. No strongest/latest overlap choice or automatic damage claim
+is implied by returning these records.
+
+Validation: 37 local database cases pass, including authorization, expiry,
+incapacitation and missing tracking. Restoring the old lookup makes the new
+regression fail (five records instead of seven); restoring the fix passes.
+Full gate: 2,579 units, TypeScript 200/200, hooks clean, entry 255.1 KB.
+The changed function has no advisor findings; local migration applied.
+
+
+### In progress — typed damage resolution and Sharpened integration
+
+Local `src/rules/typedDamage.ts` work groups same-type components before resistance,
+keeps other types separate, applies explicit adjustments before defenses, and
+preserves immunity/vulnerability when Sharpened bypass applies. Sixteen focused
+cases cover these rules, source-sensitive rounding and unsafe numbers. Mixed-source
+half-damage allocation fails closed until adjustment provenance is available. This module is not connected to HP application and is not a shipped
+feature; do not infer completed Sharpened automation from these tests.
+Full local gate passes: 2,579 unit tests, TypeScript 200/200, hooks clean,
+production build and 255.1 KB entry budget.
+
+Remaining integration must preserve reaction/DM adjustment provenance, load target
+defenses from the actual character/creature definition, and settle HP plus the
+once-per-current-turn replacement without duplicate writes. `applyDamage` still
+uses separate writes and blanket-condition resistance; its reaction/HP side effects
+need the same transaction/recovery guarantees as the recorded damage roll. The pending v2.842 lookup keeps all tracked, unexpired Sharpened activations
+plus unfinished recovery and five inactive finalized records. Resolve
+activation overlap explicitly instead of guessing the strongest/latest number.
+
 ### Migration release-tool recovery
 
 The v2.841 production workflow failed before connecting to the database: the
@@ -10,7 +44,9 @@ existing secret gate, dry run and pending-only production apply stay in place.
 Typed-defense integration work is retained locally while this rollout is repaired.
 
 Validation: full gate passes (2,563 units; TypeScript 200/200; 255.1 KB entry).
-Hosted setup and actual migration application remain to be verified after merge.
+Hosted workflow 37776787925 passed with the pinned action; its actual Apply
+pending migrations step applied 20261008120155_psionic_prerolled_damage.sql to
+production. Frontend deployment remains blocked by the separate Vercel rate limit.
 
 ### v2.841 — Destructive Thoughts retains actual damage dice
 
