@@ -1,3 +1,4 @@
+import {assertFloatingToolsClear} from '../floating-tools';
 import {readFileSync} from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -37,6 +38,7 @@ test.describe('Psion Destructive Thoughts', () => {
     await page.addInitScript(()=>{Math.random=()=>0.01;});
     sql(`update characters set level=5,intelligence=18,class_resources='{"psion-disciplines":["Destructive Thoughts"],"psionic-energy-dice":6,"other":9}' where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await assertFloatingToolsClear(page,false);
     await page.getByRole('button',{name:'Roll damage',exact:true}).locator('visible=true').first().click();
     const target=page.getByRole('dialog',{name:'Destructive Thoughts target'});
     await target.getByRole('textbox').fill('Tabletop Goblin');await target.getByRole('button',{name:'Choose target'}).click();
@@ -79,6 +81,9 @@ test.describe('Psion Destructive Thoughts', () => {
       const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
       await page.addInitScript(()=>{Math.random=()=>0.01;});
       await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+      await assertFloatingToolsClear(page,true,name=>info.outputPath(name));
+      await page.screenshot({path:info.outputPath('combat-tools-clearance.png')});
+      const originalViewport=page.viewportSize()!;await page.setViewportSize({width:650,height:450});await assertFloatingToolsClear(page,true);await page.setViewportSize(originalViewport);await assertFloatingToolsClear(page,true);
       await page.getByRole('button',{name:'Roll damage',exact:true}).locator('visible=true').first().click();
       await expect(page.getByRole('heading',{name:'Destructive Thoughts target'})).toBeVisible();
       await expect(page.getByText('Secret Assassin',{exact:true})).toHaveCount(0);

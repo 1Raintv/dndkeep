@@ -891,12 +891,11 @@ button:active:not(:disabled) { transform: scale(0.96); }
 @media (max-width: 480px) {
   .initiative-strip {
     /* Sidebar is hidden entirely below 480px, so the strip can go
-       to the left edge. Right inset still leaves room for the dice
-       fab. The mobile-bottom-nav also takes bottom 56px below 480px,
-       so the strip needs to sit above it. */
+       to the left edge. Floating tools sit above the measured strip.
+       Reserve the phone navigation and its safe-area inset beneath it. */
     left: 0 !important;
     right: 0 !important;
-    bottom: 56px !important;
+    bottom: calc(56px + env(safe-area-inset-bottom)) !important;
   }
 }
 
@@ -951,21 +950,16 @@ body.in-combat::before {
   animation: combatBorderPulse 2.4s ease-in-out infinite;
 }
 
-/* v2.280.0 — When the InitiativeStrip is mounted (bottom: 0, ~56-72px
-   tall, zIndex 9999), the QuickRoll dice button + FloatingRollLog
-   button (both at bottom: var(--sp-10) ≈ 40px, zIndex 90) sit INSIDE
-   the strip's vertical bounds and are visually covered. Same problem
-   for their open panels (bottom: 76px). Bumping bottom by ~88px when
-   body.in-combat is on lifts both surfaces clear of the strip's
-   maximum reasonable height. CSS-only — no React refactor needed. */
-body.in-combat .quickroll-fab,
-body.in-combat .rolllog-fab {
-  bottom: calc(var(--sp-10) + 88px) !important;
+/* v2.853: clear the measured combat strip, including wrapped phone controls.
+   Panels sit above their buttons and scroll within the available viewport. */
+body { --floating-tools-bottom: var(--sp-10); }
+body.in-combat { --floating-tools-bottom: calc(var(--combat-strip-inset, 88px) + 12px); }
+.quickroll-fab, .rolllog-fab { bottom: var(--floating-tools-bottom) !important; }
+.quickroll-panel, .rolllog-panel {
+  bottom: calc(var(--floating-tools-bottom) + 60px) !important;
+  max-height: calc(100dvh - var(--floating-tools-bottom) - 68px);
 }
-body.in-combat .quickroll-panel,
-body.in-combat .rolllog-panel {
-  bottom: calc(76px + 88px) !important;
-}
+.quickroll-panel { overflow-y: auto; }
 
 /* ── Mobile ──────────────────────────────────────────────────── */
 @media (max-width: 768px) {
@@ -992,7 +986,7 @@ body.in-combat .rolllog-panel {
   .mobile-bottom-nav {
     display: flex !important;
     position: fixed; bottom: 0; left: 0; right: 0;
-    height: 56px;
+    height: calc(56px + env(safe-area-inset-bottom));
     background: rgba(19,19,29,0.95);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
@@ -1002,7 +996,7 @@ body.in-combat .rolllog-panel {
     padding: 0 var(--sp-2);
     padding-bottom: env(safe-area-inset-bottom);
   }
-  .app-content { padding-bottom: 72px !important; }
+  .app-content { padding-bottom: calc(72px + env(safe-area-inset-bottom)) !important; }
   .char-header-inner { flex-wrap: wrap; gap: var(--sp-2) !important; }
   .char-header-identity { min-width: 0; flex: 1 1 140px; }
   .char-header-chips { order: 3; width: 100%; }
@@ -1016,7 +1010,8 @@ body.in-combat .rolllog-panel {
   .section-header { font-size: 9px !important; }
   .spell-row { flex-wrap: wrap; }
   .inventory-item { flex-direction: column; align-items: flex-start !important; }
-  .quickroll-panel { right: var(--sp-2) !important; bottom: 64px !important; width: calc(100vw - var(--sp-4)) !important; max-width: 360px !important; }
+  body:not(.in-combat) { --floating-tools-bottom: calc(68px + env(safe-area-inset-bottom)); }
+  .quickroll-panel, .rolllog-panel { right: var(--sp-2) !important; width: calc(100vw - var(--sp-4)) !important; max-width: 360px !important; }
 }
 
 /* Show bottom nav only on mobile */
