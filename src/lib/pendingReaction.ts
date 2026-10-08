@@ -22,7 +22,8 @@
 import { supabase } from './supabase';
 import { checkedWrite } from './api/checked';
 import { asJsonb } from './jsonbCast';
-import {counterspellCasting,selectedCounterspellCasting} from './counterspellCasting';
+import {counterspellCasting} from './counterspellCasting';
+import {offerCounterspellOnce} from './api/counterspellOffers';
 import {acceptCounterspellAtomic} from './api/counterspell';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import type { PendingAttack, PendingReaction, Character } from '../types';
@@ -654,17 +655,13 @@ export async function offerCounterspell(
 
   // Load all character participants in the encounter — only characters can
   // counterspell (monsters with innate counterspell are a future edge case).
-  const { data: rowsRaw } = await (supabase as any)
+  const { data: rowsRaw, error: participantsError } = await (supabase as any)
     .from('combat_participants')
     .select('id, name, participant_type, entity_id, reaction_used, ' + JOINED_COMBATANT_FIELDS)
     .eq('encounter_id', input.encounterId)
     .eq('participant_type', 'character');
+  if (participantsError) throw new Error(participantsError.message);
   const rows = ((rowsRaw ?? []) as any[]).map(normalizeParticipantRow);
-  if (!rows) return 0;
-
-  const windowSecs = input.reactionWindowSeconds ?? 30;
-  const offeredAt = new Date();
-  const expiresAt = new Date(offeredAt.getTime() + windowSecs * 1000);
 
   // v2.128.0 — Phase K: 60-ft distance gate. Load the active battle map
   // once + look up the caster's token. For each candidate counterspeller
@@ -681,16 +678,17 @@ export async function offerCounterspell(
   let casterToken: ReturnType<typeof findTokenForParticipant> = null;
   if (bmap && input.casterParticipantId) {
     // We need the caster participant's full row to look up their token.
-    const { data: casterRow } = await supabase
+    const { data: casterRow, error: casterError } = await supabase
       .from('combat_participants')
       .select('id, name, participant_type, entity_id')
       .eq('id', input.casterParticipantId)
       .maybeSingle();
+    if (casterError) throw new Error(casterError.message);
     if (casterRow) casterToken = findTokenForParticipant(casterRow as any, bmap.tokens);
   }
   const COUNTERSPELL_RANGE_FT = 60;
 
-  const offers: any[] = [];
+  const candidates: string[] = [];
   for (const p of rows) {
     if (p.id === input.casterParticipantId) continue;   // can't counterspell yourself
     if (p.is_dead) continue;
@@ -707,41 +705,19 @@ export async function offerCounterspell(
       }
     }
 
-    const { data: ch } = await supabase
+    const { data: ch, error: characterError } = await supabase
       .from('characters').select('*').eq('id', p.entity_id as string).maybeSingle();
+    if (characterError) throw new Error(characterError.message);
     if (!ch) continue;
     const character = ch as Character;
     if (!counterspellCasting(character).options.length || lowestCounterspellSlot(character) == null) continue;
 
-    offers.push({
-      campaign_id: input.campaignId,
-      pending_attack_id: null,
-      reactor_participant_id: p.id,
-      reactor_name: p.name,
-      reactor_type: 'character',
-      reaction_key: 'counterspell',
-      reaction_name: 'Counterspell',
-      trigger_point: 'spell_declared',
-      offered_at: offeredAt.toISOString(),
-      expires_at: expiresAt.toISOString(),
-      decided_at: null,
-      state: 'offered',
-      decision_payload: {
-        spell_cast_id: input.pendingSpellCastId,
-        caster_name: input.casterName,
-        spell_name: input.spellName,
-        spell_level: input.spellLevel,
-        // Display refreshes from the reactor; ambiguous multiclass sources have no default DC.
-        save_dc: selectedCounterspellCasting(character)?.saveDC ?? null,
-      },
-    });
+    candidates.push(p.id);
   }
 
-  if (offers.length > 0) {
-    await checkedWrite('pending_reactions.insert offers', { count: offers.length }, supabase.from('pending_reactions').insert(offers));
-  }
-
-  return offers.length;
+  // v2.804: retries preserve existing offers (including declines). The server
+  // derives their names/deadline and rechecks resources; never loose-insert here.
+  return offerCounterspellOnce(input.pendingSpellCastId, candidates);
 }
 
 /**

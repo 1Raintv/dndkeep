@@ -2,7 +2,7 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 import {supabase} from '../supabase';
 import type {SpellDeclarationRequest} from '../spellDeclarationRequest';
-import {acknowledgeSpellDeclaration,declarePaidSpell,saveSpellDeclaration,savedSpellDeclaration,settlePaidSpell} from './declaredSpells';
+import {acknowledgeSpellDeclaration,declarePaidSpell,saveSpellDeclaration,savedSpellDeclaration,settlePaidSpell,readDeclaredSpell} from './declaredSpells';
 vi.mock('../supabase',()=>({supabase:{rpc:vi.fn(),from:vi.fn()}}));
 const id='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222';
 const request:SpellDeclarationRequest={castId:id,characterId:id,userId:id,participantId:id,campaignId:id,spellId:'fly',spellName:'Fly',slotLevel:3,expectedSlot:{total:2,used:0},context:{spellLevel:3,source:'class:Psion',ability:'intelligence',target:'Ally',isBonusAction:false,range:'Touch',duration:'10 minutes'}};
@@ -54,4 +54,30 @@ it('recognizes legacy casts without fabricating a refunded payment',async()=>{
 it('rejects mismatched settlement receipts',async()=>{
  vi.mocked(supabase.rpc).mockResolvedValueOnce({data:{castId:other,outcome:'countered',slotReturned:true,replayed:false},error:null} as never);
  await expect(settlePaidSpell(id)).rejects.toThrow('receipt');
+});
+
+function mockRead(cast:unknown,save:unknown=null,castError:unknown=null,saveError:unknown=null){
+ vi.mocked(supabase.from).mockImplementation((table:string)=>{
+  const query:Record<string,unknown>={};for(const method of ['select','eq'])query[method]=()=>query;
+  query.maybeSingle=async()=>table==='pending_spell_casts'?{data:cast,error:castError}:{data:save,error:saveError};return query as never;
+ });
+}
+it('only asks to settle an uncontested cast after its deadline',async()=>{
+ mockRead({...row,expires_at:'2099-01-01T00:00:00Z'});expect((await readDeclaredSpell(request)).readyToSettle).toBe(false);
+ mockRead({...row,expires_at:'2000-01-01T00:00:00Z'});expect((await readDeclaredSpell(request)).readyToSettle).toBe(true);expect(supabase.rpc).not.toHaveBeenCalled();
+});
+it('a terminal row requests settlement but does not invent its receipt',async()=>{
+ mockRead({...row,state:'countered'});expect((await readDeclaredSpell(request)).readyToSettle).toBe(true);expect(supabase.rpc).not.toHaveBeenCalled();
+});
+it.each([{save_result:null,pending_lr_decision:false,ready:false},{save_result:'failed',pending_lr_decision:true,ready:false},{save_result:'failed',pending_lr_decision:false,ready:true},{save_result:'passed',pending_lr_decision:false,ready:true}])('waits for the recorded save and Legendary Resistance decision: %j',async value=>{
+ mockRead({...row,state:'counterspell_offered',counterspell_attack_id:other},value);expect((await readDeclaredSpell(request)).readyToSettle).toBe(value.ready);
+});
+it('fails closed on unreadable, substituted or canceled declarations',async()=>{
+ mockRead(null,null,{message:'Offline'});await expect(readDeclaredSpell(request)).rejects.toThrow('Offline');
+ mockRead({...row,id:other});await expect(readDeclaredSpell(request)).rejects.toThrow('receipt');
+ mockRead({...row,state:'canceled'});await expect(readDeclaredSpell(request)).rejects.toThrow('canceled');
+});
+it('does not treat a missing save or failed lookup as a successful spell',async()=>{
+ mockRead({...row,state:'counterspell_offered',counterspell_attack_id:other},null,null,{message:'Save offline'});await expect(readDeclaredSpell(request)).rejects.toThrow('Save offline');
+ mockRead({...row,state:'counterspell_offered',counterspell_attack_id:other});await expect(readDeclaredSpell(request)).rejects.toThrow('could not be loaded');
 });
