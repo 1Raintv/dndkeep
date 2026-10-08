@@ -1,25 +1,11 @@
-import {useEffect,useMemo,useState} from 'react';
-import {useBattleMapStore} from '../stores/battleMapStore';
-import {useLiveBattleMap} from './useLiveBattleMap';
-import {loadActiveBattleMap,buildParticipantPositions,buildParticipantFootprints,deriveCover,
-  participantSizeLabel,type ActiveBattleMap,type ParticipantForTokenLookup} from '../battleMapGeometry';
+import {useMemo} from 'react';
+import {useTargetBattleMap} from './useTargetBattleMap';
+import {buildParticipantPositions,buildParticipantFootprints,deriveCover,
+  participantSizeLabel,type ParticipantForTokenLookup} from '../battleMapGeometry';
 
 /** v2.745 — spell previews and cover follow the same live token instances as attacks. */
 export function useSpellTargetGeometry(open:boolean,campaignId:string,caster:ParticipantForTokenLookup|null,participants:ParticipantForTokenLookup[]) {
-  const sceneId=useBattleMapStore(s=>s.currentSceneId);
-  const [snapshot,setSnapshot]=useState<ActiveBattleMap|null>(null);
-  const [loading,setLoading]=useState(false);
-  useEffect(()=>{
-    setSnapshot(null);
-    if(!open){setLoading(false);return;}
-    let cancelled=false;
-    setLoading(true);
-    loadActiveBattleMap(campaignId).then(map=>{if(!cancelled)setSnapshot(map);})
-      .catch(()=>{/* Maps are optional; theater-of-the-mind targeting remains available. */})
-      .finally(()=>{if(!cancelled)setLoading(false);});
-    return ()=>{cancelled=true;};
-  },[open,campaignId,sceneId]);
-  const battleMap=useLiveBattleMap(snapshot);
+  const {battleMap,loading,failed,retry}=useTargetBattleMap(open,campaignId);
   return useMemo(()=>{
     const input=caster?[caster,...participants]:participants;
     const positions=battleMap?buildParticipantPositions(input,battleMap.tokens):null;
@@ -37,6 +23,6 @@ export function useSpellTargetGeometry(open:boolean,campaignId:string,caster:Par
     // only. v2.746: SpellTargetPickerModal once passed it as the
     // feetPerSquare argument of the AoE finders, turning a 20-ft radius
     // into 0 cells; never feed it into distance math.
-    return {battleMap,positions,footprints,coverByTarget,gridSize:battleMap?.grid_size??50,loading};
-  },[battleMap,caster,participants,loading]);
+    return {battleMap,positions,footprints,coverByTarget,gridSize:battleMap?.grid_size??50,loading,failed,retry};
+  },[battleMap,caster,participants,loading,failed,retry]);
 }

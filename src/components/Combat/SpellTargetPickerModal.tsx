@@ -1,6 +1,7 @@
 import {useSpellTargetGeometry} from '../../lib/hooks/useSpellTargetGeometry';
 import {useMapMovementBusy,isMapMovementBusy} from '../Campaign/battlemap/useMapMovementBusy';
 import {MovementPendingNotice} from './MovementPendingNotice';
+import {TargetGeometryNotice} from './TargetGeometryNotice';
 // v2.148.0 — Phase O pt 1 of Spell Wiring.
 //
 // Player-facing target picker for save-based damage spells. Opens when a
@@ -127,9 +128,10 @@ export default function SpellTargetPickerModal({
   }:null,[casterParticipantId,casterCombatantId,character.name,character.id]);
   // NOTE: `gridSize` is PIXELS per cell — fine for the map previews below,
   // never for the AoE finders' feetPerSquare argument (v2.746 fix there).
-  const {battleMap,positions,footprints,coverByTarget,gridSize,loading:mapLoading}=
+  const {battleMap,positions,footprints,coverByTarget,gridSize,loading:mapLoading,failed:mapFailed,retry:retryMap}=
     useSpellTargetGeometry(open,campaignId,casterLookup,participants);
   const movementBusy=useMapMovementBusy();
+  const geometryBlocked=mapLoading||mapFailed;
   const [centerId, setCenterId] = useState<string | null>(null);
   const autoTargetable = !!(spell.area_of_effect?.size && positions && positions.size > 0);
   const aoeSize = spell.area_of_effect?.size ?? 0;
@@ -352,7 +354,7 @@ export default function SpellTargetPickerModal({
   }, [open, campaignId, character.id, character.name]);
 
   async function onConfirm() {
-    if(submitting || loading || mapLoading || isMapMovementBusy())return;
+    if(submitting || loading || geometryBlocked || isMapMovementBusy())return;
     if (!encounterId || !casterParticipantId) return;
     if (picked.size === 0) { setError('Pick at least one target.'); return; }
     setSubmitting(true);
@@ -510,6 +512,7 @@ export default function SpellTargetPickerModal({
           </div>
         </div>
 
+        <TargetGeometryNotice loading={mapLoading} failed={mapFailed} onRetry={retryMap}/>
         <MovementPendingNotice busy={movementBusy}/>
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
           {loading ? (
@@ -545,9 +548,9 @@ export default function SpellTargetPickerModal({
                     </label>
                     <select
                       value={freeAimWorld ? '' : (centerId ?? '')}
-                      disabled={movementBusy || submitting}
+                      disabled={movementBusy || submitting || geometryBlocked}
                       onChange={e => {
-                        if(isMapMovementBusy() || submitting)return;
+                        if(isMapMovementBusy() || submitting || geometryBlocked)return;
                         setCenterId(e.target.value || null);
                         // Selecting a participant overrides any prior
                         // free-aim point — they're mutually exclusive
@@ -709,7 +712,7 @@ export default function SpellTargetPickerModal({
                         }))));
                       }}
                       disabled={
-                        movementBusy || mapLoading || !positions ||
+                        movementBusy || geometryBlocked || !positions ||
                         ((aoeShape === 'cone' || aoeShape === 'line')
                           ? (!casterParticipantId || (!freeAimWorld && !centerId))
                           : !centerId
@@ -793,16 +796,16 @@ export default function SpellTargetPickerModal({
                     display: 'flex', alignItems: 'center', gap: 8,
                     padding: '6px 8px', borderRadius: 5,
                     background: checked ? 'rgba(167,139,250,0.15)' : 'transparent',
-                    cursor: movementBusy || submitting ? 'default' : 'pointer', fontSize: 12, minHeight:44,
+                    cursor: movementBusy || submitting || geometryBlocked ? 'default' : 'pointer', fontSize: 12, minHeight:44,
                     opacity: outOfRange ? 0.55 : 1,
                     ...rowStyleFor(row.group),
                   }}>
                     <input
                       type="checkbox"
                       checked={checked}
-                      disabled={movementBusy || submitting}
+                      disabled={movementBusy || submitting || geometryBlocked}
                       onChange={e => {
-                        if(isMapMovementBusy() || submitting)return;
+                        if(isMapMovementBusy() || submitting || geometryBlocked)return;
                         setPicked(prev => {
                           const next = new Set(prev);
                           if (e.target.checked) next.add(p.id); else next.delete(p.id);
@@ -891,13 +894,13 @@ export default function SpellTargetPickerModal({
           </button>
           <button
             onClick={onConfirm}
-            disabled={submitting || loading || mapLoading || movementBusy || picked.size === 0}
+            disabled={submitting || loading || geometryBlocked || movementBusy || picked.size === 0}
             style={{
               fontSize: 13, fontWeight: 800, padding: '8px 18px',
               background: '#a78bfa', color: '#fff',
               border: '1px solid #a78bfa', borderRadius: 6,
               cursor: submitting ? 'wait' : 'pointer',
-              opacity: (submitting || loading || mapLoading || movementBusy || picked.size === 0) ? 0.5 : 1,
+              opacity: (submitting || loading || geometryBlocked || movementBusy || picked.size === 0) ? 0.5 : 1,
             }}
           >
             {submitting ? 'Declaring…' : `Declare vs ${picked.size}`}

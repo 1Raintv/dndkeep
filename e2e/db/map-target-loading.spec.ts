@@ -10,7 +10,7 @@ const dm='11111111-1111-1111-1111-111111111111',player='12121212-1212-1212-1212-
 test.describe('target distance loading (local stack)',()=>{
   gateDbSuite();
   test.use({serviceWorkers:'block'}); // Route delays must reach the browser, not a local SW cache.
-  test('weapon targets stay blocked while loading or offline and recover without an automatic attack',async({page},info)=>{
+  for(const kind of ['weapon','spell'] as const)test(`${kind} targets stay blocked while loading or offline and recover without an automatic attack`,async({page},info)=>{
     test.setTimeout(90_000);
     const camp=randomUUID(),scene=randomUUID(),enc=randomUUID(),hero=randomUUID(),target=randomUUID();
     let release=()=>{};
@@ -35,10 +35,14 @@ test.describe('target distance loading (local stack)',()=>{
           select '${enc}','${camp}','character',c.definition_id::uuid,c.name,case when c.definition_id='${hero}' then 0 else 1 end,10,c.id
           from scene_token_placements p join combatants c on c.id=p.combatant_id where p.scene_id='${scene}';
         commit;`);
+      if(kind==='spell')sql(`update characters set class_name='Psion',
+        known_spells=ARRAY['thunderwave'],prepared_spells=ARRAY['thunderwave'],
+        spell_sources='{"thunderwave":["class:Psion"]}',spell_preparation_sources='{"thunderwave":["class:Psion"]}',
+        spell_slots='{"1":{"total":2,"used":0}}' where id='${hero}'`);
       const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
       await signInAsSeedDm(page,'test-player@dndkeep.local');await page.goto(`/character/${hero}`);
       await page.getByRole('button',{name:'Actions',exact:true}).locator('visible=true').first().click();
-      const attack=page.getByTitle('Attack a target with Fixture Sword — runs full combat resolution',{exact:true});
+      const attack=kind==='weapon'?page.getByTitle('Attack a target with Fixture Sword — runs full combat resolution',{exact:true}):page.locator('.arow-grid').filter({has:page.getByText('Thunderwave',{exact:true})}).first().getByRole('button',{name:'Cast',exact:true});
       await expect(attack).toBeVisible();
       let mode:'hold'|'error'|'real'='hold',reads=0,attacks=0;
       const waiting=new Promise<void>(r=>{release=r;});
@@ -50,17 +54,25 @@ test.describe('target distance loading (local stack)',()=>{
         else await route.continue();
       });
       await attack.click();await expect.poll(()=>reads).toBeGreaterThan(0);
-      const row=page.getByRole('button',{name:/Far Target/});
+      const row=page.getByRole(kind==='weapon'?'button':'checkbox',{name:/Far Target/});
+      const resolved=async()=>{
+        if(kind==='weapon'){await expect(row).toContainText('40 ft — out of range');await expect(row).toBeDisabled();}
+        else {await expect(row.locator('..')).toContainText('40 ft');await expect(row).toBeEnabled();}
+      };
       await expect(page.getByRole('status').filter({hasText:'Checking target distances'})).toBeVisible();
       await expect(row).toBeDisabled();expect(attacks).toBe(0);
       await page.screenshot({path:info.outputPath('target-loading.png')});
-      mode='real';release();await expect(row).toContainText('40 ft — out of range');await expect(row).toBeDisabled();
-      await page.getByRole('button',{name:'Close target picker',exact:true}).click();
+      mode='real';release();await resolved();
+      await page.getByRole('button',{name:kind==='weapon'?'Close target picker':'Cancel',exact:true}).click();
       mode='error';await attack.click();
       await expect(page.getByRole('alert')).toContainText('Could not check target distances',{timeout:20_000});await expect(row).toBeDisabled();
       await page.screenshot({path:info.outputPath('target-offline.png')});
       mode='real';await page.getByRole('button',{name:'Try again',exact:true}).click();
-      await expect(row).toContainText('40 ft — out of range');await expect(row).toBeDisabled();
+      await resolved();
+      if(kind==='spell'){
+        await row.check();await expect(page.getByRole('button',{name:'Declare vs 1',exact:true})).toBeEnabled();
+        expect(sql(`select spell_slots->'1'->>'used' from characters where id='${hero}'`)).toBe('0');
+      }
       await expect(page.getByRole('alert')).toHaveCount(0);expect(attacks).toBe(0);expect(errors).toEqual([]);
     }finally{
       release();await page.unroute('**/rest/v1/scenes?**');
