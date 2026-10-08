@@ -1,5 +1,23 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.807 candidate — effective ability scores in automated saves
+
+Automated character saves now load inventory and reuse the sheet's equipped/
+attuned ability overrides. A Psion with an active Headband of Intellect receives
+its effective INT modifier; inactive items do not apply and higher base scores
+remain intact. Concentration offer creation uses the same effective CON helper.
+Seven added regression cases cover these paths, total-level proficiency and the
+existing concentration DC cap. Full gate passed: 2,134 units, TS 203/203, hooks,
+RAW, coordinate/anchor checks, build/SW and 254.0 KB entry. No item catalogue
+entries or source rules changed.
+
+Remaining concentration work: War Caster advantage is not implemented in the
+single-d20 settlement contract. Manual map damage currently changes HP only.
+Linking it to concentration needs a damage-time spell/revision snapshot and an
+idempotent offer: replaying an old HP receipt must never test a newer casting.
+Zero-HP/death consequences and cross-device effect settlement also remain open.
+
+
 ### v2.806 candidate — reliable HP controls on the battle map
 
 The live character quick panel now uses the manual HP transaction instead of a
@@ -25,7 +43,9 @@ Client validation so far: 21 focused API/UI cases; actual desktop/phone map flow
 passed setting zero, temporary HP, lost responses, reload/retry, stale revision
 cancellation, and landscape bounds. Phone/landscape screenshots inspected. Final
 release gate passed 2,127 units, TS 203/203, zero hook violations, RAW/map math,
-build/SW and 254.0 KB entry. No client release yet.
+build/SW and 254.0 KB entry. Client PR145 merged at 0e2ba279 after both CI gates and Vercel preview passed.
+Main CI 37734946053 succeeded. Production Vercel
+62pCzxKU2V3xUjSF5CHUQ1BWvo2V is pending at this checkpoint.
 
 This is manual HP adjustment, not the entire combat damage resolver: concentration,
 death saves and condition consequences remain a distinct integration boundary.
@@ -36,7 +56,8 @@ Further work must connect the relevant combat consequences without replaying HP.
 PR142 merged at 56b7c5ae. Main CI 37732857038 and production Vercel
 9RVisYPJxb37qyMdLdH1SbSNnnem succeeded; public service worker reports 2.804.0.
 PR143 merged at ff242fd4 after both GitHub gates and Vercel preview passed.
-Its production deployment is pending as of this checkpoint.
+Main CI 37733534514 and production Vercel HAqp3ox4M3FRTJb9k2ET54svFCFg
+succeeded; public service worker independently reported 2.805.0.
 
 
 ### v2.805 candidate — keep melee reach visible after viewport recreation
