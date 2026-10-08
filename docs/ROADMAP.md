@@ -1,5 +1,21 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.819 — Guards on DM-requested saves
+
+DM save prompts now read current Guards protection before rolling. They use the
+computed saving throw modifier, accept full ability names or three-letter codes,
+and log both Advantage dice, the kept result, modifier, and pass/fail. A failed
+read leaves the request available to retry; duplicate clicks, replaced prompts,
+and character switches cannot roll a stale request. The banner is extracted from
+the sheet root. Unknown ability names or invalid DCs cannot create a save.
+
+Validation: 36 focused tests and desktop/phone live DM-prompt browser checks pass,
+including Advantage expiry and actual history totals. Full gate passes: 2,326
+unit tests, TypeScript 201 (baseline ratcheted), 255.1 KB entry. Desktop/phone
+screenshots inspected and scoped overflow checks pass.
+Campaign pending-attack saves and other automated save paths remain to audit.
+
+
 ### v2.818 — Guards status and sheet Intelligence saves
 
 The sheet shows a verified active Guards effect even on another creature's turn

@@ -1,3 +1,4 @@
+import {normalizeAbilityName} from './abilities';
 /**
  * abilityModifier edges (audit 4.4). The negative-rounding rows are the
  * ones a naive truncation gets wrong — they're the reason the canonical
@@ -147,5 +148,16 @@ describe('applyAbilityIncreases', () => {
     expect(STANDARD_ARRAY.constitution % 2).toBe(1);
     expect(abilityModifier(STANDARD_ARRAY.constitution)).toBe(1);
     expect(abilityModifier(visible.constitution)).toBe(2);
+  });
+});
+
+
+describe('DM prompt ability names', () => {
+  it('accepts full names and abbreviations without inventing an ability', () => {
+    for (const [code,name] of [['STR','strength'],['DEX','dexterity'],['CON','constitution'],['INT','intelligence'],['WIS','wisdom'],['CHA','charisma']]) {
+      expect(normalizeAbilityName(code)).toBe(name);
+      expect(normalizeAbilityName(' '+name.toUpperCase()+' ')).toBe(name);
+    }
+    for (const bad of [null, undefined, 5, '', 'intellect', 'constructor']) expect(normalizeAbilityName(bad)).toBeNull();
   });
 });
