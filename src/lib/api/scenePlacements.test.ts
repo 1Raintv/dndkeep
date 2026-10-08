@@ -13,11 +13,12 @@
 // per the CLAUDE.md rule — unit tests never touch a database.
 import { describe, it, expect, vi } from 'vitest';
 
+const flagResult=vi.hoisted(()=>({data:null as null|{use_combatants_for_battlemap:boolean},error:null as null|{message:string}}));
 vi.mock('../supabase', () => ({
-  supabase: { from: () => ({ select: () => ({ eq: () => ({ order: () => ({ data: [], error: null }) }) }) }) },
+  supabase: { from: () => ({ select: () => ({ eq: () => ({ order: () => ({ data: [], error: null }), maybeSingle:()=>flagResult }) }) }) },
 }));
 
-const { PLACEMENT_SELECT } = await import('./scenePlacements');
+const { PLACEMENT_SELECT, getUseCombatantsFlag } = await import('./scenePlacements');
 
 describe('PLACEMENT_SELECT', () => {
   // Every column dbRowToPlacementToken reads off the placement row. If
@@ -44,5 +45,22 @@ describe('PLACEMENT_SELECT', () => {
     for (const f of ['name', 'owner_id', 'definition_type', 'definition_id']) {
       expect(PLACEMENT_SELECT).toContain(f);
     }
+  });
+});
+
+describe('strict map routing',()=>{
+  it('preserves both explicit routing values',async()=>{
+    flagResult.error=null;
+    for(const enabled of [false,true]){
+      flagResult.data={use_combatants_for_battlemap:enabled};
+      await expect(getUseCombatantsFlag('c',{throwOnError:true})).resolves.toBe(enabled);
+    }
+  });
+  it('rejects an inaccessible campaign or failed settings read',async()=>{
+    flagResult.data=null;flagResult.error=null;
+    await expect(getUseCombatantsFlag('c',{throwOnError:true})).rejects.toThrow('unavailable');
+    flagResult.error={message:'offline'};
+    await expect(getUseCombatantsFlag('c',{throwOnError:true})).rejects.toEqual(flagResult.error);
+    flagResult.error=null;
   });
 });

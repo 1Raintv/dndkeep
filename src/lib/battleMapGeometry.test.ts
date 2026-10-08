@@ -118,3 +118,15 @@ describe('v2.758 consistent default scene',()=>{
   expect(h.state.queries.filter(q=>q.table==='scenes')).toHaveLength(2);
  });
 });
+
+describe('strict interactive map reads',()=>{
+  it.each(['scenes','scene_token_placements','scene_walls'])('rejects a failed %s read instead of treating it as no range',async failed=>{
+    const error={message:'offline'};
+    h.state.respond=table=>({data:table===failed?null:table==='scenes'?{id:'s',grid_size_px:70,width_cells:10,height_cells:10}:[],error:table===failed?error:null});
+    await expect(loadActiveBattleMap('c',{viewedSceneId:'s',throwOnError:true})).rejects.toEqual(error);
+  });
+  it('still returns null for a successful empty scene lookup',async()=>{
+    h.state.respond=()=>({data:null,error:null});
+    await expect(loadActiveBattleMap('c',{viewedSceneId:null,throwOnError:true})).resolves.toBeNull();
+  });
+});

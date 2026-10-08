@@ -1,6 +1,32 @@
 # DNDKeep — Two-Track Roadmap
 
-### Release candidate — recoverable Short Rest healing, v2.798
+### Release candidate — reliable target distance loading, v2.799
+
+Player attack targets wait for map distances before becoming available. Results
+are scoped to the current campaign and scene; a stale response cannot unlock a
+new picker. Failed map/settings/token/wall reads stay blocked with Try again,
+instead of masquerading as no map or switching to stale legacy positions.
+A hung lookup offers retry after 15 seconds and ignores a later response.
+Successful no-map/unplaced-token play remains available. These stricter reads
+are opt-in for the player attack picker; other targeting dialogs are follow-up.
+
+The new regression failed before the fix. Focused tests cover initial loading,
+scene/campaign changes, failure/retry, no-map play and underlying read failures.
+An isolated real player/encounter browser fixture verifies delayed reads, 503
+responses, retry and a 40-foot target blocked from a melee attack on desktop and
+phone. Both passed; phone recovery UI was inspected. The harness blocks service
+workers for request interception and allows the client's existing GET retries.
+Existing two-client movement passed on desktop and on a mobile repeat; the first
+mobile run missed a transient pending-save notice, so this is not a clean full
+movement-suite pass or evidence of a reproduced product movement failure.
+Final v2.799 gate passed: 1,953 unit tests, TS 206/206, zero hook violations,
+rules/coordinates/anchors/build/SW-version and 253.7 KB entry. Both final
+versioned desktop/mobile attack checks passed. No database migration.
+
+### Released — recoverable Short Rest healing, v2.798
+
+PR132 merged at c53a198; main CI 37722785544 and production Vercel passed.
+The public service worker reports 2.798.0.
 
 Hit Dice healing now uses the deployed transaction for every class. The sheet
 flushes prior edits, captures the selected size, rolls and effective CON once,

@@ -164,7 +164,8 @@ export async function loadActiveBattleMap(
   // threading this through the 8+ component callers and the lib distance
   // helpers would recreate exactly the plumbing v2.571 removed, so the
   // fallback stays for UI paths. Seam, not full inversion — deliberate.
-  opts?: { viewedSceneId?: string | null },
+  // v2.799: interactive target checks must distinguish failed reads from no map.
+  opts?: { viewedSceneId?: string | null; throwOnError?: boolean },
 ): Promise<ActiveBattleMap | null> {
   // 1. Pick the active scene.
   //
@@ -194,16 +195,17 @@ export async function loadActiveBattleMap(
   interface SceneRow { id: string; grid_size_px: number | null; width_cells: number | null; height_cells: number | null }
   let scene: SceneRow | null = null;
   if (viewedSceneId) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('scenes')
       .select('id, grid_size_px, width_cells, height_cells')
       .eq('id', viewedSceneId)
       .eq('campaign_id', campaignId)  // guard: store could hold another campaign's scene
       .maybeSingle();
+    if (error && opts?.throwOnError) throw error;
     scene = (data as SceneRow | null) ?? null;
   }
   if (!scene) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('scenes')
       .select('id, grid_size_px, width_cells, height_cells')
       .eq('campaign_id', campaignId)
@@ -211,6 +213,7 @@ export async function loadActiveBattleMap(
       .order('id', { ascending: true })
       .limit(1)
       .maybeSingle();
+    if (error && opts?.throwOnError) throw error;
     scene = (data as SceneRow | null) ?? null;
   }
   if (!scene) return null;
@@ -228,7 +231,7 @@ export async function loadActiveBattleMap(
   // computation funnels through this loader — reading the wrong table
   // made attacks resolve "from where the token was." Route by flag.
   const { getUseCombatantsFlag } = await import('./api/scenePlacements');
-  const useNewPath = await getUseCombatantsFlag(campaignId);
+  const useNewPath = await getUseCombatantsFlag(campaignId,{throwOnError:opts?.throwOnError});
 
   // v2.396.0 — Translate the size text label into an integer cell count
   // for distance/reach math (RAW: distance measured from any square the
@@ -243,10 +246,11 @@ export async function loadActiveBattleMap(
   if (useNewPath) {
     // New path: placements JOIN combatants for identity. RLS applies
     // (players only receive placements they could SELECT).
-    const { data: placementRows } = await (supabase as any)
+    const { data: placementRows, error: placementError } = await (supabase as any)
       .from('scene_token_placements')
       .select('id, combatant_id, x, y, size_override, combatants:combatant_id ( id, name, definition_type, definition_id )')
       .eq('scene_id', sceneId);
+    if (placementError && opts?.throwOnError) throw placementError;
     tokens = ((placementRows ?? []) as any[]).map(r => {
       const c = (r.combatants ?? {}) as { name?: string; definition_type?: string; definition_id?: string };
       const sizeLabel = ((r.size_override as string) ?? 'medium').toLowerCase();
@@ -275,10 +279,11 @@ export async function loadActiveBattleMap(
   // flag is off). Tokens are stored at anchor positions (snapped on
   // placement + drag-end), so the row/col derived here accurately
   // reflects the visual cell.
-  const { data: tokenRows } = await supabase
+  const { data: tokenRows, error: tokenError } = await supabase
     .from('scene_tokens')
     .select('id, x, y, name, character_id, creature_id, size')
     .eq('scene_id', sceneId);
+  if (tokenError && opts?.throwOnError) throw tokenError;
   tokens = (tokenRows ?? []).map(t => {
     const sizeLabel = ((t.size as string) ?? 'medium').toLowerCase();
     return {
@@ -300,10 +305,11 @@ export async function loadActiveBattleMap(
   // wallCollision, WallLayer's dashed render); this loader only filtered
   // on blocks_sight, which stays true for an opened door — so walking
   // through a doorway left you counting as behind half cover.
-  const { data: wallRows } = await supabase
+  const { data: wallRows, error: wallError } = await supabase
     .from('scene_walls')
     .select('id, x1, y1, x2, y2, blocks_sight, door_state')
     .eq('scene_id', sceneId);
+  if (wallError && opts?.throwOnError) throw wallError;
   const walls: WallSegment[] = (wallRows ?? [])
     .filter(w => w.blocks_sight !== false && w.door_state !== 'open')
     .map(w => ({

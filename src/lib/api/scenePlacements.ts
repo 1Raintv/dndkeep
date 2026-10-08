@@ -405,13 +405,15 @@ export async function deletePlacement(id: string): Promise<boolean> {
  *  v2.313 calls this to decide which API path to take. Returns false
  *  (legacy path) on any read error so a transient outage doesn't
  *  silently switch render modes. */
-export async function getUseCombatantsFlag(campaignId: string): Promise<boolean> {
+export async function getUseCombatantsFlag(campaignId: string, opts?: {throwOnError?:boolean}): Promise<boolean> {
   const { data, error } = await db
     .from('campaigns')
     .select('use_combatants_for_battlemap')
     .eq('id', campaignId)
     .maybeSingle();
   if (error || !data) {
+    // v2.799 — strict range checks cannot substitute stale legacy positions.
+    if (opts?.throwOnError) throw error ?? new Error('Campaign map settings unavailable');
     if (error) console.error('[scenePlacements] getUseCombatantsFlag failed', error);
     return false;
   }
