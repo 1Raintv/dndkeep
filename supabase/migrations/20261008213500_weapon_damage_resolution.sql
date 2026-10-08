@@ -257,3 +257,116 @@ begin
  return result;
 end;$$;
 revoke all on function dndkeep_private.settle_pending_retaliation(uuid,jsonb,jsonb,integer) from public,anon,authenticated;
+
+-- v2.868: authoritative typed-damage arithmetic for the complete transaction.
+-- Inputs come from the saved damage receipt and server-verified Sharpened state;
+-- this private calculator neither authorizes a hit nor consumes a turn/resource.
+create or replace function dndkeep_private.resolve_pending_typed_damage(
+ p_record jsonb,p_target jsonb,p_adjustments jsonb default '{}',p_sharpened jsonb default '{}'
+) returns jsonb language plpgsql immutable set search_path='' as $$
+declare component jsonb; groups jsonb:='[]'::jsonb; result_groups jsonb:='[]'::jsonb; g jsonb; defenses jsonb;
+ keys text[]:=array[]::text[]; base_count integer:=0; key text; damage_type text; source text; affinity text;
+ multiplier numeric:=1; amount numeric; adjusted numeric; final_damage numeric; total numeric:=0; psychic_total numeric:=0;
+ ignore_resistance boolean; active boolean:=false; modifier text; index_found integer;
+begin
+ if p_record->'version' is distinct from '1'::jsonb or jsonb_typeof(p_record->'components') is distinct from 'array'
+  or jsonb_typeof(p_adjustments) is distinct from 'object' or jsonb_typeof(p_sharpened) is distinct from 'object' then raise exception 'Typed damage inputs could not be verified';end if;
+ if p_adjustments ? 'multiplier' then
+  if p_adjustments->'multiplier' not in('0'::jsonb,'0.5'::jsonb,'1'::jsonb) then raise exception 'Review typed damage adjustment';end if;
+  multiplier:=(p_adjustments->>'multiplier')::numeric;
+ end if;
+ if p_adjustments ? 'affinities' and jsonb_typeof(p_adjustments->'affinities') is distinct from 'object' then raise exception 'Review typed damage defenses';end if;
+ if p_adjustments ? 'resistantTypes' and jsonb_typeof(p_adjustments->'resistantTypes') is distinct from 'array' then raise exception 'Review typed damage resistance';end if;
+ if exists(select 1 from jsonb_array_elements(coalesce(p_adjustments->'resistantTypes','[]'::jsonb)) v
+  where jsonb_typeof(v)<>'string' or lower(trim(v#>>'{}')) not in('acid','bludgeoning','cold','fire','force','lightning','necrotic','piercing','poison','psychic','radiant','slashing','thunder','all')) then raise exception 'Review typed damage resistance';end if;
+ if p_sharpened ? 'active' and jsonb_typeof(p_sharpened->'active') is distinct from 'boolean' then raise exception 'Review Sharpened activation';end if;
+ if p_sharpened ? 'sources' and jsonb_typeof(p_sharpened->'sources') is distinct from 'object' then raise exception 'Review Sharpened damage sources';end if;
+ active:=coalesce((p_sharpened->>'active')::boolean,false);
+ for component in select value from jsonb_array_elements(p_record->'components') loop
+  key:=component->>'key';damage_type:=component->>'damageType';
+  if jsonb_typeof(component->'key') is distinct from 'string' or coalesce(key,'')='' or key=any(keys)
+   or coalesce(component->>'source','') not in('base','rider')
+   or damage_type is null or damage_type is distinct from lower(trim(damage_type))
+   or jsonb_typeof(component->'rawTotal') is distinct from 'number' or coalesce(component->>'rawTotal','')!~'^-?[0-9]+$'
+   or jsonb_typeof(component->'modifier') is distinct from 'number' or coalesce(component->>'modifier','')!~'^-?[0-9]+$'
+   or jsonb_typeof(component->'rolls') is distinct from 'array' or jsonb_typeof(component->'dieKinds') is distinct from 'array' then raise exception 'Invalid typed damage component';end if;
+  if component->>'source'='base' then base_count:=base_count+1;end if;
+  if base_count>1 or jsonb_array_length(component->'rolls')<>jsonb_array_length(component->'dieKinds') then raise exception 'Invalid typed damage component';end if;
+  if exists(select 1 from jsonb_array_elements(component->'rolls') d where jsonb_typeof(d)<>'number' or d::text!~'^[1-9][0-9]*$')
+   or exists(select 1 from jsonb_array_elements_text(component->'dieKinds') k where k is null or k not in('rolled','adjusted','maximum','unknown')) then raise exception 'Invalid typed damage dice';end if;
+  select coalesce(sum(v::text::numeric),0)+(component->>'modifier')::numeric into amount from jsonb_array_elements(component->'rolls') v;
+  if amount<>(component->>'rawTotal')::numeric then raise exception 'Typed damage total does not match its dice';end if;
+  if amount not between -2147483648 and 2147483647 then raise exception 'Damage exceeds the supported number range';end if;
+  keys:=array_append(keys,key);
+  -- Never infer an unknown rider's type from the weapon. Caller must obtain a
+  -- reviewed typed allocation before constructing the full application plan.
+  affinity:=p_adjustments->'affinities'->>damage_type;
+  defenses:=dndkeep_private.pending_damage_defenses(p_target,damage_type,affinity);
+  if not (defenses->>'defensesKnown')::boolean and affinity is null then raise exception 'Review conditional damage defenses';end if;
+  if exists(select 1 from jsonb_array_elements_text(coalesce(p_adjustments->'resistantTypes','[]'::jsonb)) t where lower(trim(t)) in(lower(damage_type),'all')) then
+   defenses:=jsonb_set(defenses,'{resistant}','true'::jsonb);
+  end if;
+  source:=p_sharpened->'sources'->>key;
+  ignore_resistance:=active and lower(damage_type)='psychic' and coalesce(source,'unknown') in('weapon-attack','psion-spell','psion-feature')
+   and (defenses->>'resistant')::boolean and not (defenses->>'immune')::boolean;
+  index_found:=null;
+  select (ordinality-1)::integer into index_found from jsonb_array_elements(groups) with ordinality where value->>'damageType'=lower(damage_type) and (value->>'ignore')::boolean=ignore_resistance;
+  if index_found is null then
+   groups:=groups||jsonb_build_array(jsonb_build_object('damageType',lower(damage_type),'componentKeys',jsonb_build_array(key),'amount',amount,'ignore',ignore_resistance,'defenses',defenses));
+  else
+   g:=groups->index_found;
+   groups:=jsonb_set(groups,array[index_found::text],g||jsonb_build_object('amount',(g->>'amount')::numeric+amount,'componentKeys',(g->'componentKeys')||jsonb_build_array(key)));
+  end if;
+ end loop;
+ if multiplier=0.5 and exists(select 1 from jsonb_array_elements(groups) grouped(value) group by grouped.value->>'damageType' having count(*)>1) then raise exception 'Mixed resistance bypass requires explicit adjustment allocation';end if;
+ for g in select value from jsonb_array_elements(groups) loop
+  amount:=greatest(0,(g->>'amount')::numeric);adjusted:=floor(amount*multiplier);defenses:=g->'defenses';
+  if adjusted=0 then final_damage:=0;modifier:='none';
+  elsif (defenses->>'immune')::boolean then final_damage:=0;modifier:='immune';
+  else
+   final_damage:=case when (defenses->>'resistant')::boolean and not (g->>'ignore')::boolean then floor(adjusted/2) else adjusted end;
+   if (defenses->>'vulnerable')::boolean then final_damage:=final_damage*2;end if;
+   modifier:=case when (defenses->>'resistant')::boolean and not (g->>'ignore')::boolean then case when (defenses->>'vulnerable')::boolean then 'resistant-vulnerable' else 'resistant' end
+    when (defenses->>'vulnerable')::boolean then 'vulnerable' else 'none' end;
+  end if;
+  total:=total+final_damage;
+  if greatest(amount,final_damage,total)>2147483647 then raise exception 'Damage exceeds the supported number range';end if;
+  if g->>'damageType'='psychic' then psychic_total:=psychic_total+final_damage;end if;
+  result_groups:=result_groups||jsonb_build_array(jsonb_build_object('damageType',g->>'damageType','componentKeys',g->'componentKeys','raw',amount,'adjusted',adjusted,'final',final_damage,'modifier',modifier,
+   'resistanceIgnored',(g->>'ignore')::boolean and adjusted>0));
+ end loop;
+ return jsonb_build_object('groups',result_groups,'total',total,'psychicDamage',psychic_total);
+end;$$;
+revoke all on function dndkeep_private.resolve_pending_typed_damage(jsonb,jsonb,jsonb,jsonb) from public,anon,authenticated;
+
+-- Compose Attack Mode with the exact typed arithmetic above. The complete
+-- endpoint must supply the activation/turn ledger values, never client claims.
+create or replace function dndkeep_private.preview_pending_typed_replacement(
+ p_record jsonb,p_target jsonb,p_adjustments jsonb,p_sharpened jsonb,p_selection jsonb
+) returns jsonb language plpgsql immutable set search_path='' as $$
+declare before_damage jsonb; after_damage jsonb; component jsonb; modified jsonb:=p_record;
+ component_index integer; die_index integer; recorded integer; original integer; amount numeric; key text;
+begin
+ before_damage:=dndkeep_private.resolve_pending_typed_damage(p_record,p_target,p_adjustments,p_sharpened);
+ if jsonb_typeof(p_selection) is distinct from 'object' or jsonb_typeof(p_selection->'componentKey') is distinct from 'string'
+  or jsonb_typeof(p_selection->'dieIndex') is distinct from 'number' or coalesce(p_selection->>'dieIndex','')!~'^[0-9]+$' then raise exception 'Choose a rolled damage die';end if;
+ if p_sharpened->'active' is distinct from 'true'::jsonb or p_sharpened->'usedThisTurn' is distinct from 'false'::jsonb
+  or jsonb_typeof(p_sharpened->'recordedNumber') is distinct from 'number' or coalesce(p_sharpened->>'recordedNumber','')!~'^[1-9][0-9]*$'
+  or (p_sharpened->>'recordedNumber')::numeric not between 1 and 36 then raise exception 'Choose an available Sharpened activation';end if;
+ if (before_damage->>'psychicDamage')::integer<=0 then raise exception 'The target must take Psychic damage to replace a die';end if;
+ key:=p_selection->>'componentKey';
+ select (ordinality-1)::integer,value into component_index,component from jsonb_array_elements(p_record->'components') with ordinality where value->>'key'=key;
+ if not found or (p_selection->>'dieIndex')::numeric>=jsonb_array_length(component->'rolls') then raise exception 'Choose a rolled die from this damage packet';end if;
+ die_index:=(p_selection->>'dieIndex')::integer;
+ if component->'dieKinds'->>die_index is distinct from 'rolled' then raise exception 'Fixed, adjusted or unknown dice cannot be replaced';end if;
+ recorded:=(p_sharpened->>'recordedNumber')::integer;original:=(component->'rolls'->>die_index)::integer;
+ amount:=(component->>'rawTotal')::numeric+recorded-original;
+ if amount not between -2147483648 and 2147483647 then raise exception 'Damage exceeds the supported number range';end if;
+ modified:=jsonb_set(modified,array['components',component_index::text,'rolls',die_index::text],to_jsonb(recorded));
+ modified:=jsonb_set(modified,array['components',component_index::text,'dieKinds',die_index::text],'"adjusted"'::jsonb);
+ modified:=jsonb_set(modified,array['components',component_index::text,'rawTotal'],to_jsonb(amount));
+ after_damage:=dndkeep_private.resolve_pending_typed_damage(modified,p_target,p_adjustments,p_sharpened);
+ return jsonb_build_object('before',before_damage,'after',after_damage,'components',modified,
+  'replacement',jsonb_build_object('componentKey',key,'dieIndex',die_index,'original',original,'replacement',recorded,'delta',recorded-original));
+end;$$;
+revoke all on function dndkeep_private.preview_pending_typed_replacement(jsonb,jsonb,jsonb,jsonb,jsonb) from public,anon,authenticated;

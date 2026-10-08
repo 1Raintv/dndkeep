@@ -26,9 +26,18 @@ currently contains:
   that same damage roll. Fixed critical maxima and adjusted/unknown values cannot
   be selected. A mixed-packet preview recomputes each type's defenses after one
   replacement and preserves the original roll history. This is not yet app-routed.
+- Private server typed-damage and replacement calculators now mirror the pure
+  preview. Same-type damage is combined before rounding; qualifying Psychic
+  sources alone bypass resistance. Unknown types, conditional defenses, ambiguous
+  half-allocation and HP overflow require review instead of a guessed total.
+  These calculators take server-verified source/activation inputs from the future
+  outer endpoint; they do not authorize attacks or spend a resource themselves.
 
 Local evidence: 48 defense/retaliation-preview/existing Sharpened SQL cases and
 9 lifecycle cases pass (26 current defense/retaliation cases rerun together).
+The new typed suite passes 14 cases, including server/client equality across 120
+mixed-damage/defense/rounding combinations and four complete mixed-die replacement
+previews. Local SQL lint has no findings on either new calculator.
 The two Psion rule modules pass 59 cases, including 21 added checks for mixed
 replacement and actual rolled-die eligibility. Changed functions have no database
 lint findings. Full code gate passes (2,891 units, TS 199/199, entry 255.2 KB).
