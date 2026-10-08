@@ -36,7 +36,8 @@ import { surveyMasteryMarkers, consumeMasteryMarkers } from './masteryRiders';
 import { resolveAutomation } from './automations';
 import { CONDITION_MAP } from '../data/conditions';
 import { effectiveCombatAC } from './armorClass';
-import type { PendingAttack, HitResult } from '../types';
+import { getEffectiveAbilityScores } from './attunement';
+import type { PendingAttack, HitResult, InventoryItem } from '../types';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
 // via JOIN. See src/lib/combatParticipantNormalize.ts.
@@ -1696,18 +1697,21 @@ export async function getTargetSaveBonus(
 
   const { data: c } = await supabase
     .from('characters')
-    .select('level, secondary_class, secondary_level, constitution, strength, dexterity, intelligence, wisdom, charisma, saving_throw_proficiencies, nat_1_20_saves')
+    .select('level, secondary_class, secondary_level, constitution, strength, dexterity, intelligence, wisdom, charisma, inventory, saving_throw_proficiencies, nat_1_20_saves')
     .eq('id', part.entity_id)
     .single();
   if (!c) return { bonus: 0, breakdown: '0 (no character)', confidence: 'low' };
 
+  // v2.807 — automated saves must use the same equipped/attuned ability
+  // overrides as the sheet; base scores understated e.g. a Psion's INT save.
+  const effective = getEffectiveAbilityScores({
+    strength: c.strength ?? 10, dexterity: c.dexterity ?? 10,
+    constitution: c.constitution ?? 10, intelligence: c.intelligence ?? 10,
+    wisdom: c.wisdom ?? 10, charisma: c.charisma ?? 10,
+  }, c.inventory as unknown as InventoryItem[] | null);
   const abilityMap: Record<string, number> = {
-    STR: (c as any).strength ?? 10,
-    DEX: (c as any).dexterity ?? 10,
-    CON: (c as any).constitution ?? 10,
-    INT: (c as any).intelligence ?? 10,
-    WIS: (c as any).wisdom ?? 10,
-    CHA: (c as any).charisma ?? 10,
+    STR: effective.strength, DEX: effective.dexterity, CON: effective.constitution,
+    INT: effective.intelligence, WIS: effective.wisdom, CHA: effective.charisma,
   };
   const abiFull: Record<string, string> = {
     STR: 'strength', DEX: 'dexterity', CON: 'constitution',
@@ -1754,7 +1758,7 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
 
   const { data: charRow } = await supabase
     .from('characters')
-    .select('id, concentration_spell, concentration_revision, constitution, level, secondary_class, secondary_level, saving_throw_proficiencies, automation_overrides, advanced_automations_unlocked, nat_1_20_saves')
+    .select('id, concentration_spell, concentration_revision, constitution, strength, dexterity, intelligence, wisdom, charisma, inventory, level, secondary_class, secondary_level, saving_throw_proficiencies, automation_overrides, advanced_automations_unlocked, nat_1_20_saves')
     .eq('id', part.entity_id)
     .single();
   if (!charRow) return;
@@ -1801,7 +1805,11 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
   }
 
   // v2.118.0 — Phase I pt 2: compute save mechanics once, used by both paths.
-  const con = (charRow as any).constitution ?? 10;
+  const con = getEffectiveAbilityScores({
+    strength: charRow.strength ?? 10, dexterity: charRow.dexterity ?? 10,
+    constitution: charRow.constitution ?? 10, intelligence: charRow.intelligence ?? 10,
+    wisdom: charRow.wisdom ?? 10, charisma: charRow.charisma ?? 10,
+  }, charRow.inventory as unknown as InventoryItem[] | null).constitution;
   const profs: string[] = ((charRow as any).saving_throw_proficiencies ?? []) as string[];
   const hasConProf = profs.some(p => p.toLowerCase() === 'con' || p.toLowerCase() === 'constitution');
 
