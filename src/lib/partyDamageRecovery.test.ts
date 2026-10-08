@@ -21,3 +21,11 @@ it('refuses invalid, duplicate-target and unwritable batches',()=>{
  const r=createPartyDamageRequest(context(),1,null,false);expect(()=>savePartyDamage(user,campaign,[r,r])).toThrow();
  vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw new Error('Storage full');});expect(()=>savePartyDamage(user,campaign,[r])).toThrow('Storage full');
 });
+
+it('reads and can forget a pre-upgrade saved Goliath request without changing its damage',()=>{
+ const ctx=context();ctx.character.species='Goliath';
+ const request={...createPartyDamageRequest(ctx,23,'cold',false),affinityRules:undefined,damage:11,affinity:'resistant' as const};
+ savePartyDamage(user,campaign,[request]);expect(savedPartyDamage(user,campaign)[0].requests[0].damage).toBe(11);
+ // localStorage omits undefined properties, just as the pre-upgrade format did.
+ forgetPartyDamage(savedPartyDamage(user,campaign)[0]);expect(savedPartyDamage(user,campaign)).toEqual([]);
+});

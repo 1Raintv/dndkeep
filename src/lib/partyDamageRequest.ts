@@ -1,3 +1,4 @@
+import {legacySavedSpeciesResistances} from '../rules/speciesResistances';
 import type {Campaign,Character} from '../types';
 import {resolveAutomation} from './automations';
 import {CONDITION_MAP} from '../data/conditions';
@@ -6,14 +7,14 @@ import {abilityModifier} from '../rules/abilities';
 import {applyDamageToPools} from '../rules/hp';
 import {getEffectiveAbilityScores} from './attunement';
 import {applyDamageTypeModifiers,DAMAGE_TYPES,type DamageModifier} from './damageModifiers';
-type DamageCharacter=Pick<Character,'id'|'name'|'species'|'strength'|'dexterity'|'constitution'|'intelligence'|'wisdom'|'charisma'|'inventory'|'damage_resistances'|'damage_vulnerabilities'|'damage_immunities'|'concentration_spell'|'hit_point_revision'|'active_conditions'|'automation_overrides'|'advanced_automations_unlocked'>;
+type DamageCharacter=Pick<Character,'id'|'name'|'species'|'species_choices'|'strength'|'dexterity'|'constitution'|'intelligence'|'wisdom'|'charisma'|'inventory'|'damage_resistances'|'damage_vulnerabilities'|'damage_immunities'|'concentration_spell'|'hit_point_revision'|'active_conditions'|'automation_overrides'|'advanced_automations_unlocked'>;
 export interface PartyDamageContext {
  character:DamageCharacter;campaign:Pick<Campaign,'id'|'automation_defaults'>;
  participant:{id:string;encounter_id:string;combatant_id:string}|null;
  combatant:({id:string;active_conditions:string[]|null}&PartyDamagePools)|null;pools:PartyDamagePools;
 }
 export interface PartyDamagePools {current_hp:number;max_hp:number;temp_hp:number}
-export interface PartyDamageRequest {requestId:string;saveId:string;campaignId:string;characterId:string;amount:number;half:boolean;affinity:DamageModifier;damage:number;damageType:string|null;modifier:number;expected:PartyDamageContext}
+export interface PartyDamageRequest {affinityRules?:2;requestId:string;saveId:string;campaignId:string;characterId:string;amount:number;half:boolean;affinity:DamageModifier;damage:number;damageType:string|null;modifier:number;expected:PartyDamageContext}
 export interface PartyDamageReceipt {requestId:string;saveId:string;damage:number;damageType:string|null;beforeHP:number;beforeTempHP:number;afterHP:number;afterTempHP:number;checkId:string|null;concentrationBroken:boolean;automation:'off'|'prompt'|'auto';participantId:string|null;character:PartyDamagePools&{id:string;hit_point_revision:number};replayed:boolean}
 export const partyDamageUuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 const count=(n:unknown):n is number=>typeof n==='number'&&Number.isSafeInteger(n)&&n>=0&&n<=2147483647;
@@ -32,7 +33,16 @@ export function validPartyDamageRequest(value:unknown):value is PartyDamageReque
  return !!r&&partyDamageUuid(r.requestId)&&partyDamageUuid(r.saveId)&&r.requestId!==r.saveId&&count(r.damage)
   &&(r.damageType===null||DAMAGE_TYPES.includes(r.damageType as typeof DAMAGE_TYPES[number]))
   &&count(r.amount)&&r.amount>0&&typeof r.half==='boolean'&&Number.isInteger(r.modifier)&&r.modifier>=-5&&r.modifier<=20&&validPartyDamageContext(r.expected,r.campaignId,r.characterId)
-  &&previewPartyDamage(r.expected,r.amount,r.damageType,r.half).final===r.damage&&previewPartyDamage(r.expected,r.amount,r.damageType,r.half).modifier===r.affinity;
+  &&(r.affinityRules===undefined||r.affinityRules===2)
+  &&savedDamagePreview(r).final===r.damage&&savedDamagePreview(r).modifier===r.affinity;
+}
+// Saved requests predate the corrected species rules. Preserve their exact math
+// for receipt replay/cancellation; a new application still requires a current DB snapshot.
+function savedDamagePreview(r:PartyDamageRequest){
+ if(r.affinityRules===2)return previewPartyDamage(r.expected,r.amount,r.damageType,r.half);
+ const c=r.expected.character;
+ const legacy={...r.expected,character:{...c,species:'',damage_resistances:[...(c.damage_resistances??[]),...legacySavedSpeciesResistances(c.species)]}};
+ return previewPartyDamage(legacy,r.amount,r.damageType,r.half);
 }
 export function previewPartyDamage(context:PartyDamageContext,amount:number,type:string|null,half:boolean){
  const conditions=context.combatant?(context.combatant.active_conditions??[]):(context.character.active_conditions??[]);
@@ -46,7 +56,7 @@ export function createPartyDamageRequest(context:PartyDamageContext,amount:numbe
  if(!count(amount)||amount===0||!validPartyDamageContext(context,context.campaign.id,context.character.id))throw new Error('Refresh the damage preview before applying.');
  const expected=structuredClone(context),preview=previewPartyDamage(expected,amount,type,half),damage=preview.final;
  const modifier=abilityModifier(getEffectiveAbilityScores(expected.character,expected.character.inventory).constitution);
- const request={requestId:crypto.randomUUID(),saveId:crypto.randomUUID(),campaignId:context.campaign.id,characterId:context.character.id,amount,half,affinity:preview.modifier,damage,damageType:type,modifier,expected};
+ const request={affinityRules:2 as const,requestId:crypto.randomUUID(),saveId:crypto.randomUUID(),campaignId:context.campaign.id,characterId:context.character.id,amount,half,affinity:preview.modifier,damage,damageType:type,modifier,expected};
  if(!validPartyDamageRequest(request))throw new Error('The damage amount or character could not be verified.');return request;
 }
 export function verifyPartyDamageReceipt(value:unknown,r:PartyDamageRequest):PartyDamageReceipt {
