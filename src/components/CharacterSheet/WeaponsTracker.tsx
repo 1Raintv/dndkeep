@@ -1,3 +1,4 @@
+import {explicitAttackMode} from '../../rules/attackMode';
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import type { WeaponItem } from '../../types';
@@ -510,7 +511,7 @@ export default function WeaponsTracker({
  damageDice={w.damageDice === 'flat' ? `1d0+${w.damageBonus ?? 0}` : `${w.damageDice}${w.damageBonus ? (w.damageBonus > 0 ? `+${w.damageBonus}` : String(w.damageBonus)) : ''}`}
  damageType={w.damageType || 'slashing'}
  attackName={w.name}
- source="weapon"
+ source="weapon" attackMode={explicitAttackMode(w.range)}
  compact
  />
  )}

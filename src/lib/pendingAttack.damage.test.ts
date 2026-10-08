@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 import {beforeEach,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({record:vi.fn(),query:vi.fn(),roll:vi.fn(),event:vi.fn(),reactions:vi.fn(),remove:vi.fn(),riders:[] as unknown[],attack:{} as Record<string,unknown>,prior:null as unknown,writeError:null as unknown,riderError:null as unknown,patch:null as Record<string,unknown>|null,filters:[] as unknown[][],selections:[] as string[]}));
+const m=vi.hoisted(()=>({record:vi.fn(),query:vi.fn(),roll:vi.fn(),event:vi.fn(),reactions:vi.fn(),remove:vi.fn(),riderOptions:vi.fn(),riders:[] as unknown[],attack:{} as Record<string,unknown>,prior:null as unknown,writeError:null as unknown,riderError:null as unknown,patch:null as Record<string,unknown>|null,filters:[] as unknown[][],selections:[] as string[]}));
 vi.mock('./api/pendingDamage',()=>({recordPendingDamage:m.record}));
 vi.mock('./supabase',()=>({supabase:{from:m.query}}));
 vi.mock('../rules/dice',async original=>({...await original<typeof import('../rules/dice')>(),rollDiceExpr:m.roll}));
 vi.mock('./combatEvents',()=>({emitCombatEvent:m.event,newChainId:()=> 'chain'}));
 vi.mock('./pendingReaction',()=>({offerReactionsFor:m.reactions}));
-vi.mock('./buffs',()=>({getDamageRiders:()=>m.riders,removeBuff:m.remove}));
+vi.mock('./buffs',()=>({getDamageRiders:(_b:unknown,opts:unknown)=>{m.riderOptions(opts);return m.riders;},removeBuff:m.remove}));
 vi.mock('./combatParticipantNormalize',()=>({JOINED_COMBATANT_FIELDS:'combatants:combatant_id(active_buffs)',normalizeParticipantRow:(r:unknown)=>r}));
 import {rollDamage} from './pendingAttack';
 beforeEach(()=>{
@@ -52,3 +52,8 @@ it('a competing winning record is returned without logging discarded dice',async
 
 it('queued Psion dice become typed damage without another roll or modifier',async()=>{m.attack.attack_kind='auto_hit';m.attack.attack_name='Destructive Thoughts';m.attack.damage_dice='17';m.attack.psionic_damage_dice={version:1,sides:8,originalRolls:[1,5,3],rolls:[4,5,4],modifier:4};await rollDamage('attack');expect(m.roll).not.toHaveBeenCalled();expect(m.patch).toMatchObject({damage_raw:17,damage_final:17,damage_rolls:[4,5,4],damage_components:{version:1,components:[expect.objectContaining({expression:'3d8+4',modifier:4,dieKinds:['adjusted','rolled','adjusted']})]}});});
 it('corrupt queued Psion dice stop before rolling or recording',async()=>{m.attack.psionic_damage_dice={};await expect(rollDamage('attack')).rejects.toThrow(/invalid/);expect(m.roll).not.toHaveBeenCalled();expect(m.record).not.toHaveBeenCalled();});
+
+it.each(['melee','ranged'] as const)('damage bonuses use captured %s mode rather than generic spell source',async mode=>{
+ m.attack.attack_source='spell';m.attack.attack_mode=mode;await rollDamage('attack');
+ expect(m.riderOptions).toHaveBeenCalledWith(expect.objectContaining({isMelee:mode==='melee'}));
+});

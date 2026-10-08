@@ -381,7 +381,7 @@ export async function acceptCleave(
     targetParticipantId: candidate.participant_id,
     targetName: candidate.name,
     targetType: (candidate.participant_type === 'character' ? 'character' : 'creature') as any,
-    attackSource: 'weapon',
+    attackSource: 'weapon', attackMode:'melee',
     attackName: `${payload.weapon} (Cleave)`,
     attackKind: 'attack_roll',
     attackBonus: payload.attack_bonus ?? 0,

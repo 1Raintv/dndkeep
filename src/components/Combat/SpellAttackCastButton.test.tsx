@@ -23,3 +23,9 @@ it('keeps a failed save visible rather than silently opening a new cast',()=>{
  saved.mockImplementation(()=>{throw new Error('Resolve the saved spell declaration');});setup();fireEvent.click(screen.getByRole('button',{name:'Choose goblin'}));
  expect(screen.getByRole('alert').textContent).toContain('Resolve');expect(screen.getByRole('button',{name:'Choose goblin'})).toBeTruthy();
 });
+
+it.each(['melee','ranged'] as const)('preserves %s spell delivery independently of its casting source',attackMode=>{
+ render(<SpellAttackCastButton character={character} spell={spell} userId={id} casting={{source:'class:Psion',ability:'intelligence',saveDC:15}} slotLevel={2} attackKind="attack_roll" attackMode={attackMode} attackBonus={7} damageDice="3d8" damageType="Psychic" maxRangeFt={120}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Cast'}));fireEvent.click(screen.getByRole('button',{name:'Choose goblin'}));
+ expect(saved.mock.calls[0][0].context).toMatchObject({source:'class:Psion',combat:{kind:'attack_roll',attackMode}});
+});

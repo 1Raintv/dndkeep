@@ -1,7 +1,7 @@
 import type {PendingAttack} from '../../types';
 import {readDamageComponents,type DamageComponentRecord} from '../../rules/damageComponents';
 import {psionicRpc,PsionicRequestError} from './psionicTurns';
-export const DAMAGE_EXPECTED_KEYS=['state','attack_kind','attack_source','hit_result','save_result','save_success_effect','damage_dice','damage_type','damage_group_id','attacker_participant_id','target_participant_id','pending_lr_decision'] as const;
+export const DAMAGE_EXPECTED_KEYS=['state','attack_kind','attack_source','attack_mode','hit_result','save_result','save_success_effect','damage_dice','damage_type','damage_group_id','attacker_participant_id','target_participant_id','pending_lr_decision'] as const;
 export interface PendingDamageRecord {attack:PendingAttack;rolls:number[];raw:number;final:number;components:DamageComponentRecord;expectedBuffs:unknown}
 export async function recordPendingDamage(input:PendingDamageRecord):Promise<{attack:PendingAttack;replayed:boolean}>{
  const r=structuredClone(input);if(!Array.isArray(r.rolls)||r.rolls.some(n=>!Number.isSafeInteger(n)||n<1)||!readDamageComponents(r.components)||!Number.isSafeInteger(r.raw)||!Number.isSafeInteger(r.final)||r.final<0)throw new PsionicRequestError('Invalid damage record. No roll was sent.',true);

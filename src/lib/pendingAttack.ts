@@ -1,3 +1,4 @@
+import {attackIsMelee,type AttackMode} from '../rules/attackMode';
 import {psionicDamageComponent,readPsionicDamageDice,type PsionicDamageDice} from '../rules/psionicDamageDice';
 import {recordPendingDamage} from './api/pendingDamage';
 import {damageRollComponent,readDamageComponents,type DamageDieKind} from '../rules/damageComponents';
@@ -113,6 +114,7 @@ export interface DeclareAttackInput {
   targetName: string;
   targetType?: 'character' | 'creature' | 'monster' | 'npc' | 'object' | 'area' | 'self' | null;
 
+  attackMode?: AttackMode|null;
   attackSource?: string;          // 'monster_action' | 'weapon' | 'spell' | 'ability'
   attackName: string;
   attackKind: 'attack_roll' | 'save' | 'auto_hit';
@@ -149,6 +151,7 @@ export async function declareAttack(input: DeclareAttackInput): Promise<PendingA
       target_name: input.targetName,
       target_type: input.targetType ?? null,
       attack_source: input.attackSource ?? null,
+      attack_mode: input.attackMode ?? null,
       attack_name: input.attackName,
       attack_kind: input.attackKind,
       attack_bonus: input.attackBonus ?? null,
@@ -451,10 +454,9 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   }
 
   // v2.113.0 — Phase H pt 4: buff bonuses to attack roll (e.g., Bless +1d4).
-  // Melee vs ranged inferred from attack_source — weapon attacks are assumed
-  // melee unless source hints "ranged" (future enhancement can inspect weapon
-  // properties). Spell attacks don't distinguish in Bless logic either.
-  const isMelee = (atk.attack_source ?? '').toLowerCase() !== 'ranged';
+  // v2.866: explicit delivery mode overrides the legacy source heuristic.
+  // Legacy rows without a mode keep their original source-based behavior.
+  const isMelee = attackIsMelee(atk);
   const attackBonuses = getAttackRollBonuses(attackerBuffs, { isMelee });
   type RolledBonus = { buff: ActiveBuff; dice: string; rolls: number[]; total: number };
   const rolledAttackBonuses: RolledBonus[] = attackBonuses.map(b => {
@@ -1010,7 +1012,7 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
   const aRow = normalizeParticipantRow(aRowRaw);
     const attackerBuffs = ((aRow?.active_buffs as ActiveBuff[] | null) ?? []);
     attackerBuffsSnapshot=structuredClone(attackerBuffs);
-    const isMeleeDmg = (atk.attack_source ?? '').toLowerCase() !== 'ranged';
+    const isMeleeDmg = attackIsMelee(atk);
     const riders = getDamageRiders(attackerBuffs, {
       targetParticipantId: atk.target_participant_id ?? null,
       isMelee: isMeleeDmg,
@@ -1202,15 +1204,15 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
       // RAW: a creature that HITS the buff holder with a melee attack
       // roll while the holder has the temp HP takes the retaliation
       // damage — gated on tempBefore (the pool existed when the hit
-      // landed, even if this damage empties it). Melee inferred from
-      // attack_source, matching the Bless/rider heuristic at roll
-      // time. When the pool empties, the buff is removed (its
+      // landed, even if this damage empties it). v2.866: captured delivery
+      // mode also governs attack bonuses and damage riders.
+      // When the pool empties, the buff is removed (its
       // condition can no longer be met). Self-contained + defensive:
       // a failure here never blocks the main damage apply.
       try {
         const isMeleeHit =
           atk.attack_kind === 'attack_roll'
-          && (atk.attack_source ?? '').toLowerCase() !== 'ranged'
+          && attackIsMelee(atk)
           && atk.attacker_participant_id
           && atk.attacker_participant_id !== atk.target_participant_id;
         const retalBuffs = ((tgt.active_buffs ?? []) as ActiveBuff[])

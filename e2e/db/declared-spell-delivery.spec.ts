@@ -42,11 +42,23 @@ test.describe('Declared spell combat delivery (local stack)',()=>{
   sql(`update pending_attacks set save_result='${passed?'passed':'failed'}',save_d20=${passed?20:1},save_total=${passed?22:3} where id='${receipt.attackId}'`);
   return receipt.attackId;
  }
- const intent=()=>({kind:'save',damageDice:'3d8+4',damageType:'Psychic',attackBonus:null as number|null,targetAC:null as number|null,
+ const intent=()=>({kind:'save',attackMode:null as string|null,damageDice:'3d8+4',damageType:'Psychic',attackBonus:null as number|null,targetAC:null as number|null,
   saveAbility:'WIS' as string|null,saveSuccessEffect:'half' as string|null,actorCombatantId:sql(`select combatant_id from combat_participants where id='${target}'`)||null,target:{participantId:reactor,entityId:hero,type:'character',combatantId:sql(`select combatant_id from combat_participants where id='${reactor}'`)||null}});
  const queue=(id=cast)=>`select queue_declared_spell_attack('${id}')`;
  function ready(){sql(auth(dm,declare()));sql(`update pending_spell_casts set expires_at=now()-interval '1 minute' where id='${cast}'`);sql(auth(dm,settle()));}
  const attacks=()=>sql(`select count(*) from pending_attacks where id='${cast}'`);
+ for(const attackMode of ['melee','ranged'])test(`keeps ${attackMode} delivery through payment and retry`,()=>{
+  const original={...intent(),kind:'attack_roll',attackMode,attackBonus:7,targetAC:16,saveAbility:null,saveSuccessEffect:null};
+  sql(auth(dm,declare(cast,3,undefined,'fly',original)));sql(`update pending_spell_casts set expires_at=now()-interval '1 minute' where id='${cast}'`);sql(auth(dm,settle()));
+  sql(auth(dm,queue()));sql(auth(dm,queue()));
+  expect(sql(`select attack_mode from pending_attacks where id='${cast}'`)).toBe(attackMode);expect(attacks()).toBe('1');
+ });
+ test('invalid mode or mode on a saving throw rolls back payment',()=>{
+  for(const bad of [{...intent(),attackMode:'melee'},{...intent(),kind:'attack_roll',attackMode:'touch',attackBonus:7,targetAC:16,saveAbility:null,saveSuccessEffect:null}]){
+   expect(()=>sql(auth(dm,declare(cast,3,undefined,'fly',bad)))).toThrow(/attack mode/);
+   expect(character().spell_slots['3'].used).toBe(0);expect(attacks()).toBe('0');
+  }
+ });
  test('queues the paid values once and records the selected spell source',()=>{
   ready();const before=character().spell_slots;
   expect(JSON.parse(sql(auth(dm,queue())))).toMatchObject({castId:cast,attackId:cast,characterId:caster,kind:'save',replayed:false});

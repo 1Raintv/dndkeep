@@ -254,7 +254,7 @@ export default function MultiAttackPickerModal({
             targetParticipantId: target.id,
             targetName: target.name,
             targetType: target.participant_type,
-            attackSource: 'spell',
+            attackSource: 'spell', attackMode:'ranged',
             attackName: `${spell.name} — beam ${totalDeclared + 1}/${attackCount}`,
             attackKind: 'attack_roll',
             attackBonus,

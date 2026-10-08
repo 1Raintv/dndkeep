@@ -1570,6 +1570,7 @@ export type Database = {
           target_name: string;
           target_type: string | null;
           attack_source: string | null;
+          attack_mode: 'melee' | 'ranged' | null;
           attack_name: string;
           attack_kind: string;
           attack_bonus: number | null;
@@ -1613,6 +1614,7 @@ export type Database = {
           target_name: string;
           target_type?: string | null;
           attack_source?: string | null;
+          attack_mode?: 'melee' | 'ranged' | null;
           attack_name: string;
           attack_kind: string;
           attack_bonus?: number | null;
@@ -1656,6 +1658,7 @@ export type Database = {
           target_name?: string;
           target_type?: string | null;
           attack_source?: string | null;
+          attack_mode?: 'melee' | 'ranged' | null;
           attack_name?: string;
           attack_kind?: string;
           attack_bonus?: number | null;

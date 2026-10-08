@@ -31,6 +31,7 @@ interface Props {
   attackName: string;
   /** 'weapon' | 'spell' | 'ability' — used for attack_source classification. */
   source?: 'weapon' | 'spell' | 'ability';
+  attackMode?: 'melee'|'ranged'|null;
   /** v2.618.0 — max range in feet for target gating (null = no gate,
    *  fail open). Weapons: weaponMaxRangeFt; spells: parseRangeToFt. */
   maxRangeFt?: number | null;
@@ -58,6 +59,7 @@ export default function PlayerAttackButton({
   damageType,
   attackName,
   source = 'weapon',
+  attackMode,
   maxRangeFt = null,
   normalRangeFt = null,
   attackKind = 'attack_roll',
@@ -102,6 +104,7 @@ export default function PlayerAttackButton({
         targetName: target.name,
         targetType: target.participant_type,
         attackSource: source === 'weapon' ? 'weapon' : source === 'spell' ? 'spell' : 'ability',
+        attackMode: attackKind==='attack_roll'?attackMode??null:null,
         attackName,
         attackKind,
         // Attack-roll specifics

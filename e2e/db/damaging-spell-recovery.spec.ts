@@ -62,6 +62,7 @@ test.describe('Saved damaging spells (local stack)',()=>{
    await expect.poll(()=>sql(`select count(*) from pending_attacks where id='${cast}'`)).toBe('1');
    expect(deliveries).toHaveLength(2);expect(deliveries[0]).toBe(deliveries[1]);
    expect(sql(`select attack_kind from pending_attacks where id='${cast}'`)).toBe(spell.kind);
+   expect(sql(`select coalesce(attack_mode,'unknown') from pending_attacks where id='${cast}'`)).toBe(spell.kind==='attack_roll'?'ranged':'unknown');
    expect(sql(`select spell_slots->'${spell.level}'->>'used' from characters where id='${hero}'`)).toBe('1');
    await page.reload();await expect(dialog).toBeHidden();expect(sql(`select count(*) from pending_attacks where id='${cast}'`)).toBe('1');expect(errors).toEqual([]);
   }finally{

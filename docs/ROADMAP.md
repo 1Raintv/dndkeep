@@ -1,5 +1,26 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.866 — Preserve melee/ranged attack delivery
+
+New declared attack spells capture melee/ranged delivery separately from their
+spell source. Weapon rows, explicit monster action headers, opportunity attacks,
+Cleave and multi-beam spells also supply their known delivery mode. Attack bonuses,
+damage riders, server damage validation and melee retaliation use that value.
+A ranged spell no longer inherits melee-only bonuses just because its source is
+`spell`. Paid spell replay preserves the original delivery mode; invalid modes
+and modes on saving-throw declarations are rejected before payment.
+
+Legacy attacks without a recorded mode retain their previous behavior. Ambiguous
+weapon/action wording is not guessed. This is a prerequisite for broader typed
+Psion damage; it does not make ordinary damage settlement atomic or complete all
+legacy attack writers. Migration: `20261008210210_spell_attack_mode.sql`.
+Verification: 50 SQL cases and four desktop/phone paid-spell recovery flows pass,
+including reload and lost delivery replies. Full gate passes: 2,857 units / 258
+files, TypeScript 199/199, hooks/RAW/coordinates/anchors, build and 255.2 KB entry.
+Desktop/phone casting screenshots and scoped overflow checks pass. Database lint
+has no errors; existing warnings remain, including the unchanged loop variable
+in record_pending_damage. Publication pending.
+
 ### v2.865 — Consistent Psychic damage application
 
 The direct Destructive Thoughts application endpoint previously ignored recorded
@@ -16,7 +37,10 @@ including lost replies, preserved dice, Surge and optional Sharpened replacement
 The resistance regression fails before the fix (13 instead of 6). Full gate passes:
 2,838 units / 257 files, TypeScript 199/199, hooks/RAW/coordinates/anchors, build
 and 255.2 KB entry. Database lint has no errors or findings on the changed function;
-existing warnings remain in unrelated functions. Publication pending.
+existing warnings remain in unrelated functions. Merged PR #209 after both CI
+gates passed. Production migration run 37842181581 succeeded; ledger and function
+permissions independently verified, advisor counts unchanged (6 security / 4
+performance). Frontend deployment remains Vercel rate-limited; v2.861.0 confirmed live.
 This closes a prerequisite bypass; ordinary
 psychic spells and weapons still require broader typed-damage integration and
 atomic settlement, including mastery and melee retaliation.
