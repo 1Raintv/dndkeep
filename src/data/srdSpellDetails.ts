@@ -12,6 +12,49 @@ type SrdDetails = Pick<SpellData, 'name' | 'casting_time' | 'range' | 'component
   'duration' | 'concentration' | 'description' | 'rules_source'> & { higher_levels: string | null };
 
 export const SRD_SPELL_DETAILS: Record<string, SrdDetails> = {
+  // v2.859: detection spells, verified against SRD 5.2.1 p.123.
+  "detect-magic": {
+    "name": "Detect Magic",
+    "casting_time": "1 action",
+    "range": "Self",
+    "components": "V, S",
+    "duration": "Concentration, up to 10 minutes",
+    "concentration": true,
+    "description": "For the duration, you sense the presence of magical effects within 30 feet of yourself. If you sense such effects, you can take the Magic action to see a faint aura around any visible creature or object in the area that bears the magic, and if an effect was created by a spell, you learn the spell’s school of magic.\n\nThe spell is blocked by 1 foot of stone, dirt, or wood; 1 inch of metal; or a thin sheet of lead.",
+    "higher_levels": null,
+    "rules_source": {
+      "version": "5.2.1",
+      "page": 123
+    }
+  },
+  "detect-poison-and-disease": {
+    "name": "Detect Poison and Disease",
+    "casting_time": "1 action",
+    "range": "Self",
+    "components": "V, S, M (a yew leaf)",
+    "duration": "Concentration, up to 10 minutes",
+    "concentration": true,
+    "description": "For the duration, you sense the location of poisons, poisonous or venomous creatures, and magical contagions within 30 feet of yourself. You sense the kind of poison, creature, or contagion in each case.\n\nThe spell is blocked by 1 foot of stone, dirt, or wood; 1 inch of metal; or a thin sheet of lead.",
+    "higher_levels": null,
+    "rules_source": {
+      "version": "5.2.1",
+      "page": 123
+    }
+  },
+  "detect-thoughts": {
+    "name": "Detect Thoughts",
+    "casting_time": "1 action",
+    "range": "Self",
+    "components": "V, S, M (1 Copper Piece)",
+    "duration": "Concentration, up to 1 minute",
+    "concentration": true,
+    "description": "You activate one of the effects below. Until the spell ends, you can activate either effect as a Magic action on your later turns.\n\nSense Thoughts. You sense the presence of thoughts within 30 feet of yourself that belong to creatures that know languages or are telepathic. You don’t read the thoughts, but you know that a thinking creature is present.\n\nThe spell is blocked by 1 foot of stone, dirt, or wood; 1 inch of metal; or a thin sheet of lead.\n\nRead Thoughts. Target one creature you can see within 30 feet of yourself or one creature within 30 feet of yourself that you detected with the Sense Thoughts option. You learn what is most on the target’s mind right now. If the target doesn’t know any languages and isn’t telepathic, you learn nothing.\n\nAs a Magic action on your next turn, you can try to probe deeper into the target’s mind. If you probe deeper, the target makes a Wisdom saving throw. On a failed save, you discern the target’s reasoning, emotions, and something that looms large in its mind (such as a worry, love, or hate). On a successful save, the spell ends. Either way, the target knows that you are probing into its mind, and until you shift your attention away from the target’s mind, the target can take an action on its turn to make an Intelligence (Arcana) check against your spell save DC, ending the spell on a success.",
+    "higher_levels": null,
+    "rules_source": {
+      "version": "5.2.1",
+      "page": 123
+    }
+  },
   "aid": {
     "name": "Aid",
     "casting_time": "1 action",
@@ -228,9 +271,9 @@ export const SRD_SPELL_DETAILS: Record<string, SrdDetails> = {
 export function applySrdSpellDetails(spell: SpellData, canonical: boolean): SpellData {
   const details = SRD_SPELL_DETAILS[spell.id];
   if (!canonical || (spell.source && spell.source !== 'srd') || !details || details.name !== spell.name) return spell;
-  // These fifteen spells deal no damage. Remove legacy Sleep HP-pool dice and
+  // These audited spells deal no damage. Remove legacy Sleep HP-pool dice and
   // stale DB fields so the visible rules and cast controls cannot disagree.
-  const saves: Record<string, string> = { counterspell: 'CON', 'hold-person': 'WIS', polymorph: 'WIS', sleep: 'WIS', suggestion: 'WIS' };
+  const saves: Record<string, string> = { counterspell: 'CON', 'detect-thoughts': 'WIS', 'hold-person': 'WIS', polymorph: 'WIS', sleep: 'WIS', suggestion: 'WIS' };
   return {
     ...spell, ...details, higher_levels: details.higher_levels ?? undefined,
     damage_dice: undefined, damage_type: undefined, damage_at_slot_level: undefined,

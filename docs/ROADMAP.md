@@ -1,5 +1,22 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.859 — Detection spell details and source accuracy
+
+Audited Detect Magic, Detect Poison and Disease, and Detect Thoughts against
+SRD 5.2.1 p.123. The complete source-backed descriptions replace legacy canonical
+text in both static and database-backed views. Homebrew/gated records are kept.
+Detect Thoughts no longer carries the old INT-3 cutoff or opposed-INT escape:
+it includes telepathic eligibility, two distinct modes, next-turn probing,
+Wisdom save, target awareness, and an Arcana check against the spell save DC.
+All three spells retain their precise material, duration, range and barrier details.
+
+Nine focused data tests pass. Six desktop/mobile browser cases cover source links,
+critical clauses, stale canonical records and homebrew preservation. New detection
+views pass scoped overflow checks; screenshots inspected. Restoring the old detail
+layer makes the new browser test fail on the missing barrier rule. Full gate passes:
+2,783 units in 251 files, TypeScript 199/199, entry 255.1 KB. Publishing pending.
+No database migration; no automated information reveal or barrier ray tracing.
+
 ### v2.858 — Legal higher slots and accurate casting cost
 
 Higher-slot eligibility now follows SRD 5.2.1 pp.104-105: a spell does not need an
@@ -19,7 +36,8 @@ and concentration. Screenshots inspected and scoped overflow checks pass.
 Restoring the old scaling-clause restriction makes the browser test fail at the
 missing upcast control. Final browser flows also pass console/network checks.
 Full gate passes: 2,778 units in 251 files, TypeScript 199/199, entry 255.1 KB.
-Publishing pending. No database migration.
+Merged PR #202 (`2083dcc`), both CI gates passed. Public frontend last verified
+at v2.856.0; v2.858 publication pending. No database migration.
 
 ### v2.857 — Destructive Thoughts character targets
 
