@@ -1,6 +1,40 @@
 # DNDKeep — Two-Track Roadmap
 
-### Release candidate — Counterspell casting sources and DC, v2.802
+### Backend candidate — atomic Counterspell acceptance
+
+Migration `20261008040058_atomic_counterspell_acceptance.sql` adds an invoker
+RPC backed by a private, explicitly owner/DM-authorized transaction. One locked
+acceptance spends the selected slot/reaction, creates the CON save, links it to
+the other caster, accepts the offer, and records both combat events and an
+immutable receipt. Direct arbitrary edits to another caster remain disallowed.
+Exact retries return the same attack with current slots; competing reactions
+cannot both pay for one cast. Changed retries and stale stat/item/source/slot
+snapshots fail. Closed/expired offers/casts, stopped encounters, spent reactions,
+incapacitated/zero-HP reactors and cross-campaign substitutions are rejected.
+Effective modifiers use captured inputs from the existing shared item pipeline;
+the server derives proficiency/DC rather than accepting a supplied save DC.
+
+All 15 local authenticated database tests passed, including real competing
+reactors, identical concurrent requests, a forced history failure rolling back
+all writes, owner/DM access, and outsider/anonymous/private-ledger denials.
+The history fixture initially found the player/character event-type mismatch;
+it was fixed before this candidate. The incapacitation fixture was corrected to
+edit the canonical combatant state rather than the legacy character mirror.
+The full gate passed (1,985 unit tests, TS 204/204, zero hook violations,
+RAW/coordinates/anchors/build/SW and 253.7 KB entry). Local migration ledger has
+no pending entries. Security advisors report only the pre-existing keep_warm
+search-path and client_errors insert-policy warnings.
+
+This is an additive backend rollout; the app still uses its previous acceptance
+path until the next client change. Original-caster slot retention/settlement,
+perceptible-component eligibility, and broader spell-declaration coverage remain
+active follow-up work. Existing older absolute slot writers remain a concurrency
+boundary outside this transaction.
+
+### Released — Counterspell casting sources and DC, v2.802
+
+PR136 merged at 8c1120c after both hosted gates and preview passed. Main CI
+37725720813 and production Vercel passed; public SW 2.802.0 confirmed.
 
 Counterspell now uses the reacting character's selected spellcasting source,
 effective ability modifier (including active ability-setting items), and total
