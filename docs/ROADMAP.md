@@ -1,5 +1,29 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.833 — Sharpened duration follows declared game time
+
+New activations capture a private elapsed-time counter and recovery epoch.
+Campaign round-clock increases contribute their configured seconds per round;
+solo turns use that campaign scale or six seconds without a campaign. Combat
+turn changes do not also add solo time. Backward/no-op clock edits cannot restore
+duration. Changing the scale affects future ticks only. Rests and one-minute
+Restoration expire the effect through the recovery epoch, without assuming an
+exact rest length. Final confirmation/replay never restarts the original minute.
+
+The panel displays remaining game-time seconds and expiration, refreshing on
+combat/solo turn changes. Campaign fast-forward changes can be refreshed with
+Refresh rolls. Expired activations reject new enhancement costs while preserving
+paid results. Older records remain explicitly untracked. Duration still depends
+on the existing campaign clock writes; their separate read/modify/write behavior
+needs an atomic follow-up. Psychic resistance bypass and once-per-turn damage
+replacement remain next.
+
+Validation: full gate (2,438 units; TypeScript 201/201; hooks clean; build and
+255.1 KB entry), 34 Sharpened database cases and desktop/mobile recovery checks.
+Local migration ledger is current; database lint/security advisors report no
+findings on changed objects. Stabilized the outcome-dismissal test by waiting
+for modal focus before sending Escape.
+
 ### v2.832 — Sharpened incapacitation cannot be undone by recovery
 
 New Sharpened activations capture an incapacitation epoch. Becoming Incapacitated,

@@ -8,7 +8,7 @@ import {useModal} from '../../shared/Modal';
  * paid roll, never starts its duration or repeats its resource expenditure. */
 export default function SharpenedRollPanel({characterId,persistence,frozen=false,conditionKey=''}:{characterId:string;persistence:PsionicEnhancementPersistence;frozen?:boolean;conditionKey?:string}){
  const read=persistence.getSharpenedRolls,modal=useModal();
- const combatConditions=useCombatSelector(s=>JSON.stringify([s.encounter?.id,s.encounter?.status,s.participants.filter(p=>p.participant_type==='character'&&p.entity_id===characterId).map(p=>[p.id,p.active_conditions,p.is_dead])]));
+ const combatConditions=useCombatSelector(s=>JSON.stringify([s.encounter?.id,s.encounter?.status,s.encounter?.psionic_turn_id,s.participants.filter(p=>p.participant_type==='character'&&p.entity_id===characterId).map(p=>[p.id,p.active_conditions,p.is_dead])]));
  const [state,setState]=useState<{id:string;rows:SharpenedRollRecord[];error:string}>({id:characterId,rows:[],error:''});
  const [busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[blocked,setBlocked]=useState<string[]>([]);
  const frozenRef=useRef(frozen);frozenRef.current=frozen;
@@ -47,6 +47,7 @@ export default function SharpenedRollPanel({characterId,persistence,frozen=false
   {rows.map(row=><div key={row.requestId} style={{borderTop:'1px solid var(--c-border)',paddingTop:8,marginTop:8,fontSize:12}}>
    <strong>{row.finalized?'Recorded number':'Paid dice total'}: {row.total}</strong><div>Original dice: {row.originalRolls.join(', ')} · Final dice: {row.rolls.join(', ')}</div>
    <div>Activated {new Date(row.activatedAt).toLocaleString()}</div>
+   {!row.endedByIncapacitation&&row.durationTracked&&<p role="status">{row.expiredByDuration?'Duration ended. Confirming the roll does not restart it.':`Time remaining: ${row.remainingSeconds} seconds of game time. Refresh after the DM advances campaign time.`}</p>}
    {row.endedByIncapacitation&&<p role="status">Effect ended on incapacitation. Removing the condition or confirming this roll does not restart it.</p>}
    {!row.finalized&&<button className="btn-secondary" style={{marginTop:8,minHeight:44}} disabled={frozen||busy||blocked.includes(row.requestId)} onClick={()=>void confirm(row)}>Confirm saved roll</button>}
    {!row.finalized&&blocked.includes(row.requestId)&&<p>Confirm the saved dice cost first.</p>}

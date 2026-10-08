@@ -114,6 +114,8 @@ it('releases a settled bonus even when its history remains pending',async()=>{
 
 it('closing an outcome leaves it pending instead of recording a failed bonus',async()=>{
  const update=vi.fn();render(ui(character,update));fireEvent.click(screen.getByRole('button',{name:'Roll bonus'}));await screen.findByRole('dialog',{name:'Inerrant Aim'});
+ // Wait for the modal's focus/keyboard effects, not only its committed DOM.
+ await waitFor(()=>expect(document.activeElement).toBe(screen.getByRole('button',{name:'Changed to hit · spend 1'})));
  fireEvent.keyDown(window,{key:'Escape'});await waitFor(()=>expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('outcome left pending'),'warn'));
  expect(update).not.toHaveBeenCalled();expect(mocks.log).not.toHaveBeenCalled();
 });

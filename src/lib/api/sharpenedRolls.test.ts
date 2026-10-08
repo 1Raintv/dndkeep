@@ -2,7 +2,7 @@ import {beforeEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({rpc:vi.fn()}));vi.mock('../supabase',()=>({supabase:{rpc:mocks.rpc}}));
 import {getSharpenedRollRecords,finalizeSharpenedRoll} from './sharpenedRolls';
 const id='11111111-1111-4111-8111-111111111111';
-const row={incapacitationTracked:true,endedByIncapacitation:false,requestId:id,characterId:'hero',originalRolls:[2,3,8],rolls:[4,4,8],total:16,activatedAt:'2026-10-08T12:00:00Z',turn:{soloTurn:0}};
+const row={durationTracked:true,remainingSeconds:60,expiredByDuration:false,incapacitationTracked:true,endedByIncapacitation:false,requestId:id,characterId:'hero',originalRolls:[2,3,8],rolls:[4,4,8],total:16,activatedAt:'2026-10-08T12:00:00Z',turn:{soloTurn:0}};
 beforeEach(()=>vi.resetAllMocks());
 it('validates pending and finalized records without treating either as active',async()=>{
  mocks.rpc.mockResolvedValue({data:[{...row,finalized:false}],error:null});expect(await getSharpenedRollRecords('hero')).toEqual([{...row,finalized:false}]);
@@ -23,4 +23,11 @@ it('rejects incomplete or contradictory incapacitation status',async()=>{
  for(const invalid of [{incapacitationTracked:undefined},{endedByIncapacitation:'yes'},{incapacitationTracked:false,endedByIncapacitation:true}]){
  mocks.rpc.mockResolvedValue({data:[{...row,finalized:true,...invalid}],error:null});await expect(getSharpenedRollRecords('hero')).rejects.toThrow(/verified/);
  }
+});
+
+it('rejects inconsistent duration results and accepts an untracked legacy record',async()=>{
+ for(const invalid of [{durationTracked:undefined},{remainingSeconds:61},{remainingSeconds:-1},{remainingSeconds:0.5},{remainingSeconds:null},{remainingSeconds:0,expiredByDuration:false}]){
+ mocks.rpc.mockResolvedValue({data:[{...row,finalized:true,...invalid}],error:null});await expect(getSharpenedRollRecords('hero')).rejects.toThrow(/verified/);
+ }
+ mocks.rpc.mockResolvedValue({data:[{...row,finalized:true,durationTracked:false,remainingSeconds:null,expiredByDuration:false}],error:null});expect((await getSharpenedRollRecords('hero'))[0].durationTracked).toBe(false);
 });
