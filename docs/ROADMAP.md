@@ -1,5 +1,30 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.861 — Map controls clear combat overlays
+
+Monster actions now reserve a desktop side lane and become a scrollable phone
+drawer. Fit map and Find selection account for that lane; navigation clears the
+combat strip, party cards and phone drawer. Collapsing or ending the encounter
+restores space. Short landscape uses labeled tooltips with compact icons; undo
+and redo retain a separate readable row when needed.
+
+Fixed native DOMRect getter handling (spreading a rectangle erased its edges)
+and deferred shared bottom-inset writes out of ResizeObserver delivery. Both
+issues were reproduced by real browser checks. Character and creature conditions
+share 44px native buttons, keyboard activation, focus styles and a consistent
+palette. Quick panels appear above the monster rail.
+
+Eight desktop/phone condition and layout flows pass; two strengthened layout
+flows also cover real saved token movement, undo/redo, rotation, encounter end,
+camera bounds, console and scoped overflow checks. Screenshots inspected.
+Full gate passes: 2,813 units in 255 files, TypeScript 199/199, clean hooks,
+RAW/coordinates/anchors, production build and 255.1 KB entry bundle. New modules
+lint clean. Publishing pending. No database migration.
+
+Remaining UI work: compact the combat strip further on phones/short landscape;
+its current card/action layout consumes substantial map space. This release
+restores reachable controls, not a claim of Roll20 parity or complete map polish.
+
 ### v2.860 — Recoverable map conditions and accessible combat panels
 
 Map quick panels now settle condition deltas on the server. Character changes
@@ -23,13 +48,13 @@ Full gate passes: 2,804 units in 253 files, TypeScript 199/199, entry 255.1 KB.
 Sixteen SQL cases pass, including auth, concurrency, replay/cancel, rollback,
 concentration cleanup and Psionic Guards. Both SQL schemas lint clean. Four
 additional desktop/phone rotation and keyboard checks pass (10 UI flows total).
-Publishing pending.
-Migration: `20261008185313_map_condition_lifecycle.sql` (local applied).
+Merged PR #204. Both CI checks passed. Production migration run `37831381913`
+succeeded; independently verified ledger, column and RPC. Advisors unchanged
+(6 security / 4 performance). Frontend v2.860.0 independently confirmed live after deployment completed.
+Migration: `20261008185313_map_condition_lifecycle.sql` (local and production applied).
 This does not reconcile historical condition drift, replace all encounter/sheet
 condition writers, or introduce a complete multi-source condition ledger.
-Follow-up: the open monster action rail can overlap the map's Fit control;
-collapsing the rail currently exposes it. NPC condition chips still need larger
-keyboard-accessible targets and visual consistency with character chips.
+The control overlap and condition-chip follow-ups are addressed in v2.861.
 
 ### v2.859 — Detection spell details and source accuracy
 

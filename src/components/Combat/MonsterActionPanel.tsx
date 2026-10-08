@@ -1,3 +1,4 @@
+import './MonsterActionPanel.css';
 import {MultiTargetSavePicker} from './MultiTargetSavePicker';
 import {useMapMovementBusy,isMapMovementBusy} from '../Campaign/battlemap/useMapMovementBusy';
 import {MovementPendingNotice} from './MovementPendingNotice';
@@ -1928,41 +1929,13 @@ export default function MonsterActionPanel({ isDM }: Props) {
 
   // v2.364.0 — Side rail. Right edge, full vertical (top of viewport
   // down to just above the InitiativeStrip). Width 280px; collapsed
-  // to 36px with a single arrow button so the DM can hide it without
+  // to 44px with a single arrow button so the DM can hide it without
   // losing access.
-  const sideRailWidth = collapsed ? 36 : 280;
   return createPortal(
     <>
-      <div
-        style={{
-          position: 'fixed',
-          // v2.411.0 — was top: 12. Lowered to 80 so toasts render
-          // above the panel header rather than being occluded by it.
-          // v2.572.0 — 80 wasn't enough: two stacked toasts extend past
-          // 80px and disappear behind the panel. Lowered to 148 so a
-          // 2-3 toast stack stays fully visible above the rail.
-          top: 148,
-          right: 12,
-          // 88px = InitiativeStrip height + bottom margin. Strip has
-          // right:80 inset already (v2.360); this rail's 12px right
-          // shares part of that gap.
-          bottom: 88,
-          width: sideRailWidth,
-          background: 'rgba(19, 19, 29, 0.96)',
-          backdropFilter: 'blur(10px)',
-          WebkitBackdropFilter: 'blur(10px)',
-          border: '1px solid rgba(248,113,113,0.55)',
-          borderRadius: 'var(--r-md, 8px)',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.5)',
-          zIndex: 10000,
-          display: 'flex',
-          flexDirection: 'column',
-          fontFamily: 'var(--ff-body)',
-          transition: 'width 160ms ease',
-          overflow: 'hidden',
-        }}
+      <div className="monster-action-rail" role="region" aria-label="Monster actions" data-collapsed={collapsed}
       >
-        <div
+        <div className="monster-action-rail-header"
           style={{
             padding: '10px 12px',
             borderBottom: collapsed ? 'none' : '1px solid var(--c-border)',
@@ -2023,7 +1996,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
             when minimized needs to say monster actions written down
             the side of it so that the DM can clearly see where it is
             and that they don't get lost when minimizing it." Sits in
-            the 36px-wide column under the toggle button, written
+            the 44px-wide column under the toggle button, written
             top-to-bottom via writingMode: vertical-rl. The actor
             name is appended below the static label so the DM also
             sees whose turn it is at a glance. */}
@@ -2074,6 +2047,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
           </div>
         )}
 
+        {!collapsed&&<div className="monster-action-rail-body">
         {/* v2.416.0 — Fast Combat Rolls toggle moved to InitiativeStrip
             (below the round/actor display) so it's visible during PC
             turns too and easier to find. The MonsterActionPanel now
@@ -2712,6 +2686,8 @@ export default function MonsterActionPanel({ isDM }: Props) {
             })}
           </div>
         )}
+
+        </div>}
 
         {/*
           v2.399.0 — Action-economy strip. Pinned to the bottom of

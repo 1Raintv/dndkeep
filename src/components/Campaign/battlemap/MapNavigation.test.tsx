@@ -12,7 +12,7 @@ function camera() {
   const vp={destroyed:false,scale:{x:1,y:1} as {x:number;y:number}|null,
     center:{x:350,y:350},worldWidth:700,worldHeight:700,screenWidth:900,screenHeight:700,
     plugins:{get:vi.fn(()=>({reset:vi.fn()}))},clampZoom:vi.fn(),
-    setZoom:vi.fn((zoom:number)=>{vp.scale={x:zoom,y:zoom};}),moveCenter:vi.fn(),
+    setZoom:vi.fn((zoom:number)=>{vp.scale={x:zoom,y:zoom};}),moveCenter:vi.fn((_x:number,_y:number)=>{}),
     on:vi.fn((_name:string,fn:()=>void)=>listeners.add(fn)),
     off:vi.fn((_name:string,fn:()=>void)=>listeners.delete(fn))};
   return {vp,listeners,destroy:()=>{vp.destroyed=true;vp.scale=null;}};
@@ -46,4 +46,19 @@ it('ignores stale zoom events, pointer gestures, buttons and shortcuts after sce
   fireEvent.pointerMove(view.canvas,{clientX:40,clientY:40,buttons:0});fireEvent.keyDown(window,{key:'+'});
   expect(old.vp.setZoom).not.toHaveBeenCalled();expect(old.vp.moveCenter).not.toHaveBeenCalled();expect(old.vp.plugins.get).not.toHaveBeenCalled();
   view.unmount();expect(old.listeners.size).toBe(0);
+});
+
+it('fits inside the visible space beside a rail and restores width after it disappears',()=>{
+ const {vp}=camera(),{canvas}=setup(vp);
+ vi.spyOn(canvas,'getBoundingClientRect').mockReturnValue(new DOMRect(0,0,900,700));
+ vi.spyOn(screen.getByRole('toolbar'),'getBoundingClientRect').mockReturnValue(new DOMRect(12,600,500,80));
+ const rail=document.createElement('div');rail.className='monster-action-rail';document.body.append(rail);
+ vi.spyOn(rail,'getBoundingClientRect').mockReturnValue(new DOMRect(400,100,280,450));
+ fireEvent.click(screen.getByRole('button',{name:'Fit map'}));
+ const narrowZoom=vp.setZoom.mock.calls.slice(-1)[0][0],narrowCenter=vp.moveCenter.mock.calls.slice(-1)[0];
+ // Convert the map's world edges back to screen pixels, independently of framing code.
+ expect((0-narrowCenter[0])*narrowZoom+450).toBeGreaterThanOrEqual(12);
+ expect((700-narrowCenter[0])*narrowZoom+450).toBeLessThanOrEqual(388);
+ rail.remove();fireEvent.click(screen.getByRole('button',{name:'Fit map'}));
+ expect(vp.setZoom.mock.calls.slice(-1)[0][0]).toBeGreaterThan(narrowZoom);
 });

@@ -1,3 +1,4 @@
+import {mapControlInsets} from './mapControlInsets';
 import { useEffect, type RefObject } from 'react';
 
 /** v2.701 — combat controls wrap and raise the dice buttons. Measure their
@@ -9,19 +10,22 @@ export function useMapControlClearance(ref:RefObject<HTMLDivElement|null>, avoid
     const update=()=>{
       frame=0;
       const parent=nav.offsetParent as HTMLElement|null;
-      const obstacles=[...document.querySelectorAll('.initiative-strip'),
+      const rails=avoidFloatingControls?[...document.querySelectorAll('.monster-action-rail')]:[];
+      const drawers=rails.filter(el=>getComputedStyle(el).getPropertyValue('--map-rail-layout').trim()==='bottom');
+      const sideRails=rails.filter(el=>!drawers.includes(el));
+      const obstacles=[...document.querySelectorAll('.initiative-strip'),...rails,
         ...(avoidFloatingControls?[...document.querySelectorAll('.quickroll-fab,.rolllog-fab'),...parent?.querySelectorAll('.party-vitals')??[]]:[])]
         .filter(element=>element!==nav);
       for(const old of observed)if(!obstacles.includes(old))resize.unobserve(old);
       for(const next of obstacles)if(!observed.includes(next))resize.observe(next);
       if(obstacles.some(element=>!observed.includes(element))||observed.some(element=>!obstacles.includes(element))) {
-        positions.disconnect();for(const element of obstacles)positions.observe(element,{attributes:true,attributeFilter:['style','class']});
+        positions.disconnect();for(const element of obstacles)positions.observe(element,{attributes:true,attributeFilter:['style','class','data-collapsed']});
       }
       observed=obstacles;
-      const boxes=obstacles.map(element=>element.getBoundingClientRect()).filter(box=>box.height>0);
-      const clearance=parent ? Math.max(0,...boxes.map(box=>parent.getBoundingClientRect().bottom-box.top+12)) : 0;
-      const value=`${clearance}px`;
-      if(nav.style.getPropertyValue('--map-combat-clearance')!==value) nav.style.setProperty('--map-combat-clearance',value);
+      const insets=parent?mapControlInsets(parent.getBoundingClientRect(),obstacles.filter(el=>!sideRails.includes(el)).map(el=>el.getBoundingClientRect()),sideRails.map(el=>el.getBoundingClientRect())):{bottom:0,right:0};
+      for(const [key,value] of [['--map-combat-clearance',insets.bottom],['--map-side-clearance',insets.right]] as const){
+        const text=`${value}px`;if(nav.style.getPropertyValue(key)!==text)nav.style.setProperty(key,text);
+      }
     };
     const schedule=()=>{if(!frame) frame=requestAnimationFrame(update);};
     const resize=new ResizeObserver(schedule);

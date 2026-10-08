@@ -1,3 +1,5 @@
+import {MapConditionChip} from './battlemap/MapConditionChip';
+import {ALL_CONDITIONS} from './battlemap/shared';
 import {createPortal} from 'react-dom';
 import {useMapConditions} from './battlemap/useMapConditions';
 import {MapConditionFeedback} from './battlemap/MapConditionFeedback';
@@ -119,29 +121,6 @@ interface NpcRow {
   // read back by startEncounter to re-seed.
   active_buffs?: ActiveBuff[] | null;
 }
-
-// Mirror of the character panel's COND_COLOR. Kept inline so the panel
-// is self-contained — if the palette ever moves to a shared module,
-// both panels can adopt it together.
-const COND_COLOR: Record<string, string> = {
-  Blinded: '#94a3b8',
-  Charmed: '#f472b6',
-  Deafened: '#94a3b8',
-  Frightened: '#fb923c',
-  Grappled: '#a78bfa',
-  Incapacitated: '#ef4444',
-  Invisible: '#60a5fa',
-  Paralyzed: '#ef4444',
-  Petrified: '#78716c',
-  Poisoned: '#22c55e',
-  Prone: '#fbbf24',
-  Restrained: '#a78bfa',
-  Stunned: '#ef4444',
-  Unconscious: '#dc2626',
-  Exhaustion: '#7c3aed',
-};
-
-const ALL_CONDITIONS: string[] = Object.keys(COND_COLOR);
 
 /** v2.482.0 — Title-case a source_kind slug for the immunity panel.
  *  'frightful_presence' → 'Frightful Presence'. Mirrors the helper in
@@ -661,7 +640,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
   if (!npc) {
     return createPortal(
       <div
-        style={{ position: 'fixed', inset: 0, zIndex: 10000 }}
+        style={{ position: 'fixed', inset: 0, zIndex: 10010 }}
         onMouseDown={onClose}
       >
         <div ref={panelRef} role="dialog" aria-label="Loading creature token"
@@ -698,7 +677,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
   // v2.860: portal keeps controls above the active-combat strip on phones.
   return createPortal(
     <div
-      style={{ position: 'fixed', inset: 0, zIndex: 10000 }}
+      style={{ position: 'fixed', inset: 0, zIndex: 10010 }}
       onMouseDown={onClose}
     >
       <div ref={panelRef} role="dialog" aria-label={`Creature token: ${npc.name}`}
@@ -1140,7 +1119,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
                 style={{
                   background: 'transparent', border: 'none',
                   color: 'var(--t-3)', cursor: 'pointer',
-                  fontSize: 10, fontWeight: 700, padding: 0, minHeight: 0, minWidth: 0,
+                  fontSize: 12, fontWeight: 700, padding: '4px 8px', minHeight: 44, minWidth: 44,
                 }}
               >
                 {showCondPicker ? '✕ close' : '+ apply'}
@@ -1153,30 +1132,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
             </div>
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4 }}>
-              {conditions.map(cond => {
-                const color = COND_COLOR[cond] ?? '#9ca3af';
-                return (
-                  <span
-                    key={cond}
-                    onClick={isDM ? () => removeCondition(cond) : undefined}
-                    title={isDM ? `Remove ${cond}` : cond}
-                    style={{
-                      padding: '2px 8px',
-                      background: color + '22',
-                      border: `1px solid ${color}55`,
-                      borderRadius: 999,
-                      fontSize: 10, fontWeight: 700,
-                      color,
-                      cursor: isDM ? 'pointer' : 'default',
-                      opacity: condBusy ? 0.6 : 1,
-                      pointerEvents: condBusy ? 'none' : 'auto',
-                      userSelect: 'none' as const,
-                    }}
-                  >
-                    {cond}{isDM && ' ✕'}
-                  </span>
-                );
-              })}
+              {conditions.map(cond=><MapConditionChip key={cond} condition={cond} action={isDM?'Remove':undefined} disabled={condBusy} onActivate={()=>removeCondition(cond)}/>)}
             </div>
           )}
           {isDM&&<MapConditionFeedback state={conditionState}/>}
@@ -1189,29 +1145,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
               borderRadius: 'var(--r-sm, 4px)',
               display: 'flex', flexWrap: 'wrap' as const, gap: 3,
             }}>
-              {availableConds.map(cond => {
-                const color = COND_COLOR[cond] ?? '#9ca3af';
-                return (
-                  <button
-                    key={cond}
-                    onClick={() => { addCondition(cond); }}
-                    disabled={condBusy}
-                    style={{
-                      padding: '2px 8px',
-                      background: 'transparent',
-                      border: `1px solid ${color}55`,
-                      borderRadius: 999,
-                      fontSize: 10, fontWeight: 700,
-                      color,
-                      cursor: 'pointer',
-                      opacity: condBusy ? 0.5 : 1,
-                      minHeight: 0,
-                    }}
-                  >
-                    + {cond}
-                  </button>
-                );
-              })}
+              {availableConds.map(cond=><MapConditionChip key={cond} condition={cond} action={"Apply"} disabled={condBusy} onActivate={()=>addCondition(cond)}/>)}
             </div>
           )}
         </div>

@@ -1,3 +1,4 @@
+import {MapConditionChip} from './MapConditionChip';
 import {createPortal} from 'react-dom';
 // Extracted verbatim from BattleMapV2.tsx (v2.636 decomposition step 3).
 // See that file's header changelog for this code's full history.
@@ -10,7 +11,7 @@ import {MapConditionFeedback} from './MapConditionFeedback';
 import ChecksPanel from '../ChecksPanel';
 import type { Character } from '../../../types';
 import {TokenHitPointControls} from './TokenHitPointControls';
-import { ALL_CONDITIONS, COND_COLOR } from './shared';
+import { ALL_CONDITIONS } from './shared';
 
 /**
  * v2.226 — Token Quick Panel.
@@ -134,7 +135,7 @@ export function TokenQuickPanel(props: {
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 10000,
+        zIndex: 10010,
         // Backdrop is invisible but catches outside clicks to close.
       }}
       onMouseDown={onClose}
@@ -222,30 +223,7 @@ export function TokenQuickPanel(props: {
                 Apply Condition
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 3 }}>
-                {remaining.map(cond => {
-                  const color = COND_COLOR[cond] ?? '#9ca3af';
-                  return (
-                    <button
-                      key={cond}
-                      onClick={() => addCondition(cond)}
-                      title={`Apply ${cond}`}
-                      disabled={condBusy}
-                      style={{
-                        padding: '2px 7px',
-                        background: color + '11',
-                        border: `1px solid ${color}44`,
-                        borderRadius: 999,
-                        fontSize: 9, fontWeight: 600,
-                        color,
-                        fontFamily: 'var(--ff-body)',
-                        cursor: condBusy ? 'wait' : 'pointer',
-                        opacity: condBusy ? 0.6 : 1,
-                      }}
-                    >
-                      {cond}
-                    </button>
-                  );
-                })}
+                {remaining.map(cond=><MapConditionChip key={cond} condition={cond} action={"Apply"} disabled={condBusy} onActivate={()=>addCondition(cond)}/>)}
               </div>
             </div>
           );
@@ -366,30 +344,7 @@ export function TokenQuickPanel(props: {
               Conditions
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap' as const, gap: 4 }}>
-              {c.active_conditions.map(cond => {
-                const color = COND_COLOR[cond] ?? '#9ca3af';
-                return (
-                  <span
-                    key={cond}
-                    onClick={isDM ? () => removeCondition(cond) : undefined}
-                    title={isDM ? `Remove ${cond}` : cond}
-                    style={{
-                      padding: '2px 8px',
-                      background: color + '22',
-                      border: `1px solid ${color}55`,
-                      borderRadius: 999,
-                      fontSize: 10, fontWeight: 700,
-                      color,
-                      cursor: isDM ? 'pointer' : 'default',
-                      opacity: condBusy ? 0.6 : 1,
-                      pointerEvents: condBusy ? 'none' : 'auto',
-                      userSelect: 'none' as const,
-                    }}
-                  >
-                    {cond}{isDM && ' ✕'}
-                  </span>
-                );
-              })}
+              {c.active_conditions.map(cond=><MapConditionChip key={cond} condition={cond} action={isDM?'Remove':undefined} disabled={condBusy} onActivate={()=>removeCondition(cond)}/>)}
             </div>
           </div>
         )}

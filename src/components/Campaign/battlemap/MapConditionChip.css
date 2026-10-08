@@ -1,0 +1,6 @@
+.map-condition-chip { display:inline-flex; align-items:center; justify-content:center; gap:6px; max-width:100%; box-sizing:border-box; padding:5px 10px; border:1px solid var(--condition-tone); border-radius:9px; background:#22232e; color:#eeeaf5; font:600 12px/1.4 var(--ff-body); overflow-wrap:anywhere; }
+button.map-condition-chip { min-height:44px; cursor:pointer; }
+button.map-condition-chip:hover:not(:disabled) { background:#343545; }
+button.map-condition-chip:focus-visible { outline:2px solid #f1d596; outline-offset:2px; }
+button.map-condition-chip:disabled { cursor:wait; opacity:.5; }
+.map-condition-chip-dot { width:6px; height:6px; flex-shrink:0; border-radius:50%; background:var(--condition-tone); }
