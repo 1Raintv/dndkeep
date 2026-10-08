@@ -79,10 +79,11 @@ export function resolveConcentrationSave(characterId:string,pendingId:string,sou
 }
 
 export interface ConcentrationOfferInput {
- characterId:string;campaignId:string;encounterId:string|null;chainId:string;participantId:string;
+ characterId:string;campaignId:string;encounterId:string|null;chainId:string;participantId:string|null;
  spell:string;revision:number;damage:number;dc:number;bonus:number;proficient:boolean;automatic:boolean;
 }
 export async function createConcentrationOffer(input:ConcentrationOfferInput):Promise<string>{
+ if(input.participantId===null&&input.encounterId!==null)throw new Error('An encounter save requires a combat participant.');
  if(!Number.isSafeInteger(input.revision)||input.revision<0)throw new Error('The concentration casting could not be verified. Reload the sheet.');
  const id=crypto.randomUUID(),now=Date.now();
  const {error}=await supabase.from('pending_concentration_saves').insert({

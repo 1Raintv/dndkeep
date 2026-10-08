@@ -41,7 +41,8 @@ test.describe('Campaign concentration recovery (local stack)', () => {
        select '${pending}','${campaign}','${encounter}','${chain}','${participant}',id,concentration_spell,5,10,0,false,now()+interval '2 minutes',concentration_revision from characters where id='${charId}';commit;`);
   });
   const spell=()=>sql(`select concentration_spell from characters where id='${charId}'`);
-  test('prompt settles the save and displays its recorded result',async({page},info)=>{
+  for(const outside of [false,true])test(`prompt settles the save and displays its recorded result (outside encounter: ${outside})`,async({page},info)=>{
+    if(outside)sql(`update pending_concentration_saves set participant_id=null,encounter_id=null where id='${pending}';delete from combat_encounters where id='${encounter}'`);
     await page.addInitScript(()=>{Math.random=()=>0.001;});await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     const dialog=page.getByRole('dialog',{name:'Concentration save',exact:true});await expect(dialog).toBeVisible();await expect(dialog).toContainText('Hold focus on Detect Magic?');
     await page.screenshot({path:info.outputPath('concentration-prompt.png')});await dialog.getByRole('button',{name:'Roll Save'}).click();

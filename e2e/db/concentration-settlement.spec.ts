@@ -133,4 +133,46 @@ test.describe('Atomic campaign concentration settlement',()=>{
   expect(sql(`select count(*) from combat_events where chain_id='${chain}' and event_type='save_rolled'`)).toBe('1');
  });
 
+ const outside=()=>{
+  sql(`delete from pending_concentration_saves where id='${pending}'`);
+  // Exercise a real authenticated INSERT, including the advantage snapshot.
+  sql(authenticated(owner,`insert into pending_concentration_saves(id,campaign_id,encounter_id,chain_id,participant_id,character_id,spell_name,damage,dc,con_bonus,has_con_prof,expires_at,concentration_revision)
+   select '${pending}','${campaign}',null,'${chain}',null,id,concentration_spell,5,10,0,false,now()+interval '2 minutes',concentration_revision from characters where id='${character}'`));
+ };
+ test('party damage between encounters clears only the casters lingering effects',()=>{
+  outside();expect(receipt(dm)).toMatchObject({outcome:'failed',d20:1,total:1,replayed:false});
+  expect(spell()).toBe('');expect(effects()).toEqual({conditions:['Poisoned'],sources:{Poisoned:{source:'other'}},buffs:[{key:'other',source:'spell:detect-magic',casterParticipantId:'someone-else'}]});
+  expect(receipt(owner,20)).toMatchObject({outcome:'failed',d20:1,replayed:true});
+  expect(sql(`select count(*) from combat_events where chain_id='${chain}' and encounter_id is null and event_type='save_rolled'`)).toBe('1');
+ });
+ test('outside-encounter success retains concentration and saved advantage dice',()=>{
+  withWarCaster();outside();const before=effects();
+  expect(JSON.parse(sql(authenticated(owner,pair(2,17))))).toMatchObject({outcome:'passed',advantage:true,rolls:[2,17],d20:17});
+  expect(spell()).toBe('detect-magic');expect(effects()).toEqual(before);
+ });
+ test('outside-encounter offer cannot clear a later casting or follow a departed character',()=>{
+  outside();sql(`update characters set campaign_id=null where id='${character}'`);
+  expect(receipt()).toMatchObject({outcome:'obsolete',d20:null});expect(spell()).toBe('detect-magic');
+ });
+ test('outside-encounter offers keep owner/DM authorization',()=>{
+  outside();expect(()=>receipt(outsider)).toThrow(/unavailable/);
+  expect(()=>sql(`set role anon;${settle()}`)).toThrow(/permission denied/);
+  expect(sql(`select state from pending_concentration_saves where id='${pending}'`)).toBe('offered');
+ });
+ test('an encounter offer cannot drop only its participant',()=>{
+  expect(()=>sql(`update pending_concentration_saves set participant_id=null where id='${pending}'`)).toThrow(/concentration_encounter_requires_participant/);
+  expect(receipt(owner,12)).toMatchObject({outcome:'passed'});
+ });
+ test('racing outside-encounter saves still settle exactly once',async()=>{
+  outside();const results=await Promise.all([parallel(authenticated(owner,settle(1))),parallel(authenticated(dm,settle(2,'timeout')))]);
+  expect(results.map(r=>r.code)).toEqual([0,0]);const receipts=results.map(r=>JSON.parse(r.out));
+  expect(receipts.map(r=>r.replayed).sort()).toEqual([false,true]);expect(receipts[0].d20).toBe(receipts[1].d20);
+  expect(sql(`select count(*) from combat_events where chain_id='${chain}' and event_type='save_rolled'`)).toBe('1');
+ });
+
+ test('outside-encounter failure with no participant identity preserves all unrelated buffs',()=>{
+  outside();sql(`update combat_participants set entity_id='unrelated-character' where id='${participant}'`);
+  const before=effects();expect(receipt()).toMatchObject({outcome:'failed'});expect(effects()).toEqual(before);expect(spell()).toBe('');
+ });
+
 });
