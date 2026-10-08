@@ -13,7 +13,7 @@ function receipt(args:Record<string,unknown>){return {requestId:args.p_request_i
 it('sets HP to zero and displays preserved temporary HP',async()=>{
  m.rpc.mockImplementation(async(_name,args)=>({data:receipt(args as Record<string,unknown>),error:null}) as never);
  await ready();fireEvent.click(screen.getByRole('button',{name:'Set HP'}));fireEvent.change(screen.getByLabelText('HP amount'),{target:{value:'0'}});fireEvent.click(screen.getByRole('button',{name:'Apply'}));
- await screen.findByText('HP updated.');expect(screen.getByText('0 / 20')).toBeTruthy();expect(screen.getByText('+4 temp')).toBeTruthy();expect((screen.getByLabelText('HP amount') as HTMLInputElement).value).toBe('');
+ await screen.findByText('HP updated.');expect(screen.getByText('0 / 20')).toBeTruthy();expect(screen.getByText('+4 temp')).toBeTruthy();await waitFor(()=>expect((screen.getByLabelText('HP amount') as HTMLInputElement).value).toBe(''));
 });
 it('blocks fractional amounts before sending',async()=>{
  await ready();fireEvent.change(screen.getByLabelText('HP amount'),{target:{value:'1.5'}});expect((screen.getByRole('button',{name:'Apply'}) as HTMLButtonElement).disabled).toBe(true);expect(m.rpc).not.toHaveBeenCalled();
