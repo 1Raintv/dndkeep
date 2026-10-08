@@ -41,8 +41,11 @@ hits, War Caster, zero HP, auto/off, delayed animations/new casts, and two open
 sheets. The phone prompt screenshot was inspected. Backend marker regression
 coverage passed all 43 compound/manual HP database cases.
 
-Release dependency: PR150 must merge and apply migration 20261008063321 before
-this UI is merged. At this checkpoint the UI is verified locally, not deployed.
+Release update: PR150 merged at c1766604; workflow 37740939632 explicitly
+applied migration 20261008063321 and finished db push. PR151 contains the
+verified UI; its hosted gates passed and its preview is pending. The backend
+production frontend build hit Vercel’s build-rate limit; no plan was upgraded.
+At this checkpoint the new UI is not deployed.
 Campaign damage and external legacy HP writers still need their own durable
 consequence integration; this does not certify death-save/instant-death automation.
 
