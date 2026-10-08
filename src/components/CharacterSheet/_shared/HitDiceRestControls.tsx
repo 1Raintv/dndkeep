@@ -31,6 +31,7 @@ export function HitDiceRestControls({character,conModifier,disabled,restSaving,g
    </button>
    <button type="button" className="btn-secondary" disabled={restSaving} onClick={onDone} title="End short rest">Done</button>
   </div>
+  <p style={{fontSize:12,color:'var(--t-2)'}}>Each die restores at least 1 HP. Healing stops at your maximum HP.</p>
   {character.current_hp<1&&<p style={{fontSize:12}}>You need at least 1 HP to begin a Short Rest.</p>}
   {pools.length>0&&pools.every(p=>p.available===0)&&<p style={{fontSize:12,color:'var(--t-2)'}}>No hit dice remaining. Take a long rest to recover them.</p>}
   {(character.class_name==='Warlock'||character.secondary_class==='Warlock')&&<p style={{fontSize:12,color:'var(--c-gold-l)'}}>Pact Magic slots will be recovered when you finish this rest.</p>}

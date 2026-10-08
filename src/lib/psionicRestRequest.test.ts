@@ -19,3 +19,13 @@ it('preserves item recharge outcomes and rejects missing or unexpected fields',(
  expect(()=>createPsionicRestRequest(character,'long',patch,'rest')).toThrow('Incomplete');
 });
 it.each([null,[],{}, {requestId:'id',restKind:'other'}, {requestId:'id',restKind:'short',sourceFeature:'Long Rest',updates:patch,expected:{}}])('rejects malformed recovery records: %j',value=>expect(validPsionicRestRequest(value)).toBe(false));
+
+it('captures server revisions while retaining exact legacy saved requests',()=>{
+ const request=createPsionicRestRequest({...character,hit_point_revision:3,psionic_hit_dice_revision:2,psionic_energy_revision:8},'short',patch,'new');
+ expect(request.expected).toMatchObject({hit_point_revision:3,psionic_hit_dice_revision:2,psionic_energy_revision:8});
+ expect(validPsionicRestRequest(request)).toBe(true);
+ const legacy=structuredClone(request);for(const key of ['hit_point_revision','psionic_hit_dice_revision','psionic_energy_revision'])delete legacy.expected[key];
+ expect(validPsionicRestRequest(legacy)).toBe(true);
+ expect(validPsionicRestRequest({...request,expected:{...request.expected,hit_point_revision:-1}})).toBe(false);
+ expect(validPsionicRestRequest({...request,expected:{...request.expected,unexpected:1}})).toBe(false);
+});

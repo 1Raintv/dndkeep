@@ -1,3 +1,4 @@
+import {createHitDiceHealingRequest} from '../hitDiceHealingRequest';
 import {createPsionicRestRequest} from '../psionicRestRequest';
 import type {Character} from '../../types';
 // @vitest-environment happy-dom
@@ -72,4 +73,13 @@ it('retains an interrupted rest snapshot and accepts its exact replay without an
  mocks.rpc.mockResolvedValue({data:{requestId:'rest',character:c,replayed:true},error:null});await act(async()=>{await hook.result.current.rest!(request);});
  expect(pendingPsionicPayments('hero')).toEqual([]);expect(accept).toHaveBeenCalledWith({requestId:'rest',character:c,replayed:true,expected:request.expected});
  expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[2]);
+});
+
+it('persists a complete healing request and confirms the original result after a lost response',async()=>{
+ const c={id:'hero',current_hp:1,max_hp:20,temp_hp:0,constitution:10,inventory:[],hit_point_revision:0,psionic_hit_dice_revision:0} as unknown as Character;
+ const healing=createHitDiceHealingRequest(c,6,[3],0,'11111111-1111-4111-8111-111111111111');
+ const paid={requestId:healing.requestId,hitDie:6,rolls:[3],constitutionModifier:0,healing:3,gained:3,replayed:true,character:{...c,current_hp:2,hit_point_revision:2,hit_dice_spent:1,hit_dice_spent_by_type:{'6':1},psionic_hit_dice_revision:1}};
+ const accept=vi.fn();mocks.rpc.mockRejectedValue(new Error('Lost response'));const hook=renderHook(()=>usePsionicEnhancements('hero',queue(),accept));
+ await expect(hook.result.current.heal!(healing)).rejects.toMatchObject({definitelyNotPaid:false});expect(pendingPsionicPayments('hero')).toEqual([{kind:'healing',request:healing}]);expect(accept).not.toHaveBeenCalled();
+ mocks.rpc.mockResolvedValue({data:paid,error:null});await expect(hook.result.current.heal!(healing)).resolves.toEqual(paid);expect(accept).toHaveBeenCalledWith(paid);expect(pendingPsionicPayments('hero')).toEqual([]);expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[2]);
 });

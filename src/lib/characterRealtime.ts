@@ -137,3 +137,15 @@ export function acceptHitPointReceipt(ref:{current:Character},saved:Partial<Char
   ||![saved.current_hp,saved.max_hp,saved.temp_hp].every(n=>typeof n==='number'&&Number.isSafeInteger(n)&&n>=0))return {previous:ref.current,patch:{} as Partial<Character>};
  return reconcileCharacterUpdate(ref,{current_hp:saved.current_hp,max_hp:saved.max_hp,temp_hp:saved.temp_hp,hit_point_revision:saved.hit_point_revision},pending);
 }
+
+/** Apply a full server snapshot's ordered resources, without requeueing it. */
+export function acceptSavedCharacterResources(ref:{current:Character},saved:Partial<Character>,pending:Partial<Character>={}){
+ const previous=ref.current;if(saved.id!==previous.id)return {previous,patch:{} as Partial<Character>};
+ const patch={...acceptSavedPsionicResources(ref,saved,pending).patch,...acceptConcentrationReceipt(ref,saved,pending).patch,...acceptHitPointReceipt(ref,saved,pending).patch};
+ if(Number.isSafeInteger(saved.psionic_hit_dice_revision)&&(saved.psionic_hit_dice_revision??-1)>=0
+  &&Number.isInteger(saved.hit_dice_spent)&&(saved.hit_dice_spent??-1)>=0&&(saved.hit_dice_spent??21)<=20
+  &&(saved.hit_dice_spent_by_type==null||isHitDiceAllocation(saved.hit_dice_spent_by_type,saved.hit_dice_spent!))){
+  Object.assign(patch,acceptPsionicHitDiceReceipt(ref,{hitDiceSpent:saved.hit_dice_spent!,hitDiceRevision:saved.psionic_hit_dice_revision!,hitDiceSpentByType:saved.hit_dice_spent_by_type},pending).patch);
+ }
+ return {previous,patch};
+}

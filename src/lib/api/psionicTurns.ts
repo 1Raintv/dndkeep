@@ -14,6 +14,7 @@ export interface SurgeReceipt {hitDiceSpentByType?:Record<string,number>|null;re
 /** Injected into roll controls so a paid server result can refresh the sheet
  * without being enqueued as another optimistic absolute-value write. */
 export interface PsionicEnhancementPersistence {
+ heal?:(request:HitDiceHealingRequest)=>Promise<HitDiceHealingReceipt>;
  chooseHitDie?:(character:Character,message:string)=>Promise<HitDie|null>;
  rest?:(request:PsionicRestRequest)=>Promise<PsionicRestReceipt>;
  energy:(request:EnergyRequest)=>Promise<EnergyReceipt>;

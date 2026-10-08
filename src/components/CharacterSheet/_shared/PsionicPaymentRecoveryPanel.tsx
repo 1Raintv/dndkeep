@@ -4,14 +4,15 @@ import {pendingPsionicPayments,forgetPsionicPayment,PSIONIC_PAYMENT_CHANGED,type
 import {useModal} from '../../shared/Modal';
 /** Recovery confirms payment only. It must never replay a parent heal/damage
  * action whose outcome may already have been applied in another tab. */
-const readPending=(characterId:string,kindFilter?:PendingPsionicPayment['kind'])=>pendingPsionicPayments(characterId).filter(payment=>!kindFilter||payment.kind===kindFilter);
-export default function PsionicPaymentRecoveryPanel({characterId,persistence,kindFilter,label}:{characterId:string;persistence:PsionicEnhancementPersistence;kindFilter?:PendingPsionicPayment['kind'];label?:string}){
+type PsionPayment=Exclude<PendingPsionicPayment,{kind:'healing'}>;
+const readPending=(characterId:string,kindFilter?:PsionPayment['kind'])=>pendingPsionicPayments(characterId).filter((payment):payment is PsionPayment=>payment.kind!=='healing').filter(payment=>!kindFilter||payment.kind===kindFilter);
+export default function PsionicPaymentRecoveryPanel({characterId,persistence,kindFilter,label}:{characterId:string;persistence:PsionicEnhancementPersistence;kindFilter?:PsionPayment['kind'];label?:string}){
  const [pending,setPending]=useState(()=>readPending(characterId,kindFilter));
  const [busy,setBusy]=useState(false),[message,setMessage]=useState('');const modal=useModal();
  const current=useRef(characterId),mounted=useRef(true);current.current=characterId;
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  useEffect(()=>{const update=()=>setPending(readPending(characterId,kindFilter));update();setMessage('');setBusy(false);window.addEventListener('storage',update);window.addEventListener(PSIONIC_PAYMENT_CHANGED,update);return()=>{window.removeEventListener('storage',update);window.removeEventListener(PSIONIC_PAYMENT_CHANGED,update);};},[characterId,kindFilter]);
- async function recover(payment:PendingPsionicPayment){
+ async function recover(payment:PsionPayment){
   if(busy)return;setBusy(true);
   if(payment.kind==='rest'){
    try{
@@ -37,7 +38,7 @@ export default function PsionicPaymentRecoveryPanel({characterId,persistence,kin
   }catch(error){if(mounted.current&&current.current===characterId)setMessage(`${error instanceof Error?error.message:'Dice cost is still unconfirmed.'} ${original} ${payment.request.recoveryNote??''} Check History before resolving the feature manually.`);}
   finally{if(mounted.current&&current.current===characterId)setBusy(false);}
  }
- async function dismiss(payment:PendingPsionicPayment){
+ async function dismiss(payment:PsionPayment){
   if(busy)return;
   if(await modal.confirm({title:'Dismiss saved roll?',message:payment.kind==='rest'?'This removes only the saved rest notice. It does not undo recovery. Confirm the rest and check History first.':'This only removes the recovery notice from this browser. It does not refund dice, cancel a paid use or apply the feature. Check History and resolve the saved rolls manually first.',confirmLabel:'Dismiss recovery'}))forgetPsionicPayment(characterId,payment.request.requestId);
  }

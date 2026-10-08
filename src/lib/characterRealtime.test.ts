@@ -1,4 +1,4 @@
-import {acceptHitPointReceipt,acceptConcentrationReceipt} from './characterRealtime';
+import {acceptSavedCharacterResources,acceptHitPointReceipt,acceptConcentrationReceipt} from './characterRealtime';
 import {expect,it} from 'vitest';
 import type {Character} from '../types';
 import {acceptPsionicHitDiceReceipt,isCombatHpCarryover,preservePsionicResources,acceptSavedPsionicResources,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,reconcileCharacterUpdate} from './characterRealtime';
@@ -182,4 +182,12 @@ it('a delayed Long Rest cannot restore HP even if damage returned to its capture
 it('stale realtime HP does not discard unrelated current resource changes',()=>{
  const ref={current:{...character,current_hp:5,max_hp:30,temp_hp:0,hit_point_revision:3}};
  expect(reconcileCharacterUpdate(ref,{current_hp:20,max_hp:40,temp_hp:9,hit_point_revision:2,inspiration:true},{}).patch).toEqual({inspiration:true});
+});
+
+it('ordinary save acknowledgments synchronize HP and Hit Dice without restoring older resources',()=>{
+ const ref={current:{...character,current_hp:5,max_hp:30,temp_hp:0,hit_point_revision:4,hit_dice_spent:3,hit_dice_spent_by_type:{'6':3},psionic_hit_dice_revision:4}};
+ const saved={...ref.current,current_hp:15,hit_point_revision:3,hit_dice_spent:2,hit_dice_spent_by_type:{'6':2},psionic_hit_dice_revision:3};
+ expect(acceptSavedCharacterResources(ref,saved).patch).toEqual({});
+ expect(acceptSavedCharacterResources(ref,{...saved,id:'other',hit_point_revision:8,psionic_hit_dice_revision:8}).patch).toEqual({});
+ expect(acceptSavedCharacterResources(ref,{...saved,current_hp:7,hit_point_revision:5,hit_dice_spent:4,hit_dice_spent_by_type:{'6':4},psionic_hit_dice_revision:5}).patch).toMatchObject({current_hp:7,hit_point_revision:5,hit_dice_spent:4,hit_dice_spent_by_type:{'6':4},psionic_hit_dice_revision:5});
 });

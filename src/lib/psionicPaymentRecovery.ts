@@ -1,6 +1,7 @@
+import {validHitDiceHealingRequest,type HitDiceHealingRequest} from './hitDiceHealingRequest';
 import {validPsionicRestRequest,type PsionicRestRequest} from './psionicRestRequest';
 import type {EnkindledRequest,SurgeRequest,EnergyRequest} from './api/psionicTurns';
-export type PendingPsionicPayment={kind:'rest';request:PsionicRestRequest}|{kind:'enkindled';request:EnkindledRequest}|{kind:'surge';request:SurgeRequest}|{kind:'energy';request:EnergyRequest};
+export type PendingPsionicPayment={kind:'healing';request:HitDiceHealingRequest}|{kind:'rest';request:PsionicRestRequest}|{kind:'enkindled';request:EnkindledRequest}|{kind:'surge';request:SurgeRequest}|{kind:'energy';request:EnergyRequest};
 export const PSIONIC_PAYMENT_CHANGED='dndkeep:psionic-payment-changed';
 const activePayments=new Set<string>();
 const prefix=(characterId:string)=>`dndkeep:psionic-payment:${characterId}:`;
@@ -10,6 +11,7 @@ function valid(value:unknown):value is PendingPsionicPayment{
  const v=value as Record<string,unknown>,r=v.request as Record<string,unknown>|undefined;
  if(!r||typeof r!=='object'||typeof r.requestId!=='string'||!r.requestId||typeof r.sourceFeature!=='string'||r.sourceFeature.length>120)return false;
  if(r.recoveryNote!==undefined&&(typeof r.recoveryNote!=='string'||r.recoveryNote.length>1000))return false;
+ if(v.kind==='healing')return validHitDiceHealingRequest(r);
  if(v.kind==='rest')return validPsionicRestRequest(r);
  if(v.kind==='surge')return dice(r.rolls,14)&&(r.hitDie===undefined||[6,8,10,12].includes(r.hitDie as number));
  if(v.kind==='energy')return Array.isArray(r.rolls)&&(
@@ -40,10 +42,10 @@ export function forgetPsionicPayment(characterId:string,requestId:string){
  // A leftover entry is safe: confirming it replays the identical transaction.
  try{localStorage.removeItem(prefix(characterId)+requestId);window.dispatchEvent(new Event(PSIONIC_PAYMENT_CHANGED));}catch{/* retain recovery rather than fail an already-paid result */}
 }
-export function pendingPsionicPayments(characterId:string):PendingPsionicPayment[]{
+export function pendingPsionicPayments(characterId:string,includeActive=false):PendingPsionicPayment[]{
  const entries:PendingPsionicPayment[]=[];
  try{for(let index=0;index<localStorage.length;index++){
-  const key=localStorage.key(index);if(!key?.startsWith(prefix(characterId))||activePayments.has(key))continue;
+  const key=localStorage.key(index);if(!key?.startsWith(prefix(characterId))||(!includeActive&&activePayments.has(key)))continue;
   try{const value:unknown=JSON.parse(localStorage.getItem(key)??'null');if(valid(value)&&key===prefix(characterId)+value.request.requestId)entries.push(value);}catch{/* malformed browser storage is not executable or a payment request */}
  }}catch{/* storage unavailable: payment is blocked before it is sent */}
  return entries;
