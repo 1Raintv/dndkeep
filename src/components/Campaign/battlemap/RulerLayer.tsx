@@ -55,7 +55,7 @@ export function RulerLayer(props: {
   // Mount/unmount the ruler display tree whenever the viewport
   // identity or `active` flag changes.
   useEffect(() => {
-    if (!viewport || !active) {
+    if (!viewport || viewport.destroyed || !active) {
       // Tear down if we had any.
       if (containerRef.current) {
         if (!containerRef.current.destroyed && viewport && !viewport.destroyed) {
@@ -110,10 +110,10 @@ export function RulerLayer(props: {
   // Wire pointer handlers on the canvas element. Active only when
   // ruler mode is on AND we have a viewport + canvas to anchor to.
   useEffect(() => {
-    if (!active || !viewport || !canvasEl) return;
+    if (!active || !viewport || viewport.destroyed || !canvasEl) return;
 
     function worldPointFromEvent(e: PointerEvent | MouseEvent): { x: number; y: number } | null {
-      if (!viewport || !canvasEl) return null;
+      if (!viewport || viewport.destroyed || !canvasEl) return null;
       const rect = canvasEl.getBoundingClientRect();
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
@@ -130,6 +130,8 @@ export function RulerLayer(props: {
     let lastZoom = viewport.scale.x, lastX = viewport.x, lastY = viewport.y;
     let lastWidth = viewport.screenWidth, lastHeight = viewport.screenHeight;
     function redraw() {
+      // v2.793 — scene destruction precedes React cleanup; queued callbacks must stop.
+      if (!viewport || viewport.destroyed) return;
       lastZoom = viewport!.scale.x; lastX = viewport!.x; lastY = viewport!.y;
       lastWidth = viewport!.screenWidth; lastHeight = viewport!.screenHeight;
       const pts = pointsRef.current;
@@ -137,7 +139,7 @@ export function RulerLayer(props: {
       const gfx = graphicsRef.current;
       const label = labelRef.current;
       const container = containerRef.current;
-      if (!gfx || !label || !container) return;
+      if (!gfx || gfx.destroyed || !label || label.destroyed || !container || container.destroyed) return;
       if (pts.length === 0) {
         container.visible = false;
         return;
@@ -215,7 +217,7 @@ export function RulerLayer(props: {
       pointsRef.current = [];
       pendingPosRef.current = null;
       const container = containerRef.current;
-      if (container) container.visible = false;
+      if (container && !container.destroyed) container.visible = false;
     }
 
     function onDown(e: PointerEvent) {
@@ -274,6 +276,7 @@ export function RulerLayer(props: {
     }
 
     const refreshView = () => {
+      if (viewport.destroyed) return;
       if(viewport.scale.x !== lastZoom || viewport.x !== lastX || viewport.y !== lastY
         || viewport.screenWidth !== lastWidth || viewport.screenHeight !== lastHeight)redraw();
     };
