@@ -1,3 +1,4 @@
+import {useCombatSelector} from '../../../context/CombatContext';
 import {useCallback,useEffect,useRef,useState} from 'react';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
 import type {SharpenedRollRecord} from '../../../lib/api/sharpenedRolls';
@@ -5,8 +6,9 @@ import {pendingPsionicPayments,PSIONIC_PAYMENT_CHANGED} from '../../../lib/psion
 import {useModal} from '../../shared/Modal';
 /** v2.831: server records survive tab closure; confirmation freezes only the
  * paid roll, never starts its duration or repeats its resource expenditure. */
-export default function SharpenedRollPanel({characterId,persistence,frozen=false}:{characterId:string;persistence:PsionicEnhancementPersistence;frozen?:boolean}){
+export default function SharpenedRollPanel({characterId,persistence,frozen=false,conditionKey=''}:{characterId:string;persistence:PsionicEnhancementPersistence;frozen?:boolean;conditionKey?:string}){
  const read=persistence.getSharpenedRolls,modal=useModal();
+ const combatConditions=useCombatSelector(s=>JSON.stringify([s.encounter?.id,s.encounter?.status,s.participants.filter(p=>p.participant_type==='character'&&p.entity_id===characterId).map(p=>[p.id,p.active_conditions,p.is_dead])]));
  const [state,setState]=useState<{id:string;rows:SharpenedRollRecord[];error:string}>({id:characterId,rows:[],error:''});
  const [busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[blocked,setBlocked]=useState<string[]>([]);
  const frozenRef=useRef(frozen);frozenRef.current=frozen;
@@ -22,6 +24,7 @@ export default function SharpenedRollPanel({characterId,persistence,frozen=false
   window.addEventListener(PSIONIC_PAYMENT_CHANGED,update);window.addEventListener('dndkeep:sharpened-roll-changed',update);window.addEventListener('storage',update);window.addEventListener('focus',update);
   return()=>{generation.current++;window.removeEventListener(PSIONIC_PAYMENT_CHANGED,update);window.removeEventListener('dndkeep:sharpened-roll-changed',update);window.removeEventListener('storage',update);window.removeEventListener('focus',update);};
  },[refresh]);
+ useEffect(()=>{void refresh();},[conditionKey,combatConditions,refresh]);
  async function confirm(row:SharpenedRollRecord){
   if(frozen||working.current||blocked.includes(row.requestId)||!persistence.finalizeSharpenedRoll)return;
   const token=Symbol();working.current=token;setBusy(true);setNotice('');
@@ -44,6 +47,7 @@ export default function SharpenedRollPanel({characterId,persistence,frozen=false
   {rows.map(row=><div key={row.requestId} style={{borderTop:'1px solid var(--c-border)',paddingTop:8,marginTop:8,fontSize:12}}>
    <strong>{row.finalized?'Recorded number':'Paid dice total'}: {row.total}</strong><div>Original dice: {row.originalRolls.join(', ')} · Final dice: {row.rolls.join(', ')}</div>
    <div>Activated {new Date(row.activatedAt).toLocaleString()}</div>
+   {row.endedByIncapacitation&&<p role="status">Effect ended on incapacitation. Removing the condition or confirming this roll does not restart it.</p>}
    {!row.finalized&&<button className="btn-secondary" style={{marginTop:8,minHeight:44}} disabled={frozen||busy||blocked.includes(row.requestId)} onClick={()=>void confirm(row)}>Confirm saved roll</button>}
    {!row.finalized&&blocked.includes(row.requestId)&&<p>Confirm the saved dice cost first.</p>}
   </div>)}

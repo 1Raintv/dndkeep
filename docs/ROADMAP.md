@@ -1,5 +1,29 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.832 — Sharpened incapacitation cannot be undone by recovery
+
+New Sharpened activations capture an incapacitation epoch. Becoming Incapacitated,
+Unconscious, Paralyzed, Petrified or Stunned permanently ends that activation;
+removing the condition or confirming its saved number cannot revive it. Active
+combatant conditions take precedence over stale sheet conditions. Roster and
+encounter transitions observe the newly authoritative condition state as well.
+New enhancements on an ended activation roll back their cost/history, while
+exact paid replays and final-number recovery remain available.
+
+The roll panel displays the latched expiration and refreshes on relevant sheet
+or combat condition changes. Older records without an epoch remain untracked,
+not inferred active. This does not yet implement the one-minute duration or
+psychic damage effects: combat, solo-turn and campaign Advance Time clocks need
+coordinated handling without counting time spent waiting at the table.
+
+Validation: full gate (2,432 units; TypeScript 201/201; hooks clean; build and
+255.1 KB entry), 28 Sharpened database cases plus 48 existing discipline/Guards
+regressions, and two desktop/phone live recovery/expiration checks. Phone
+screenshot reviewed; no overflow. New migration 20261008103303 applied locally;
+ledger current and no changed-object advisor/function-lint findings. The preceding
+record migration 20261008102503 is confirmed applied to production by workflow
+37764474697, actual apply step.
+
 ### v2.831 — persistent Sharpened final-roll confirmation
 
 New activations create a server-side pending record even without enhancements.

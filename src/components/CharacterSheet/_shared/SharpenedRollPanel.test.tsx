@@ -1,3 +1,4 @@
+vi.mock('../../../context/CombatContext',()=>({useCombatSelector:()=>''}));
 // @vitest-environment happy-dom
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
@@ -6,7 +7,7 @@ vi.mock('../../shared/Modal',()=>({useModal:()=>({confirm:mocks.confirm})}));
 vi.mock('../../../lib/psionicPaymentRecovery',()=>({pendingPsionicPayments:mocks.pending,PSIONIC_PAYMENT_CHANGED:'payment-changed'}));
 import SharpenedRollPanel from './SharpenedRollPanel';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
-const row={requestId:'activation',characterId:'hero',originalRolls:[2],rolls:[4],total:4,activatedAt:'2026-10-08T12:00:00Z',turn:{soloTurn:0},finalized:false};
+const row={incapacitationTracked:true,endedByIncapacitation:false,requestId:'activation',characterId:'hero',originalRolls:[2],rolls:[4],total:4,activatedAt:'2026-10-08T12:00:00Z',turn:{soloTurn:0},finalized:false};
 const setup=()=>({getSharpenedRolls:vi.fn(async()=>[row]),finalizeSharpenedRoll:vi.fn(async()=>({...row,replayed:false}))});
 afterEach(cleanup);beforeEach(()=>{vi.resetAllMocks();mocks.pending.mockReturnValue([]);mocks.confirm.mockResolvedValue(true);});
 it('confirms the same activation and clearly labels the saved number',async()=>{
@@ -33,4 +34,9 @@ it('rechecks frozen state after a delayed confirmation',async()=>{
 it('shows read failure instead of keeping an unverified record',async()=>{
  const p=setup();p.getSharpenedRolls.mockRejectedValue(new Error('Unavailable'));
  render(<SharpenedRollPanel characterId="hero" persistence={p as unknown as PsionicEnhancementPersistence}/>);expect(await screen.findByRole('alert')).toHaveProperty('textContent','Unavailable');expect(screen.queryByRole('button',{name:'Confirm saved roll'})).toBeNull();
+});
+
+it('shows latched expiration separately from the saved number',async()=>{
+ const p=setup();p.getSharpenedRolls.mockResolvedValue([{...row,endedByIncapacitation:true,finalized:true}]);render(<SharpenedRollPanel characterId="hero" persistence={p as unknown as PsionicEnhancementPersistence}/>);
+ expect(await screen.findByText(/Effect ended on incapacitation/)).toBeTruthy();expect(screen.getByText('Recorded number: 4')).toBeTruthy();
 });

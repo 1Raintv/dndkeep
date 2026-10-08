@@ -232,6 +232,8 @@ test.describe('Psionic Discipline activation controls',()=>{
   await page.getByRole('dialog',{name:'Confirm Sharpened roll?'}).getByRole('button',{name:'Confirm final number'}).click();
   await expect(record).toContainText('Recorded number: 12');await page.reload();await expect(record).toContainText('Recorded number: 12');
   await expect(record.getByRole('button',{name:'Confirm saved roll',exact:true})).toHaveCount(0);expect(spent()).toBe('3');
+  sql(`update characters set active_conditions=array['Stunned'] where id='${charId}'`);await expect(record).toContainText('Effect ended on incapacitation');
+  sql(`update characters set active_conditions='{}' where id='${charId}'`);await page.reload();await expect(record).toContainText('Effect ended on incapacitation');
   await record.scrollIntoViewIfNeeded();await record.screenshot({path:info.outputPath('sharpened-record.png')});
   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
    const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();

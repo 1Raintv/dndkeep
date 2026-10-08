@@ -1,7 +1,7 @@
 import {psionicRpc,PsionicRequestError,type PsionicTurn} from './psionicTurns';
 import {validPsionicTurn} from '../psionicDisciplineRequest';
 export interface SharpenedRoll {requestId:string;characterId:string;originalRolls:number[];rolls:number[];total:number;activatedAt:string;turn:PsionicTurn}
-export interface SharpenedRollRecord extends SharpenedRoll {finalized:boolean}
+export interface SharpenedRollRecord extends SharpenedRoll {finalized:boolean;incapacitationTracked:boolean;endedByIncapacitation:boolean}
 export interface SharpenedRollReceipt extends SharpenedRoll {replayed:boolean}
 const uuid=(v:unknown)=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 function valid(value:unknown,characterId:string):value is SharpenedRoll {
@@ -14,7 +14,7 @@ function valid(value:unknown,characterId:string):value is SharpenedRoll {
 const invalid=()=>new PsionicRequestError('The saved Sharpened roll could not be verified. Refresh its record; do not roll or spend again.',false);
 export async function getSharpenedRollRecords(characterId:string):Promise<SharpenedRollRecord[]>{
  const data=await psionicRpc('get_sharpened_roll_records',{p_character_id:characterId},true);
- if(!Array.isArray(data)||!data.every(r=>valid(r,characterId)&&'finalized' in r&&typeof r.finalized==='boolean')||new Set(data.map(r=>r.requestId)).size!==data.length)throw invalid();return data;
+ if(!Array.isArray(data)||!data.every(r=>valid(r,characterId)&&'finalized' in r&&typeof r.finalized==='boolean'&&'incapacitationTracked' in r&&typeof r.incapacitationTracked==='boolean'&&'endedByIncapacitation' in r&&typeof r.endedByIncapacitation==='boolean'&&(!r.endedByIncapacitation||r.incapacitationTracked))||new Set(data.map(r=>r.requestId)).size!==data.length)throw invalid();return data;
 }
 export async function finalizeSharpenedRoll(characterId:string,activationId:string):Promise<SharpenedRollReceipt>{
  if(!uuid(activationId))throw new PsionicRequestError('Invalid Sharpened activation.',true);
