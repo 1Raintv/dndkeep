@@ -43,6 +43,60 @@ test.describe('Paid spell declaration and settlement (local stack)',()=>{
   return receipt.attackId;
  }
  const events=()=>sql(`select count(*) from combat_events where campaign_id='${campaign}' and event_type='spell_counterspell_resolved'`);
+ const cancel=(id=cast,characterId=caster)=>`select cancel_unpaid_spell_atomic('${id}','${characterId}')`;
+ test('cancels an unpaid request durably and blocks delayed declarations',()=>{
+  const q=declare();expect(JSON.parse(sql(auth(dm,cancel())))).toMatchObject({castId:cast,characterId:caster,canceled:true,replayed:false});
+  expect(JSON.parse(sql(auth(dm,cancel())))).toMatchObject({canceled:true,replayed:true});
+  expect(()=>sql(auth(dm,q))).toThrow(/canceled/);expect(character().spell_slots['3'].used).toBe(0);
+  expect(sql(`select count(*) from pending_spell_casts where id='${cast}'`)).toBe('0');
+  sql(auth(dm,declare(randomUUID())));expect(character().spell_slots['3'].used).toBe(1);
+ });
+ test('rejects unpaid stale slots then permits cancellation after source and encounter changes',()=>{
+  const q=declare(cast,3,{total:3,used:2});expect(()=>sql(auth(dm,q))).toThrow(/slots changed/);
+  sql(`update characters set spell_sources='{}' where id='${caster}';delete from combat_participants where id='${target}'`);
+  expect(JSON.parse(sql(auth(dm,cancel()))).canceled).toBe(true);expect(character().spell_slots['3'].used).toBe(0);
+ });
+ test('never cancels or refunds an already paid declaration',()=>{
+  const q=declare();sql(auth(dm,q));expect(JSON.parse(sql(auth(dm,cancel()))).canceled).toBe(false);
+  expect(JSON.parse(sql(auth(dm,q))).replayed).toBe(true);expect(character().spell_slots['3'].used).toBe(1);
+  expect(sql(`select count(*) from dndkeep_private.canceled_spell_requests where cast_id='${cast}'`)).toBe('0');
+ });
+ test('refuses legacy declarations without inventing an unpaid receipt',()=>{
+  sql(`insert into pending_spell_casts(id,campaign_id,encounter_id,chain_id,caster_participant_id,caster_character_id,caster_name,spell_name,spell_level,expires_at)
+   values('${cast}','${campaign}','${encounter}','${randomUUID()}','${target}','${caster}','Caster','Fly',3,now())`);
+  expect(JSON.parse(sql(auth(dm,cancel()))).canceled).toBe(false);expect(character().spell_slots['3'].used).toBe(0);
+ });
+ test('cancellation requires character owner or current DM, including retries',()=>{
+  expect(()=>sql(auth(outsider,cancel()))).toThrow(/unavailable/);expect(()=>sql(auth(owner,cancel()))).toThrow(/unavailable/);
+  sql(`update characters set user_id='${owner}' where id='${caster}'`);
+  expect(JSON.parse(sql(auth(owner,cancel()))).canceled).toBe(true);
+  expect(JSON.parse(sql(auth(dm,cancel()))).replayed).toBe(true);
+  expect(()=>sql(auth(outsider,cancel()))).toThrow(/unavailable/);
+ });
+ test('cannot use a foreign cast or cancellation receipt for another character',()=>{
+  sql(auth(dm,declare()));expect(()=>sql(auth(owner,cancel(cast,hero)))).toThrow(/identity changed/);
+  const id=randomUUID();sql(auth(dm,cancel(id)));expect(()=>sql(auth(owner,cancel(id,hero)))).toThrow(/identity changed/);
+ });
+ test('a canceled ID cannot later pay for another authorized character',()=>{
+  sql(auth(owner,cancel(cast,hero)));expect(()=>sql(auth(dm,declare()))).toThrow(/canceled/);
+  expect(character().spell_slots['3'].used).toBe(0);
+ });
+ test('concurrent cancellation and declaration choose exactly one durable result',async()=>{
+  const q=declare(),results=await Promise.all([parallel(auth(dm,q)),parallel(auth(dm,cancel()))]);
+  expect(results[1].code).toBe(0);const canceled=JSON.parse(results[1].out).canceled;
+  expect(results[0].code===0).toBe(!canceled);expect(character().spell_slots['3'].used).toBe(canceled?0:1);
+  expect(sql(`select count(*) from pending_spell_casts where id='${cast}'`)).toBe(canceled?'0':'1');
+  expect(sql(`select count(*) from dndkeep_private.canceled_spell_requests where cast_id='${cast}'`)).toBe(canceled?'1':'0');
+ });
+ test('simultaneous cancellations return one original receipt and one replay',async()=>{
+  const results=await Promise.all([parallel(auth(dm,cancel())),parallel(auth(dm,cancel()))]);
+  expect(results.every(r=>r.code===0)).toBe(true);expect(results.map(r=>JSON.parse(r.out).replayed).sort()).toEqual([false,true]);
+ });
+ test('cancellation ledger stays private and its public entry point is invoker',()=>{
+  expect(()=>sql(auth(dm,`select * from dndkeep_private.canceled_spell_requests`))).toThrow(/permission denied/);
+  expect(sql("select prosecdef from pg_proc where oid='public.cancel_unpaid_spell_atomic(uuid,uuid)'::regprocedure")).toBe('f');
+  expect(sql("select has_function_privilege('anon','public.cancel_unpaid_spell_atomic(uuid,uuid)','execute')")).toBe('f');
+ });
  test('declares and pays once, even with concurrent identical requests',async()=>{
   const q=declare(),results=await Promise.all([parallel(auth(dm,q)),parallel(auth(dm,q))]);
   expect(results.every(r=>r.code===0)).toBe(true);expect(character().spell_slots['3'].used).toBe(1);
