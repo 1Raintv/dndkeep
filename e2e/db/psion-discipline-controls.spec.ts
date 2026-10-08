@@ -125,7 +125,13 @@ test.describe('Psionic Discipline activation controls',()=>{
    await page.goto(`/campaigns/${campaign}`);const saveButton=page.getByRole('button',{name:'⚄ Roll Save',exact:true});await expect(saveButton).toBeVisible();await saveButton.click();
    await expect(page.getByText('Protection unavailable',{exact:true})).toBeVisible();await expect(saveButton).toBeEnabled();
    await page.unroute(endpoint);await saveButton.click();await expect.poll(()=>sql(`select coalesce(save_result,'unrolled') from pending_attacks where id='${blockedId}'`)).toMatch(/passed|failed/);
-   sql(`update combat_encounters set round_number=2 where id='${encounter}'`);const normalId=attack();await roll(normalId);
+   sql(`update combatants set active_conditions=array['Poisoned'],condition_sources='{"Poisoned":{"save_to_end":{"ability":"INT","dc":18}}}' where id='${combatant}'`);
+   await page.evaluate(async id=>{const path='/src/lib/combatEncounter.ts';const module=await import(path);const random=Math.random;try{Math.random=()=>.99;await module.advanceTurn(id);}finally{Math.random=random;}},encounter);
+   const upkeep=JSON.parse(sql(`select payload from combat_events where encounter_id='${encounter}' and event_type='condition_resave' order by created_at desc limit 1`));
+   expect(upkeep.advantage).toBe(true);expect(upkeep.individual_results).toHaveLength(2);expect(upkeep.d20).toBe(Math.max(...upkeep.individual_results));expect(upkeep.total).toBe(upkeep.d20+upkeep.bonus);expect(upkeep.passed).toBe(true);
+   expect(sql(`select active_conditions::text from combatants where id='${combatant}'`)).toBe('{}');
+   expect(sql(`select round_number from combat_encounters where id='${encounter}'`)).toBe('2');
+   const normalId=attack();await roll(normalId);
    const normal=JSON.parse(sql(`select payload from combat_events where chain_id=(select chain_id from pending_attacks where id='${normalId}') and event_type='save_rolled'`));expect(normal.advantage).toBe(false);expect(normal.psionic_guards).toBe(false);expect(normal.individual_results).toBeUndefined();
   }finally{sql(`update characters set campaign_id=null where id='${charId}';delete from campaigns where id='${campaign}'`);}
  });
