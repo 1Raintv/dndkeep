@@ -1,5 +1,27 @@
 # DNDKeep — Two-Track Roadmap
 
+### Psion discipline client candidate — verified request/response contract
+
+Added typed begin, finish and turn-state calls for the new discipline ledger.
+Requests freeze the original rolls, turn, ability/inventory snapshot and outcome
+before sending. Responses must match that identity, validate payment counters,
+and include current character resources. Historical payment counters remain
+separate so a replay cannot overwrite newer resources. Current/pending lists
+must agree; malformed or timed-out responses stay uncertain instead of inviting
+a new roll. All calls share the existing bounded retry/deadline behavior.
+
+Discipline names and conditional-cost classification now have a shared pure
+registry used by the data table and request validation. Full gate: 2,259 units,
+TS 203/203, hooks/RAW/coordinates/anchors/build/SW and 254 KB entry. The 53 added
+cases cover captured requests, paid/free outcomes, contradictory receipts,
+timeouts and cross-list consistency. These calls are not yet wired to buttons
+or durable browser recovery; that is the next required integration step.
+
+Release checkpoint: PR154 merged at 17849e03 after both hosted gates and its
+Vercel preview succeeded. This includes the preceding map HP preview and Psion
+request deadlines. Production migration/deployment still require confirmation.
+
+
 ### Psion discipline ledger candidate — backend groundwork
 
 A private ledger now records a discipline attempt and its original rolls once
