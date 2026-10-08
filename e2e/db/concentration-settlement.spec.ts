@@ -83,4 +83,54 @@ test.describe('Atomic campaign concentration settlement',()=>{
   }finally{sql(`drop trigger if exists ${trigger} on combat_events;drop function if exists public.${trigger}();`);}
   expect(receipt()).toMatchObject({outcome:'failed',replayed:false});
  });
+ function withWarCaster(){
+  sql(`update characters set gained_feats=array['War Caster'] where id='${character}';
+   insert into pending_concentration_saves(id,campaign_id,encounter_id,chain_id,participant_id,character_id,spell_name,damage,dc,con_bonus,has_con_prof,expires_at,concentration_revision)
+   select '${randomUUID()}',campaign_id,encounter_id,chain_id,participant_id,character_id,spell_name,damage,dc,con_bonus,has_con_prof,expires_at,concentration_revision
+   from pending_concentration_saves where id='${pending}';delete from pending_concentration_saves where id='${pending}'`);
+  pending=sql(`select id from pending_concentration_saves where character_id='${character}'`);
+ }
+ const pair=(first=2,second=17)=>`select settle_pending_concentration_save('${pending}',${first},'player',${second})`;
+ test('War Caster uses the higher die, retains both dice and replays the winning receipt',()=>{
+  withWarCaster();const result=JSON.parse(sql(authenticated(owner,pair())));
+  expect(result).toMatchObject({outcome:'passed',d20:17,total:17,rolls:[2,17],advantage:true,replayed:false});
+  expect(JSON.parse(sql(authenticated(dm,pair(1,1))))).toMatchObject({...result,replayed:true});
+  expect(spell()).toBe('detect-magic');
+  expect(JSON.parse(sql(`select payload from combat_events where chain_id='${chain}' and event_type='save_rolled'`))).toMatchObject({d20:17,rolls:[2,17],advantage:true});
+ });
+ test('advantage keeps the first die when it is higher and uses the selected natural extreme',()=>{
+  withWarCaster();sql(`update characters set nat_1_20_saves=true where id='${character}'`);
+  expect(JSON.parse(sql(authenticated(owner,pair(20,1))))).toMatchObject({outcome:'passed',d20:20,rolls:[20,1]});
+ });
+ test('two low dice fail and clear concentration exactly once',()=>{
+  withWarCaster();expect(JSON.parse(sql(authenticated(owner,pair(2,3))))).toMatchObject({outcome:'failed',d20:3,rolls:[2,3]});
+  expect(spell()).toBe('');expect(JSON.parse(sql(authenticated(owner,pair()))).replayed).toBe(true);
+  expect(sql(`select count(*) from combat_events where chain_id='${chain}' and event_type='concentration_broken'`)).toBe('1');
+ });
+ test('feat removal after damage does not remove captured advantage',()=>{
+  withWarCaster();sql(`update characters set gained_feats=array[]::text[] where id='${character}'`);
+  expect(JSON.parse(sql(authenticated(owner,pair())))).toMatchObject({advantage:true,d20:17});
+ });
+ test('adding the feat after an ordinary offer does not grant retroactive advantage',()=>{
+  sql(`update characters set gained_feats=array['War Caster'] where id='${character}'`);
+  expect(()=>sql(authenticated(owner,pair()))).toThrow(/requires one die/);
+  expect(receipt(owner,12)).toMatchObject({advantage:false,rolls:[12],d20:12});
+ });
+ test('advantage requires two valid dice and cannot be disabled on the offer',()=>{
+  withWarCaster();expect(()=>receipt()).toThrow(/requires two dice/);
+  for(const value of [0,21])expect(()=>sql(authenticated(owner,pair(12,value)))).toThrow(/requires two dice/);
+  expect(()=>sql(`update pending_concentration_saves set has_advantage=false where id='${pending}'`)).toThrow(/fixed when/);
+  expect(sql(`select state from pending_concentration_saves where id='${pending}'`)).toBe('offered');
+ });
+ test('obsolete advantage offer retires without requiring or recording another die',()=>{
+  withWarCaster();sql(`update characters set concentration_spell='Fly' where id='${character}'`);
+  expect(receipt()).toMatchObject({outcome:'obsolete',rolls:null,d20:null});expect(spell()).toBe('Fly');
+ });
+ test('concurrent advantage requests share one pair and one result',async()=>{
+  withWarCaster();const results=await Promise.all([parallel(authenticated(owner,pair(2,17))),parallel(authenticated(dm,pair(3,18)))]);
+  expect(results.map(r=>r.code)).toEqual([0,0]);const receipts=results.map(r=>JSON.parse(r.out));
+  expect(receipts[0].rolls).toEqual(receipts[1].rolls);expect(receipts.map(r=>r.replayed).sort()).toEqual([false,true]);
+  expect(sql(`select count(*) from combat_events where chain_id='${chain}' and event_type='save_rolled'`)).toBe('1');
+ });
+
 });

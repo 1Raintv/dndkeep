@@ -1,5 +1,33 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.808 candidate — durable War Caster campaign concentration saves
+
+New campaign concentration offers snapshot the character's War Caster feat on
+insertion. The server ignores caller-proposed advantage and prevents changing
+that flag afterward. Existing offers retain their original roll contract. The
+settlement endpoint requires two valid dice for advantage, chooses the higher,
+and stores both dice with its result/history in the same transaction. Owner/DM
+races and retries return the winning result without repeating effect cleanup.
+
+The client reads the captured setting, saves both dice before settlement, and
+reuses them after timeout/reload. An older saved first die is preserved when the
+second die is added. The prompt shows advantage and recovery displays both dice.
+Legacy clients fail closed on new advantage offers rather than rolling one die.
+
+Validation: 18 local DB cases; 21 concentration API cases; real desktop/phone
+advantage recovery passed with lost responses, reload, feat removal and one
+history event. All five desktop concentration recovery cases also passed.
+Screenshots inspected. Full gate: 2,139 units, TS 203/203, hooks, RAW, coordinates,
+anchors, build/SW, 254 KB entry. Local security advisors report only standing
+keep_warm/client_errors warnings. Migration 20261008060147 is local only.
+
+Source: 2024 PHB p.209 / [licensed rules](https://roll20.net/compendium/dnd5e/Feats%3AWar%20Caster?expansion=32231).
+No feat prose is copied into the app. Standalone-sheet concentration uses a
+separate settlement path and still needs advantage support. Manual map damage
+consequences, other advantage/disadvantage sources, and mobile sheet header
+clipping remain follow-ups; this release does not certify those paths.
+
+
 ### v2.807 candidate — effective ability scores in automated saves
 
 Automated character saves now load inventory and reuse the sheet's equipped/
@@ -11,8 +39,8 @@ existing concentration DC cap. Full gate passed: 2,134 units, TS 203/203, hooks,
 RAW, coordinate/anchor checks, build/SW and 254.0 KB entry. No item catalogue
 entries or source rules changed.
 
-Remaining concentration work: War Caster advantage is not implemented in the
-single-d20 settlement contract. Manual map damage currently changes HP only.
+Remaining concentration work: standalone-sheet War Caster advantage is still
+unimplemented; the campaign contract is extended in the v2.808 candidate above. Manual map damage currently changes HP only.
 Linking it to concentration needs a damage-time spell/revision snapshot and an
 idempotent offer: replaying an old HP receipt must never test a newer casting.
 Zero-HP/death consequences and cross-device effect settlement also remain open.
@@ -45,7 +73,8 @@ cancellation, and landscape bounds. Phone/landscape screenshots inspected. Final
 release gate passed 2,127 units, TS 203/203, zero hook violations, RAW/map math,
 build/SW and 254.0 KB entry. Client PR145 merged at 0e2ba279 after both CI gates and Vercel preview passed.
 Main CI 37734946053 succeeded. Production Vercel
-62pCzxKU2V3xUjSF5CHUQ1BWvo2V is pending at this checkpoint.
+62pCzxKU2V3xUjSF5CHUQ1BWvo2V succeeded; the public service worker was independently
+verified at 2.806.0.
 
 This is manual HP adjustment, not the entire combat damage resolver: concentration,
 death saves and condition consequences remain a distinct integration boundary.
