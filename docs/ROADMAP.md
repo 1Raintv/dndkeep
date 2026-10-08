@@ -1,6 +1,31 @@
 # DNDKeep — Two-Track Roadmap
 
-### v2.845 candidate — Reachable, viewport-aware map token panels
+### v2.846 candidate — Consistent 2024 condition movement
+
+The 2024 Stunned condition does not prevent movement; the condition data and map
+had retained the old restriction. Remove that restriction while retaining action,
+reaction, concentration and Strength/Dexterity-save effects. Conversely, movement
+validation now respects Paralyzed/Petrified/Unconscious as well as Grappled and
+Restrained. Dead actors and six levels of exhaustion have no voluntary movement.
+
+Map allowance, initiative counter, move validation and movement-log totals now
+share the same pure calculation: exhaustion/Slow reductions, existing halving
+setting, then Dash. This fixes previews omitting reductions and the initiative
+counter showing unadjusted base speed. The map root shrinks rather than growing.
+
+Source: [SRD 5.2.1](https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf),
+Stunned (p.189), plus existing exhaustion/Dash rules. Local regression covers a
+real Stunned player's movement, exact remaining-budget rejection, reduced/Dash
+movement and log values, Paralyzed blocking and desktop/phone views. Reintroducing
+the old Stunned restriction makes the real-player test fail. Full gate passes:
+2,636 units, TypeScript 200/200, entry 255.1 KB; both desktop/phone runs pass.
+
+Follow-ups: removing Unconscious must leave Prone (SRD p.191); shared Incapacitated
+sources must survive removal of one parent condition. Map quick-condition writes
+still need synchronization/cascade handling. Dash/Disengage eligibility needs
+server-authorized action settlement, including incapacitation and spent actions.
+
+### v2.845 — Reachable, viewport-aware map token panels
 
 The creature quick-panel handler already recognized modern creature IDs, but
 its context-menu entry checked only legacy NPC IDs. The menu now exposes the
@@ -15,6 +40,7 @@ Local checks cover both real token types on desktop and phone, landscape/narrow
 screens and a keyboard-only viewport change. Full gate passes (2,608 units, TypeScript 200/200, entry 255.1 KB); all four
 desktop/phone browser cases pass with clean scoped overflow checks. Removing the
 visual viewport resize listener makes the keyboard-bounds assertion fail.
+Merged as PR #189 (`8691300`). Vercel rejected deployment with a 24-hour rate limit.
 Condition-button cascade handling
 remains a separate correctness follow-up; this change only restores panel access
 and keeps its controls within the visible screen.

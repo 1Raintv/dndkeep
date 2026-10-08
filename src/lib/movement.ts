@@ -8,6 +8,7 @@
 // (v2.108) adds Dash, Disengage, and the Opportunity Attack reaction entry
 // that fires when a creature leaves a hostile's reach.
 
+import {combatMovementAllowance} from '../rules/combatMovement';
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { offerOpportunityAttacks } from './pendingReaction';
@@ -31,6 +32,17 @@ export function computeChebyshevFt(
 ): number {
   const cells = Math.max(Math.abs(toRow - fromRow), Math.abs(toCol - fromCol));
   return cells * feetPerSquare;
+}
+
+/** Adapter shared by the map, initiative strip, validator and movement log. */
+export function movementAllowanceForParticipant(row:{is_dead?:boolean|null;max_speed_ft?:number|null;active_conditions?:string[]|null;exhaustion_level?:number|null;active_buffs?:unknown;dash_used_this_turn?:boolean|null}):number {
+ const conditions=row.active_conditions??[];
+ return combatMovementAllowance({baseSpeed:row.max_speed_ft??30,
+  immobilized:row.is_dead===true||conditionsSpeedZero(conditions),halved:conditionsSpeedHalved(conditions),
+  exhaustionLevel:row.exhaustion_level??0,
+  masterySlowed:Array.isArray(row.active_buffs)&&row.active_buffs.some(b=>b?.key==='mastery_slowed'),
+  dashed:row.dash_used_this_turn===true,
+ });
 }
 
 export interface MovementCheck {
@@ -58,39 +70,7 @@ export async function canMove(
   const data = dataRaw ? normalizeParticipantRow(dataRaw) : dataRaw;
 
   const currentUsed = (data?.movement_used_ft as number | null) ?? 0;
-  const baseSpeed = (data?.max_speed_ft as number | null) ?? 30;
-  // v2.108.0 — Phase G: Dash doubles effective movement for the turn per
-  // 2024 PHB ("your Speed becomes double your Speed for the turn").
-  const dashed = (data?.dash_used_this_turn as boolean | null) ?? false;
-  // v2.111.0 — Phase H pt 2: Grappled/Restrained/Paralyzed/Stunned/
-  // Unconscious/Petrified zero out speed entirely. Overrides Dash.
-  const conditions = ((data?.active_conditions as string[] | null) ?? []);
-  const zeroed = conditionsSpeedZero(conditions);
-  // v2.116.0 — Phase H pt 7: exhaustion reduces speed by 5 ft per level.
-  // Applied BEFORE Dash doubling per 2024 RAW (Dash uses your current Speed,
-  // which is already reduced by exhaustion). Clamped at 0.
-  const exhaustionLvl = (data?.exhaustion_level as number | null) ?? 0;
-  const speedAfterExhaustion = Math.max(0, baseSpeed - 5 * exhaustionLvl);
-  // v2.631.0 — Weapon Mastery Slow: flat −10 ft while the
-  // mastery_slowed buff is present (non-stacking — applyBuff de-dupes
-  // by key). Applied with the flat reductions, before halving and
-  // Dash, per RAW ("reduce its Speed by 10 feet").
-  const speedBuffs = ((data?.active_buffs as { key?: string }[] | null) ?? []);
-  const masterySlowed = speedBuffs.some(b => b?.key === 'mastery_slowed');
-  const speedAfterSlow = Math.max(0, speedAfterExhaustion - (masterySlowed ? 10 : 0));
-  // v2.136.0 — Phase L pt 4: Encumbered halves speed (RAW 2024 p.29). Applied
-  // AFTER exhaustion's flat reduction but BEFORE Dash, so a Dashing
-  // Encumbered character moves 2× their halved Speed for the turn — which is
-  // still the RAW interpretation since Dash doubles "your current Speed".
-  // Halving is only currently triggered by the Encumbered condition (see
-  // src/data/conditions.ts), but other future conditions could opt in via
-  // the speedHalved flag.
-  const halved = conditionsSpeedHalved(conditions);
-  const speedAfterHalving = halved
-    ? Math.floor(speedAfterSlow / 2)
-    : speedAfterSlow;
-  const effectiveBase = dashed ? speedAfterHalving * 2 : speedAfterHalving;
-  const maxSpeed = zeroed ? 0 : effectiveBase;
+  const maxSpeed=movementAllowanceForParticipant(data??{});
   const wouldBe = currentUsed + distanceFt;
   const remaining = Math.max(0, maxSpeed - currentUsed);
 
@@ -253,14 +233,15 @@ export interface LogMovementInput {
 }
 
 export async function logMovement(input: LogMovementInput): Promise<void> {
-  const { data: cur } = await supabase
+  const { data: curRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('movement_used_ft, max_speed_ft, disengaged_this_turn')
+    .select('movement_used_ft, max_speed_ft, dash_used_this_turn, disengaged_this_turn, '+JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .single();
 
+  const cur=curRaw?normalizeParticipantRow(curRaw):null;
   const previous = (cur?.movement_used_ft as number | null) ?? 0;
-  const maxSpeed = (cur?.max_speed_ft as number | null) ?? 30;
+  const maxSpeed = movementAllowanceForParticipant(cur??{});
   const disengaged = (cur?.disengaged_this_turn as boolean | null) ?? false;
   const next = previous + input.distanceFt;
 
