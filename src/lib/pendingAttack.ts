@@ -1137,6 +1137,13 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
   if (!row) return null;
   const atk = row as PendingAttack;
 
+  // v2.844: automatic-hit Psion damage has no weapon mastery/retaliation.
+  // Its HP, death state, concentration, log and applied state settle together.
+  if(atk.attack_kind==='auto_hit'&&atk.attack_name==='Destructive Thoughts'&&readPsionicDamageDice(atk.psionic_damage_dice)){
+    const {applyDestructiveThoughtsDamage}=await import('./api/psionicDamageApplication');
+    return applyDestructiveThoughtsDamage(atk);
+  }
+
   if (atk.state !== 'damage_rolled') return atk;
 
   // If no target participant (e.g., target was free-text) we still mark applied

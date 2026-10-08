@@ -1,54 +1,39 @@
 # DNDKeep — Two-Track Roadmap
 
-### In progress — atomic pending-attack settlement
+### v2.844 — Atomic Destructive Thoughts damage application
 
-Local migration `20261008125440_pending_damage_context.sql` adds a DM-only,
-consistent read of attack, encounter, roster, runtime pools, current definitions
-and reactions. It rejects mismatched character/combatant/encounter identities,
-keeps custom/legacy unknown defenses distinct from none, and excludes old full
-sheet snapshots from the response. Eleven local database cases pass; changed
-functions have no advisor findings. This is an integration checkpoint, not a
-shipped HP transaction or a new automation claim.
+Seeded Destructive Thoughts now applies through one DM-authorized transaction:
+verified attack/target context, temporary HP, HP, death saves/conditions, sheet HP
+and suppression marker, concentration cleanup/offer, combat events and applied
+state commit together. A saved receipt keyed by attack ID makes retries and
+simultaneous requests return one result. The client probes that receipt before
+reading mutable target state, and resumes automatic concentration through its
+existing saved-roll API. Legacy attacks without saved dice retain their old path.
 
-Local migration `20261008130309_pending_damage_pool_settlement.sql` now adds a
-private pool-write/receipt stage. All app roles are denied execution: this is not
-a standalone damage endpoint. It locks and rechecks captured state, blocks offered
-reactions and unresolved rolls, spends temp HP before HP, and returns the same
-receipt on exact retry. Saved receipts survive target removal. Sixteen local DB
-cases pass, including competing duplicate/distinct hits, stale snapshots, failed
-receipt insertion, outer-transaction rollback and permission denial. Full gate
-passes (2,587 units, TypeScript 200/200, 255.1 KB entry); no stage advisor findings.
-The current app still uses the old apply path. Keep the local settlement migrations off
-main until the outer transaction includes the remaining side effects and marks
-the attack applied. Character-sheet HP/revision and suppression markers must be
-synchronized in that same outer transaction; the private stage only writes CB pools.
+Migrations `20261008125440_pending_damage_context.sql`,
+`20261008130309_pending_damage_pool_settlement.sql`,
+`20261008131207_pending_damage_life_settlement.sql`, and
+`20261008132417_atomic_destructive_thoughts_application.sql` compose this flow.
+Partial pool/life stages remain inaccessible to application roles. Unresolved
+reactions, changed snapshots and mismatched sheet/combat HP maxima reject the
+whole application. The endpoint preserves existing Petrified resistance and DM
+final-damage adjustments; it does not introduce typed affinity automation.
 
-Local migration `20261008131207_pending_damage_life_settlement.sql` composes
-pool settlement with death saves, massive damage, unconscious condition sources,
-character-sheet HP/marker synchronization, concentration termination/cleanup and
-revision-bound concentration offers (including the existing advantage trigger).
-The caller must explicitly select character-style death saves versus monster
-instant death; characters cannot opt out of death-save handling through this API.
-Sheet/combat maximum mismatch fails before commit rather than writing sheet HP
-over its maximum. The private composition refuses an independently committed
-partial pool receipt; normal callers must keep the whole hit in one transaction.
-Forty-one combined local database cases and the full 2,587-unit gate pass; no
-life-stage advisor findings. The app still calls the old damage path. Remaining
-integration includes retaliation, mastery, events, typed adjustments/defenses,
-Sharpened choice/turn usage, an outer endpoint and client receipt recovery.
+Validation: full gate passes (2,597 units, TypeScript 200/200, entry 255.1 KB);
+41 foundation database cases plus nine endpoint cases; desktop/mobile checks
+cover natural and Surge-adjusted dice, actual Apply, sheet synchronization,
+replay and deliberately lost committed responses. The new browser assertion
+fails with the old branch restored (sheet HP 20 instead of 7). Release status:
+local verified work pending merge and gated production migration; frontend
+publishing remains subject to the existing Vercel quota limit.
 
-Next implementation must replace `pendingAttack.applyDamage` separate writes
-with one idempotent settlement receipt. Preserve original damage components;
-record reaction/DM adjustments explicitly before recomputing typed totals.
-Lock and recheck the captured context; settle target pools/death state, melee
-retaliation, concentration cleanup/offers and combat events together. Mastery
-side effects need saved roll/outcome identities (especially Topple), not a new
-random roll on receipt replay. Sharpened once-per-current-turn replacement must
-share that settlement and retain shared-AoE roll provenance. Conditional/unknown
-defenses need explicit adjudication, never silent matching failure. Character
-species defaults also need correction before reuse (current blanket Tiefling
-fire and Goliath cold defaults are not sufficient to model lineage choices).
-
+Remaining: normal attack settlement must include melee retaliation and mastery
+with saved outcomes (especially Topple). Typed defenses need explicit handling
+for unknown/conditional text and reaction/DM adjustment provenance. Sharpened
+replacement must validate source, duration and once-per-current-turn usage,
+including shared-AoE dice. Destructive Thoughts still needs payment/trigger
+binding and paid-result reload recovery. Character species defaults must be
+choice-aware before reuse: blanket Tiefling fire/Goliath cold is insufficient.
 
 ### v2.843 — Keep creature damage defenses through import and editing
 

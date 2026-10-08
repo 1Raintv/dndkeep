@@ -16,7 +16,7 @@ test.describe('Preserved Destructive Thoughts dice',()=>{
     insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at)
     values(gen_random_uuid(),'${user}','${user}','{"sub":"${user}","email":"${email}"}','email',now(),now(),now());
    insert into campaigns(id,owner_id,name) values('${campaign}','${user}','Typed damage');
-   insert into characters(id,user_id,campaign_id,name,species,class_name,background) values('${char}','${user}','${campaign}','Damage actor','Human','Fighter','Soldier');
+   insert into characters(id,user_id,campaign_id,name,species,class_name,background,current_hp,max_hp) values('${char}','${user}','${campaign}','Damage actor','Human','Fighter','Soldier',20,20);
    insert into combatants(id,campaign_id,owner_id,name,definition_type,definition_id,current_hp,max_hp) values('${cb}','${campaign}','${user}','Damage actor','character','${char}',20,20);
    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${enc}','${campaign}','active',1,0);
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,combatant_id) values('${cp}','${enc}','${campaign}','character','${char}','Damage actor',0,'${cb}');
@@ -41,6 +41,24 @@ test.describe('Preserved Destructive Thoughts dice',()=>{
   await panel.getByRole('button',{name:/Apply Damage/}).click({trial:true});await panel.screenshot({path:info.outputPath('psionic-damage-dice.png')});
   if(surge)await expect(panel).toContainText('Surge adjusted low dice to 4.');
   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[aria-label=\"Resolve attack\"], [aria-label=\"Resolve attack\"] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped).toEqual([]);expect(layout.pastEdge).toEqual([]);}
+  // Lose the first committed write response: recovery must retain attack identity.
+  let writes=0;
+  if(surge)await page.route('**/rest/v1/rpc/apply_psionic_pending_damage',async route=>{
+   if(!route.request().postDataJSON()?.p_expected){await route.continue();return;}
+   writes++;
+   if(writes===1){const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort('failed');}
+   else await route.continue();
+  });
+  // Apply through the real API, then request the committed result again.
+  await panel.getByRole('button',{name:/Apply Damage/}).click();
+  await expect.poll(()=>sql(`select state from pending_attacks where id='${attack}'`)).toBe('applied');
+  if(surge)await expect.poll(()=>writes).toBe(2);
+  const applied=await page.evaluate(async id=>{const path='/src/lib/pendingAttack.ts';return (await import(path)).applyDamage(id);},attack);
+  expect(applied.state).toBe('applied');expect(applied.damage_final).toBe(total);
+  expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe(String(20-total));
+  expect(sql(`select current_hp from characters where id='${char}'`)).toBe(String(20-total));
+  expect(sql(`select count(*) from combat_events where campaign_id='${campaign}' and event_type='damage_applied'`)).toBe('1');
+  expect(JSON.parse(sql(`select active_buffs from combatants where id='${cb}'`))).toHaveLength(1);
 
  }finally{await page.close();sql(`delete from campaigns where id='${campaign}';delete from characters where id='${char}';delete from auth.users where id='${user}';`);}
  });
