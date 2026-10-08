@@ -232,6 +232,8 @@ test.describe('Psionic Discipline activation controls',()=>{
   await page.getByRole('dialog',{name:'Confirm Sharpened roll?'}).getByRole('button',{name:'Confirm final number'}).click();
   await expect(record).toContainText('Recorded number: 12');await page.reload();await expect(record).toContainText('Recorded number: 12');
   await expect(record.getByRole('button',{name:'Confirm saved roll',exact:true})).toHaveCount(0);expect(spent()).toBe('3');
+  await expect(record).toContainText('Time remaining: 60 seconds');
+  await page.getByRole('button',{name:/End Turn/}).locator('visible=true').first().click();await expect(record).toContainText('Time remaining: 54 seconds');
   sql(`update characters set active_conditions=array['Stunned'] where id='${charId}'`);await expect(record).toContainText('Effect ended on incapacitation');
   sql(`update characters set active_conditions='{}' where id='${charId}'`);await page.reload();await expect(record).toContainText('Effect ended on incapacitation');
   await record.scrollIntoViewIfNeeded();await record.screenshot({path:info.outputPath('sharpened-record.png')});

@@ -7,7 +7,7 @@ vi.mock('../../shared/Modal',()=>({useModal:()=>({confirm:mocks.confirm})}));
 vi.mock('../../../lib/psionicPaymentRecovery',()=>({pendingPsionicPayments:mocks.pending,PSIONIC_PAYMENT_CHANGED:'payment-changed'}));
 import SharpenedRollPanel from './SharpenedRollPanel';
 import type {PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
-const row={incapacitationTracked:true,endedByIncapacitation:false,requestId:'activation',characterId:'hero',originalRolls:[2],rolls:[4],total:4,activatedAt:'2026-10-08T12:00:00Z',turn:{soloTurn:0},finalized:false};
+const row={durationTracked:true,remainingSeconds:60,expiredByDuration:false,incapacitationTracked:true,endedByIncapacitation:false,requestId:'activation',characterId:'hero',originalRolls:[2],rolls:[4],total:4,activatedAt:'2026-10-08T12:00:00Z',turn:{soloTurn:0},finalized:false};
 const setup=()=>({getSharpenedRolls:vi.fn(async()=>[row]),finalizeSharpenedRoll:vi.fn(async()=>({...row,replayed:false}))});
 afterEach(cleanup);beforeEach(()=>{vi.resetAllMocks();mocks.pending.mockReturnValue([]);mocks.confirm.mockResolvedValue(true);});
 it('confirms the same activation and clearly labels the saved number',async()=>{

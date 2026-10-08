@@ -82,7 +82,9 @@ export async function spendEnkindledLifeForce(characterId:string,input:Enkindled
  return data as unknown as EnkindledReceipt;
 }
 export async function advancePsionicSoloTurn(characterId:string,requestId:string,expectedTurn:number):Promise<number>{
- return await psionicRpc('advance_psionic_solo_turn',{p_character_id:characterId,p_request_id:requestId,p_expected_turn:expectedTurn},true) as number;
+ const result=await psionicRpc('advance_psionic_solo_turn',{p_character_id:characterId,p_request_id:requestId,p_expected_turn:expectedTurn},true);
+ if(typeof result!=='number'||!Number.isSafeInteger(result)||result<=expectedTurn)throw new PsionicRequestError('The new solo turn could not be verified. Confirm the same turn request.',false);
+ if(typeof window!=='undefined')window.dispatchEvent(new Event('dndkeep:sharpened-roll-changed'));return result;
 }
 
 export async function spendPsionicSurge(characterId:string,input:SurgeRequest):Promise<SurgeReceipt>{

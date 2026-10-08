@@ -95,7 +95,7 @@ test.describe('Sharpened saved activation rolls',()=>{
  test('read previews match paid enhancements and finalized results exactly',()=>{
  run(enhance());run(enhance(randomUUID(),'surge','null','6'));const preview=run(`select get_sharpened_roll_records('${char}')`)[0];
  expect(preview).toMatchObject({originalRolls:[2,3,8],rolls:[4,4,8],total:16,finalized:false});
- const final=run(finalize());expect({...preview,finalized:undefined,incapacitationTracked:undefined,endedByIncapacitation:undefined}).toEqual({...final,replayed:undefined,finalized:undefined,incapacitationTracked:undefined,endedByIncapacitation:undefined});
+ const final=run(finalize());expect({...preview,finalized:undefined,incapacitationTracked:undefined,endedByIncapacitation:undefined,durationTracked:undefined,remainingSeconds:undefined,expiredByDuration:undefined}).toEqual({...final,replayed:undefined,finalized:undefined,incapacitationTracked:undefined,endedByIncapacitation:undefined,durationTracked:undefined,remainingSeconds:undefined,expiredByDuration:undefined});
  });
  test('unrelated users and anonymous callers cannot list records',()=>{
  expect(()=>run(`select get_sharpened_roll_records('${char}')`,other)).toThrow(/Character is unavailable/);
@@ -154,5 +154,47 @@ test.describe('Sharpened saved activation rolls',()=>{
  sql(`update characters set active_conditions=array['Stunned'] where id='${char}'`);expect(record().endedByIncapacitation).toBe(false);
  sql(`delete from combat_participants where id='${participant}';update characters set active_conditions='{}' where id='${char}'`);expect(record().endedByIncapacitation).toBe(true);
  }));
+
+ test('ten declared solo rounds expire one minute without using wall-clock age',()=>{
+ sql(`update dndkeep_private.psionic_discipline_uses set created_at=now()-interval '1 day' where request_id='${activation}'`);
+ expect(record()).toMatchObject({durationTracked:true,remainingSeconds:60,expiredByDuration:false});
+ for(let turn=0;turn<9;turn++)run(`select advance_psionic_solo_turn('${char}','${randomUUID()}',${turn})`);
+ expect(record().remainingSeconds).toBe(6);const request=randomUUID();run(`select advance_psionic_solo_turn('${char}','${request}',9)`);
+ expect(record()).toMatchObject({remainingSeconds:0,expiredByDuration:true});run(`select advance_psionic_solo_turn('${char}','${request}',9)`);run(finalize());expect(record().expiredByDuration).toBe(true);
+ });
+ test('campaign clock honors its configured seconds per round and ignores no-op or backward edits',()=>combat((_cb,encounter)=>{
+ const campaign=sql(`select campaign_id from combat_encounters where id='${encounter}'`);
+ sql(`update campaigns set seconds_per_round=10,combat_rounds_elapsed=3 where id='${campaign}'`);expect(record().remainingSeconds).toBe(30);
+ sql(`update campaigns set combat_rounds_elapsed=3 where id='${campaign}';update campaigns set combat_rounds_elapsed=2 where id='${campaign}'`);expect(record().remainingSeconds).toBe(30);
+ sql(`update campaigns set seconds_per_round=6 where id='${campaign}';update campaigns set combat_rounds_elapsed=7 where id='${campaign}'`);expect(record().expiredByDuration).toBe(true);
+ }));
+ test('combat turn changes do not double-count the separate campaign round tick',()=>combat((_cb,encounter)=>{
+ sql(`update combat_encounters set round_number=2 where id='${encounter}'`);expect(record().remainingSeconds).toBe(60);
+ sql(`update campaigns set seconds_per_round=6,combat_rounds_elapsed=1 where id=(select campaign_id from combat_encounters where id='${encounter}')`);
+ // The old configured scale (10) applies to this same update; changing a
+ // setting cannot retroactively reinterpret elapsed time.
+ expect(record().remainingSeconds).toBe(50);
+ }));
+
+ test('elapsed campaign time blocks new enhancements without charging resources',()=>{
+ const campaign=randomUUID();try{
+ sql(`insert into campaigns(id,owner_id,name) values('${campaign}','${owner}','Sharp elapsed');update characters set campaign_id='${campaign}' where id='${char}';update campaigns set combat_rounds_elapsed=6 where id='${campaign}'`);
+ expect(record().expiredByDuration).toBe(true);expect(()=>run(enhance())).toThrow(/duration ended/);expect(spent()).toBe(0);
+ expect(sql(`select count(*) from psionic_feature_uses where character_id='${char}'`)).toBe('0');expect(run(finalize()).total).toBe(2);expect(record().remainingSeconds).toBe(0);
+ }finally{sql(`delete from campaigns where id='${campaign}'`);}
+ });
+ test('Restoration recovery expires the duration without resetting a newer activation on replay',()=>{
+ const id=randomUUID();const restore=`select settle_psionic_energy('${char}','${id}','restore',0,array[]::integer[],'Psionic Restoration')`;
+ run(restore);expect(record().expiredByDuration).toBe(true);
+ run(`select advance_psionic_solo_turn('${char}','${randomUUID()}',0)`);const next=randomUUID();begin(next,1);run(restore);
+ expect(run(`select get_sharpened_roll_records('${char}')`).find((r:{requestId:string})=>r.requestId===next).remainingSeconds).toBe(60);
+ });
+
+ test('a completed Short Rest expires the duration without inventing its exact elapsed length',()=>{
+ const row=JSON.parse(sql(`select to_jsonb(c) from characters c where id='${char}'`)),keys=['spell_slots','class_resources','feature_uses'];
+ const expected=Object.fromEntries([...keys,'class_name','level','secondary_class','secondary_level','max_hp','long_rest_clears_combat_conditions'].map(k=>[k,row[k]]));
+ const updates=Object.fromEntries(keys.map(k=>[k,row[k]??{}]));
+ run(`select complete_psionic_rest('${char}','${randomUUID()}','short','${JSON.stringify(expected)}','${JSON.stringify(updates)}')`);expect(record().expiredByDuration).toBe(true);
+ });
 
 });

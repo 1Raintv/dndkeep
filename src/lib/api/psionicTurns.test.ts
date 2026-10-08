@@ -147,3 +147,7 @@ it('rejects linked extra-die counts that disagree with the saved request',async(
  for(const patch of [{count:1},{count:3},{baseRolls:[1,2]},{extraRolls:[0,3]}])await expect(spendEnkindledLifeForce('hero',{...request,activationId,sourceFeature:'Sharpened Mind',...patch})).rejects.toMatchObject({definitelyNotPaid:true});
  expect(mocks.rpc).not.toHaveBeenCalled();
 });
+
+it.each([null,0,1.5,'1',-1])('keeps a malformed solo-turn confirmation recoverable: %j',async value=>{
+ mocks.rpc.mockResolvedValue({data:value,error:null});await expect(advancePsionicSoloTurn('hero','next',0)).rejects.toMatchObject({definitelyNotPaid:false});
+});
