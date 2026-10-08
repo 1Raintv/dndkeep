@@ -1,5 +1,26 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.865 — Consistent Psychic damage application
+
+The direct Destructive Thoughts application endpoint previously ignored recorded
+Psychic defenses and Sharpened Mind; a resistant target took 13 instead of 6 in
+the reproduced case. It now enters the same locked resolution used by the DM
+preview. Immunity, resistance, vulnerability and active Sharpened bypass agree
+across callers. Unknown defenses require a DM decision. Default application never
+chooses or spends the optional Attack Mode replacement. Receipt probes remain
+read-only; committed winners return before reading changed targets or turns.
+
+Migration: `20261008204710_psionic_application_defense_parity.sql` (local applied).
+Verification: 33 SQL cases and six desktop/phone Psion damage flows pass,
+including lost replies, preserved dice, Surge and optional Sharpened replacement.
+The resistance regression fails before the fix (13 instead of 6). Full gate passes:
+2,838 units / 257 files, TypeScript 199/199, hooks/RAW/coordinates/anchors, build
+and 255.2 KB entry. Database lint has no errors or findings on the changed function;
+existing warnings remain in unrelated functions. Publication pending.
+This closes a prerequisite bypass; ordinary
+psychic spells and weapons still require broader typed-damage integration and
+atomic settlement, including mastery and melee retaliation.
+
 ### v2.864 — Responsive combat initiative strip
 
 Combat controls use the available width below the monster rail, with 44px primary
@@ -13,7 +34,8 @@ lifecycle flows pass (real End Turn / End Combat). Scoped overflow checks pass;
 portrait and landscape screenshots inspected. The new touch-target regression
 fails against the old layout. Full gate passes: 2,838 units / 257 files,
 TypeScript 199/199, hooks/RAW/coordinates/anchors, production build, 255.2 KB entry.
-No migration. Publishing pending.
+No migration. Merged PR #208 after both CI gates passed. Main deployment is
+rate-limited by Vercel; v2.861.0 remains independently confirmed live.
 
 ### v2.863 — Recover casting actions on their original turn
 

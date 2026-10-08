@@ -35,6 +35,31 @@ test.describe('Sharpened Mind damage resolution',()=>{
   const id=randomUUID();sql(`insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,target_participant_id,attacker_name,attacker_type,target_name,attack_name,attack_kind,attack_source,hit_result,state,damage_dice,damage_type,chain_id,damage_final,psionic_damage_dice)
    select '${id}',campaign_id,encounter_id,attacker_participant_id,target_participant_id,attacker_name,attacker_type,target_name,attack_name,attack_kind,attack_source,hit_result,'damage_rolled',damage_dice,damage_type,'${randomUUID()}',13,psionic_damage_dice from pending_attacks where id='${attack}'`);return id;
  }
+ // v2.865: old callers must enter the same defense/Sharpened settlement.
+ const direct=(id=attack)=>run(`select apply_psionic_pending_damage('${id}',${encoded(run(`select get_pending_damage_context('${id}')`))},2)`);
+ test('direct application respects resistance and returns the same saved resolution',()=>{
+  const result=direct();expect(result.settlement.damage).toBe(6);expect(result.resolution.bypass).toBe(false);
+  expect(run(`select apply_psionic_pending_damage('${attack}')`).replayed).toBe(true);expect(uses()).toBe(0);
+ });
+ test('a direct winner prevents a later replacement request from spending or damaging again',()=>{
+  activate();const selected=preview(choose());const first=direct();
+  expect(first.settlement.damage).toBe(13);const replay=apply(selected);
+  expect(replay.replayed).toBe(true);expect(replay.settlement.damage).toBe(13);expect(uses()).toBe(0);
+ });
+ test('direct application preserves immunity despite active Sharpened Mind',()=>{
+  activate();sql(`update characters set damage_immunities=array['psychic'] where id='${char}'`);
+  expect(direct().settlement.damage).toBe(0);expect(uses()).toBe(0);
+ });
+ test('direct application bypasses resistance but preserves vulnerability without spending Attack Mode',()=>{
+  activate();sql(`update characters set damage_vulnerabilities=array['psychic'] where id='${char}'`);
+  const result=direct();expect(result.settlement.damage).toBe(26);expect(result.resolution.bypass).toBe(true);expect(uses()).toBe(0);
+ });
+ test('direct application refuses unknown defenses and leaves HP and state untouched',()=>{
+  sql(`update characters set damage_resistances=array['psychic while sleeping'] where id='${char}'`);
+  expect(()=>direct()).toThrow(/Review Psychic defenses/);
+  expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe('100');
+  expect(sql(`select state from pending_attacks where id='${attack}'`)).toBe('damage_rolled');
+ });
  test('applies Psychic resistance once without an active Sharpened effect',()=>{
   const plan=preview();expect(plan).toMatchObject({damageBefore:13,damageAfter:6,bypass:false,defensesKnown:true});
   expect(apply(plan).settlement).toMatchObject({damage:6,afterHP:97,afterTempHP:0});expect(uses()).toBe(0);

@@ -27,13 +27,19 @@ test.describe('Atomic Destructive Thoughts application',()=>{
  const parallel=(q:string)=>new Promise<string>((resolve,reject)=>{const child=spawn('docker',['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1']);let out='',err='';child.stdout.on('data',d=>out+=d);child.stderr.on('data',d=>err+=d);child.on('close',code=>code===0?resolve(out.trim()):reject(new Error(err)));child.stdin.end(auth(dm,q));});
  test('receipt probe is read-only and application synchronizes HP exactly once',()=>{
   expect(run(`select apply_psionic_pending_damage('${attack}')`)).toBe(null);expect(pools()).toEqual({hp:20,temp:3});
-  const q=call(context()),r=run(q);expect(r.attack.state).toBe('applied');expect(r.settlement).toMatchObject({damage:13,afterHP:10,afterTempHP:0});
-  expect(run(q)).toEqual({...r,replayed:true});expect(events()).toBe('1');expect(pools()).toEqual({hp:10,temp:0});
-  expect(sql(`select current_hp from characters where id='${char}'`)).toBe('10');
+  const q=call(context()),r=run(q);expect(r.attack.state).toBe('applied');expect(r.settlement).toMatchObject({damage:6,afterHP:17,afterTempHP:0});
+  expect(run(q)).toEqual({...r,replayed:true});expect(events()).toBe('1');expect(pools()).toEqual({hp:17,temp:0});
+  expect(sql(`select current_hp from characters where id='${char}'`)).toBe('17');
  });
  test('concurrent identical applications share one HP change and one event',async()=>{
   const q=call(context()),rs=(await Promise.all([parallel(q),parallel(q)])).map(s=>JSON.parse(s));
-  expect(rs.map(r=>r.replayed).sort()).toEqual([false,true]);expect(pools()).toEqual({hp:10,temp:0});expect(events()).toBe('1');
+  expect(rs.map(r=>r.replayed).sort()).toEqual([false,true]);expect(pools()).toEqual({hp:17,temp:0});expect(events()).toBe('1');
+ });
+ test('direct and preview applications racing share one defense calculation and receipt',async()=>{
+  const ctx=context(),plan=run(`select preview_psionic_damage('${attack}')`);
+  const rs=(await Promise.all([parallel(call(ctx)),parallel(`select apply_psionic_damage_resolution('${attack}',${encoded(plan)},2)`)])).map(s=>JSON.parse(s));
+  expect(rs.map(r=>r.replayed).sort()).toEqual([false,true]);
+  expect(rs.map(r=>r.settlement.damage)).toEqual([6,6]);expect(pools()).toEqual({hp:17,temp:0});expect(events()).toBe('1');
  });
  test('Petrified resistance is rounded once and replay cannot halve again',()=>{
   sql(`update combatants set active_conditions=array['Petrified','Incapacitated'] where id='${cb}'`);
