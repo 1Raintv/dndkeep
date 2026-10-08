@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {expect,test} from '@playwright/test';
@@ -66,6 +67,114 @@ test.describe('Shared Psionic Discipline turns',()=>{
  test('ordinary triggered disciplines remain available on another creatures turn',()=>withCombat(()=>{
   expect(run(begin('inerrant-aim',randomUUID(),JSON.stringify(state().turn))).conditional).toBe(true);expect(pool()).toBe(6);
  }));
+ test('Guards removes only Charmed/Frightened and blocks reapplication until the next solo turn',()=>{
+  sql(`update characters set active_conditions=array['Charmed','Frightened','Prone'] where id='${char}'`);
+  const id=randomUUID(),paid=begin('psionic-guards',id,'{"soloTurn":0}',1,'array[]');run(paid);
+  expect(state().guards.requestId).toBe(id);
+  expect(sql(`select array_to_json(active_conditions) from characters where id='${char}'`)).toBe('["Prone"]');
+  run(`update characters set active_conditions=array['charmed','FRIGHTENED','Poisoned'] where id='${char}';select 1`);
+  expect(sql(`select array_to_json(active_conditions) from characters where id='${char}'`)).toBe('["Poisoned"]');
+  const end=randomUUID();run(`select advance_psionic_solo_turn('${char}','${end}',0)`);expect(state().guards).toBeNull();
+  expect(run(paid).replayed).toBe(true);expect(state().guards).toBeNull();expect(pool()).toBe(5);
+  run(`update characters set active_conditions=array['Charmed'] where id='${char}';select 1`);
+  expect(sql(`select array_to_json(active_conditions) from characters where id='${char}'`)).toBe('["Charmed"]');
+ });
+ test('Guards protects both sheet and combatant through other turns, then expires on the owners next turn',()=>withCombat(({encounter,hero})=>{
+  sql(`update combat_encounters set current_turn_index=1 where id='${encounter}';
+   update combatants set active_conditions=array['Charmed','Frightened','Prone'],condition_sources='{"Charmed":{"test":1},"Frightened":{"test":2},"Prone":{"test":3}}' where id='${hero}'`);
+  const paid=begin('psionic-guards',randomUUID(),JSON.stringify(state().turn),1,'array[]');run(paid);
+  expect(sql(`select array_to_json(active_conditions) from combatants where id='${hero}'`)).toBe('["Prone"]');
+  expect(JSON.parse(sql(`select condition_sources from combatants where id='${hero}'`))).toEqual({Prone:{test:3}});
+  const active=state().guards;expect(active).not.toBeNull();
+  sql(`update combat_encounters set name='Unrelated edit' where id='${encounter}';update combat_participants set turn_order=turn_order where encounter_id='${encounter}'`);
+  expect(state().guards).toEqual(active);
+  sql(`update combat_encounters set current_turn_index=0,round_number=2 where id='${encounter}';update combatants set active_conditions=array['Frightened','Restrained'],condition_sources='{"Frightened":{},"Restrained":{}}' where id='${hero}'`);
+  expect(state().guards).toEqual(active);
+  expect(sql(`select array_to_json(active_conditions) from combatants where id='${hero}'`)).toBe('["Restrained"]');
+  sql(`update combat_encounters set current_turn_index=1 where id='${encounter}'`);expect(state().guards).toBeNull();
+  expect(run(paid).replayed).toBe(true);expect(state().guards).toBeNull();
+  sql(`update combatants set active_conditions=array['Frightened'] where id='${hero}'`);
+  expect(sql(`select array_to_json(active_conditions) from combatants where id='${hero}'`)).toBe('["Frightened"]');
+ }));
+ test('ending combat keeps Guards until the next declared solo turn',()=>withCombat(({encounter})=>{
+  sql(`update combat_encounters set current_turn_index=1 where id='${encounter}'`);run(begin('psionic-guards',randomUUID(),JSON.stringify(state().turn),1,'array[]'));
+  sql(`update combat_encounters set status='ended' where id='${encounter}'`);expect(state().guards).not.toBeNull();
+  run(`select advance_psionic_solo_turn('${char}','${randomUUID()}',0)`);expect(state().guards).toBeNull();
+ }));
+ test('entering combat starts a new own turn and expires earlier solo Guards',()=>{
+  run(begin('psionic-guards',randomUUID(),'{"soloTurn":0}',1,'array[]'));
+  withCombat(({encounter})=>{expect(state().guards).not.toBeNull();sql(`update combat_encounters set current_turn_index=1 where id='${encounter}'`);expect(state().guards).toBeNull();});
+ });
+ test('a rewind to the owner starts a fresh turn instead of reviving prior Guards',()=>withCombat(({encounter})=>{
+  sql(`update combat_encounters set current_turn_index=1 where id='${encounter}'`);run(begin('psionic-guards',randomUUID(),JSON.stringify(state().turn),1,'array[]'));
+  sql(`update combat_encounters set current_turn_index=0 where id='${encounter}';update combat_encounters set current_turn_index=1 where id='${encounter}'`);expect(state().guards).toBeNull();
+ }));
+ test('unfinished initiative ordering does not expire Guards on a provisional first actor',()=>{
+  run(begin('psionic-guards',randomUUID(),'{"soloTurn":0}',1,'array[]'));
+  withCombat(({encounter,creatureParticipant})=>{
+   sql(`update combat_participants set turn_order=0 where encounter_id='${encounter}'`);expect(state().guards).not.toBeNull();
+   sql(`update combat_participants set turn_order=1 where id='${creatureParticipant}'`);expect(state().guards).toBeNull();
+  });
+ });
+ test('a prior actor dying starts the Psions turn without waiting for a round change',()=>{
+  run(begin('psionic-guards',randomUUID(),'{"soloTurn":0}',1,'array[]'));
+  withCombat(({creature})=>{expect(state().guards).not.toBeNull();sql(`update combatants set is_dead=true where id='${creature}'`);expect(state().guards).toBeNull();});
+ });
+ test('advancing an own turn concurrently with Guards cannot deadlock or preserve the expired effect',async()=>{
+  const campaign=randomUUID(),encounter=randomUUID();try{
+   sql(`insert into campaigns(id,owner_id,name) values('${campaign}','${other}','Concurrent turn');update characters set campaign_id='${campaign}' where id='${char}';
+    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaign}','active',1,0);
+    insert into combat_participants(encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values('${encounter}','${campaign}','character','${char}','Psion',0)`);
+   const paid=begin('psionic-guards',randomUUID(),JSON.stringify(state().turn),1,'array[]');
+   const [activation,advance]=await Promise.all([
+    parallel(auth(owner,`set local statement_timeout='5s';${paid}`)),
+    parallel(`begin;set local statement_timeout='5s';update combat_encounters set round_number=2 where id='${encounter}';commit;`),
+   ]);
+   expect(advance.code).toBe(0);if(activation.code!==0)expect(activation.error).toContain('Turn changed');
+   expect(state().guards).toBeNull();expect(pool()).toBe(activation.code===0?5:6);
+  }finally{sql(`delete from campaigns where id='${campaign}'`);}
+ });
+ test('one-minute Restoration expires Guards once; replay cannot erase a later activation',()=>{
+  run(begin('psionic-guards',randomUUID(),'{"soloTurn":0}',1,'array[]'));
+  const restore=`select settle_psionic_energy('${char}','${randomUUID()}','restore',0,array[]::integer[],'Psionic Restoration')`;
+  run(restore);expect(state().guards).toBeNull();run(`select advance_psionic_solo_turn('${char}','${randomUUID()}',0)`);
+  run(begin('psionic-guards',randomUUID(),'{"soloTurn":1}',1,'array[]'));const active=state().guards;
+  expect(run(restore).replayed).toBe(true);expect(state().guards).toEqual(active);
+ });
+ test('a completed Short Rest expires Guards without needing an extra End Turn click',()=>{
+  run(begin('psionic-guards',randomUUID(),'{"soloTurn":0}',1,'array[]'));
+  const row=JSON.parse(sql(`select to_jsonb(c) from characters c where id='${char}'`));
+  const keys=['spell_slots','class_resources','feature_uses'];
+  const expected=Object.fromEntries([...keys,'class_name','level','secondary_class','secondary_level','max_hp','long_rest_clears_combat_conditions'].map(k=>[k,row[k]]));
+  const updates=Object.fromEntries(keys.map(k=>[k,row[k]??{}]));
+  run(`select complete_psionic_rest('${char}','${randomUUID()}','short','${JSON.stringify(expected)}','${JSON.stringify(updates)}')`);expect(state().guards).toBeNull();
+ });
+ test('a no-op roster refresh after Restoration does not erase newly activated Guards',()=>withCombat(({encounter})=>{
+  sql(`update combat_encounters set current_turn_index=1 where id='${encounter}'`);
+  run(`select settle_psionic_energy('${char}','${randomUUID()}','spend',1,array[3],'Manual Energy Die')`);
+  run(`select settle_psionic_energy('${char}','${randomUUID()}','restore',0,array[]::integer[],'Psionic Restoration')`);
+  run(begin('psionic-guards',randomUUID(),JSON.stringify(state().turn),1,'array[]'));const active=state().guards;
+  sql(`update combat_participants set turn_order=turn_order where encounter_id='${encounter}'`);expect(state().guards).toEqual(active);expect(active).not.toBeNull();
+ }));
+ test('migration initialization and reruns cannot expire a fresh Guards effect',()=>withCombat(({encounter})=>{
+  sql(`update combat_encounters set current_turn_index=1 where id='${encounter}';update dndkeep_private.psionic_turn_starts set context='{}' where character_id='${char}'`);
+  const migration=readFileSync(new URL('../../supabase/migrations/20261008081935_psionic_guards_effects.sql',import.meta.url),'utf8');
+  sql(migration);run(begin('psionic-guards',randomUUID(),JSON.stringify(state().turn),1,'array[]'));const active=state().guards;
+  sql(migration);sql(`update combat_participants set turn_order=turn_order where encounter_id='${encounter}'`);
+  expect(active).not.toBeNull();expect(state().guards).toEqual(active);
+ }));
+ test('Guards cannot be forged by direct table access or an arbitrary character resource',()=>{
+  expect(()=>run(`update dndkeep_private.psionic_turn_starts set context='{}' where character_id='${char}';select 1`)).toThrow(/permission denied/);
+  expect(()=>run(`select dndkeep_private.psionic_guards_effect('${char}')`)).toThrow(/permission denied/);
+  run(`update characters set class_resources=class_resources||'{"psionic-guards":true}'::jsonb where id='${char}';select 1`);expect(state().guards).toBeNull();
+ });
+ test('failed Guards condition removal rolls back payment, use and effect together',()=>{
+  const name='guards_fail_'+char.replaceAll('-','');try{
+   sql(`create function public.${name}() returns trigger language plpgsql as $$begin if new.id='${char}' then raise exception 'injected Guards failure';end if;return new;end;$$;create trigger ${name} before update of active_conditions on characters for each row execute function public.${name}()`);
+   expect(()=>run(begin('psionic-guards',randomUUID(),'{"soloTurn":0}',1,'array[]'))).toThrow(/injected Guards failure/);
+   expect(pool()).toBe(6);expect(state().uses).toHaveLength(0);expect(state().guards).toBeNull();
+  }finally{sql(`drop trigger if exists ${name} on characters;drop function if exists public.${name}()`);}
+ });
  test('one paid discipline owns the turn and retry returns current resources without another charge',()=>{
   const id=randomUUID(),q=begin('biofeedback',id);expect(run(q)).toMatchObject({replayed:false,discipline:'biofeedback',rolls:[3],energy:{remaining:5}});expect(pool()).toBe(5);
   expect(()=>run(begin('destructive-thoughts'))).toThrow(/already used/);expect(()=>run(begin('biofeedback'))).toThrow(/already used/);
