@@ -55,3 +55,23 @@ export function applyHealing(hpBefore: number, maxHp: number, amount: number): n
 export function concentrationDC(damageTaken: number): number {
   return Math.min(30, Math.max(10, Math.floor(damageTaken / 2)));
 }
+
+export type HitPointAdjustmentMode = 'damage' | 'heal' | 'set';
+/** v2.806: never silently turn a decimal, exponent or partial input into damage.
+ * Setting zero is valid; zero damage/healing is not an adjustment. */
+export function parseHitPointAdjustment(text:string,mode:HitPointAdjustmentMode):number|null {
+ const value=text.trim();if(!/^\d+$/.test(value))return null;
+ const amount=Number(value);
+ return Number.isSafeInteger(amount)&&amount<=2147483647&&(mode==='set'?amount>=0:amount>0)?amount:null;
+}
+/** Preview and manual HP controls share the canonical temp-first damage rules.
+ * The persistence layer must check the captured HP revision before applying. */
+export function adjustedHitPointPools(state:{current_hp:number;max_hp:number;temp_hp:number},mode:HitPointAdjustmentMode,amount:number){
+ if(![state.current_hp,state.max_hp,state.temp_hp,amount].every(n=>Number.isSafeInteger(n)&&n>=0)
+  ||(mode!=='set'&&state.current_hp>state.max_hp)||amount>2147483647||(!['damage','heal','set'].includes(mode))||(mode!=='set'&&amount===0))return null;
+ if(mode==='damage'){
+  const result=applyDamageToPools(state.current_hp,state.temp_hp,amount);
+  return {current_hp:result.hpAfter,temp_hp:result.tempAfter};
+ }
+ return {current_hp:mode==='heal'?applyHealing(state.current_hp,state.max_hp,amount):Math.min(state.max_hp,amount),temp_hp:state.temp_hp};
+}
