@@ -36,7 +36,7 @@ import { rollDie } from '../rules/dice';
 import { applyDamageToPools } from '../rules/hp';
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
-import { masteryForWeapon, MASTERY_WEAPONS, type MasteryName } from '../data/weaponMastery';
+import { masteryWeaponEntry, type MasteryName } from '../data/weaponMastery';
 import type { ActiveBuff } from './buffs';
 import type { PendingAttack } from '../types';
 
@@ -57,14 +57,17 @@ function mod(score: number | null | undefined): number {
 /** Mastery context for this attack, or null when the attacker isn't a
  *  character, has no mastery in this weapon, or the weapon is unknown. */
 export async function getMasteryContext(atk: PendingAttack): Promise<MasteryContext | null> {
-  if (atk.attacker_type !== 'character' || !atk.attacker_participant_id) return null;
-  const mastery = masteryForWeapon(atk.attack_name);
-  if (!mastery) return null;
+  // v2.868: names are labels, not proof that a spell/feature used a weapon.
+  if (atk.attacker_type !== 'character' || !atk.attacker_participant_id || atk.attack_kind !== 'attack_roll'
+    || !['weapon', 'melee', 'ranged'].includes(atk.attack_source ?? '')) return null;
+  const weaponEntry = masteryWeaponEntry(atk.attack_name);
+  if (!weaponEntry) return null;
 
   const { data: part } = await supabase
     .from('combat_participants')
     .select('entity_id, participant_type')
     .eq('id', atk.attacker_participant_id)
+    .eq('campaign_id', atk.campaign_id)
     .maybeSingle();
   if (!part || part.participant_type !== 'character' || !part.entity_id) return null;
 
@@ -72,21 +75,20 @@ export async function getMasteryContext(atk: PendingAttack): Promise<MasteryCont
     .from('characters')
     .select('weapon_masteries, level, secondary_class, secondary_level, strength, dexterity')
     .eq('id', part.entity_id)
+    .eq('campaign_id', atk.campaign_id)
     .maybeSingle();
   if (!ch) return null;
 
   const chosen: string[] = (ch.weapon_masteries as string[] | null) ?? [];
-  const weaponEntry = MASTERY_WEAPONS.find(w =>
-    (atk.attack_name ?? '').trim().toLowerCase().startsWith(w.name.toLowerCase()),
-  );
   if (!weaponEntry || !chosen.includes(weaponEntry.name)) return null;
 
   const isRanged = weaponEntry.group === 'simple_ranged' || weaponEntry.group === 'martial_ranged';
-  const abilityMod = isRanged
-    ? mod(ch.dexterity)
-    : weaponEntry.finesse
-      ? Math.max(mod(ch.strength), mod(ch.dexterity))
-      : mod(ch.strength);
+  // Finesse applies to ranged weapons too (Dart). This remains the legacy
+  // default; the complete settlement must capture the actual chosen ability,
+  // including spell/feature substitutions, rather than infer it from the weapon.
+  const abilityMod = weaponEntry.finesse
+    ? Math.max(mod(ch.strength), mod(ch.dexterity))
+    : isRanged ? mod(ch.dexterity) : mod(ch.strength);
   const profBonus = characterProficiencyBonus(ch);
   return { mastery: weaponEntry.mastery, abilityMod, profBonus };
 }

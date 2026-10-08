@@ -32,6 +32,14 @@ currently contains:
   half-allocation and HP overflow require review instead of a guessed total.
   These calculators take server-verified source/activation inputs from the future
   outer endpoint; they do not authorize attacks or spend a resource themselves.
+- The existing mastery lookup now requires an actual weapon attack-roll source,
+  scopes roster/sheet reads to the attack campaign, and uses the shared weapon
+  lookup. Its legacy default respects Finesse on ranged weapons too, verified
+  against the [2024 equipment rules](https://www.dndbeyond.com/sources/dnd/br-2024/equipment/).
+  Thirteen focused cases cover these changes. Actual ability selection remains a
+  separate requirement: `WeaponItem`/pending attacks currently store total bonuses,
+  not the selected ability modifier. Topple/Cleave/Graze must capture that choice,
+  including magical substitutions and deliberately choosing the lower Finesse mod.
 
 Local evidence: 48 defense/retaliation-preview/existing Sharpened SQL cases and
 9 lifecycle cases pass (26 current defense/retaliation cases rerun together).
@@ -40,7 +48,7 @@ mixed-damage/defense/rounding combinations and four complete mixed-die replaceme
 previews. Local SQL lint has no findings on either new calculator.
 The two Psion rule modules pass 59 cases, including 21 added checks for mixed
 replacement and actual rolled-die eligibility. Changed functions have no database
-lint findings. Full code gate passes (2,891 units, TS 199/199, entry 255.2 KB).
+lint findings. Full code gate passes (2,904 units / 260 files, TS 199/199, entry 255.2 KB).
 Armor of Agathys mechanics verified against the licensed [2024 PHB entry](https://app.roll20.net/compendium/dnd5e/Spells:Armor%20of%20Agathys?expansion=32231); no spell prose copied.
 No public weapon endpoint or app routing has been added; this work is unfinished.
 The outer caller still must lock both characters/combatants in stable order,
