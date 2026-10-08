@@ -1,6 +1,41 @@
 # DNDKeep — Two-Track Roadmap
 
-### Release candidate — transactional Counterspell client, v2.803
+### Backend candidate — paid spell declaration and safe slot settlement
+
+Migration `20261008041620_declared_spell_slot_settlement.sql` adds two explicitly
+caster/DM-authorized private transactions behind invoker RPCs. A stable cast ID
+records one declaration, slot debit, context, event and private payment receipt.
+Settlement derives the result from the linked, recorded Counterspell save, never
+from a caller-supplied outcome. Failed saves return the original caster's paid
+slot once; successful saves and expired uncontested windows keep it spent.
+Cantrips never invent a slot. The counterspeller's own slot remains spent.
+
+Server-owned per-level recovery revisions distinguish an old refundable debit
+from slots already recovered by a rest/manual change. A later cast after a rest
+cannot be erased by an old refund. Refunding one of several pending spells at
+one level preserves each remaining spell's own refund; changes at another level
+do not invalidate it. The revision trigger is invoker and rejects fabricated
+revision updates. No refund is inferred for legacy declarations without receipts.
+
+All 18 new authenticated database cases passed; the combined final suite passed
+52 cases covering settlement, Counterspell acceptance, and existing Hit Dice
+healing. Cases include concurrent declaration/settlement, rest-then-spend, separate
+same-level refunds, failed history inserts rolling everything back, stale slots,
+unprepared/orphaned sources, incapacitation, outsider denial, and substituted saves.
+Full gate passed: 1,993 units, TS 204/204, zero hook violations, RAW/coordinates/
+anchors/build/SW and 253.7 KB entry. Local ledger has no pending entries. Security
+advisors show only the two existing keep_warm/client_errors warnings.
+
+This is an additive backend candidate. The next client change must capture a
+stable declaration before queued saves, stop its separate slot debit, preserve
+wasted action use, settle through the RPC, and recover interrupted declarations.
+Component visibility, spell coverage, action-economy persistence and deferred
+spell effects after reload still need verification. No claim of full automation.
+
+### Merged — transactional Counterspell client, v2.803
+
+PR138 merged at 39fde16b after both hosted gates and preview passed.
+Main CI 37727083104 passed; public release verification pending.
 
 The reaction client now calls the deployed acceptance transaction instead of
 independently spending a slot/reaction, creating a save, linking another caster,
