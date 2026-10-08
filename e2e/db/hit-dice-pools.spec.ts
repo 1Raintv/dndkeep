@@ -87,6 +87,20 @@ test.describe('Hit Dice allocation (local stack)',()=>{
   expect(results.filter(result=>result.code===0)).toHaveLength(1);
   expect(row()).toMatchObject({hit_dice_spent:10,hit_dice_spent_by_type:{'6':7,'10':3}});
  });
+ test('ordinary authenticated saves validate allocation without bypassing row ownership',()=>{
+  sql(auth(owner,review({'6':1,'10':1})));
+  const patch=`select public.patch_character_preserving_psion('${character}','{"hit_dice_spent":3,"hit_dice_spent_by_type":{"6":1,"10":2}}')`;
+  expect(()=>sql(auth(other,patch))).toThrow();expect(row().hit_dice_spent).toBe(2);
+  sql(auth(owner,patch));expect(row()).toMatchObject({hit_dice_spent:3,hit_dice_spent_by_type:{'6':1,'10':2},psionic_hit_dice_revision:2});
+  expect(sql(`select prosecdef from pg_proc where oid='public.refresh_psionic_hit_dice_revision()'::regprocedure`)).toBe('f');
+ });
+ test('direct non-Psion saves use the same validator and malformed allocation rolls back',()=>{
+  sql(`update characters set class_name='Wizard' where id='${character}'`);
+  sql(auth(owner,`update characters set hit_dice_spent=3,hit_dice_spent_by_type='{"6":1,"10":2}' where id='${character}'`));
+  expect(row()).toMatchObject({hit_dice_spent:3,hit_dice_spent_by_type:{'6':1,'10':2}});
+  expect(()=>sql(auth(owner,`update characters set hit_dice_spent=4,hit_dice_spent_by_type='{"6":1,"10":4}' where id='${character}'`))).toThrow(/class pool/);
+  expect(row()).toMatchObject({hit_dice_spent:3,hit_dice_spent_by_type:{'6':1,'10':2}});
+ });
  test('private helpers are not callable by authenticated clients',()=>{
   expect(sql(`select has_function_privilege('authenticated','public.spend_psionic_surge_pool_internal(uuid,uuid,integer[],text,integer)','EXECUTE')`)).toBe('f');
   expect(sql(`select has_function_privilege('authenticated','public.hit_dice_capacity_internal(public.characters)','EXECUTE')`)).toBe('f');
