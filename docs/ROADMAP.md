@@ -1,5 +1,38 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.817 candidate — durable Psionic Guards protection groundwork
+
+New Guards activations record a lasting effect in the existing discipline ledger.
+Payment, use, condition removal and effect grant commit together. Charmed and
+Frightened are removed from the sheet and its combatants; database write guards
+prevent reapplication while protection is active, preserving other conditions.
+
+A private token observes the existing initiative and solo-turn transitions.
+Protection survives other actors and round boundaries, expires on the owner's
+next turn (including rewind), and cannot be revived by replaying an old paid
+request. Roster setup ignores ambiguous temporary order; a death that advances
+the current actor also starts the incoming character's turn. Ending combat keeps
+protection until the next solo turn. Completed rests/Restoration expire it once.
+The observer never locks a character row while holding an encounter write lock,
+avoiding the inverse lock order of discipline payments.
+
+The discipline read API now returns the active Guards identity. Existing clients
+ignore that extra field. REQUIRED NEXT: show the active protection and wire
+Intelligence-save Advantage into sheet/campaign save rollers; revise the manual
+activation/recovery messages only when those client paths are verified. This is
+not a claim of complete Guards automation or Sharpened Mind automation. Historical
+manual activations are not retroactively granted a new effect.
+
+Validation: 43 real-database cases pass, including lifecycle, immunity, rollback,
+permissions, concurrent advancement, migration initialization/rerun and recovery
+replays. Six desktop/phone combat/Guards/secondary-Psion browser checks pass.
+Full gate: 2,290 units, TS 203/203, hooks/RAW/coordinates/anchors/build/SW, 254.3 KB
+entry. Security advisors retain only existing keep_warm/client_errors findings. The preceding
+own-turn migration (PR159, b565e87) is applied in production: Apply Migrations
+37749518251 logged 20261008081047 and completed db push. Website builds remain
+subject to the hosting quota.
+
+
 ### v2.816 candidate — require the owner's turn for start-of-turn disciplines
 
 Guards and Sharpened Mind now reject a fresh combat activation on another
