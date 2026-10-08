@@ -10,6 +10,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import { checkedWrite } from '../../lib/api/checked';
+import {useCounterspellChoice} from '../../lib/hooks/useCounterspellChoice';
 import { acceptReaction, declineReaction, expireReaction } from '../../lib/pendingReaction';
 import { declareAttack, rollAttackRoll } from '../../lib/pendingAttack';
 import type { PendingReaction, PendingAttack } from '../../types';
@@ -33,7 +34,7 @@ export default function ReactionPromptModal({ campaignId }: Props) {
   const [oaType, setOaType] = useState('slashing');
   // v2.124.0 — Phase J: counterspell slot picker
   const [csSlotLevel, setCsSlotLevel] = useState<number>(3);
-  const [reactorSlots, setReactorSlots] = useState<Record<number, { total: number; used: number }>>({});
+  const [acceptError,setAcceptError]=useState<string|null>(null);
 
   async function load() {
     const { data } = await supabase
@@ -146,40 +147,18 @@ export default function ReactionPromptModal({ campaignId }: Props) {
     )[0];
   }, [visibleOffers]);
 
-  // v2.124.0 — Phase J: when a counterspell offer is urgent, load the
-  // reactor's spell_slots so the slot picker can gate L3–L9 by availability.
-  // Also auto-select the lowest available slot level (≥3).
-  useEffect(() => {
-    if (!urgent || urgent.reaction_key !== 'counterspell') return;
-    let cancelled = false;
-    (async () => {
-      const { data: part } = await supabase
-        .from('combat_participants')
-        .select('entity_id')
-        .eq('id', urgent.reactor_participant_id)
-        .maybeSingle();
-      if (cancelled || !part?.entity_id) return;
-      const { data: ch } = await supabase
-        .from('characters')
-        .select('spell_slots')
-        .eq('id', part.entity_id as string)
-        .maybeSingle();
-      if (cancelled || !ch) return;
-      const slots = ((ch.spell_slots ?? {}) as Record<string, { total: number; used: number }>);
-      const slotRecord: Record<number, { total: number; used: number }> = {};
-      for (let lvl = 1; lvl <= 9; lvl++) {
-        const s = slots[String(lvl)];
-        if (s) slotRecord[lvl] = s;
-      }
-      setReactorSlots(slotRecord);
-      // Auto-select lowest available L3+ slot
-      for (let lvl = 3; lvl <= 9; lvl++) {
-        const s = slotRecord[lvl];
-        if (s && s.used < s.total) { setCsSlotLevel(lvl); break; }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [urgent?.id, urgent?.reaction_key]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const counterspell=useCounterspellChoice(urgent);
+  const reactorSlots=counterspell.character?.spell_slots??{};
+  useEffect(()=>{
+    setAcceptError(null);
+    setCsSlotLevel(3);
+  },[urgent?.id]);
+  useEffect(()=>{
+    if(!counterspell.character)return;
+    const slots=counterspell.character.spell_slots??{};
+    const level=[3,4,5,6,7,8,9].find(level=>slots[level]&&slots[level].used<slots[level].total);
+    if(level)setCsSlotLevel(level);
+  },[counterspell.character]);
 
   if (!urgent) return null;
 
@@ -187,20 +166,19 @@ export default function ReactionPromptModal({ campaignId }: Props) {
   const expiresAt = new Date(urgent.expires_at).getTime();
   const secondsLeft = Math.max(0, Math.ceil((expiresAt - now) / 1000));
 
+  const selectedSlot=reactorSlots[csSlotLevel];
+  const counterspellReady=!!counterspell.selected&&!!selectedSlot&&selectedSlot.used<selectedSlot.total;
   async function onAccept() {
-    setBusy(true);
-    // v2.124.0 — Phase J: for Counterspell, pass spell_level_used so the
-    // registry entry burns the right slot. Merge with offer's decision_payload
-    // (which carries spell_cast_id) so the handler has both pieces.
-    if (urgent.reaction_key === 'counterspell') {
-      await acceptReaction(urgent.id, {
-        ...(urgent.decision_payload ?? {}),
-        spell_level_used: csSlotLevel,
-      });
-    } else {
-      await acceptReaction(urgent.id);
-    }
-    setBusy(false);
+    if(!urgent || busy || urgent.reaction_key==='counterspell'&&!counterspellReady)return;
+    setBusy(true);setAcceptError(null);
+    try {
+      if (urgent.reaction_key === 'counterspell') {
+        await acceptReaction(urgent.id, {...(urgent.decision_payload ?? {}),
+          spell_level_used:csSlotLevel,casting_source:counterspell.selected!.key});
+      } else await acceptReaction(urgent.id);
+    } catch(error) {
+      setAcceptError(error instanceof Error?error.message:'Could not accept this reaction.');
+    } finally {setBusy(false);}
   }
 
   // v2.109.0 — Phase G pt 3: accept an OA offer. Creates a new pending_attack
@@ -377,15 +355,25 @@ export default function ReactionPromptModal({ campaignId }: Props) {
             const targetSpell = (dp.spell_name as string) ?? 'a spell';
             const targetCaster = (dp.caster_name as string) ?? 'The caster';
             const targetLevel = (dp.spell_level as number) ?? 0;
-            const saveDC = (dp.save_dc as number) ?? (10 + targetLevel);
+            const saveDC = counterspell.selected?.saveDC;
             return (
               <>
                 <div style={{ fontSize: 12, color: 'var(--t-2)', lineHeight: 1.5 }}>
-                  Cast <strong style={{ color: '#a78bfa' }}>Counterspell</strong> to interrupt <strong style={{ color: 'var(--t-1)' }}>{targetCaster}</strong>'s <strong style={{ color: 'var(--t-1)' }}>{targetSpell}</strong> ({targetLevel === 0 ? 'cantrip' : `L${targetLevel}`}). They make a <strong style={{ color: '#60a5fa' }}>DC {saveDC} CON save</strong> — fail and their spell fails.
+                  Cast <strong style={{ color: '#a78bfa' }}>Counterspell</strong> to interrupt <strong style={{ color: 'var(--t-1)' }}>{targetCaster}</strong>'s <strong style={{ color: 'var(--t-1)' }}>{targetSpell}</strong> ({targetLevel === 0 ? 'cantrip' : `L${targetLevel}`}). They make a <strong style={{ color: '#60a5fa' }}>{saveDC == null ? 'Your spell DC' : `DC ${saveDC}`} CON save</strong> — fail and their spell fails.
                 </div>
+                {counterspell.loading && <p role="status">Checking Counterspell choices...</p>}
+                {counterspell.error && <div role="alert">Could not load Counterspell choices. <button onClick={counterspell.retry}>Try again</button></div>}
+                {!counterspell.loading && !counterspell.error && !counterspell.options.length && <p role="alert">Review Counterspell preparation and source on your spell sheet.</p>}
+                {counterspell.options.length>0 && <label>Cast using
+                  <select aria-label="Counterspell casting source" value={counterspell.selected?.key??''}
+                    onChange={event=>counterspell.choose(event.target.value)} disabled={busy} style={{width:'100%'}}>
+                    <option value="" disabled>Choose a casting source</option>
+                    {counterspell.options.map(option=><option key={option.key} value={option.key}>{option.label} ({option.ability.slice(0,3).toUpperCase()}) — DC {option.saveDC}</option>)}
+                  </select>
+                </label>}
                 <div>
                   <div style={{ fontFamily: 'var(--ff-body)', fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-3)', marginBottom: 6 }}>
-                    Slot to burn
+                    Spell slot
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
                     {[3, 4, 5, 6, 7, 8, 9].map(lvl => {
@@ -455,6 +443,7 @@ export default function ReactionPromptModal({ campaignId }: Props) {
             );
           })()}
 
+          {acceptError && <p role="alert">{acceptError}</p>}
           {/* Buttons */}
           <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
             <button
@@ -475,7 +464,7 @@ export default function ReactionPromptModal({ campaignId }: Props) {
             </button>
             <button
               onClick={urgent.reaction_key === 'opportunity_attack' ? onAcceptOA : onAccept}
-              disabled={busy}
+              disabled={busy || urgent.reaction_key==='counterspell'&&!counterspellReady}
               className="btn-gold"
               style={{
                 flex: 2,

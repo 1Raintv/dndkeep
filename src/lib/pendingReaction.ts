@@ -22,6 +22,7 @@
 import { supabase } from './supabase';
 import { checkedWrite } from './api/checked';
 import { asJsonb } from './jsonbCast';
+import {counterspellCasting,selectedCounterspellCasting} from './counterspellCasting';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import type { PendingAttack, PendingReaction, Character } from '../types';
 
@@ -508,21 +509,10 @@ REACTION_REGISTRY.push({
 // pattern by using pending_reactions rows with pending_attack_id=NULL and
 // decision_payload carrying the spell_cast_id.
 //
-// 2024 PHB p.250: when another creature you see within 60 ft casts a spell,
-// you can cast Counterspell (3rd-level slot or higher). The target caster
-// must succeed on a CON save, DC = 10 + level of the spell being counter-
-// spelled. On fail, the spell fails. Upcast: +1 DC per slot above 3rd?
-// Actually RAW 2024 doesn't add DC for upcasting — it stays 10 + target
-// spell's level regardless of Counterspell's slot level. Keeping to RAW.
-//
-// This file owns the REGISTRY ENTRY + OFFER-CREATION helper. The onAccept
-// creates a save-type pending_attack (target = original caster, CON save,
-// DC = 10 + spell_level, no damage). That attack flows through the DM's
-// AttackResolutionModal as usual; on resolution, a separate handler (in
-// pendingAttack.ts) reads the save outcome and updates the pending_spell_
-// casts row to 'countered' or 'resolved'. For this ship we wire the
-// acceptance but leave save-outcome → pending_spell_cast propagation as a
-// v2.123 follow-up (the declareSpellCast UI needs to subscribe anyway).
+// v2.802 — 2024 Counterspell: CON save against the reactor's spell save DC.
+// Higher slots do not increase this DC. Source choice follows the sheet's
+// reviewed spell ownership/preparation, including multiclass casting ability.
+// Source: https://www.dndbeyond.com/spells/2619072-counterspell
 
 REACTION_REGISTRY.push({
   key: 'counterspell',
@@ -531,13 +521,7 @@ REACTION_REGISTRY.push({
   isEligible(ctx) {
     const { reactorCharacter } = ctx;
     if (!reactorCharacter) return false;
-    // Must know or prepare Counterspell
-    const known: string[] = (reactorCharacter as any).known_spells ?? [];
-    const prepared: string[] = (reactorCharacter as any).prepared_spells ?? [];
-    const hasIt =
-      known.some(s => s.toLowerCase() === 'counterspell') ||
-      prepared.some(s => s.toLowerCase() === 'counterspell');
-    if (!hasIt) return false;
+    if (!counterspellCasting(reactorCharacter).options.length) return false;
     // Need a level-3+ slot
     const slots = ((reactorCharacter as any).spell_slots ?? {}) as Record<string, { total: number; used: number }>;
     for (let lvl = 3; lvl <= 9; lvl++) {
@@ -554,37 +538,29 @@ REACTION_REGISTRY.push({
       ?? lowestCounterspellSlot(reactorCharacter)
       ?? 3;
 
-    if (!spellCastId) {
-      console.warn('[counterspell] missing spell_cast_id on decision_payload');
-      return;
+    // Validate all choices before spending. A missing/stale shared-source choice
+    // must never fall through to the primary class or the offer's old save_dc.
+    if (!spellCastId || !reactorCharacter) throw new Error('Counterspell is unavailable.');
+    const sourceKey = typeof decisionPayload.casting_source === 'string' ? decisionPayload.casting_source : undefined;
+    const casting = selectedCounterspellCasting(reactorCharacter, sourceKey);
+    if (!casting) throw new Error('Choose a prepared Counterspell source.');
+    const slots = { ...reactorCharacter.spell_slots } as Record<string, { total: number; used: number }>;
+    const slot = slots[String(levelUsed)];
+    if (!Number.isInteger(levelUsed) || levelUsed < 3 || levelUsed > 9 || !slot || slot.used >= slot.total) {
+      throw new Error('That Counterspell slot is no longer available.');
     }
-
-    // Burn the L3+ slot
-    if (reactorCharacter) {
-      const slots = { ...(reactorCharacter as any).spell_slots } as Record<string, { total: number; used: number }>;
-      const slot = slots[String(levelUsed)];
-      if (slot && slot.used < slot.total) {
-        slots[String(levelUsed)] = { total: slot.total, used: slot.used + 1 };
-        await checkedWrite('characters.update reaction-spell-slots', { characterId: reactorCharacter.id }, supabase.from('characters').update({ spell_slots: slots }).eq('id', reactorCharacter.id));
-      }
-    }
-
-    // Mark reactor's reaction used
-    await supabase
-      .from('combat_participants')
-      .update({ reaction_used: true })
-      .eq('id', offer.reactor_participant_id);
-
-    // Load the pending_spell_cast to compute save DC and build the attack
-    const { data: pscRow } = await supabase
-      .from('pending_spell_casts')
-      .select('*')
-      .eq('id', spellCastId)
-      .maybeSingle();
-    if (!pscRow) return;
-
+    const { data: pscRow, error: castError } = await supabase
+      .from('pending_spell_casts').select('*').eq('id', spellCastId).maybeSingle();
+    if (castError) throw castError;
+    if (!pscRow || pscRow.state !== 'declared') throw new Error('That spell is no longer awaiting Counterspell.');
+    const saveDC = casting.saveDC;
     const targetSpellLevel = pscRow.spell_level as number;
-    const saveDC = 10 + targetSpellLevel;
+
+    slots[String(levelUsed)] = { total: slot.total, used: slot.used + 1 };
+    await checkedWrite('characters.update reaction-spell-slots', { characterId: reactorCharacter.id },
+      supabase.from('characters').update({ spell_slots: slots }).eq('id', reactorCharacter.id));
+    await checkedWrite('combat_participants.update counterspell reaction', { participantId: offer.reactor_participant_id },
+      supabase.from('combat_participants').update({ reaction_used: true }).eq('id', offer.reactor_participant_id));
 
     // Target participant for the save
     let targetName = pscRow.caster_name as string;
@@ -824,28 +800,11 @@ export async function offerCounterspell(
       }
     }
 
-    // Load the character's spell list + slots to gate eligibility inline
-    // (we could defer to the registry's isEligible but that would require
-    // a separate helper call; inline is simpler here).
     const { data: ch } = await supabase
-      .from('characters')
-      .select('known_spells, prepared_spells, spell_slots')
-      .eq('id', p.entity_id as string)
-      .maybeSingle();
+      .from('characters').select('*').eq('id', p.entity_id as string).maybeSingle();
     if (!ch) continue;
-    const known: string[] = (ch.known_spells as string[] | null) ?? [];
-    const prepared: string[] = (ch.prepared_spells as string[] | null) ?? [];
-    const hasIt =
-      known.some(s => s.toLowerCase() === 'counterspell') ||
-      prepared.some(s => s.toLowerCase() === 'counterspell');
-    if (!hasIt) continue;
-    const slots = ((ch.spell_slots ?? {}) as Record<string, { total: number; used: number }>);
-    let hasSlot = false;
-    for (let lvl = 3; lvl <= 9; lvl++) {
-      const slot = slots[String(lvl)];
-      if (slot && slot.used < slot.total) { hasSlot = true; break; }
-    }
-    if (!hasSlot) continue;
+    const character = ch as Character;
+    if (!counterspellCasting(character).options.length || lowestCounterspellSlot(character) == null) continue;
 
     offers.push({
       campaign_id: input.campaignId,
@@ -865,7 +824,8 @@ export async function offerCounterspell(
         caster_name: input.casterName,
         spell_name: input.spellName,
         spell_level: input.spellLevel,
-        save_dc: 10 + input.spellLevel,
+        // Display refreshes from the reactor; ambiguous multiclass sources have no default DC.
+        save_dc: selectedCounterspellCasting(character)?.saveDC ?? null,
       },
     });
   }
