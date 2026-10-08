@@ -1,6 +1,6 @@
 # DNDKeep — Two-Track Roadmap
 
-### In progress — Short Rest healing numbers, v2.795
+### Release candidate — Short Rest healing numbers, v2.795
 
 The [2024 Short Rest rule](https://www.dndbeyond.com/sources/dnd/br-2024/rules-glossary/)
 applies Constitution and the 1 HP minimum to each spent die. Batch healing
@@ -11,7 +11,8 @@ frozen sheet cannot trigger a healing spend. Nineteen rest-rule tests and four
 desktop/mobile browser checks passed; browser test verifies 1 HP becomes 5 HP
 for those two rolls, spends exactly two dice and survives reload.
 
-Full versioned gate still pending. Mixed-class Hit Die pools and their shared
+Full versioned gate passed: 1,823 unit tests, TS 207/207, zero hook violations,
+RAW/coordinates/anchors/build and version checks, entry 253.7 KB. Mixed-class Hit Die pools and their shared
 spending with Surge/Enkindled Life Force need separate persisted tracking; that
 larger follow-up is not solved by this arithmetic correction. Existing rest
 writes also remain separate from all related healing/history effects.
