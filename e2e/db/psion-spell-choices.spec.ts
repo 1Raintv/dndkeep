@@ -68,4 +68,26 @@ test.describe('Psion spell choice eligibility', () => {
     await page.reload();await page.locator('button.tab').filter({hasText:/^Spells/}).click();
     await expect(row('Charm Person').getByTitle('Prepared through Psion — click to unprepare',{exact:true})).toBeVisible();
   });
+  for(const secondary of [false,true])test(`Actions keeps ${secondary?'secondary':'primary'} Psion cantrips when slots are missing`,async({page},info)=>{
+    sql(`update characters set class_name='${secondary?'Fighter':'Psion'}',level=1,subclass=null,
+      secondary_class=${secondary?"'Psion'":"null"},secondary_level=${secondary?1:0},secondary_subclass=null,
+      known_spells=ARRAY['light','charm-person'],prepared_spells=ARRAY['charm-person'],
+      spell_sources='{"light":["class:Psion"],"charm-person":["class:Psion"]}',
+      spell_preparation_sources='{"charm-person":["class:Psion"]}',spell_slots='{}' where id='${charId}'`);
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await page.getByRole('button',{name:'Actions',exact:true}).locator('visible=true').first().click();
+    const light=page.locator('.arow-grid').filter({has:page.getByText('Light',{exact:true})}).first();
+    await expect(light).toBeVisible();await expect(light.getByRole('button',{name:'Cast',exact:true})).toBeEnabled();
+    const charm=page.locator('.arow-grid').filter({has:page.getByText('Charm Person',{exact:true})}).first();
+    await expect(charm).toContainText('No Slots');
+    await light.getByRole('button',{name:'Cast',exact:true}).click();
+    await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Light' and action_type='spell'`)).toBe('1');
+    await light.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('slotless-psion-actions.png')});
+    await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+    await expect(page.getByText('Review spell sources',{exact:true})).toBeVisible();
+    expect(sql(`select spell_slots::text from characters where id='${charId}'`)).toBe('{}');
+    expect(errors).toEqual([]);
+  });
+
 });

@@ -3596,13 +3596,9 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  })()}
 
  {(contentFilters.size === 0 || contentFilters.has('spell')) && (() => {
- // v2.260.0 — same fix as the alerts banner above; was reading
- // character.is_spellcaster which is a ClassData field, not a
- // Character field. Falls back to spell_slots check.
- const isSpellcaster = CLASS_MAP[character.class_name]?.is_spellcaster ||
- Object.values(character.spell_slots).some((s: any) => s.total > 0);
- if (!isSpellcaster) return null;
-
+ // v2.800 — available spell rows already establish spell access. Checking
+ // only the primary class hid secondary Psion cantrips when imported slots
+ // were empty; slots govern leveled casting, never whether cantrips exist.
  // v2.637 perf: readySpells/cantrips/leveled are memoized in the
  // Derived section above (readySpells / readyCantrips / readyLeveled).
  const isPreparer = isPreparerClass;
