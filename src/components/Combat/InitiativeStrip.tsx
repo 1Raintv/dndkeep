@@ -7,6 +7,7 @@
 // array for non-DMs).
 
 import { useEffect, useState, useRef } from 'react';
+import './InitiativeStrip.css';
 import {useBottomOverlayInset} from '../../lib/hooks/useBottomOverlayInset';
 import { useCombat } from '../../context/CombatContext';
 // v2.620.0 — B3b: owned-minion sub-entries. Direct combatants fetch
@@ -61,23 +62,6 @@ const ACTOR_COLORS: Record<CombatParticipant['participant_type'], string> = {
 };
 
 export default function InitiativeStrip({ isDM }: Props) {
-  // v2.646 — Narrow-viewport mode. The strip's fixed left/right offsets
-  // reserve 220px (sidebar) + 304px (MonsterActionPanel rail) = 524px of
-  // horizontal chrome that doesn't exist on phones: on a 393px viewport
-  // the content box went NEGATIVE and the End Turn / End Combat cluster
-  // rendered past the right edge — DMs on phones physically could not
-  // end a turn (found by the mobile E2E project's failed clicks).
-  // Below 700px: full-bleed, and the flex row wraps so the DM button
-  // cluster drops onto its own line instead of overflowing.
-  const [isNarrow, setIsNarrow] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 700px)').matches,
-  );
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 700px)');
-    const onChange = () => setIsNarrow(mq.matches);
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
   const { encounter, participants, currentActor } = useCombat();
   const stripRef=useRef<HTMLDivElement>(null);
   useBottomOverlayInset(stripRef,encounter?.status==='active');
@@ -275,23 +259,9 @@ export default function InitiativeStrip({ isDM }: Props) {
     <div
       ref={stripRef}
       className="initiative-strip"
+      role="region" aria-label="Combat initiative"
       style={{
         position: 'fixed',
-        // v2.360.0 — Constrain horizontally so the strip doesn't
-        // overlap the left sidebar (where the version label lives)
-        // or the bottom-right dice roller / dice log FAB. Pre-v2.360
-        // was left:0, right:0 (full-bleed), which buried both.
-        // Sidebar width: 220px expanded, 60px collapsed (CSS var).
-        // Dice fab cluster: ~80px wide on the right edge.
-        bottom: 0,
-        left: isNarrow ? 0 : 'var(--sidebar-w, 220px)',
-        // v2.572.0 — was right: 80. The MonsterActionPanel side rail is
-        // 280px wide anchored at right:12, so the strip ran ~212px
-        // underneath it and its right-side buttons (END TURN / END
-        // COMBAT) collided with the rail. 304 = 280 + 12 + 12 gap.
-        // v2.646 — neither the sidebar nor the rail applies on phones.
-        right: isNarrow ? 0 : 304,
-        padding: isNarrow ? '6px 8px' : '8px 14px',
         background: 'rgba(19, 19, 29, 0.96)',
         backdropFilter: 'blur(10px)',
         WebkitBackdropFilter: 'blur(10px)',
@@ -301,14 +271,10 @@ export default function InitiativeStrip({ isDM }: Props) {
         borderTopLeftRadius: 'var(--r-md, 8px)',
         borderTopRightRadius: 'var(--r-md, 8px)',
         zIndex: 9999,
-        display: 'flex',
-        alignItems: 'center',
-        flexWrap: isNarrow ? 'wrap' : 'nowrap', // v2.646 — buttons wrap below tiles on phones
-        gap: isNarrow ? 8 : 12,
         boxShadow: '0 -4px 16px rgba(0,0,0,0.4)',
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flexShrink: 0 }}>
+      <div className="initiative-summary" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {/* v2.285.0 — Round badge is clickable for the DM. Click
             opens a per-participant action-status popover anchored
             below the badge. Player-side stays a static span: the
@@ -421,8 +387,8 @@ export default function InitiativeStrip({ isDM }: Props) {
           needed. (TODO: a per-tile undo on the active PC's tile would
           be a cleaner path; deferred to a focused ship.) */}
 
-      <div style={{
-        display: 'flex', gap: 6, flex: 1,
+      <div className="initiative-participants" aria-label="Initiative order" style={{
+        display: 'flex', gap: 6,
         overflowX: 'auto', padding: '0 4px',
         scrollbarWidth: 'none',
       }}>
@@ -902,7 +868,7 @@ export default function InitiativeStrip({ isDM }: Props) {
       </div>
 
       {isDM && (
-        <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap' }}>
+        <div className="initiative-controls" role="group" aria-label="Combat controls">
           {/* v2.590.0 — Lair button removed. The 2025 MM dropped lair
               actions as a mechanic (lairs now grant extra Legendary
               Resistance/Action uses instead), and the manual trigger
