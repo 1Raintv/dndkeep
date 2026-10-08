@@ -34,10 +34,11 @@ discarded without deleting a newer valid request.
 
 Schema PR #124 (`4e44062`) merged as `df3b9ca`; production migration
 `37713138646` and main CI `37713138771` passed. All 22 local schema/identity
-checks passed. Final full gate passed 1,815 tests, TS 207/207, entry 253.7 KB.
-Eight desktop/mobile casting tests passed with both class orders, cross-tab
+checks passed. Final full gate passed 1,816 tests, TS 207/207, entry 253.7 KB.
+Twelve desktop/mobile casting tests passed with both class orders, cross-tab
 choices, reload and lost-response retry; source/DC, slot count and remaining
-duration verified. Final desktop/mobile screenshots inspected. Eighteen existing
+duration verified. Manual concentration also confirms without serializing display
+metadata into the durable request. Final desktop/mobile screenshots inspected. Eighteen existing
 concentration, ownership and preparation browser checks also passed.
 
 Two tests reproduced post-cast target pickers being unmounted by concentration

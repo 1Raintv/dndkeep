@@ -30,6 +30,21 @@ for(const secondary of [false,true])test.describe(`Casting sources (${secondary?
 
 
 
+ test('manual concentration records only source fields and confirms after reload',async({page})=>{
+  await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+  await page.locator('button.tab').filter({hasText:/^Spells/}).click();
+  await page.getByRole('combobox',{name:'Cast Hold Person through'}).first().selectOption('Psion');
+  await page.locator('.srow-grid').filter({has:page.getByText('Hold Person',{exact:true})}).first().getByText('Hold Person',{exact:true}).click();
+  await page.getByRole('button',{name:'Concentrate',exact:true}).click();
+  await expect(page.getByLabel('Concentration casting ability')).toHaveText('INT · DC 17');
+  await expect(page.getByRole('status',{name:'Concentration recording'})).toBeHidden();
+  const saved=JSON.parse(sql(`select row_to_json(c) from characters c where id='${charId}'`));
+  expect(saved.concentration_revision).toBe(1);expect(saved.spell_slots['2'].used).toBe(0);
+  expect(Object.keys(saved.concentration_casting_context).sort()).toEqual(['ability','requestId','rounds','slotLevel','source','spellId'].sort());
+  await page.reload();await expect(page.getByLabel('Concentration casting ability')).toHaveText('INT · DC 17');
+  await expect(page.getByRole('status',{name:'Concentration recording'})).toBeHidden();
+ });
+
  for(const lostResponse of [false,true])test(`source choice survives tab changes; concentration survives reload${lostResponse?' and lost responses':''}`,async({page},info)=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   let calls=0;
