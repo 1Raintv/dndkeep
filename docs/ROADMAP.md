@@ -1,6 +1,43 @@
 # DNDKeep — Two-Track Roadmap
 
-### Release candidate — preserve magic-item ability effects, v2.797
+### Backend candidate — atomic Hit Dice healing
+
+Migration 20261008025100 adds a server-owned HP revision and spend_rest_hit_dice.
+The new endpoint locks an owner/DM-authorized character, checks the captured HP,
+Hit Dice revision, CON and inventory, then commits chosen-pool spending, capped
+per-die-minimum healing and both existing history surfaces together. A private
+receipt ledger makes identical retries safe, including two concurrent requests.
+Changed payloads under the same request id fail. Replayed receipts retain the
+original rolled/gained result but return the current character/revisions, never
+an old HP snapshot. HP revision advances on HP/max/temp changes; ordinary edits
+cannot fabricate it. Its trigger stays SECURITY INVOKER. The new transaction's
+privileged boundary authorizes the character before reading any receipt; anon
+cannot execute it and authenticated users cannot access its private ledger.
+
+Effective CON remains calculated by the client equipment pipeline, like the
+submitted dice; the transaction validates modifier bounds and freezes the base
+stat/inventory context rather than inventing a second server item calculation.
+This is not an anti-cheat boundary: authorized owners/DMs can already edit HP.
+
+Full gate passed 1,881 unit tests, TS 206/206, zero hook violations, rules,
+coordinates, anchors, build/SW-version and 253.7 KB entry budget. All 32 local
+DB transaction and existing allocation/Surge cases passed.
+Locally applied with no pending migrations. Security advisors retain only the
+existing keep_warm search-path and client_errors insert warnings. Tests cover
+owner/DM/unrelated/anon access, mixed/non-Psion pools, stale context including HP
+returning to its old value, changed and concurrent retries, last-die competition,
+zero/full HP, per-die minimum, capped healing, malformed rolls, protected ledger,
+server-owned revisions and rollback when history fails.
+
+Client integration is still required: freeze and persist requests, confirm saved
+healing after a lost response, accept only ordered HP/dice receipts, omit the old
+separate history write and serialize against ordinary edits/rests. Old clients
+and direct absolute-value patches retain their existing behavior; this additive
+backend alone does not fix those races. Release the backend before enabling UI.
+The verified max-HP realtime prerequisite is preserved on
+codex/atomic-hit-dice-healing (`e9ab60b`) for that integration.
+
+### Released — preserve magic-item ability effects, v2.797
 
 The magic-item database mapper omitted abilityOverride. Loading Inventory could
 replace a canonical Headband/Gauntlet/Belt entry with one lacking its stat effect.
@@ -21,7 +58,9 @@ modified. Actual character payments use disposable local DB characters.
 
 Final versioned gate passed 1,881 unit tests, TS 206/206, zero hook violations,
 rules/coordinates/anchors/build/SW-version and entry 253.7 KB. Mobile screenshot
-inspected. App fix is prepared for a separate release from v2.796.
+inspected. PR #130 (`3a95c9c`) passed both CI gates and preview, then merged as
+`115c48a`. Main CI 37719604559 passed; Vercel production deployment
+C4W55j7JiUCGZqts2xR9bfFyVMiz succeeded and public SW 2.797.0 was confirmed.
 
 ### Released — mixed-class Hit Dice, v2.796
 
