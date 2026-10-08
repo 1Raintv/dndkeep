@@ -1,13 +1,13 @@
 import {useEffect,useRef,useState} from 'react';
 import type {PendingAttack} from '../../types';
-import {readPsionicDamageDice} from '../../rules/psionicDamageDice';
+import {psychicDamageRoll} from '../../rules/psychicDamageRoll';
 import {applyPsionicDamagePlan,previewPsionicDamage,type PsionicDamageChoice,type PsionicDamagePlan} from '../../lib/api/psionicDamageResolution';
 interface Props {attack:PendingAttack;disabled:boolean;runAction:(action:()=>Promise<unknown>)=>Promise<void>;onCancel:()=>unknown}
 /** v2.849: choices change a server preview; no turn use is spent until Apply commits. */
 export default function PsionicDamageResolutionPanel({attack,disabled,runAction,onCancel}:Props){
  const [choice,setChoice]=useState<PsionicDamageChoice>({}),[plan,setPlan]=useState<PsionicDamagePlan|null>(null);
  const [error,setError]=useState(''),[loading,setLoading]=useState(true),[revision,setRevision]=useState(0);
- const sequence=useRef(0),dice=readPsionicDamageDice(attack.psionic_damage_dice);
+ const sequence=useRef(0),dice=psychicDamageRoll(attack);
  useEffect(()=>{
   const n=++sequence.current;let live=true;setLoading(true);setError('');
   previewPsionicDamage(attack.id,choice).then(p=>{if(live&&n===sequence.current)setPlan(p);},e=>{if(live&&n===sequence.current){setError(e instanceof Error?e.message:'Damage preview unavailable');}})
@@ -16,8 +16,9 @@ export default function PsionicDamageResolutionPanel({attack,disabled,runAction,
  },[attack.id,attack.damage_final,choice,revision]);
  const locked=disabled||loading;
  return <section aria-label="Psychic damage resolution" style={{display:'grid',gap:10,minWidth:0,overflowWrap:'anywhere'}}>
-  <div>{dice?.rolls.length}d{dice?.sides}+{dice?.modifier} · [{dice?.rolls.join(', ')}]</div>
+  <div>{dice?.expression} · [{dice?.rolls.join(', ')}]</div>
   {dice?.rolls.some((n,i)=>n!==dice.originalRolls[i])&&<div>Surge adjusted low dice to 4.</div>}
+  {attack.attack_kind==='save'&&attack.save_result==='passed'&&<div>Successful save: {attack.save_success_effect==='half'?'half damage; replacement applies before halving.':'no damage.'}</div>}
   <label>Damage before defenses <input aria-label="Damage before defenses" type="number" min={0} max={2147483647} step={1} disabled={disabled}
    value={choice.amount??attack.damage_final??0} onChange={e=>{const amount=Number(e.target.value);if(Number.isSafeInteger(amount)&&amount>=0&&amount<=2147483647)setChoice(c=>({...c,amount}));}} style={{width:90,maxWidth:'100%',marginLeft:8}} /></label>
   <label>Psychic defenses <select aria-label="Psychic defenses" disabled={disabled} value={choice.affinity??''}

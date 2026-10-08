@@ -973,6 +973,7 @@ export interface PendingAttack {
 
   attack_source: string | null;
   attack_mode?: 'melee' | 'ranged' | null;
+  spell_cast_source?: string | null;
   attack_name: string;
   attack_kind: AttackKind;
 

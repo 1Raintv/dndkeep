@@ -1,5 +1,5 @@
 import type {PendingAttack} from '../../types';
-import {readPsionicDamageDice} from '../../rules/psionicDamageDice';
+import {psychicDamageRoll} from '../../rules/psychicDamageRoll';
 import {psionicRpc} from './psionicTurns';
 import {finishPsionicDamageApplication,psionicTargetConModifier} from './psionicDamageApplication';
 export interface PsionicDamageChoice {activationId?:string;dieIndex?:number;affinity?:'normal'|'resistant'|'immune'|'vulnerable'|'resistant-vulnerable';amount?:number}
@@ -12,7 +12,7 @@ export interface PsionicDamagePlan {
 const integer=(v:unknown):v is number=>Number.isSafeInteger(v)&&Number(v)>=0&&Number(v)<=2147483647;
 export function validPsionicDamagePlan(value:unknown,id:string):value is PsionicDamagePlan {
  const p=value as PsionicDamagePlan|null;
- return !!p&&p.context?.attack?.id===id&&!!readPsionicDamageDice(p.context.attack.psionic_damage_dice)
+ return !!p&&p.context?.attack?.id===id&&!!psychicDamageRoll(p.context.attack)
   &&!!p.choice&&typeof p.choice==='object'&&Array.isArray(p.activations)&&p.activations.every(a=>typeof a.id==='string'&&integer(a.total)&&a.total>=1&&a.total<=36)
   &&[p.usedThisTurn,p.pendingActivation,p.defensesKnown,p.immune,p.resistant,p.vulnerable,p.bypass].every(v=>typeof v==='boolean')
   &&integer(p.damageBefore)&&(p.damageAfter===null||integer(p.damageAfter))&&typeof p.turnId==='string'

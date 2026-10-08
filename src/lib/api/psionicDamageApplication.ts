@@ -1,5 +1,5 @@
 import type {PendingAttack,InventoryItem} from '../../types';
-import {readPsionicDamageDice} from '../../rules/psionicDamageDice';
+import {psychicDamageRoll} from '../../rules/psychicDamageRoll';
 import {abilityModifier} from '../../rules/abilities';
 import {getEffectiveAbilityScores} from '../attunement';
 import {psionicRpc} from './psionicTurns';
@@ -7,7 +7,7 @@ import {readConcentrationResult,resolveConcentrationSave} from './concentrationS
 interface Application {attack:PendingAttack;replayed:boolean;settlement:{attackId:string;damage:number;characterId:string|null;concentrationCheckId:string|null;concentrationMode:'off'|'prompt'|'auto'}}
 function verified(value:unknown,id:string):Application {
  const r=value as Application|null,s=r?.settlement;
- if(!r||r.attack?.id!==id||r.attack.state!=='applied'||!readPsionicDamageDice(r.attack.psionic_damage_dice)||typeof r.replayed!=='boolean'
+ if(!r||r.attack?.id!==id||r.attack.state!=='applied'||!psychicDamageRoll(r.attack)||typeof r.replayed!=='boolean'
   ||!s||s.attackId!==id||!Number.isSafeInteger(s.damage)||s.damage<0||r.attack.damage_final!==s.damage
   ||!(s.characterId===null||typeof s.characterId==='string')||!(s.concentrationCheckId===null||typeof s.concentrationCheckId==='string')
   ||!['off','prompt','auto'].includes(s.concentrationMode))throw new Error('Damage application could not be confirmed. Refresh this attack; do not create another hit.');

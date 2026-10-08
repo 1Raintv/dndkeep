@@ -1,5 +1,29 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.867 — Psychic saving spells use Sharpened damage resolution
+
+New paid single-target Psychic saving spells use the guarded damage preview and
+atomic HP, life state, concentration, history and receipt settlement. Their saved
+casting source distinguishes Psion resistance bypass from other-class psychic
+spells, which can still use optional Attack Mode. A replacement changes the
+original damage roll before the successful save reduction and target defenses.
+Zero damage after defenses cannot trigger replacement. Paid caster/target/source
+and saved dice are verified again on application. Lost replies reuse one receipt
+and one current-turn replacement use.
+
+The spell source marker is populated from new paid declarations; legacy records
+are not guessed. Weapons, attack-roll spells, shared/mixed-type damage still need
+complete handling of mastery, retaliation and per-type defenses. This is a real
+saving-spell integration, not completion of broader Sharpened damage automation.
+Migration: `20261008211300_psychic_save_resolution.sql` (local applied).
+Verification: 63 SQL cases, ten desktop/phone flows including real Mind Spike
+replacement and lost-application replay; scoped overflow checks pass. Desktop/phone
+screenshots inspected. The browser regression fails when restored to the old
+Destructive-Thoughts-only UI. Full gate: 2,870 units / 259 files, TypeScript 199/199,
+hooks/RAW/coordinates/anchors, production build and 255.2 KB entry. Database lint
+reports no errors or findings on changed functions; unrelated standing warnings
+remain. Publication pending.
+
 ### v2.866 — Preserve melee/ranged attack delivery
 
 New declared attack spells capture melee/ranged delivery separately from their
@@ -19,7 +43,10 @@ including reload and lost delivery replies. Full gate passes: 2,857 units / 258
 files, TypeScript 199/199, hooks/RAW/coordinates/anchors, build and 255.2 KB entry.
 Desktop/phone casting screenshots and scoped overflow checks pass. Database lint
 has no errors; existing warnings remain, including the unchanged loop variable
-in record_pending_damage. Publication pending.
+in record_pending_damage. Merged PR #210 after both CI gates passed. Production
+migration run 37844293132 succeeded; ledger/column/functions verified and advisor
+counts unchanged (6 security / 4 performance). Vercel frontend rate-limited;
+v2.861.0 independently confirmed live.
 
 ### v2.865 — Consistent Psychic damage application
 

@@ -1,0 +1,7 @@
+import {expect,it} from 'vitest';
+import {psychicDamageRoll} from './psychicDamageRoll';
+const base={key:'base',source:'base',label:'Mind Spike',damageType:'psychic',expression:'3d8',rolls:[1,5,3],dieKinds:['rolled','rolled','rolled'],modifier:0,rawTotal:9};
+const spell={spell_cast_source:'class:Psion',attack_kind:'save',attack_source:'spell',damage_type:'Psychic',damage_dice:'3d8',save_result:'passed',save_success_effect:'half',damage_components:{version:1,components:[base]}};
+it('retains original spell dice separately from save and defense reductions',()=>{expect(psychicDamageRoll(spell)).toEqual({rolls:[1,5,3],originalRolls:[1,5,3],modifier:0,expression:'3d8'});});
+it.each([{spell_cast_source:null},{attack_kind:'attack_roll'},{attack_source:'weapon'},{damage_group_id:'aoe'},{damage_type:'fire'},{save_result:null},{save_success_effect:'other'},{damage_components:null},{damage_components:{version:1,components:[base,{...base,key:'rider',source:'rider'}]}},{damage_components:{version:1,components:[{...base,dieKinds:['unknown','rolled','rolled']}]}},{damage_dice:'4d8'}])('does not route unsupported or unverifiable damage %j',patch=>{expect(psychicDamageRoll({...spell,...patch})).toBeNull();});
+it('keeps pre-rolled Destructive Thoughts and Surge provenance',()=>{expect(psychicDamageRoll({psionic_damage_dice:{version:1,sides:8,rolls:[4,5,4],originalRolls:[1,5,3],modifier:4}})).toMatchObject({rolls:[4,5,4],originalRolls:[1,5,3],expression:'3d8+4'});});

@@ -1,3 +1,4 @@
+import {psychicDamageRoll} from '../rules/psychicDamageRoll';
 import {attackIsMelee,type AttackMode} from '../rules/attackMode';
 import {psionicDamageComponent,readPsionicDamageDice,type PsionicDamageDice} from '../rules/psionicDamageDice';
 import {recordPendingDamage} from './api/pendingDamage';
@@ -1139,9 +1140,9 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
   if (!row) return null;
   const atk = row as PendingAttack;
 
-  // v2.844: automatic-hit Psion damage has no weapon mastery/retaliation.
+  // v2.867: supported psychic saves and automatic-hit Psion damage have no weapon mastery/retaliation.
   // Its HP, death state, concentration, log and applied state settle together.
-  if(atk.attack_kind==='auto_hit'&&atk.attack_name==='Destructive Thoughts'&&readPsionicDamageDice(atk.psionic_damage_dice)){
+  if(psychicDamageRoll(atk)){
     const {applyDestructiveThoughtsDamage}=await import('./api/psionicDamageApplication');
     return applyDestructiveThoughtsDamage(atk);
   }

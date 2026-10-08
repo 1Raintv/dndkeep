@@ -35,6 +35,44 @@ test.describe('Sharpened Mind damage resolution',()=>{
   const id=randomUUID();sql(`insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,target_participant_id,attacker_name,attacker_type,target_name,attack_name,attack_kind,attack_source,hit_result,state,damage_dice,damage_type,chain_id,damage_final,psionic_damage_dice)
    select '${id}',campaign_id,encounter_id,attacker_participant_id,target_participant_id,attacker_name,attacker_type,target_name,attack_name,attack_kind,attack_source,hit_result,'damage_rolled',damage_dice,damage_type,'${randomUUID()}',13,psionic_damage_dice from pending_attacks where id='${attack}'`);return id;
  }
+ // v2.867: exercise real paid declaration and queue, then controlled saved dice.
+ function psychicSpell(source='class:Psion',passed=false){
+  sql(`delete from pending_attacks where id='${attack}';update characters set prepared_spells=ARRAY['mind-spike'],spell_sources='{"mind-spike":["${source}"]}',spell_preparation_sources='{"mind-spike":["${source}"]}',spell_slots='{"2":{"total":1,"used":0}}' where id='${char}'`);
+  const context={source,spellLevel:2,saveDC:18,combat:{kind:'save',attackMode:null,damageDice:'3d8',damageType:'Psychic',attackBonus:null,targetAC:null,saveAbility:'WIS',saveSuccessEffect:'half',actorCombatantId:cb,target:{participantId:cp,entityId:char,type:'character',combatantId:cb}}};
+  run(`select declare_spell_cast_atomic('${attack}','${char}','${cp}','mind-spike','Mind Spike',2,'{"total":1,"used":0}',${encoded(context)})`,player);
+  sql(`update pending_spell_casts set expires_at=now()-interval '1 minute' where id='${attack}'`);
+  run(`select settle_declared_spell_atomic('${attack}')`,player);run(`select queue_declared_spell_attack('${attack}')`,player);
+  const packet={version:1,components:[{key:'base',source:'base',label:'Mind Spike',expression:'3d8',damageType:'psychic',rolls:[1,5,3],dieKinds:['rolled','rolled','rolled'],modifier:0,rawTotal:9}]};
+  sql(`update pending_attacks set state='damage_rolled',save_result='${passed?'passed':'failed'}',damage_rolls=array[1,5,3],damage_raw=9,damage_final=${passed?4:9},damage_components=${encoded(packet)} where id='${attack}'`);
+ }
+ test('paid Psychic save applies resistance and one atomic receipt',()=>{
+  psychicSpell();const p=preview();expect(p.damageAfter).toBe(4);const first=apply(p);expect(first.settlement).toMatchObject({damage:4,afterHP:99,afterTempHP:0});expect(apply(p).replayed).toBe(true);expect(uses()).toBe(0);
+ });
+ test('Psion spell replacement happens before a successful save halves damage',()=>{
+  activate();psychicSpell('class:Psion',true);const p=preview(choose());expect(p).toMatchObject({bypass:true,damageBefore:4,damageAfter:8,replacement:{original:1,replacement:8}});
+  expect(apply(p).settlement.damage).toBe(8);expect(uses()).toBe(1);
+ });
+ test('other-class Psychic spells allow replacement but retain resistance',()=>{
+  sql(`update characters set level=17,secondary_class='Wizard',secondary_level=3 where id='${char}'`);activate();psychicSpell('class:Wizard',true);
+  const p=preview(choose());expect(p).toMatchObject({bypass:false,damageBefore:4,damageAfter:4});expect(apply(p).settlement.damage).toBe(4);expect(uses()).toBe(1);
+ });
+ test('zero damage after save and resistance cannot trigger a replacement',()=>{
+  sql(`update characters set level=17,secondary_class='Wizard',secondary_level=3 where id='${char}'`);activate();psychicSpell('class:Wizard',true);
+  sql(`update pending_attacks set damage_rolls=array[1,1,1],damage_raw=3,damage_final=1,damage_components=jsonb_set(jsonb_set(damage_components,'{components,0,rolls}','[1,1,1]'),'{components,0,rawTotal}','3') where id='${attack}'`);
+  expect(preview().damageAfter).toBe(0);expect(()=>preview(choose())).toThrow(/must take Psychic damage/);expect(uses()).toBe(0);
+ });
+ test('changed captured spell source cannot grant Psion resistance bypass',()=>{
+  psychicSpell();sql(`update pending_attacks set spell_cast_source='class:Wizard' where id='${attack}'`);expect(()=>preview()).toThrow(/original paid Psychic spell/);
+ });
+ test('Psychic spell immunity prevents replacement and turn consumption',()=>{
+  activate();psychicSpell();sql(`update characters set damage_immunities=array['psychic'] where id='${char}'`);expect(preview().damageAfter).toBe(0);expect(()=>preview(choose())).toThrow(/must take Psychic/);expect(uses()).toBe(0);
+ });
+ test('edited Psychic spell dice or paid targeting cannot enter the atomic path',()=>{
+  psychicSpell();sql(`update pending_attacks set damage_dice='4d8' where id='${attack}'`);expect(()=>preview()).toThrow(/paid Psychic spell changed/);expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe('100');
+ });
+ test('legacy Psychic spell without a payment receipt is not guessed',()=>{
+  psychicSpell();sql(`delete from dndkeep_private.declared_spell_payments where cast_id='${attack}'`);expect(()=>preview()).toThrow(/original paid Psychic spell/);
+ });
  // v2.865: old callers must enter the same defense/Sharpened settlement.
  const direct=(id=attack)=>run(`select apply_psionic_pending_damage('${id}',${encoded(run(`select get_pending_damage_context('${id}')`))},2)`);
  test('direct application respects resistance and returns the same saved resolution',()=>{
