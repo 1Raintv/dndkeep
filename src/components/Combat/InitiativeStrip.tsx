@@ -6,7 +6,8 @@
 // for the DM (invisible to players — RLS-filtered out of the participants
 // array for non-DMs).
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import {useBottomOverlayInset} from '../../lib/hooks/useBottomOverlayInset';
 import { useCombat } from '../../context/CombatContext';
 // v2.620.0 — B3b: owned-minion sub-entries. Direct combatants fetch
 // (minions are NOT combat_participants — v2.617 design) grouped under
@@ -78,6 +79,8 @@ export default function InitiativeStrip({ isDM }: Props) {
     return () => mq.removeEventListener('change', onChange);
   }, []);
   const { encounter, participants, currentActor } = useCombat();
+  const stripRef=useRef<HTMLDivElement>(null);
+  useBottomOverlayInset(stripRef,encounter?.status==='active');
   // v2.457.0 — Concentration map for the active campaign. Empty until
   // useCombat resolves the encounter; the inner subscription handles
   // late-arriving data without a flicker.
@@ -270,6 +273,7 @@ export default function InitiativeStrip({ isDM }: Props) {
 
   return (
     <div
+      ref={stripRef}
       className="initiative-strip"
       style={{
         position: 'fixed',

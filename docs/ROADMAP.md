@@ -1,8 +1,31 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.853 — Floating combat tools clear phone controls
+
+The dice and roll-history buttons now clear the measured initiative strip rather
+than assuming an 88px height. Wrapped controls, viewport changes and phone
+navigation/safe areas contribute to their placement. Open panels sit above their
+buttons, fit the phone width, and stay within the available screen height.
+The measurement is released when combat disappears. No map-root growth or schema
+change is included.
+
+Validation: reproduced a 23.6px phone overlap with the new browser assertion;
+fixed desktop/mobile combat and tabletop checks pass, including a 650x450
+landscape resize and return. Two final panel-capture reruns pass; screenshots
+inspected for both tools and viewports. Full gate passes (2,743 units,
+TypeScript 200/200, entry 255.1 KB). PR/production publishing pending.
+
+Remaining visible interface issue: the character page campaign/map header is
+crowded on narrow phones; address its wrapping separately.
+
 ### v2.852 — Recoverable Psion rolls and exactly-once delivery
 
-Release verification is complete; PR/production rollout pending.
+Merged PR #196 (`c3d3f53`). Both CI gates passed. Production migration run
+`37813988507` applied the file; the production ledger independently confirms it.
+Frontend v2.852.0 is live (Vercel success and public service-worker version checked).
+Advisor additions are the intentional
+private-ledger no-policy entries, guarded authenticated definer endpoints, and a
+new unused-index informational notice; no new unindexed foreign keys.
 
 Destructive Thoughts and Biofeedback now save their base payment and recovery
 context together. Enkindled and Surge payments belong to that original roll;
@@ -32,7 +55,7 @@ mobile flows. Scoped overflow probes pass; recovery screenshots inspected at bot
 sizes. Removing the recovery control makes its reload check fail; bypassing the
 Biofeedback receipt makes its duplicate-benefit check fail. Correct code restored
 and corresponding checks passed. New SQL functions have no lint findings.
-Migration: `20261008160020_psionic_effect_roll_records.sql` (local applied).
+Migration: `20261008160020_psionic_effect_roll_records.sql` (local and production applied).
 
 Qualifying spell, school and line-of-sight declarations still rely on the player;
 this is not a spell-cast trigger ledger. Legacy generic payments keep their old
