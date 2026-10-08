@@ -25,11 +25,11 @@ cover lost responses, reload, last slot, removed preparation, actual client save
 settlement, and cancel/recast. Two focused visual checks passed after correcting
 the error wording. v2.804 build and service-worker version synchronized.
 
-**Release pending:** PR141 cancellation backend merged at 96942719; confirm its
-production migration application before shipping this client. Production UI is
+**Release pending:** PR141 merged at 96942719. Production workflow 37732224515
+explicitly applied 20261008051748 and finished the database push. Production UI is
 still v2.803 until the candidate's PR/deployment checks finish.
 
-### Backend prepared — cancel unpaid casting without delayed charges
+### Backend applied — cancel unpaid casting without delayed charges
 
 Migration `20261008051748_cancel_unpaid_spell_declaration.sql` adds an explicit
 owner/current-DM cancellation receipt and private request tombstone. Declaration
@@ -44,9 +44,9 @@ concurrent declaration/cancel, concurrent cancel retries, delayed and cross-char
 requests, permissions, legacy casts, and unchanged payment/refund regressions.
 Full gate: 2,030 unit tests, TS 204/204, hooks/RAW/coordinates/anchors/build/SW
 and 253.7 KB entry. Local migration applied; security advisors have only the
-existing keep_warm/client_errors warnings. Production application still pending.
-The separately committed client integration remains local until this backend is
-applied and explicit cancel/retry recovery is wired and browser-verified.
+existing keep_warm/client_errors warnings. Production workflow 37732224515 applied
+the migration successfully. The v2.804 client above is wired and browser-verified;
+its pull request and deployment remain pending.
 
 
 ### Backend applied — durable casting requests and retry-safe Counterspell prompts
