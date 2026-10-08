@@ -19,7 +19,10 @@ or durable browser recovery; that is the next required integration step.
 
 Release checkpoint: PR154 merged at 17849e03 after both hosted gates and its
 Vercel preview succeeded. This includes the preceding map HP preview and Psion
-request deadlines. Production migration/deployment still require confirmation.
+request deadlines. Production migration run 37743138039 confirmed application of
+20261008071136_psionic_discipline_turns.sql. The production website build was
+rejected by Vercel's build-rate limit; a successful preview did not lift that
+production restriction.
 
 
 ### Psion discipline ledger candidate — backend groundwork
