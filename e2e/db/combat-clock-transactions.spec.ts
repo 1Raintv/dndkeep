@@ -1,0 +1,75 @@
+import {execFileSync,spawn} from 'node:child_process';
+import {randomUUID} from 'node:crypto';
+import {test,expect} from '@playwright/test';
+import {gateDbSuite} from './helpers';
+const args=['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'];
+const sql=(q:string)=>execFileSync('docker',args,{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
+const auth=(u:string,q:string)=>`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${u}","role":"authenticated"}';${q};commit;`;
+const parallel=(q:string)=>new Promise<{code:number|null,out:string,error:string}>(resolve=>{const p=spawn('docker',args);let out='',error='';p.stdout.on('data',v=>out+=v);p.stderr.on('data',v=>error+=v);p.on('close',code=>resolve({code,out,error}));p.stdin.end(q);});
+test.describe('Atomic combat clock transitions',()=>{
+ gateDbSuite();let dm:string,player:string,campaign:string,enc:string,a:string,b:string,ca:string,cb:string,pa:string,pb:string,request:string,turn:string;
+ test.beforeEach(()=>{
+  [dm,player,campaign,enc,a,b,ca,cb,pa,pb,request]=Array.from({length:11},()=>randomUUID());
+  sql(`begin;insert into auth.users(id,email,raw_user_meta_data) values('${dm}','${dm}@turn.local','{}'),('${player}','${player}@turn.local','{}');
+   insert into campaigns(id,owner_id,name,seconds_per_round) values('${campaign}','${dm}','Turn fixture',6);
+   insert into campaign_members(campaign_id,user_id,role) values('${campaign}','${player}','player');
+   insert into characters(id,user_id,campaign_id,name,species,class_name,background) values('${a}','${player}','${campaign}','A','Human','Psion','Sage'),('${b}','${dm}','${campaign}','B','Human','Fighter','Sage');
+   insert into combatants(id,campaign_id,owner_id,name,definition_type,definition_id,current_hp,max_hp) values('${ca}','${campaign}','${player}','A','character','${a}',20,20),('${cb}','${campaign}','${dm}','B','character','${b}',20,20);
+   insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index,lair_action_used_this_round) values('${enc}','${campaign}','active',1,0,true);
+   insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,combatant_id) values('${pa}','${enc}','${campaign}','character','${a}','A',0,'${ca}'),('${pb}','${enc}','${campaign}','character','${b}','B',1,'${cb}');
+   update combatants set active_buffs='[{"id":"timed","duration":3},{"id":"indefinite","duration":-1}]' where id in('${ca}','${cb}');commit;`);turn=state().turn;
+ });
+ test.afterEach(()=>sql(`delete from campaigns where id='${campaign}';delete from characters where id in('${a}','${b}');delete from auth.users where id in('${dm}','${player}')`));
+ const state=()=>JSON.parse(sql(`select jsonb_build_object('index',e.current_turn_index,'round',e.round_number,'turn',e.psionic_turn_id,'clock',c.combat_rounds_elapsed,'lair',e.lair_action_used_this_round) from combat_encounters e join campaigns c on c.id=e.campaign_id where e.id='${enc}'`));
+ const call=(id=request,expected=turn,incoming=pb,index=1,round=1)=>`select commit_combat_clock_transition('${enc}','${id}','${expected}','${incoming}',${index},${round})`;
+ const run=(q=call(),user=dm)=>JSON.parse(sql(auth(user,q)));
+ const buffs=()=>JSON.parse(sql(`select active_buffs from combatants where id='${ca}'`));
+ function wrapCall(){run();return call(randomUUID(),state().turn,pa,0,2);}
+ test('within-round transitions change actor identity without ticking time or buffs',()=>{
+  const r=run();expect(r).toMatchObject({requestId:request,incomingId:pb,index:1,round:1,roundWrapped:false,campaignRounds:0,replayed:false});expect(r.turnId).not.toBe(turn);expect(state()).toMatchObject({index:1,round:1,clock:0,lair:true});expect(buffs()[0].duration).toBe(3);
+ });
+ test('round wrap commits the actor, campaign clock, lair reset and buff tick together',()=>{
+  expect(run(wrapCall())).toMatchObject({incomingId:pa,index:0,round:2,roundWrapped:true,campaignRounds:1});expect(state()).toMatchObject({index:0,round:2,clock:1,lair:false});expect(buffs()).toEqual([{id:'timed',duration:2},{id:'indefinite',duration:-1}]);
+  expect(sql(`select elapsed_seconds from dndkeep_private.psionic_duration_clocks where character_id='${a}'`)).toBe('6');
+ });
+ test('saved transition replay never reverts a later turn or ticks twice',()=>{
+  const q=wrapCall(),first=run(q);run(call(randomUUID(),state().turn,pb,1,2));const latest=state();expect(run(q)).toEqual({...first,replayed:true});expect(state()).toEqual(latest);expect(buffs()[0].duration).toBe(2);
+ });
+ test('same request raced twice commits once',async()=>{
+  const q=wrapCall();const results=await Promise.all([parallel(auth(dm,q)),parallel(auth(dm,q))]);expect(results.every(r=>r.code===0),JSON.stringify(results)).toBe(true);expect(results.map(r=>JSON.parse(r.out).replayed).sort()).toEqual([false,true]);expect(state().clock).toBe(1);expect(buffs()[0].duration).toBe(2);
+ });
+ test('different requests for the same turn cannot both advance',async()=>{
+  const results=await Promise.all([parallel(auth(dm,call())),parallel(auth(dm,call(randomUUID())))]);expect(results.filter(r=>r.code===0)).toHaveLength(1);expect(results.find(r=>r.code!==0)?.error).toContain('Combat turn changed');expect(state().index).toBe(1);
+ });
+ test('manual time and round wrap preserve both increments',async()=>{
+  const q=wrapCall();const manual=`select advance_campaign_time('${campaign}','${randomUUID()}','rounds',2,6)`;
+  const results=await Promise.all([parallel(auth(dm,q)),parallel(auth(dm,manual))]);expect(results.every(r=>r.code===0),JSON.stringify(results)).toBe(true);expect(state().clock).toBe(3);expect(buffs()).toEqual([{id:'indefinite',duration:-1}]);
+ });
+ test('failed buff processing rolls back actor, clock, identity and receipt',()=>{
+  const q=wrapCall(),before=state();sql(`update combatants set active_buffs='{}' where id='${cb}'`);expect(()=>run(q)).toThrow(/Check campaign buff data/);expect(state()).toEqual(before);expect(buffs()[0].duration).toBe(3);
+  expect(sql(`select count(*) from dndkeep_private.combat_clock_transitions where encounter_id='${enc}'`)).toBe('1');
+ });
+ test('wrong incoming actor or round cannot spend a turn',()=>{
+  expect(()=>run(call(request,turn,pa))).toThrow(/Initiative roster changed/);expect(()=>run(call(request,turn,pb,1,2))).toThrow(/Initiative roster changed/);expect(state().index).toBe(0);
+ });
+ test('dead actors are skipped and duplicate active initiative positions are rejected',()=>{
+  sql(`update combatants set is_dead=true where id='${cb}'`);expect(run(call(request,turn,pa,0,2)).roundWrapped).toBe(true);
+  sql(`update combatants set is_dead=false where id='${cb}';update combat_participants set turn_order=0 where id='${pb}'`);
+  expect(()=>run(call(randomUUID(),state().turn,pb,1,2))).toThrow(/duplicate initiative/);
+ });
+ test('player membership grants no transition or receipt access',()=>{
+  run();expect(()=>run(call(),player)).toThrow(/only to its DM/);expect(()=>sql(`begin;set local role anon;${call()};commit;`)).toThrow(/permission denied/);expect(()=>sql(auth(dm,'select * from dndkeep_private.combat_clock_transitions'))).toThrow(/permission denied/);
+ });
+ test('changed saved payload is rejected even after the encounter ends',()=>{
+  const first=run();sql(`update combat_encounters set status='ended' where id='${enc}'`);expect(run()).toEqual({...first,replayed:true});expect(()=>run(call(request,turn,pa,0,2))).toThrow(/Saved combat transition changed/);expect(()=>run(call(randomUUID(),state().turn,pa,0,2))).toThrow(/Combat turn changed/);
+ });
+ test('missing combatant links fail before moving the turn or clock',()=>{
+  sql(`update combat_participants set combatant_id=null where id='${pb}'`);const before=state();expect(()=>run(call(request,before.turn))).toThrow(/Repair the initiative roster/);expect(state()).toEqual(before);
+ });
+ test('an entirely dead roster cannot create a new round',()=>{
+  sql(`update combatants set is_dead=true where id in('${ca}','${cb}')`);const before=state();expect(()=>run(call(request,before.turn))).toThrow(/No living participants/);expect(state()).toEqual(before);
+ });
+ test('clock overflow rolls back the entire wrapping transition',()=>{
+  const q=wrapCall();sql(`update campaigns set combat_rounds_elapsed=2147483647 where id='${campaign}'`);const before=state();expect(()=>run(q)).toThrow(/clock limit reached/);expect(state()).toEqual(before);expect(buffs()[0].duration).toBe(3);
+ });
+});

@@ -1,5 +1,27 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.836 — Atomic combat clock boundary
+
+A guarded DM transaction now commits the turn position, campaign round clock,
+encounter buff decrement and lair-action reset together. It derives the incoming
+actor from the current living roster, checks the expected turn identity and
+planned position, rejects ambiguous/missing roster links, and saves an immutable
+receipt. Replay cannot advance twice or revert a later turn. Manual time advances
+and combat wraps share campaign serialization, preserving both increments.
+
+This is the transaction/API foundation, not yet the advanceTurn call site.
+Integration must preserve saved confirmation and phase ownership: outgoing
+condition/aura ticks and incoming death-save/start ticks must not run again after
+a lost response. Existing participant budget and recharge writes also precede
+the old boundary. The character sheet currently calls that same DM-only write
+path for player End Turn; handle that authorization gap explicitly rather than
+silently treating an RLS-filtered update as success. These remain next work.
+
+Validation: full gate (2,487 units; TypeScript 200/200; hooks clean; 255.1 KB
+entry), 14 database cases covering wrap/non-wrap, races, rollback, replay,
+permissions, roster errors and overflow. Local migration applied; no changed-
+object security or database-lint findings.
+
 ### v2.835 — Recoverable campaign time controls
 
 Both Party-tab time panels now use one shared component and the atomic time API.
