@@ -1,5 +1,22 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.811 map candidate — preview HP adjustments before applying
+
+The token panel previews exact remaining HP and temporary HP before a DM applies
+damage, healing or Set HP. It uses the same canonical pool calculation as the
+request validation, explains temporary-HP absorption and maximum-HP caps, and
+keeps invalid inputs disabled. Changing tokens clears the unfinished amount/mode
+so an adjustment intended for one character cannot carry into the next. Primary
+HP controls have 44px touch targets; the HP bar exposes its numbers to assistive
+technology.
+
+Validation: 11 panel unit cases, both desktop/phone authenticated map recovery
+scenarios (including preview math, lost-reply recovery, stale cancellation and
+landscape bounds), and inspected phone/landscape screenshots. Full gate passed
+2,201 units, TS 203/203, hooks/RAW/coordinates/anchors/build/SW and 254 KB entry.
+Candidate depends on the preceding v2.810 branch; not yet deployed.
+
+
 ### v2.810 sheet integration — durable standalone damage and saves
 
 The solo sheet now submits one saved damage identity that pays HP and queues its

@@ -54,3 +54,20 @@ it('never applies a late receipt to a different character',async()=>{
  await waitFor(()=>expect(screen.getByText('15 / 30')).toBeTruthy());await act(async()=>{resolve({data:old,error:null});});expect(screen.getByText('15 / 30')).toBeTruthy();expect(screen.queryByText('HP updated.')).toBeNull();
  expect(localStorage.getItem(`dndkeep:hp-adjustment:${id}:${id}`)).not.toBeNull();
 });
+
+it('previews temp-first damage without sending it',async()=>{
+ await ready();fireEvent.change(screen.getByLabelText('HP amount'),{target:{value:'6'}});
+ expect(screen.getByRole('status',{name:'HP adjustment preview'}).textContent).toContain('After damage: 8 / 20 HP');
+ expect(screen.getByText('4 damage absorbed by temporary HP')).toBeTruthy();expect(m.rpc).not.toHaveBeenCalled();
+ expect(screen.getByRole('meter',{name:'Current hit points'}).getAttribute('aria-valuetext')).toBe('10 of 20 HP, plus 4 temporary HP');
+});
+it('previews capped healing and setting zero with temporary HP preserved',async()=>{
+ await ready();fireEvent.click(screen.getByRole('button',{name:'Heal'}));fireEvent.change(screen.getByLabelText('HP amount'),{target:{value:'50'}});
+ expect(screen.getByText('After healing: 20 / 20 HP')).toBeTruthy();expect(screen.getByText('Capped at maximum HP')).toBeTruthy();expect(screen.getByText('4 temporary HP remaining')).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Set HP'}));fireEvent.change(screen.getByLabelText('HP amount'),{target:{value:'0'}});expect(screen.getByText('After setting HP: 0 / 20 HP')).toBeTruthy();expect(screen.getByText('4 temporary HP remaining')).toBeTruthy();expect(m.rpc).not.toHaveBeenCalled();
+});
+it('clears the amount and mode when switching to another token',async()=>{
+ const view=await ready();fireEvent.click(screen.getByRole('button',{name:'Set HP'}));fireEvent.change(screen.getByLabelText('HP amount'),{target:{value:'6'}});
+ m.character={id:'22222222-2222-4222-8222-222222222222',current_hp:15,max_hp:30,temp_hp:0,hit_point_revision:2};view.rerender(<TokenHitPointControls character={m.character} isDM/>);
+ await waitFor(()=>expect(screen.getByText('15 / 30')).toBeTruthy());expect((screen.getByLabelText('HP amount') as HTMLInputElement).value).toBe('');expect(screen.getByRole('button',{name:'Damage'}).getAttribute('aria-pressed')).toBe('true');expect(screen.queryByRole('status',{name:'HP adjustment preview'})).toBeNull();expect(m.rpc).not.toHaveBeenCalled();
+});

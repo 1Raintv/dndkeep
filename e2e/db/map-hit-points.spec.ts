@@ -32,7 +32,12 @@ test.describe('Map HP recovery (local stack)',()=>{
    await expect(hp.getByText('+4 temp',{exact:true})).toBeVisible();await hp.getByRole('button',{name:'Set HP',exact:true}).click();await hp.getByLabel('HP amount').fill('0');await hp.getByRole('button',{name:'Apply',exact:true}).click();
    await expect(hp.getByText('0 / 20',{exact:true})).toBeVisible();await expect(hp.getByText('+4 temp',{exact:true})).toBeVisible();
    await hp.getByRole('button',{name:'Heal',exact:true}).click();await hp.getByLabel('HP amount').fill('10');await hp.getByRole('button',{name:'Apply',exact:true}).click();await expect(hp.getByText('10 / 20',{exact:true})).toBeVisible();
-   lose=true;await hp.getByRole('button',{name:'Damage',exact:true}).click();await hp.getByLabel('HP amount').fill('6');await hp.getByRole('button',{name:'Apply',exact:true}).click();await expect(hp.getByRole('alert')).toBeVisible();
+   lose=true;await hp.getByRole('button',{name:'Damage',exact:true}).click();await hp.getByLabel('HP amount').fill('6');
+   await expect(hp.getByRole('status',{name:'HP adjustment preview'})).toContainText('After damage: 8 / 20 HP');
+   await expect(hp.getByText('4 damage absorbed by temporary HP',{exact:true})).toBeVisible();
+   expect(await hp.getByRole('button',{name:'Damage',exact:true}).evaluate(el=>el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+   await hp.screenshot({path:info.outputPath('hp-preview.png')});
+   await hp.getByRole('button',{name:'Apply',exact:true}).click();await expect(hp.getByRole('alert')).toBeVisible();
    expect(lost).toBe(2);expect(bodies[3]).toEqual(bodies[2]);expect(sql(`select current_hp||','||temp_hp from characters where id='${id}'`)).toBe('8,0');
    await page.reload();hp=await panel(page);await expect(hp.getByText(/Saved damage adjustment: 6/)).toBeVisible();await page.screenshot({path:info.outputPath('hp-recovery.png')});
    await hp.getByRole('button',{name:'Retry saved adjustment',exact:true}).click();await expect(hp.getByText('Saved HP adjustment confirmed.',{exact:true})).toBeVisible();
