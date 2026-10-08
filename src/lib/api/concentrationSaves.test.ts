@@ -3,7 +3,7 @@ import {beforeEach,afterEach,expect,it,vi} from 'vitest';
 const m=vi.hoisted(()=>({rpc:vi.fn(),die:vi.fn(),from:vi.fn()}));
 vi.mock('../supabase',()=>({supabase:{rpc:m.rpc,from:m.from}}));
 vi.mock('../../rules/dice',()=>({rollDie:m.die}));
-import {createConcentrationOffer,resolveConcentrationSave,savedConcentrationRolls} from './concentrationSaves';
+import {createConcentrationOffer,resolveConcentrationSave,savedConcentrationRolls,readConcentrationResult} from './concentrationSaves';
 const receipt={pendingId:'offer',outcome:'failed',d20:3,total:5,replayed:false};
 beforeEach(()=>{localStorage.clear();vi.resetAllMocks();m.die.mockReturnValue(3);m.rpc.mockResolvedValue({data:receipt,error:null});context(false);});
 afterEach(()=>vi.restoreAllMocks());
@@ -101,4 +101,18 @@ it('creates a party save without an encounter or invented participant',async()=>
 });
 it('rejects encounter saves missing their participant before a write',async()=>{
  await expect(createConcentrationOffer({...offer,participantId:null})).rejects.toThrow('requires a combat participant');expect(m.from).not.toHaveBeenCalled();
+});
+
+it('reads a completed save without rolling again and clears its saved retry',async()=>{
+ localStorage.setItem('dndkeep:concentration-roll:hero:offer',JSON.stringify({characterId:'hero',pendingId:'offer',d20:3,source:'player'}));
+ const q={select:()=>q,eq:()=>q,single:async()=>({data:{id:'offer',character_id:'hero',state:'resolved',resolution_outcome:'passed',result:'passed',d20:17,total:19,has_advantage:true,d20_rolls:[3,17]},error:null})};m.from.mockReturnValue(q);
+ expect(await readConcentrationResult('hero','offer')).toMatchObject({outcome:'passed',rolls:[3,17],replayed:true});expect(m.die).not.toHaveBeenCalled();expect(m.rpc).not.toHaveBeenCalled();expect(savedConcentrationRolls('hero')).toEqual([]);
+});
+it('does not treat a different character or malformed saved result as confirmed',async()=>{
+ const q={select:()=>q,eq:()=>q,single:async()=>({data:{id:'offer',character_id:'other',state:'resolved',d20:99,total:0},error:null})};m.from.mockReturnValue(q);
+ await expect(readConcentrationResult('hero','offer')).rejects.toThrow('could not be verified');expect(m.die).not.toHaveBeenCalled();
+});
+it('leaves an offered concentration save to the existing saved-dice resolver',async()=>{
+ const q={select:()=>q,eq:()=>q,single:async()=>({data:{id:'offer',character_id:'hero',state:'offered'},error:null})};m.from.mockReturnValue(q);
+ expect(await readConcentrationResult('hero','offer')).toBeNull();expect(m.die).not.toHaveBeenCalled();
 });

@@ -15,3 +15,9 @@ it('merges species resistance once and preserves immunity priority',()=>{
 it('keeps successful-save rounding before resistance and vulnerability',()=>{
  expect(applyDamageTypeModifiers(Math.floor(47/2),'psychic',target).final).toBe(22);
 });
+
+it('all-damage resistance applies once and respects the untyped override',()=>{
+ expect(applyDamageTypeModifiers(23,'psychic',target,{resistanceAll:true}).final).toBe(22);
+ expect(applyDamageTypeModifiers(23,'fire',target,{resistanceAll:true}).final).toBe(11);
+ expect(applyDamageTypeModifiers(23,null,target,{resistanceAll:true}).final).toBe(23);
+});

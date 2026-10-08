@@ -94,3 +94,16 @@ export async function createConcentrationOffer(input:ConcentrationOfferInput):Pr
  });
  if(error)throw new Error(error.message);return id;
 }
+
+/** Read an already-settled save without generating a new proposed roll. */
+export async function readConcentrationResult(characterId:string,pendingId:string):Promise<ConcentrationReceipt|null>{
+ const {data,error}=await supabase.from('pending_concentration_saves').select('id,character_id,state,d20,total,result,resolution_outcome,has_advantage,d20_rolls').eq('id',pendingId).single();
+ if(error)throw new Error(error.message);
+ const row=data as unknown as {id:string;character_id:string;state:string;d20:number|null;total:number|null;result:string|null;resolution_outcome:string|null;has_advantage:boolean;d20_rolls:number[]|null}|null;
+ if(!row||row.id!==pendingId||row.character_id!==characterId||!['offered','resolved','expired'].includes(row.state))throw new Error('The concentration result could not be verified.');
+ if(row.state==='offered')return null;
+ const receipt={pendingId,outcome:row.resolution_outcome??row.result??'obsolete',d20:row.d20,total:row.total,replayed:true,advantage:row.has_advantage,rolls:row.d20_rolls};
+ verify(receipt,pendingId);
+ try{localStorage.removeItem(prefix(characterId)+pendingId);changed();}catch{/* A leftover saved roll can still confirm the immutable result. */}
+ return receipt;
+}
