@@ -43,7 +43,7 @@ export default function BiofeedbackButton({persistence,character,onUpdate}:{pers
    const rolls=Array.from({length:count},()=>rollDie(now.sides));
    if(!await beginDiscipline(persistence!,latest,prepared,'biofeedback',rolls,count,{...options,recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for temporary HP (minimum 1); keep higher existing temporary HP.`}))return;
    const surged=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:rolls[0],rolls,sides:now.sides,feature:'Biofeedback',recoveryNote:`Spent ${count} Energy Dice; add Intelligence ${intelligence} once for temporary HP (minimum 1); keep higher existing temporary HP.`,campaignId:current.campaign_id,
-    current:()=>latest.current,active:()=>mounted.current,eligible:c=>!!capacity(c),
+    current:()=>latest.current,active:options.active,eligible:c=>!!capacity(c),
     prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
    // v2.779 — retain the paid roll in history if its sheet closes during Surge.
    if(surged?.unconfirmed)return;

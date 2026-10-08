@@ -39,7 +39,7 @@ export default function ConditionalPsionicButton({persistence,character,discipli
    let roll=originalRoll,usedSurge=false;let enkindledRolls:number[]=[];
    if(psionicSurge(latest.current,[roll])||enkindledCapacity(latest.current)) {
     const surged=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll,sides:eligible.sides,feature:discipline.name,campaignId,recoveryNote:'The bonus outcome is not resolved. Spend the base Energy Die only if it changes the outcome.',
-     current:()=>latest.current,active:()=>mounted.current,
+     current:()=>latest.current,active:options.active,
      eligible:current=>{
       const chosen=(current.class_resources as Record<string,unknown>|null)?.['psion-disciplines'];
       return Array.isArray(chosen)&&hasDiscipline(chosen.filter((v):v is string=>typeof v==='string'),discipline)
