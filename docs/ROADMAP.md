@@ -1,5 +1,25 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.834 — Atomic manual campaign time backend
+
+A DM-only, replay-safe transaction now advances the campaign clock, decrements
+all three buff stores and prunes expired immunities together. Identical requests
+return the original receipt without ticking twice; independent concurrent
+requests retain both increments. Stored payloads cannot be changed on replay.
+The server validates the campaign time scale and rejects intervals that round
+to zero or overflow the clock. Character rows are locked before private duration
+clocks, and malformed buff data rolls back the whole request.
+
+This is the server foundation. Existing Advance Time controls and combat round
+wraps still use their old writes; next connect saved-request UI recovery and
+replace the separate combat clock update. Do not claim those paths atomic yet.
+The API adapter validates saved requests, preserves identity on transport retry
+and rejects inconsistent receipts without discarding recovery.
+
+Validation: full gate (2,457 units; TypeScript 201/201; hooks clean; 255.1 KB
+entry), 12 database cases covering races, rollback, authorization, scale changes,
+expiry and replay. Local migration applied; no changed-object advisor findings.
+
 ### v2.833 — Sharpened duration follows declared game time
 
 New activations capture a private elapsed-time counter and recovery epoch.
