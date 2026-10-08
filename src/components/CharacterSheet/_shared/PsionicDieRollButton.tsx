@@ -42,9 +42,10 @@ export default function PsionicDieRollButton({persistence,character,feature,labe
    }
    const original=rollDie(sides);
    const request={requestId:crypto.randomUUID(),operation:'spend' as const,count:1,rolls:[original],sourceFeature:feature,recoveryNote:'The base Energy Die was spent. Apply this saved roll manually; do not spend it again.'};
-   if(discipline){if(!await beginDiscipline(persistence!,latest,prepared!,discipline.id as DisciplineId,[original],1,options))return;}
+   let activationId:string|undefined;
+   if(discipline){const paid=await beginDiscipline(persistence!,latest,prepared!,discipline.id as DisciplineId,[original],1,options);if(!paid)return;if(discipline.id==='sharpened-mind')activationId=paid.requestId;}
    else if(!await payPsionicEnergy(persistence,latest,request,options))return;
-   const enhanced=await offerPsionicRollEnhancements({persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:original,sides,feature,recoveryNote:'The base Energy Die was already spent. Apply the rolled feature manually without spending it again.',campaignId:c.campaign_id,current:()=>latest.current,active:options.active,eligible,prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
+   const enhanced=await offerPsionicRollEnhancements({activationId,persistence,accept:receipt=>{acceptPsionicHitDiceReceipt(latest,receipt);},roll:original,sides,feature,recoveryNote:'The base Energy Die was already spent. Apply the rolled feature manually without spending it again.',campaignId:c.campaign_id,current:()=>latest.current,active:options.active,eligible,prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
    if(enhanced?.unconfirmed)return;
    const total=enhanced?.roll??original,originals=enhanced?.originalRolls??[original];
    if(mounted.current&&latest.current.id===c.id){onRolled(total,sides);showToast(`${feature}: ${total}. Apply the feature at the table.`,'success');}

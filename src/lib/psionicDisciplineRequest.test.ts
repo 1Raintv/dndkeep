@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import type {Character} from '../types';
-import {createDisciplineRequest,validDisciplineRequest,validDisciplineOutcomeRequest,validPsionicTurn} from './psionicDisciplineRequest';
+import {validSharpenedEnhancementLink,createDisciplineRequest,validDisciplineRequest,validDisciplineOutcomeRequest,validPsionicTurn} from './psionicDisciplineRequest';
 const c={class_name:'Psion',level:5,intelligence:18,inventory:[{name:'Headband'}],class_resources:{'psion-disciplines':['Biofeedback']}} as unknown as Character;
 it('freezes class, ability, inventory, learned picks, original rolls and turn',()=>{
  const hero=structuredClone(c),turn={soloTurn:2},rolls=[4,3];
@@ -23,4 +23,11 @@ it('requires a boolean outcome on a conditional discipline only',()=>{
  expect(validDisciplineOutcomeRequest({...r,changedOutcome:false})).toBe(true);
  expect(validDisciplineOutcomeRequest({...r,changedOutcome:'false'})).toBe(false);
  expect(validDisciplineOutcomeRequest({...r,discipline:'biofeedback',sourceFeature:'Biofeedback',changedOutcome:true})).toBe(false);
+});
+
+it('permits only Sharpened to link a distinct activation identity',()=>{
+ const activationId='11111111-1111-4111-8111-111111111111';
+ expect(validSharpenedEnhancementLink({sourceFeature:'Biofeedback'})).toBe(true);
+ expect(validSharpenedEnhancementLink({activationId,sourceFeature:'Sharpened Mind',requestId:'other'})).toBe(true);
+ for(const value of [{activationId:null},{activationId:''},{activationId,sourceFeature:'Other'},{activationId,sourceFeature:'Sharpened Mind',requestId:activationId}])expect(validSharpenedEnhancementLink(value)).toBe(false);
 });

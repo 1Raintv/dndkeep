@@ -213,4 +213,22 @@ test.describe('Psionic Discipline activation controls',()=>{
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('6');
  });
 
+ test('Sharpened linked enhancements survive lost response and reload without another charge',async({page})=>{
+  await page.addInitScript(()=>{Math.random=()=>0.1;});
+  sql(`update characters set intelligence=18,hit_dice_spent=0,class_resources='{"psion-disciplines":["sharpened-mind"],"psionic-energy-dice":12}' where id='${charId}'`);
+  await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+  await page.getByRole('button',{name:'Use discipline',exact:true}).locator('visible=true').first().click();
+  const extra=page.getByRole('dialog',{name:'Enkindled Life Force'});await extra.getByRole('textbox').fill('2');await extra.getByRole('button',{name:'Continue'}).click();
+  const endpoint='**/rest/v1/rpc/enhance_sharpened_roll';
+  await page.route(endpoint,async route=>{const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort('failed');});
+  await page.getByRole('dialog',{name:'Psionic Surge'}).getByRole('button',{name:'Spend 1 Hit Point Die'}).click();
+  await page.getByRole('dialog',{name:'Dice cost not confirmed'}).getByRole('button',{name:'Resolve later'}).click();
+  const spent=()=>sql(`select hit_dice_spent from characters where id='${charId}'`);expect(spent()).toBe('3');
+  await page.unroute(endpoint);await page.reload();
+  const recovery=page.getByRole('status',{name:'Psion roll recovery'});await recovery.getByRole('button',{name:'Confirm dice cost',exact:true}).click();
+  await expect(recovery).toContainText('Surged rolls: 4, 4, 4');expect(spent()).toBe('3');
+  expect(sql(`select count(*) from dndkeep_private.sharpened_enhancements e join dndkeep_private.sharpened_rolls r on r.request_id=e.activation_id where r.character_id='${charId}'`)).toBe('2');
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('11');
+ });
+
 });

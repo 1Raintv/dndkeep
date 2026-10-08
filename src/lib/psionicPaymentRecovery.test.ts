@@ -59,3 +59,13 @@ it('accepts semantically identical requests with reordered keys and omitted opti
  rememberPsionicPayment('hero',{request:{sourceFeature:'Biofeedback',rolls:[1,3,6],requestId:'saved',recoveryNote:undefined},kind:'surge'});
  expect(pendingPsionicPayments('hero')).toEqual([payment]);
 });
+
+it('keeps Sharpened activation links immutable through recovery',()=>{
+ const activationId='11111111-1111-4111-8111-111111111111';
+ const linked={kind:'surge' as const,request:{...payment.request,sourceFeature:'Sharpened Mind',activationId,hitDie:6 as const}};
+ rememberPsionicPayment('hero',linked);expect(pendingPsionicPayments('hero')).toEqual([linked]);
+ expect(()=>rememberPsionicPayment('hero',{...linked,request:{...linked.request,activationId:'22222222-2222-4222-8222-222222222222'}})).toThrow(/original saved request/);
+ for(const change of [{activationId:null},{activationId:''},{activationId:'bad'},{sourceFeature:'Biofeedback'},{hitDie:undefined}]){
+ localStorage.clear();expect(()=>rememberPsionicPayment('hero',{...linked,request:{...linked.request,...change}} as never)).toThrow(/Invalid saved/);
+ }
+});

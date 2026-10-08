@@ -39,3 +39,9 @@ export function createDisciplineRequest(c:Character,turn:PsionicTurn,discipline:
  if(!validDisciplineRequest(request))throw new Error('Invalid discipline request. No request was sent.');
  return request;
 }
+
+/** v2.830: legacy enhancements have no activation link; linked payments must
+ * keep the exact Sharpened identity through browser recovery. */
+export function validSharpenedEnhancementLink(v:{activationId?:unknown;sourceFeature?:unknown;requestId?:unknown}){
+ return v.activationId===undefined||(typeof v.activationId==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v.activationId)&&v.activationId!==v.requestId&&v.sourceFeature==='Sharpened Mind');
+}

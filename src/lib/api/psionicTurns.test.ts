@@ -111,3 +111,39 @@ it('captures Enkindled turn and extra rolls before waiting for its response',asy
  const input=structuredClone(request);let finish!:(v:unknown)=>void;mocks.rpc.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));const sent=spendEnkindledLifeForce('hero',input);input.extraRolls[0]=12;input.turn.soloTurn=9;
  finish({data:{requestId:'stable',extraRolls:[2,3],hitDiceSpent:2,hitDiceRevision:1,replayed:false},error:null});expect((await sent).extraRolls).toEqual([2,3]);expect(mocks.rpc.mock.calls[0][1]).toMatchObject({p_turn:{soloTurn:0},p_extra_rolls:[2,3]});
 });
+
+const activationId='11111111-1111-4111-8111-111111111111';
+it('sends Sharpened extra dice with their activation and retries the identical link',async()=>{
+ const linked={...request,activationId,sourceFeature:'Sharpened Mind'};
+ mocks.rpc.mockRejectedValueOnce(new Error('Lost')).mockResolvedValueOnce({data:{requestId:'stable',activationId,kind:'enkindled',extraRolls:[2,3],hitDiceSpent:2,hitDiceRevision:1,replayed:true},error:null});
+ expect((await spendEnkindledLifeForce('hero',linked)).replayed).toBe(true);
+ expect(mocks.rpc.mock.calls[0]).toEqual(['enhance_sharpened_roll',{p_character_id:'hero',p_activation_id:activationId,p_request_id:'stable',p_kind:'enkindled',p_extra_rolls:[2,3],p_hit_die:null}]);
+ expect(mocks.rpc.mock.calls[1]).toEqual(mocks.rpc.mock.calls[0]);
+});
+it('verifies the activation and enhancement kind before accepting a Sharpened receipt',async()=>{
+ const linked={...request,activationId,sourceFeature:'Sharpened Mind'};
+ for(const invalid of [{activationId:'other',kind:'enkindled'},{activationId,kind:'surge'},{kind:'enkindled'}]){
+ mocks.rpc.mockResolvedValue({data:{requestId:'stable',extraRolls:[2,3],hitDiceSpent:2,hitDiceRevision:1,replayed:false,...invalid},error:null});
+ await expect(spendEnkindledLifeForce('hero',linked)).rejects.toMatchObject({definitelyNotPaid:false});
+ }
+});
+it('links Surge to the activation and verifies the adjusted original dice',async()=>{
+ const linked={activationId,requestId:'surge',sourceFeature:'Sharpened Mind',rolls:[2,3,8],hitDie:6 as const};
+ mocks.rpc.mockResolvedValue({data:{requestId:'surge',activationId,kind:'surge',rolls:[4,4,8],total:16,hitDiceSpent:3,hitDiceRevision:2,hitDiceSpentByType:null,replayed:false},error:null});
+ expect((await spendPsionicSurge('hero',linked)).total).toBe(16);
+ expect(mocks.rpc.mock.calls[0]).toEqual(['enhance_sharpened_roll',{p_character_id:'hero',p_activation_id:activationId,p_request_id:'surge',p_kind:'surge',p_extra_rolls:null,p_hit_die:6}]);
+ mocks.rpc.mockResolvedValue({data:{requestId:'surge',activationId,kind:'surge',rolls:[4,4,9],total:17,hitDiceSpent:3,hitDiceRevision:2,hitDiceSpentByType:null,replayed:false},error:null});
+ await expect(spendPsionicSurge('hero',linked)).rejects.toMatchObject({definitelyNotPaid:false});
+});
+it('rejects a malformed activation, wrong feature and missing Surge pool before payment',async()=>{
+ for(const change of [{activationId:''},{activationId:'bad'},{activationId,sourceFeature:'Biofeedback'},{activationId,requestId:activationId}]){
+ await expect(spendEnkindledLifeForce('hero',{...request,sourceFeature:'Sharpened Mind',...change})).rejects.toMatchObject({definitelyNotPaid:true});
+ }
+ await expect(spendPsionicSurge('hero',{activationId,requestId:'surge',sourceFeature:'Sharpened Mind',rolls:[2]})).rejects.toMatchObject({definitelyNotPaid:true});
+ expect(mocks.rpc).not.toHaveBeenCalled();
+});
+
+it('rejects linked extra-die counts that disagree with the saved request',async()=>{
+ for(const patch of [{count:1},{count:3},{baseRolls:[1,2]},{extraRolls:[0,3]}])await expect(spendEnkindledLifeForce('hero',{...request,activationId,sourceFeature:'Sharpened Mind',...patch})).rejects.toMatchObject({definitelyNotPaid:true});
+ expect(mocks.rpc).not.toHaveBeenCalled();
+});

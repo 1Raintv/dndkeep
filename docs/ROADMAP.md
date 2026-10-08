@@ -1,5 +1,19 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.830 — link sheet enhancements to Sharpened activation
+
+The sheet now carries the paid Sharpened activation ID into Enkindled and Surge.
+The API routes those payments through the activation-bound transaction and checks
+the returned identity/kind as well as dice and costs. Browser recovery preserves
+that link, rejecting malformed or changed identities. Existing unrelated and
+legacy enhancements keep their original transaction paths.
+
+A live desktop/phone regression loses a committed Surge response, reloads, then
+confirms the saved request: one Energy Die and three Hit Dice spent, two linked
+enhancements, no second charge. Full gate passed: 2,412 unit tests, TypeScript
+201/201, hooks clean, build and 255.1 KB entry. Final-roll confirmation/status, duration,
+incapacitation, and damage application remain follow-up integration.
+
 ### v2.829 — Sharpened Mind saved-roll foundation
 
 A Sharpened activation can now own its Enkindled and Surge payments. The server
