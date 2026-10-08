@@ -1,5 +1,26 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.858 — Legal higher slots and accurate casting cost
+
+Higher-slot eligibility now follows SRD 5.2.1 pp.104-105: a spell does not need an
+extra scaling benefit to use a higher slot. Shared pure rules govern the sheet,
+spell list and picker. Empty lower tiers no longer force the picker to default
+to an unavailable slot; explicit exhausted-tier rows cannot charge another tier.
+The picker explains that additional effects require the spell's own rules.
+Sparse damage/healing tables no longer hide otherwise available slot choices.
+
+Manual damage confirmation previously called both utility casting and damage
+casting, repeating the action and concentration callbacks. It now invokes one
+casting path. This does not add durable recovery to manual/area/healing paths.
+
+Focused rules/component/parser tests pass (59); desktop and mobile browser flows
+verify cancellation, level-3 Detect Magic payment with empty level-1/2 slots,
+and concentration. Screenshots inspected and scoped overflow checks pass.
+Restoring the old scaling-clause restriction makes the browser test fail at the
+missing upcast control. Final browser flows also pass console/network checks.
+Full gate passes: 2,778 units in 251 files, TypeScript 199/199, entry 255.1 KB.
+Publishing pending. No database migration.
+
 ### v2.857 — Destructive Thoughts character targets
 
 The damage queue now maps character targets to the combat log's `player` label,
@@ -14,7 +35,10 @@ Before the fix, the creature delivery passed and character delivery failed with
 `20261008182000_psionic_character_target_delivery.sql` is applied locally;
 49 database cases pass, including both target types and Biofeedback regressions.
 Full gate passes (2,759 units, TypeScript 199/199, entry 255.1 KB); public-function
-SQL lint is clean. Publishing pending. No UI change.
+SQL lint is clean. Merged PR #201 (`7dab613`); both CI gates passed. Production
+migration run `37824659205` applied the file; actual apply log and independent
+ledger confirm it. Database advisors unchanged (6 security / 4 performance).
+Frontend publication remains rate-limited, last verified v2.854.0. No UI change.
 
 ### v2.856 — Saved combat spells and usable phone casting controls
 

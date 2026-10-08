@@ -1,3 +1,4 @@
+import {canUpcastSpell} from '../../rules/spellSlots';
 import SharpenedRollPanel from './_shared/SharpenedRollPanel';
 import SavePromptBanner from './SavePromptBanner';
 import PsionicDisciplineTurnPanel from './_shared/PsionicDisciplineTurnPanel';
@@ -84,7 +85,7 @@ import { CONDITION_MAP } from '../../data/conditions';
 import { getCharacterResources, buildDefaultResources } from '../../data/classResources';
 import { canAddKnownSpell, canPrepareSpell, getClassPreparedSpellIds, getSpellCounts, getMaxPrepared } from '../../lib/spellLimits';
 import { resolveResistances, resolveImmunities, resolveVulnerabilities, labelForDamageType, DAMAGE_TYPE_COLORS } from '../../lib/damageModifiers';
-import { parseSpellMechanics, parseDurationToRounds, formatRoundsRemaining, canUpcastSpell } from '../../lib/spellParser';
+import { parseSpellMechanics, parseDurationToRounds, formatRoundsRemaining } from '../../lib/spellParser';
 import { describeCharacterChanges, logHistoryEvents, logHistoryEvent } from '../../lib/characterHistory';
 import { emitCombatEvent } from '../../lib/combatEvents';
 import { itemRequiresAttunement } from '../../lib/attunement';
@@ -3720,9 +3721,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  return true;
  })();
 
- // v2.44.0: Whether this spell supports upcasting at all. Single source of
- // truth = presence of higher_levels text. Spells like Jump (no higher_levels
- // field) won't show the ↑ chip and won't allow upcasting from the modal.
+ // v2.858: a higher slot is legal even without additional scaling effects.
  const canUpcast = canUpcastSpell(spell);
 
  // v2.35.0: mirror Spells-tab HIT/DC + EFFECT computation
@@ -3810,7 +3809,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  background: slotsExhausted ? 'rgba(239,68,68,0.08)' : `${sc}0f`,
  whiteSpace: 'nowrap' as const,
  display: 'inline-flex', alignItems: 'center', gap: 3,
- }} title={canUpcast ? `Lvl ${eff} — can be upcast for greater effect` : `Lvl ${eff}`}>
+ }} title={canUpcast ? `Lvl ${eff} — can use a higher slot` : `Lvl ${eff}`}>
  Lvl {eff}
  {canUpcast && (
  <span aria-hidden style={{
