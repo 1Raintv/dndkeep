@@ -2,7 +2,7 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 import {supabase} from '../supabase';
 import type {SpellDeclarationRequest} from '../spellDeclarationRequest';
-import {acknowledgeSpellDeclaration,declarePaidSpell,saveSpellDeclaration,savedSpellDeclaration,settlePaidSpell,readDeclaredSpell} from './declaredSpells';
+import {acknowledgeSpellDeclaration,declarePaidSpell,saveSpellDeclaration,savedSpellDeclaration,settlePaidSpell,readDeclaredSpell,cancelUnpaidDeclaration} from './declaredSpells';
 vi.mock('../supabase',()=>({supabase:{rpc:vi.fn(),from:vi.fn()}}));
 const id='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222';
 const request:SpellDeclarationRequest={castId:id,characterId:id,userId:id,participantId:id,campaignId:id,spellId:'fly',spellName:'Fly',slotLevel:3,expectedSlot:{total:2,used:0},context:{spellLevel:3,source:'class:Psion',ability:'intelligence',target:'Ally',isBonusAction:false,range:'Touch',duration:'10 minutes'}};
@@ -80,4 +80,36 @@ it('fails closed on unreadable, substituted or canceled declarations',async()=>{
 it('does not treat a missing save or failed lookup as a successful spell',async()=>{
  mockRead({...row,state:'counterspell_offered',counterspell_attack_id:other},null,null,{message:'Save offline'});await expect(readDeclaredSpell(request)).rejects.toThrow('Save offline');
  mockRead({...row,state:'counterspell_offered',counterspell_attack_id:other});await expect(readDeclaredSpell(request)).rejects.toThrow('could not be loaded');
+});
+
+const canceled={castId:id,characterId:id,canceled:true,replayed:false};
+it('forgets only a verified unpaid cancellation and sends no slot writes',async()=>{
+ saveSpellDeclaration(request);vi.mocked(supabase.rpc).mockResolvedValueOnce({data:canceled,error:null} as never);
+ expect(await cancelUnpaidDeclaration(request)).toBe(true);expect(savedSpellDeclaration(id,id)).toBeNull();expect(supabase.from).not.toHaveBeenCalled();
+});
+it('keeps an already paid request available for recovery',async()=>{
+ saveSpellDeclaration(request);vi.mocked(supabase.rpc).mockResolvedValueOnce({data:{...canceled,canceled:false},error:null} as never);
+ expect(await cancelUnpaidDeclaration(request)).toBe(false);expect(savedSpellDeclaration(id,id)).toEqual(request);
+});
+it.each([{castId:other},{characterId:other},{canceled:'true'},{replayed:undefined}])('keeps a request when cancellation receipt is invalid: %j',async patch=>{
+ saveSpellDeclaration(request);vi.mocked(supabase.rpc).mockResolvedValueOnce({data:{...canceled,...patch},error:null} as never);
+ await expect(cancelUnpaidDeclaration(request)).rejects.toThrow('receipt');expect(savedSpellDeclaration(id,id)).toEqual(request);
+});
+it('retries a lost cancellation response with identical identity',async()=>{
+ saveSpellDeclaration(request);vi.mocked(supabase.rpc).mockRejectedValueOnce(new Error('Lost response')).mockResolvedValueOnce({data:{...canceled,replayed:true},error:null} as never);
+ expect(await cancelUnpaidDeclaration(request)).toBe(true);expect(vi.mocked(supabase.rpc).mock.calls[0]).toEqual(vi.mocked(supabase.rpc).mock.calls[1]);
+});
+it('never clears a newer local request when an old cancellation completes',async()=>{
+ saveSpellDeclaration({...request,castId:other});vi.mocked(supabase.rpc).mockResolvedValueOnce({data:canceled,error:null} as never);
+ await expect(cancelUnpaidDeclaration(request)).rejects.toThrow('replaced');expect(savedSpellDeclaration(id,id)?.castId).toBe(other);
+});
+it('verified cancellation releases a hung request without letting its late result erase a new in-flight request',async()=>{
+ let oldResolve!:(v:unknown)=>void,newResolve!:(v:unknown)=>void;
+ vi.mocked(supabase.rpc).mockReturnValueOnce(new Promise(r=>{oldResolve=r;}) as never);
+ const old=declarePaidSpell(request);
+ vi.mocked(supabase.rpc).mockResolvedValueOnce({data:canceled,error:null} as never);await cancelUnpaidDeclaration(request);
+ const newer={...request,castId:other};vi.mocked(supabase.rpc).mockReturnValueOnce(new Promise(r=>{newResolve=r;}) as never);
+ const pending=declarePaidSpell(newer);oldResolve({data:null,error:{code:'P0001',message:'Canceled'}});await expect(old).rejects.toThrow('Canceled');
+ expect(declarePaidSpell(newer)).toBe(pending);expect(()=>acknowledgeSpellDeclaration(newer)).toThrow('finish');
+ newResolve({data:{cast:{...row,id:other}},error:null});await pending;
 });

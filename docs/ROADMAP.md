@@ -1,32 +1,33 @@
 # DNDKeep — Two-Track Roadmap
 
-### In progress — paid casting UI verified locally; cancellation required before release
+### v2.804 candidate — recover paid casting and safely cancel unpaid requests
 
-The sheet now owns durable casting recovery independently of spell rows. It
-captures source/ability/DC and request identity before sending, flushes queued
-character saves, and lets the declaration transaction own the slot payment.
-Closing/reloading, spending the last slot, or removing preparation no longer
-hides recovery. The modal only displays controller state; recorded Counterspell
-saves settle through the payment transaction, including the original-slot refund.
+The sheet owns durable recovery independently of spell rows. Captured source,
+ability, DC and request identity survive reload, last-slot use and preparation
+changes. Queued character edits flush before the transaction pays the slot. The
+modal is presentation-only; recorded Counterspell saves use verified settlement,
+including the original slot refund when its save fails.
 
-Deferred effects share the normal casting choices. A browser lock and durable
-started marker prevent replay after an interrupted application; ambiguous partial
-effects require explicit review. This is not yet atomic cross-device effect
-application. Turn/action persistence, broader declaration coverage (attack/heal,
-compact mode and cantrips), and sight/component eligibility remain follow-ups.
+Unconfirmed casts can be canceled only with a verified server receipt. A tombstone
+blocks delayed payment, including after a lost cancellation response. Already-paid
+casts resume instead. A late old response cannot erase a newer pending request.
+The phone error state no longer shows a fictitious reaction countdown.
 
-Validation: full gate passed at 2,079 units, TS 203/203 (baseline ratcheted), zero
-hook violations, RAW/coordinates/anchors/build/SW and 254.0 KB entry. Four local
-browser cases passed across desktop/phone: lost declaration response, reload,
-last-slot recovery, removed preparation, and the real client save/settlement path.
-Phone dialogs were visually checked and padding corrected. Three initial unit
-failures were stale expectations for the renamed blocked-casting button.
+Deferred effects share normal casting choices. Browser locking and a durable
+started marker prevent automatic replay after interruption; partial effects require
+explicit review. Cross-device atomic effects, persistent turn/action usage, wider
+declaration coverage (attack/heal, compact mode and cantrips), and sight/components
+remain follow-ups. This release does not claim those are finished.
 
-**Not shipped:** production remains v2.803. An unpaid request rejected because
-its slot/source changed must have a safe cancellation path before releasing this
-UI. Clearing local storage alone is unsafe: an outstanding request could still
-pay later. Add a server cancellation receipt/tombstone coordinated with declaration,
-verify concurrent cancellation/payment, then wire explicit cancel/retry recovery.
+Validation: full gate 2,088 units, TS 203/203 (ratcheted), zero hook violations,
+RAW/coordinates/anchors/build/SW and 254.0 KB entry. Six local desktop/phone cases
+cover lost responses, reload, last slot, removed preparation, actual client save/
+settlement, and cancel/recast. Two focused visual checks passed after correcting
+the error wording. v2.804 build and service-worker version synchronized.
+
+**Release pending:** PR141 cancellation backend merged at 96942719; confirm its
+production migration application before shipping this client. Production UI is
+still v2.803 until the candidate's PR/deployment checks finish.
 
 ### Backend applied — durable casting requests and retry-safe Counterspell prompts
 

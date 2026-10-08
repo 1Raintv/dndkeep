@@ -19,11 +19,13 @@ export function saveSpellDeclaration(request:SpellDeclarationRequest){
  return existing??JSON.parse(JSON.stringify(request)) as SpellDeclarationRequest;
 }
 /** Acknowledgment is explicit. Never clear a newer request written by another tab. */
-export function acknowledgeSpellDeclaration(request:SpellDeclarationRequest){
+export function acknowledgeSpellDeclaration(request:SpellDeclarationRequest){forgetDeclaration(request,false);}
+function forgetDeclaration(request:SpellDeclarationRequest,canceled:boolean){
  const recordKey=key(request.userId,request.characterId);
- if(active.has(recordKey))throw new Error('Wait for the casting request to finish.');
+ if(!canceled&&active.has(recordKey))throw new Error('Wait for the casting request to finish.');
  const current=savedSpellDeclaration(request.userId,request.characterId);
  if(current&&JSON.stringify(current)!==JSON.stringify(request))throw new Error('Another casting request replaced this one.');
+ if(canceled&&active.get(recordKey)?.request===JSON.stringify(request))active.delete(recordKey);
  if(current){localStorage.removeItem(recordKey);notify();}
 }
 const client=supabase as unknown as {rpc:(name:string,args:Record<string,unknown>)=>PromiseLike<{data:unknown;error:{code?:string;message:string}|null}>};
@@ -44,7 +46,7 @@ export function declarePaidSpell(request:SpellDeclarationRequest):Promise<Pendin
    p_spell_id:captured.spellId,p_spell_name:captured.spellName,p_slot:captured.slotLevel,p_expected_slot:captured.expectedSlot,p_context:captured.context});
   const row=(data as {cast?:Partial<PendingSpellCast>}|null)?.cast;
   return verifiedCast(row,captured);
- })().finally(()=>active.delete(recordKey));
+ })().finally(()=>{if(active.get(recordKey)?.promise===promise)active.delete(recordKey);});
  active.set(recordKey,{request:serialized,promise});return promise;
 }
 export interface SpellSettlementReceipt{castId:string;outcome:'went_off'|'saved_through'|'countered';slotReturned:boolean;replayed:boolean}
@@ -86,4 +88,16 @@ export async function declarationParticipant(characterId:string,campaignId:strin
  if(encounter.error)throw new Error(encounter.error.message);if(!encounter.data)return null;
  const participant=await supabase.from('combat_participants').select('id').eq('encounter_id',encounter.data.id).eq('entity_id',characterId).eq('participant_type','character').maybeSingle();
  if(participant.error)throw new Error(participant.error.message);return participant.data?.id??null;
+}
+
+/** Only a verified server tombstone permits forgetting a still-in-flight request.
+ * Its late completion must not remove a newer declaration from the active map. */
+export async function cancelUnpaidDeclaration(request:SpellDeclarationRequest):Promise<boolean>{
+ if(!isSpellDeclarationRequest(request))throw new Error('Invalid spell declaration.');
+ const data=await rpc('cancel_unpaid_spell_atomic',{p_cast_id:request.castId,p_character_id:request.characterId});
+ const receipt=data as {castId?:string;characterId?:string;canceled?:boolean;replayed?:boolean}|null;
+ if(!receipt||receipt.castId!==request.castId||receipt.characterId!==request.characterId||typeof receipt.canceled!=='boolean'||typeof receipt.replayed!=='boolean')
+  throw new Error('The cancellation receipt could not be verified.');
+ if(receipt.canceled)forgetDeclaration(request,true);
+ return receipt.canceled;
 }

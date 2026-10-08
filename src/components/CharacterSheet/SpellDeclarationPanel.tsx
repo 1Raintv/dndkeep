@@ -4,6 +4,7 @@ import type {ConcentrationCastSource} from '../../rules/concentrationCasting';
 import type {SpellDeclarationRequest} from '../../lib/spellDeclarationRequest';
 import type {useSavedSpellDeclaration} from '../../lib/hooks/useSavedSpellDeclaration';
 import {useSpellDeclaration} from '../../lib/hooks/useSpellDeclaration';
+import {cancelUnpaidDeclaration} from '../../lib/api/declaredSpells';
 import {flushCharacterSaves} from '../../lib/hooks/useCharacterSaves';
 import {finishDeclaredSpellEffects,runDeclaredSpellEffects,spellEffectsStage,InterruptedSpellEffectsError} from '../../lib/api/spellDeclarationEffects';
 import {useSpellEffects} from './useSpellEffects';
@@ -35,6 +36,14 @@ function ActiveDeclaration({request,spell,character,onAction,onConcentration,onF
   finally{setBusy(false);}
  }
  useEffect(()=>{if(applied&&!effects.choicesOpen&&!finishing.current)void finish();},[applied,effects.choicesOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+ async function cancel(){
+  if(busy)return;setBusy(true);setError('');
+  try{
+   if(await cancelUnpaidDeclaration(request)){onFinished();return;}
+   setError('This casting was already recorded. Resume it to confirm the result; its slot will not be charged again.');status.retry();
+  }catch(e){setError(e instanceof Error?e.message:'Cancellation was not confirmed. Your saved request is preserved.');}
+  finally{setBusy(false);}
+ }
  async function apply(){
   if(busy||!status.receipt)return;setBusy(true);setError('');
   try{
@@ -56,7 +65,7 @@ function ActiveDeclaration({request,spell,character,onAction,onConcentration,onF
    {applied&&<span>Finish the spell’s remaining choices.</span>}
   </div>
   {open&&<Suspense fallback={<p role="status">Opening casting…</p>}><DeclareSpellCastModal request={request} status={status} busy={busy} error={error} reviewRequired={reviewRequired}
-   onContinue={()=>void apply()} onReview={()=>void finish()} onClose={()=>setOpen(false)}/></Suspense>}
+   onCancel={()=>void cancel()} onContinue={()=>void apply()} onReview={()=>void finish()} onClose={()=>setOpen(false)}/></Suspense>}
   {effects.postCastChoices}
  </>;
 }
