@@ -101,10 +101,12 @@ it('accepts an explicitly expired Guards effect',async()=>{
  expect((await getPsionicDisciplineTurn('hero')).guards).toBeNull();
 });
 
-it('skips Guards lookups for other saves and reads current protection for INT',async()=>{
+it('skips Guards lookups for other saves and uses the narrow protection RPC for INT',async()=>{
  expect(await getPsionicGuardsSaveAdvantage('hero','wisdom')).toBe(false);expect(mocks.rpc).not.toHaveBeenCalled();
- mocks.rpc.mockResolvedValue({data:{turn:{soloTurn:0},uses:[],pending:[],guards:{requestId:'11111111-1111-4111-8111-111111111111',startToken:'22222222-2222-4222-8222-222222222222'}},error:null});
- expect(await getPsionicGuardsSaveAdvantage('hero','INT')).toBe(true);
- mocks.rpc.mockResolvedValue({data:{turn:{soloTurn:1},uses:[],pending:[],guards:null},error:null});
- expect(await getPsionicGuardsSaveAdvantage('hero','intelligence')).toBe(false);
+ mocks.rpc.mockResolvedValue({data:true,error:null});expect(await getPsionicGuardsSaveAdvantage('hero','INT')).toBe(true);
+ expect(mocks.rpc).toHaveBeenCalledWith('get_psionic_guards_active',{p_character_id:'hero'});
+ mocks.rpc.mockResolvedValue({data:false,error:null});expect(await getPsionicGuardsSaveAdvantage('hero','intelligence')).toBe(false);
+});
+it.each([null,{},'true',1])('does not silently treat malformed Guards response %j as inactive',async value=>{
+ mocks.rpc.mockResolvedValue({data:value,error:null});await expect(getPsionicGuardsSaveAdvantage('hero','INT')).rejects.toThrow('Protection could not be verified');
 });

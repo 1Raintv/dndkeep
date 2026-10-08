@@ -1,5 +1,29 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.823 — class save protection and narrow client lookup
+
+All existing Guards save consumers now use the boolean-only protection RPC,
+validated strictly as true/false. The class-ability dialog also checks protection
+for character targets, keeps the higher die, and displays/logs both dice. Pending
+checks block conflicting controls and confirmation. Read errors allow retry;
+closing/reopening, unmounting or replacing the save cannot apply a stale result.
+Changing the save clears old resolved outcomes. Manual outcome edits preserve
+the actual rolled faces. Guards activation/recovery wording now reflects the
+automatic protection and warns that a recovered original effect may have expired.
+
+Validation: full gate passes (2,362 tests; TypeScript 201/201; 255.1 KB entry).
+Eight desktop/phone checks cover sheet, DM prompts, campaign/upkeep and class
+saves. Final class-dialog checks also pass on both sizes with scoped overflow
+and inspected screenshots. The class test mounts the real dialog with an INT-save
+fixture because current built-in class metadata has no INT-save feature; real
+auth, participant reads and RPCs verify another campaign member can read Guards
+while private-ledger access remains denied. Migration 20261008090528 is confirmed
+applied in production (Apply Migrations 37754907919, actual apply step).
+
+Next: Sharpened Mind duration/incapacitation and psychic-damage automation. Aura
+Guards integration remains a generic future-path audit (current aura is WIS).
+
+
 ### v2.822 — narrow campaign Guards lookup (backend foundation)
 
 A separate authenticated RPC returns only whether a character currently has
@@ -18,7 +42,7 @@ passes: 2,348 tests, TypeScript 201/201, 255.1 KB entry.
 
 Ship this migration before switching the client lookup and adding Guards to the
 class-ability save dialog: players there may roll against another party member.
-Production apply is pending the normal merge/CI route.
+Production apply confirmed by Apply Migrations 37754907919 (actual apply step).
 
 
 ### v2.821 — Guards on end-of-turn condition saves

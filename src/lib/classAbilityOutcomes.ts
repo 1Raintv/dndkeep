@@ -13,6 +13,8 @@ export interface TargetOutcome {
   participantName: string;
   outcome: SaveOutcome;
   d20?: number;
+  rolls?: number[];
+  advantage?: boolean;
   // v2.249.0 — total includes the bonus applied at roll time. Used by
   // the action log so the line reads "(d20=12 +3 = 15)" rather than
   // just the raw d20.
@@ -42,7 +44,8 @@ export function formatOutcomesLog(
                 o.outcome === 'passed' ? `passed${rollDetail}` :
                 o.outcome === 'failed' ? `failed${rollDetail}` :
                 'pending';
-    return `${o.participantName}: ${tag}`;
+    const protection=o.advantage&&o.rolls?.length?` [Psionic Guards: ${o.rolls.join(" or ")}; keep highest]`:"";
+    return `${o.participantName}: ${tag}${protection}`;
   });
   return `${abilityName} · DC ${saveDC} ${saveAbility} · ${parts.join(' · ')}`;
 }
