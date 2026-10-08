@@ -36,7 +36,7 @@ export function useConcentrationRecording(characterRef:{current:Character},queue
    if(saved.current||running.current)return Promise.resolve(false);
    const revision=characterRef.current.concentration_revision;
    if(!Number.isSafeInteger(revision)||revision!<0){setError('Reload the sheet to confirm the current concentration.');return Promise.resolve(false);}
-   return send({characterId:id,expectedRevision:revision!,previousSpell:characterRef.current.concentration_spell??null,context:{...context,requestId:crypto.randomUUID()}});
+   return send({characterId:id,expectedRevision:revision!,previousSpell:characterRef.current.concentration_spell??null,context:{spellId:context.spellId,slotLevel:context.slotLevel,rounds:context.rounds,source:context.source,ability:context.ability,requestId:crypto.randomUUID()}});
   },retry:()=>saved.current?send(saved.current):Promise.resolve(false),
   discard:()=>{
    if(running.current)return;

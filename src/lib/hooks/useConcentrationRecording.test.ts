@@ -63,3 +63,11 @@ it('offers an explicit local repair when the saved request is unreadable',()=>{
  expect(result.current.blocked).toBe(true);act(()=>result.current.discard());
  expect(mocks.discard).toHaveBeenCalledWith('hero',undefined);expect(result.current.blocked).toBe(false);
 });
+
+it('records only durable casting fields when a UI selection includes display metadata',async()=>{
+ mocks.record.mockResolvedValue({concentration_revision:4});
+ const {result}=renderHook(()=>useConcentrationRecording({current:{id:'hero',concentration_revision:3} as Character},queue(),vi.fn()));
+ const selected={...context,label:'Psion',className:'Psion',key:'Psion',modifier:4,saveDC:17,attack:9};
+ await act(async()=>{await result.current.record(selected);});
+ expect(mocks.record.mock.calls[0][0].context).toEqual({...context,requestId:expect.any(String)});
+});
