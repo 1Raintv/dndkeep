@@ -1,4 +1,5 @@
-import { savingThrowPassed } from '../rules/savingThrows';
+import {rollSavingThrow} from '../rules/savingThrows';
+import {getPsionicGuardsSaveAdvantage} from './api/psionicDisciplines';
 // v2.445.0 — End-of-turn condition processing.
 //
 // Called by advanceTurn(encounterId) on the OUTGOING participant
@@ -32,7 +33,6 @@ import { savingThrowPassed } from '../rules/savingThrows';
 // gets handled naturally by this processor running for each in turn.
 
 import { supabase } from './supabase';
-import { rollDie } from './gameUtils';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from './combatParticipantNormalize';
 import { getTargetSaveBonus } from './pendingAttack';
@@ -76,20 +76,6 @@ export interface ProcessEndOfTurnConditionsResult {
   persisted: string[];
 }
 
-/** Roll a d20 + bonus and compare to dc. Returns d20 + total +
- *  pass/fail for diagnostics. Self-contained — doesn't touch
- *  pending_attacks (that table is for combat resolution rolls,
- *  not per-turn upkeep rolls). */
-function rollSimpleSave(
-  bonus: number,
-  dc: number,
-  naturalExtremes = false,
-): { d20: number; total: number; passed: boolean } {
-  const d20 = rollDie(20);
-  const total = d20 + bonus;
-  return { d20, total, passed: savingThrowPassed(d20, total, dc, { naturalExtremes }) };
-}
-
 export async function processEndOfTurnConditions(
   input: ProcessEndOfTurnConditionsInput,
 ): Promise<ProcessEndOfTurnConditionsResult> {
@@ -101,7 +87,7 @@ export async function processEndOfTurnConditions(
 
   const { data: partRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('combatant_id, ' + JOINED_COMBATANT_FIELDS)
+    .select('combatant_id, entity_id, participant_type, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .maybeSingle();
   if (!partRaw) return result;
@@ -135,7 +121,11 @@ export async function processEndOfTurnConditions(
 
     const { ability, dc } = src.save_to_end;
     const sb = await getTargetSaveBonus(input.participantId, ability);
-    const { d20, total, passed } = rollSimpleSave(sb.bonus, dc, sb.naturalExtremes);
+    // v2.821: Guards lasts through this outgoing turn. The next turn's
+    // clock is advanced only after upkeep, so read protection before rolling.
+    const advantage=part.participant_type==='character' && !!part.entity_id &&
+      await getPsionicGuardsSaveAdvantage(part.entity_id,ability);
+    const {d20,total,passed,rolls}=rollSavingThrow(sb.bonus,dc,{advantage,naturalExtremes:sb.naturalExtremes});
 
     await emitCombatEvent({
       campaignId: input.campaignId,
@@ -158,6 +148,9 @@ export async function processEndOfTurnConditions(
         ability,
         passed,
         trigger: 'end_of_turn',
+        advantage,
+        psionic_guards: advantage,
+        individual_results: rolls,
       },
       visibility: input.hiddenFromPlayers ? 'hidden_from_players' : 'public',
     });

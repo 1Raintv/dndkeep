@@ -1,5 +1,23 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.821 — Guards on end-of-turn condition saves
+
+Automatic end-of-turn Intelligence saves now read the outgoing character's
+Guards protection, keep the higher d20, and record both dice and Advantage in
+the combat event. A shared pure saving-throw roller preserves normal totals and
+explicit natural-extremes house rules. Unreadable protection stops the upkeep
+save before rolling or removing its condition. Creature saves and duration-only
+expiry do not query a character's private discipline record.
+
+Validation: full gate passes (2,348 tests; TypeScript 201/201; 255.1 KB entry).
+A real encounter advances through upkeep: two Guards dice and correct total,
+successful condition removal, then protection expiry at the next own turn.
+The focused tests cover expired protection, read failure, creature behavior,
+house rules, hidden events and duration-only conditions. No migration.
+Remaining Guards audit: class-ability save dialog and aura resolver; the only
+currently configured aura save found is WIS. Hosting remains rate-limited.
+
+
 ### v2.820 — Guards on campaign attack saves
 
 The campaign save resolver reads live Guards protection for character targets
