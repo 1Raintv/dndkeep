@@ -1,5 +1,27 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.841 — Destructive Thoughts retains actual damage dice
+
+The paid result now carries original Energy Dice, effective Surge-adjusted values,
+die size and Intelligence into its combat declaration. Resolving it reuses those
+dice instead of interpreting the fixed total as a flat modifier. Typed damage
+records distinguish adjusted from natural dice, and the dialog/event show the
+actual dice expression. Enkindled extra dice are retained in the same roll array.
+The Intelligence modifier is added once; automatic-hit discipline damage receives
+no unrelated weapon rider or second spell save.
+
+The database validates the total and Surge mapping, makes the queued dice immutable,
+and rejects recording that discards them. Legacy fixed-total rows remain unchanged.
+This is roll provenance, not server proof of resource payment or the triggering
+spell. Linking Destructive Thoughts enhancements/payment receipts, recovering a
+paid result after full reload, and Sharpened replacement/typed defenses remain open.
+
+Validation: full gate (2,563 units; TypeScript 200/200; hooks clean; 255.1 KB
+entry). Twenty-five database transaction cases and four signed-in desktop/phone
+queue cases pass. Screenshots/overflow checks confirm the expression and Surge
+label; disabling saved-dice reuse makes the browser regression fail. Local
+migration applied; changed functions have no advisor findings.
+
 ### v2.840 — Combat dialog recovers after failed actions
 
 Attack/save/damage/application/cancellation controls share a same-frame duplicate

@@ -1577,6 +1577,7 @@ export type Database = {
           damage_dice: string | null;
           damage_type: string | null;
           damage_rolls: number[] | null;
+          psionic_damage_dice: Json | null;
           damage_components: Json | null;
           damage_raw: number | null;
           damage_final: number | null;
@@ -1619,6 +1620,7 @@ export type Database = {
           damage_dice?: string | null;
           damage_type?: string | null;
           damage_rolls?: number[] | null;
+          psionic_damage_dice?: Json | null;
           damage_components?: Json | null;
           damage_raw?: number | null;
           damage_final?: number | null;
@@ -1661,6 +1663,7 @@ export type Database = {
           damage_dice?: string | null;
           damage_type?: string | null;
           damage_rolls?: number[] | null;
+          psionic_damage_dice?: Json | null;
           damage_components?: Json | null;
           damage_raw?: number | null;
           damage_final?: number | null;

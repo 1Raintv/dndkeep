@@ -1,3 +1,4 @@
+import {psionicDamageComponent,readPsionicDamageDice,type PsionicDamageDice} from '../rules/psionicDamageDice';
 import {recordPendingDamage} from './api/pendingDamage';
 import {damageRollComponent,readDamageComponents,type DamageDieKind} from '../rules/damageComponents';
 import {getPsionicGuardsSaveAdvantage} from './api/psionicDisciplines';
@@ -122,6 +123,7 @@ export interface DeclareAttackInput {
   saveAbility?: string | null;
   saveSuccessEffect?: string | null;
 
+  psionicDamageDice?: PsionicDamageDice;
   damageDice?: string | null;
   damageType?: string | null;
 
@@ -154,6 +156,7 @@ export async function declareAttack(input: DeclareAttackInput): Promise<PendingA
       save_dc: input.saveDC ?? null,
       save_ability: input.saveAbility ?? null,
       save_success_effect: input.saveSuccessEffect ?? null,
+      psionic_damage_dice: input.psionicDamageDice?asJsonb(input.psionicDamageDice):null,
       damage_dice: input.damageDice ?? null,
       damage_type: input.damageType ?? null,
       cover_level: input.coverLevel ?? 'none',
@@ -921,7 +924,13 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
   let baseDieKinds:DamageDieKind[]|null=null;
   let baseExpression=diceExprForRoll;
 
-  if (atk.damage_group_id) {
+  const savedPsionic=atk.psionic_damage_dice==null?null:readPsionicDamageDice(atk.psionic_damage_dice);
+  if(atk.psionic_damage_dice!=null&&!savedPsionic)throw new Error('Saved Psychic damage dice are invalid. Refresh the attack; do not roll again.');
+  if(savedPsionic){
+    const saved=psionicDamageComponent(savedPsionic);
+    if(atk.attack_kind!=='auto_hit'||Number(atk.damage_dice)!==saved.rawTotal)throw new Error('Saved Psychic damage differs from its queued total.');
+    rolls=saved.rolls;modifier=saved.modifier;total=saved.rawTotal;baseDieKinds=saved.dieKinds;baseExpression=saved.expression;
+  } else if (atk.damage_group_id) {
     const { data: prior } = await supabase
       .from('pending_attacks')
       .select('damage_rolls, damage_raw, damage_components')
@@ -1059,7 +1068,7 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
     eventType: 'damage_rolled',
     payload: {
       action_name: atk.attack_name,
-      dice_expression: diceExprForRoll,
+      dice_expression: baseExpression,
       individual_results: rolls,
       modifier,
       total: finalDamage,

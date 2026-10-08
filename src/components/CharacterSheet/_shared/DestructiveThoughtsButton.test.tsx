@@ -45,7 +45,7 @@ it('retries a failed delivery with the same paid result and no second charge',as
  mocks.load.mockResolvedValue({campaignId:'camp',encounterId:'enc',self:{id:'self'},participants:[]});mocks.queue.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);
  const update=vi.fn();render(ui({...character,campaign_id:'camp'},update));fireEvent.click(screen.getByRole('button',{name:'Roll damage'}));fireEvent.click(await screen.findByRole('button',{name:'Pick Goblin'}));
  await screen.findByRole('dialog',{name:'Destructive Thoughts'});fireEvent.click(screen.getByRole('button',{name:'Spend and roll'}));
- await waitFor(()=>expect(screen.getByRole('status').textContent).toContain('Not queued'));const first=mocks.queue.mock.calls[0][0];
+ await waitFor(()=>expect(screen.getByRole('status').textContent).toContain('Not queued'));const first=mocks.queue.mock.calls[0][0];expect(first.psionicDamageDice).toEqual({version:1,sides:8,originalRolls:[2],rolls:[2],modifier:4});
  fireEvent.click(screen.getByRole('button',{name:'Retry queue'}));await waitFor(()=>expect(screen.getByRole('status').textContent).toContain('Queued in combat'));
  expect(mocks.queue).toHaveBeenLastCalledWith(first);expect(update).toHaveBeenCalledTimes(1);expect(mocks.roll).toHaveBeenCalledTimes(1);
 });
