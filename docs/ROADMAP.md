@@ -1,5 +1,39 @@
 # DNDKeep — Two-Track Roadmap
 
+### In progress — map HP controls: zero, temporary HP and safe persistence
+
+Confirmed live import: BattleMapV2 renders battlemap/TokenQuickPanel. Its current
+applyHp rejects zero even for Set, parses decimal/junk inputs with parseInt,
+subtracts damage directly from real HP, and writes stale absolute HP without a
+revision check. The existing HP revision trigger from v2.798 provides the boundary.
+
+Local-only groundwork: canonical HP adjustment parsing/calculation now handles
+zero Set, temp-first damage, capped healing, strict whole numbers, and explicit
+repair after max HP is lowered. New migration 20261008053426 adds a private
+idempotency ledger and owner/current-DM RPC: captured revision, one history event,
+transactional rollback, and current counters on a replay (never old HP restored).
+Applied locally only. Twenty DB cases passed, including cancellation/payment
+races and rejection of delayed canceled requests, plus full gate: 2,106 units,
+TS 203/203, hooks/RAW/coordinates/anchors/build/SW and 254.0 KB entry. Security
+advisors show only the standing keep_warm/client_errors warnings.
+
+**Not connected or released.** Safe cancellation now uses the same character
+lock and private ledger; a late request either already applied or is permanently
+rejected. Already-paid adjustments cannot be canceled/refunded. Then build account/character-scoped durable client recovery, latest HP/
+revision loading, visible errors, immediate duplicate-submit guard, and actual
+map-panel tests for zero, temp absorption, lost response, retry and stale revision.
+Apply the backend through a separate gated PR before its client. Combat damage
+consequences (concentration/death saves/conditions) remain a distinct integration
+boundary; do not claim this manual resource transaction automates them.
+
+### v2.804 deployed — verified casting recovery
+
+PR142 merged at 56b7c5ae. Main CI 37732857038 and production Vercel
+9RVisYPJxb37qyMdLdH1SbSNnnem succeeded; public service worker reports 2.804.0.
+PR143 merged at ff242fd4 after both GitHub gates and Vercel preview passed.
+Its production deployment is pending as of this checkpoint.
+
+
 ### v2.805 candidate — keep melee reach visible after viewport recreation
 
 ReachOverlayLayer created new Graphics when the viewport changed, but its drawing

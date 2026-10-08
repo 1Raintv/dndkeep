@@ -2,7 +2,7 @@
 // Seven call sites share this math: pendingAttack (main + retaliation),
 // auras, Graze, buff ticks, the DM party panel, and the character sheet.
 import { describe, expect, it } from 'vitest';
-import { applyDamageToPools, applyHealing, concentrationDC } from './hp';
+import { applyDamageToPools, applyHealing, concentrationDC, parseHitPointAdjustment, adjustedHitPointPools } from './hp';
 
 describe('applyDamageToPools', () => {
   it('eats temp HP before current HP (the historical v2.169 bug scenario)', () => {
@@ -67,4 +67,31 @@ describe('concentrationDC (2024 RAW: max(10, floor(dmg/2)), cap 30)', () => {
     expect(concentrationDC(60)).toBe(30);
     expect(concentrationDC(200)).toBe(30);
   });
+});
+
+describe('manual HP adjustments',()=>{
+ it('allows setting zero without treating zero as damage or healing',()=>{
+  expect(parseHitPointAdjustment('0','set')).toBe(0);expect(parseHitPointAdjustment('0','damage')).toBeNull();expect(parseHitPointAdjustment('0','heal')).toBeNull();
+  expect(adjustedHitPointPools({current_hp:10,max_hp:20,temp_hp:4},'set',0)).toEqual({current_hp:0,temp_hp:4});
+ });
+ it.each(['',' ','-1','1.5','2 points','1e3','Infinity','2147483648'])('rejects ambiguous or invalid input %j',input=>{
+  expect(parseHitPointAdjustment(input,'damage')).toBeNull();
+ });
+ it('accepts a whole number surrounded by whitespace',()=>expect(parseHitPointAdjustment(' 12 ','heal')).toBe(12));
+ it('absorbs map damage through temporary HP before actual HP',()=>{
+  expect(adjustedHitPointPools({current_hp:10,max_hp:20,temp_hp:4},'damage',6)).toEqual({current_hp:8,temp_hp:0});
+  expect(adjustedHitPointPools({current_hp:10,max_hp:20,temp_hp:4},'damage',2)).toEqual({current_hp:10,temp_hp:2});
+ });
+ it('caps healing and explicit HP while preserving temporary HP',()=>{
+  const state={current_hp:10,max_hp:20,temp_hp:4};
+  expect(adjustedHitPointPools(state,'heal',50)).toEqual({current_hp:20,temp_hp:4});
+  expect(adjustedHitPointPools(state,'set',50)).toEqual({current_hp:20,temp_hp:4});
+ });
+ it('allows an explicit set to repair HP above a lowered maximum',()=>{
+  expect(adjustedHitPointPools({current_hp:30,max_hp:20,temp_hp:4},'set',15)).toEqual({current_hp:15,temp_hp:4});
+ });
+ it('refuses malformed pools instead of silently repairing unrelated state',()=>{
+  expect(adjustedHitPointPools({current_hp:30,max_hp:20,temp_hp:4},'damage',1)).toBeNull();
+  expect(adjustedHitPointPools({current_hp:10,max_hp:20,temp_hp:-1},'damage',1)).toBeNull();
+ });
 });
