@@ -1,7 +1,7 @@
 import {acceptConcentrationReceipt} from './characterRealtime';
 import {expect,it} from 'vitest';
 import type {Character} from '../types';
-import {isCombatHpCarryover,preservePsionicResources,acceptSavedPsionicResources,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,reconcileCharacterUpdate} from './characterRealtime';
+import {acceptPsionicHitDiceReceipt,isCombatHpCarryover,preservePsionicResources,acceptSavedPsionicResources,acceptPsionicRestReceipt,acceptPsionicEnergyReceipt,reconcileCharacterUpdate} from './characterRealtime';
 const character={id:'pc',current_hp:20,hit_dice_spent:2,feature_uses:{'Telepathic Connection':1},class_resources:{'psionic-energy-dice':2}} as unknown as Character;
 it('accepts consecutive echoes before a React render, including a return to the original value',()=>{
  const ref={current:character};
@@ -14,7 +14,7 @@ it('preserves queued local resource values while applying unrelated remote damag
  const {previous,patch}=reconcileCharacterUpdate(ref,{current_hp:12,feature_uses:{},hit_dice_spent:0},
   {feature_uses:character.feature_uses,hit_dice_spent:3});
  expect(previous).toBe(character);
- expect(patch).toEqual({current_hp:12,hit_dice_spent:3});
+ expect(patch).toEqual({current_hp:12,hit_dice_spent:3,hit_dice_spent_by_type:null});
  expect(ref.current.feature_uses).toEqual(character.feature_uses);
 });
 it('ignores non-syncable fields and unchanged objects; applies zero, null and empty arrays',()=>{
@@ -33,7 +33,7 @@ it('ignores delayed Hit Point Dice receipts but accepts newer rest recovery',()=
 });
 it('keeps a queued local rest while recording the paid receipt revision',()=>{
  const ref={current:{...character,psionic_hit_dice_revision:0}};
- expect(reconcileCharacterUpdate(ref,{hit_dice_spent:3,psionic_hit_dice_revision:1},{hit_dice_spent:0}).patch).toEqual({hit_dice_spent:0,psionic_hit_dice_revision:1});
+ expect(reconcileCharacterUpdate(ref,{hit_dice_spent:3,psionic_hit_dice_revision:1},{hit_dice_spent:0}).patch).toEqual({hit_dice_spent:0,hit_dice_spent_by_type:null,psionic_hit_dice_revision:1});
 });
 
 it('accepts Energy Dice payments without replacing unrelated resources or feature uses',()=>{
@@ -124,4 +124,27 @@ it('accepts casting context without replaying a save and ignores an older castin
  expect(result.patch).toMatchObject({concentration_spell:'invisibility',concentration_revision:4,concentration_casting_context:context});expect(result.patch.name).toBeUndefined();
  expect(acceptConcentrationReceipt(ref,{concentration_spell:'detect-magic',concentration_revision:3,concentration_casting_context:null}).patch).toEqual({});
  expect(ref.current.concentration_casting_context).toEqual(context);
+});
+
+it('keeps die-size allocation and spending together across late payment receipts',()=>{
+ const ref={current:{...character,psionic_hit_dice_revision:1,hit_dice_spent_by_type:{'6':2}}};
+ acceptPsionicHitDiceReceipt(ref,{hitDiceSpent:3,hitDiceRevision:2,hitDiceSpentByType:{'6':2,'10':1}});
+ expect(ref.current).toMatchObject({hit_dice_spent:3,hit_dice_spent_by_type:{'6':2,'10':1}});
+ acceptPsionicHitDiceReceipt(ref,{hitDiceSpent:2,hitDiceRevision:1,hitDiceSpentByType:{'6':2}});
+ expect(ref.current).toMatchObject({hit_dice_spent:3,hit_dice_spent_by_type:{'6':2,'10':1},psionic_hit_dice_revision:2});
+});
+it('legacy payments cannot leave an obsolete known allocation attached to a new total',()=>{
+ const ref={current:{...character,hit_dice_spent_by_type:{'6':2}}};
+ acceptPsionicHitDiceReceipt(ref,{hitDiceSpent:3,hitDiceRevision:1});
+ expect(ref.current).toMatchObject({hit_dice_spent:3,hit_dice_spent_by_type:null});
+});
+it('does not pair incoming pool spending with a different queued rest total',()=>{
+ const ref={current:{...character,hit_dice_spent_by_type:{'6':2}}};
+ acceptPsionicHitDiceReceipt(ref,{hitDiceSpent:3,hitDiceRevision:1,hitDiceSpentByType:{'6':2,'10':1}},{hit_dice_spent:0});
+ expect(ref.current).toMatchObject({hit_dice_spent:0,hit_dice_spent_by_type:null});
+});
+it('Long Rest receipts clear per-size spending with the aggregate',()=>{
+ const ref={current:{...character,hit_dice_spent_by_type:{'6':2},psionic_hit_dice_revision:1}};
+ acceptPsionicRestReceipt(ref,{character:{...ref.current,hit_dice_spent:0,hit_dice_spent_by_type:{},psionic_hit_dice_revision:2},expected:{hit_dice_spent:2}});
+ expect(ref.current).toMatchObject({hit_dice_spent:0,hit_dice_spent_by_type:{},psionic_hit_dice_revision:2});
 });

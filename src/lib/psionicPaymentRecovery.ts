@@ -11,7 +11,7 @@ function valid(value:unknown):value is PendingPsionicPayment{
  if(!r||typeof r!=='object'||typeof r.requestId!=='string'||!r.requestId||typeof r.sourceFeature!=='string'||r.sourceFeature.length>120)return false;
  if(r.recoveryNote!==undefined&&(typeof r.recoveryNote!=='string'||r.recoveryNote.length>1000))return false;
  if(v.kind==='rest')return validPsionicRestRequest(r);
- if(v.kind==='surge')return dice(r.rolls,14);
+ if(v.kind==='surge')return dice(r.rolls,14)&&(r.hitDie===undefined||[6,8,10,12].includes(r.hitDie as number));
  if(v.kind==='energy')return Array.isArray(r.rolls)&&(
   (r.operation==='recover-die'&&r.count===1&&r.rolls.length===0&&r.sourceFeature==='Manual Energy Die recovery')||
   ((r.operation==='refresh-misty-step'||r.operation==='use-misty-step'||r.operation==='recover-misty-step')&&r.count===(r.operation==='refresh-misty-step'?1:0)&&r.rolls.length===0&&r.sourceFeature==='Free Misty Step (Teleportation)')||

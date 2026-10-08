@@ -1,3 +1,9 @@
+import {HitDiceRestControls} from './_shared/HitDiceRestControls';
+import {characterHitDice} from '../../lib/characterHitDice';
+import {spendHitDice,type HitDie} from '../../rules/hitDice';
+import {HitDiceReview} from './_shared/HitDiceReview';
+import {reviewHitDice} from '../../lib/api/hitDice';
+import {useHitDieChoice} from './_shared/useHitDieChoice';
 import {useConcentrationRecording} from '../../lib/hooks/useConcentrationRecording';
 import {ConcentrationRecordingNotice} from './ConcentrationRecordingNotice';
 import {concentrationCastingNumbers,type ConcentrationCastSource} from '../../rules/concentrationCasting';
@@ -326,10 +332,12 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
   if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
  },frozen);
  const castingBlocked=frozen||concentrationRecording.blocked||Object.prototype.hasOwnProperty.call(saveQueue.getPending(),'concentration_spell');
- const psionicPersistence=usePsionicEnhancements(character.id,saveQueue,receipt=>{
+ const hitDieChoice=useHitDieChoice();
+ const psionicPayments=usePsionicEnhancements(character.id,saveQueue,receipt=>{
   const {patch}='character' in receipt?acceptPsionicRestReceipt(characterRef,receipt,saveQueue.getPending()):'energyRevision' in receipt?acceptPsionicEnergyReceipt(characterRef,receipt,saveQueue.getPending()):acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
   if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
  },frozen);
+ const psionicPersistence={...psionicPayments,chooseHitDie:hitDieChoice.choose};
 
  // v2.787 — tracked grants expire independently of deliberately learned copies.
  useEffect(() => {
@@ -795,9 +803,6 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
 
  // Short rest: roll hit dice to recover HP
  const [shortRestHpGained, setShortRestHpGained] = useState(0);
- // v2.170.0 — how many hit dice the player wants to spend this cycle.
- // Empty string = default 1 when roll fires.
- const [hitDiceToSpend, setHitDiceToSpend] = useState<string>('');
  const [combatFilter, setCombatFilter] = useState<'all'|'action'|'bonus'|'reaction'|'limited'>('all');
  // v2.34.1: Content-type filter for Actions tab. Empty set = show all categories.
  type ContentKind = 'weapon' | 'spell' | 'ability' | 'item';
@@ -864,15 +869,13 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  // together in the 3D tray (via allDice). The strategic element
  // (gamble fewer dice hoping for high rolls vs bank all your dice)
  // is preserved — the count input is user-controlled.
- function rollHitDice(count: number) {
- const cls = CLASS_MAP[character.class_name];
- if (!cls || frozen || !Number.isInteger(count) || count < 1 || character.current_hp < 1 || character.current_hp >= character.max_hp) return;
- const hitDie = cls.hit_die;
- const conMod = computed.modifiers.constitution;
- const spent = character.hit_dice_spent ?? 0;
- const available = Math.max(0, character.level - spent);
- const useCount = Math.min(count, available);
- if (useCount === 0) return;
+ function rollHitDice(count: number,hitDie:HitDie) {
+ const live=characterRef.current;
+ if (live.id!==character.id || frozen || live.current_hp<1 || live.current_hp>=live.max_hp) return;
+ const state=characterHitDice(live),allocation=spendHitDice(state,hitDie,count);
+ if(!allocation||state.status!=='ready')return;
+ const conMod=computeStats(live).modifiers.constitution;
+ const spent=state.spent,useCount=count;
  // Roll `useCount` physical dice
  const dice: { die: number; value: number }[] = [];
  let diceSum = 0;
@@ -886,11 +889,11 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  // below zero (important for low-CON characters).
  const total = shortRestHealing(dice.map(d=>d.value),conMod);
  if(total===null)return;
- const newHp = Math.min(character.max_hp, character.current_hp + total);
- const gained = newHp - character.current_hp;
+ const newHp = Math.min(live.max_hp, live.current_hp + total);
+ const gained = newHp - live.current_hp;
  const newSpent = spent + useCount;
  setShortRestHpGained(prev => prev + gained);
- applyUpdate({ current_hp: newHp, hit_dice_spent: newSpent }, true);
+ applyUpdate({ current_hp: newHp, hit_dice_spent: newSpent,hit_dice_spent_by_type:allocation }, true);
  // Animate via 3D tray
  triggerRoll({
  result: diceSum, dieType: hitDie,
@@ -902,8 +905,6 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  logHistory: { characterId: character.id, userId },
  });
  }
- // Back-compat shim: anything still calling rollHitDie() rolls one.
- function rollHitDie() { rollHitDice(1); }
 
  const restBusy=useRef(false);
  const [restSaving,setRestSaving]=useState(false);
@@ -1478,6 +1479,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  </div>
  )}
 
+ {hitDieChoice.dialog}
  <ConcentrationRecordingNotice recording={concentrationRecording}/>
  {/* v2.377.0 — Persistent concentration banner. Renders whenever
      concentration is active (character.concentration_spell set);
@@ -1912,102 +1914,18 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  <div className="panel">
  <h4 style={{ marginBottom: 'var(--sp-3)' }}>Short Rest</h4>
 
- {/* Hit dice status */}
- {(() => {
- const cls = CLASS_MAP[character.class_name];
- const hitDie = cls?.hit_die ?? 8;
- const spent = character.hit_dice_spent ?? 0;
- const available = Math.max(0, character.level - spent);
- const conMod = computed.modifiers.constitution;
- const atMax = character.current_hp >= character.max_hp;
- const cannotRest = character.current_hp < 1 || frozen;
+ <HitDiceReview character={character} disabled={frozen||restSaving} onReview={async(revision,counts,spent)=>{
+  const id=character.id;await saveQueue.flush();
+  const queued=saveQueue.getSnapshot();
+  if(queued.pending||queued.error)throw new Error('Save your pending character changes before reviewing Hit Dice.');
+  if(characterRef.current.id!==id)throw new Error('The character sheet changed.');
+  const receipt=await reviewHitDice(id,revision,counts,spent);
+  if(characterRef.current.id!==id)return;
+  const {patch}=acceptPsionicHitDiceReceipt(characterRef,receipt,saveQueue.getPending());
+  if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
+ }}/>
+ <HitDiceRestControls key={character.id} character={character} conModifier={computed.modifiers.constitution} disabled={frozen} restSaving={restSaving} gained={shortRestHpGained} onRoll={rollHitDice} onDone={finishShortRest}/>
 
- return (
- <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
- <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
- <div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-2)', marginBottom: 2 }}>
- Hit Dice Available
- </div>
- <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-lg)', color: available > 0 ? 'var(--c-gold-l)' : 'var(--t-2)' }}>
- {available} / {character.level} d{hitDie}
- </div>
- </div>
- <div style={{ textAlign: 'right' }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--t-2)', marginBottom: 2 }}>
- Current HP
- </div>
- <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 'var(--fs-lg)', color: 'var(--t-1)' }}>
- {character.current_hp} / {character.max_hp}
- </div>
- </div>
- </div>
-
- {shortRestHpGained > 0 && (
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-sm)', color: 'var(--hp-full)', textAlign: 'center' }}>
- +{shortRestHpGained} HP recovered this rest
- </div>
- )}
-
- {/* v2.170.0 — Phase Q.0 pt 11: pick how many dice to spend, then
-     roll them all at once. Lets players gamble fewer dice hoping
-     for high rolls, or burn more to guarantee recovery. Input is
-     clamped 1..available. Rolls all dice in a single 3D animation
-     via allDice / flatBonus for the CON modifier. */}
- <div style={{ display: 'flex', gap: 'var(--sp-2)', alignItems: 'center', flexWrap: 'wrap' as const }}>
- <label style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' as const, color: 'var(--t-2)' }}>
- Spend
- </label>
- <input
- type="number"
- min={1}
- max={available}
- value={hitDiceToSpend}
- onChange={e => setHitDiceToSpend(e.target.value)}
- placeholder="1"
- disabled={available === 0 || atMax || cannotRest}
- style={{ width: 50, fontSize: 14, fontFamily: 'var(--ff-stat)', fontWeight: 700, textAlign: 'center', padding: '6px', borderRadius: 6, border: '1px solid var(--c-border-m)', background: 'var(--c-raised)', color: 'var(--t-1)' }}
- />
- <span style={{ fontFamily: 'var(--ff-body)', fontSize: 'var(--fs-xs)', color: 'var(--t-3)' }}>
- / {available}
- </span>
- <button
- className="btn-gold"
- onClick={() => {
- const n = Math.max(1, Math.min(parseInt(hitDiceToSpend) || 1, available));
- rollHitDice(n);
- setHitDiceToSpend('');
- }}
- disabled={available === 0 || atMax || cannotRest}
- style={{ flex: 1, justifyContent: 'center', minWidth: 180 }}
- title={cannotRest ? 'You need at least 1 HP and an editable sheet to rest' : available === 0 ? 'No hit dice remaining' : atMax ? 'Already at max HP' : 'Rolls all selected dice in one go'}
- >
- Roll Hit Dice (d{hitDie}{conMod >= 0 ? '+' : ''}{conMod})
- </button>
- <button
- className="btn-secondary"
- disabled={restSaving}
- onClick={finishShortRest}
- title="End short rest"
- >
- Done
- </button>
- </div>
-
- {character.class_name === 'Warlock' && (
- <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--c-gold-l)', fontFamily: 'var(--ff-body)' }}>
- Pact Magic slots will be recovered when you finish this rest.
- </p>
- )}
-
- {available === 0 && (
- <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--t-2)', fontFamily: 'var(--ff-body)' }}>
- No hit dice remaining. Take a long rest to recover them.
- </p>
- )}
- </div>
- );
- })()}
  </div>
 
  {/* Long rest panel */}

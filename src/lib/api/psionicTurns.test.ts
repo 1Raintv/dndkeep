@@ -3,7 +3,7 @@ import type {Character} from '../../types';
 import {beforeEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({rpc:vi.fn()}));
 vi.mock('../supabase',()=>({supabase:{rpc:mocks.rpc}}));
-import {completePsionicRest,settlePsionicEnergy,advancePsionicSoloTurn,getEnkindledTurn,spendEnkindledLifeForce} from './psionicTurns';
+import {spendPsionicSurge,completePsionicRest,settlePsionicEnergy,advancePsionicSoloTurn,getEnkindledTurn,spendEnkindledLifeForce} from './psionicTurns';
 const request={requestId:'stable',turn:{soloTurn:0},count:2,baseRolls:[1],extraRolls:[2,3],sourceFeature:'Biofeedback'};
 beforeEach(()=>vi.resetAllMocks());
 it('replays an ambiguous charge with the identical request and accepts its saved receipt',async()=>{
@@ -68,4 +68,25 @@ it.each([{id:'other'},{psionic_energy_revision:undefined},{psionic_hit_dice_revi
 });
 it('never sends an incomplete saved rest',async()=>{
  await expect(completePsionicRest('hero',{...restRequest,updates:{}})).rejects.toMatchObject({definitelyNotPaid:true});expect(mocks.rpc).not.toHaveBeenCalled();
+});
+
+it('retries selected-pool Surge with the same die size and accepts only balanced allocation',async()=>{
+ const selected={requestId:'pool',rolls:[1,5],sourceFeature:'Telekinetic Propel',hitDie:10 as const};
+ const saved={requestId:'pool',rolls:[4,5],total:9,hitDiceSpent:3,hitDiceRevision:4,hitDiceSpentByType:{'6':1,'10':2},replayed:true};
+ mocks.rpc.mockRejectedValueOnce(new Error('lost')).mockResolvedValueOnce({data:saved,error:null});
+ expect(await spendPsionicSurge('hero',selected)).toEqual(saved);
+ expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[1]);
+ expect(mocks.rpc.mock.calls[0]).toEqual(['spend_psionic_surge_from_pool',{p_character_id:'hero',p_request_id:'pool',p_rolls:[1,5],p_source_feature:'Telekinetic Propel',p_hit_die:10}]);
+ mocks.rpc.mockResolvedValue({data:{...saved,hitDiceSpentByType:{'6':1}},error:null});
+ await expect(spendPsionicSurge('hero',selected)).rejects.toMatchObject({definitelyNotPaid:false});
+});
+it('keeps legacy saved Surge requests on their original endpoint',async()=>{
+ mocks.rpc.mockResolvedValue({data:{requestId:'legacy',rolls:[4],total:4,hitDiceSpent:1,hitDiceRevision:1,replayed:true},error:null});
+ await spendPsionicSurge('hero',{requestId:'legacy',rolls:[1],sourceFeature:'Biofeedback'});
+ expect(mocks.rpc.mock.calls[0][0]).toBe('spend_psionic_surge');expect(mocks.rpc.mock.calls[0][1]).not.toHaveProperty('p_hit_die');
+});
+
+it.each([[3,5],[5,5],[4,6]])('rejects a Surge receipt that changes the original dice incorrectly: %j',async(first,second)=>{
+ const rolls=[first,second];mocks.rpc.mockResolvedValue({data:{requestId:'verify',rolls,total:first+second,hitDiceSpent:1,hitDiceSpentByType:{'6':1},hitDiceRevision:1,replayed:false},error:null});
+ await expect(spendPsionicSurge('hero',{requestId:'verify',rolls:[1,5],sourceFeature:'Biofeedback',hitDie:6})).rejects.toMatchObject({definitelyNotPaid:false});
 });

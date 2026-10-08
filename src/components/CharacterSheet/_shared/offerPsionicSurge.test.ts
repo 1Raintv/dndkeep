@@ -24,3 +24,24 @@ it('retains a paid roll when its sheet closes during the server response',async(
  const options=setup(),pay=options.persistence.surge;let active=true;options.active=()=>active;options.persistence.surge=async request=>{const receipt=await pay(request);active=false;return receipt;};
  expect((await offerPsionicSurge(options))?.usedSurge).toBe(true);expect(options.accept).not.toHaveBeenCalled();
 });
+
+const mixed={...character,secondary_class:'Fighter',secondary_level:3,hit_dice_spent:2,hit_dice_spent_by_type:{'6':1,'10':1}} as Character;
+it('charges the explicitly selected size for a mixed pool',async()=>{
+ const options=setup();options.current=()=>mixed;options.persistence.chooseHitDie=vi.fn(async()=>10 as const);
+ options.persistence.surge=vi.fn(async request=>({requestId:request.requestId,rolls:[4],total:4,hitDiceSpent:3,hitDiceRevision:1,hitDiceSpentByType:{'6':1,'10':2},replayed:false}));
+ expect((await offerPsionicSurge(options))?.usedSurge).toBe(true);
+ expect(options.persistence.surge).toHaveBeenCalledWith(expect.objectContaining({hitDie:10}));expect(options.confirm).not.toHaveBeenCalled();
+});
+it('canceling the pool choice keeps the original roll and spends nothing',async()=>{
+ const options=setup();options.current=()=>mixed;options.persistence.chooseHitDie=vi.fn(async()=>null);options.persistence.surge=vi.fn();
+ expect(await offerPsionicSurge(options)).toMatchObject({roll:2,usedSurge:false});expect(options.persistence.surge).not.toHaveBeenCalled();
+});
+it('rechecks the chosen pool after another tab spends its last die',async()=>{
+ let current=mixed;const options=setup();options.current=()=>current;options.persistence.surge=vi.fn();
+ options.persistence.chooseHitDie=async()=>{current={...mixed,hit_dice_spent:4,hit_dice_spent_by_type:{'6':1,'10':3}};return 10;};
+ expect(await offerPsionicSurge(options)).toBeNull();expect(options.persistence.surge).not.toHaveBeenCalled();expect(options.warn).toHaveBeenCalledWith('Resources changed. Psionic Surge was not applied.');
+});
+it('requires review before spending an ambiguous legacy mixed pool',async()=>{
+ const options=setup();options.current=()=>({...mixed,hit_dice_spent_by_type:null});options.persistence.surge=vi.fn();
+ expect(await offerPsionicSurge(options)).toMatchObject({usedSurge:false});expect(options.persistence.surge).not.toHaveBeenCalled();expect(options.warn).toHaveBeenCalledWith(expect.stringContaining('Review your spent Hit Dice'));
+});

@@ -1,3 +1,4 @@
+import {isHitDiceAllocation,type HitDie} from '../../rules/hitDice';
 import type {Character} from '../../types';
 import {validPsionicRestRequest,type PsionicRestRequest} from '../psionicRestRequest';
 import {supabase} from '../supabase';
@@ -6,11 +7,12 @@ export interface EnkindledUse {requestId:string;sourceFeature:string;baseRolls:n
 export interface EnkindledTurn {turn:PsionicTurn;used:EnkindledUse|null}
 export interface EnkindledRequest {requestId:string;turn:PsionicTurn;count:number;baseRolls:number[];extraRolls:number[];sourceFeature:string;recoveryNote?:string}
 export interface EnkindledReceipt {requestId:string;extraRolls:number[];hitDiceSpent:number;hitDiceRevision:number;replayed:boolean}
-export interface SurgeRequest {requestId:string;rolls:number[];sourceFeature:string;recoveryNote?:string}
-export interface SurgeReceipt {requestId:string;rolls:number[];total:number;hitDiceSpent:number;hitDiceRevision:number;replayed:boolean}
+export interface SurgeRequest {hitDie?:HitDie;requestId:string;rolls:number[];sourceFeature:string;recoveryNote?:string}
+export interface SurgeReceipt {hitDiceSpentByType?:Record<string,number>|null;requestId:string;rolls:number[];total:number;hitDiceSpent:number;hitDiceRevision:number;replayed:boolean}
 /** Injected into roll controls so a paid server result can refresh the sheet
  * without being enqueued as another optimistic absolute-value write. */
 export interface PsionicEnhancementPersistence {
+ chooseHitDie?:(character:Character,message:string)=>Promise<HitDie|null>;
  rest?:(request:PsionicRestRequest)=>Promise<PsionicRestReceipt>;
  energy:(request:EnergyRequest)=>Promise<EnergyReceipt>;
  getTurn:()=>Promise<EnkindledTurn>;
@@ -61,10 +63,12 @@ export async function advancePsionicSoloTurn(characterId:string,requestId:string
 }
 
 export async function spendPsionicSurge(characterId:string,request:SurgeRequest):Promise<SurgeReceipt>{
- const data=await rpc('spend_psionic_surge',{p_character_id:characterId,p_request_id:request.requestId,
+ if(request.hitDie!==undefined&&![6,8,10,12].includes(request.hitDie))throw new PsionicRequestError('Choose a valid Hit Die size.',true);
+ const data=await rpc(request.hitDie===undefined?'spend_psionic_surge':'spend_psionic_surge_from_pool',{...(request.hitDie===undefined?{}:{p_hit_die:request.hitDie}),p_character_id:characterId,p_request_id:request.requestId,
   p_rolls:request.rolls,p_source_feature:request.sourceFeature},true);
  receipt(data,request.requestId);
- if(!validRolls(data.rolls)||data.rolls.length!==request.rolls.length||data.total!==data.rolls.reduce((sum,n)=>sum+n,0))throw new PsionicRequestError('The saved Surge rolls could not be verified.',false);
+ if(request.hitDie!==undefined&&data.hitDiceSpentByType!==null&&!isHitDiceAllocation(data.hitDiceSpentByType,Number(data.hitDiceSpent)))throw new PsionicRequestError('The saved Hit Die pool could not be verified. Keep the saved request.',false);
+ if(!validRolls(data.rolls)||data.rolls.length!==request.rolls.length||data.rolls.some((n,index)=>n!==Math.max(4,request.rolls[index]))||data.total!==data.rolls.reduce((sum,n)=>sum+n,0))throw new PsionicRequestError('The saved Surge rolls could not be verified.',false);
  return data as unknown as SurgeReceipt;
 }
 

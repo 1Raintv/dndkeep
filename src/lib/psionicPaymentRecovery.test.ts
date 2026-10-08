@@ -34,3 +34,12 @@ it('saves manual teleportation corrections with no Energy Dice cost',()=>{
  rememberPsionicPayment('hero',correction);expect(pendingPsionicPayments('hero')).toEqual([correction]);
  for(const request of [{...correction.request,count:1},{...correction.request,rolls:[1]},{...correction.request,sourceFeature:'Other'}])expect(()=>rememberPsionicPayment('hero',{kind:'energy',request})).toThrow('Invalid saved');
 });
+
+it('retains a chosen Hit Die in saved Surge recovery and rejects invalid sizes',()=>{
+ const selected={...payment,request:{...payment.request,hitDie:10 as const}};
+ rememberPsionicPayment('hero',selected);expect(pendingPsionicPayments('hero')).toEqual([selected]);
+ for(const hitDie of [4,20,0,null,'10']){
+  localStorage.setItem('dndkeep:psionic-payment:hero:saved',JSON.stringify({...payment,request:{...payment.request,hitDie}}));
+  expect(pendingPsionicPayments('hero')).toEqual([]);
+ }
+});

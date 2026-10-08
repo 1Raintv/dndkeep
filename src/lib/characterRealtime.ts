@@ -1,8 +1,9 @@
+import {isHitDiceAllocation} from '../rules/hitDice';
 import type {Character} from '../types';
 const fields = [
  'spell_preparation_sources','spell_sources','known_spells','prepared_spells','combat_hp_sync_id','current_hp','temp_hp','active_conditions','concentration_spell','concentration_rounds_remaining',
  'exhaustion_level','concentration_revision','concentration_casting_context','concentration_slot_level','spell_slots','death_saves_successes','death_saves_failures','inspiration',
- 'hit_dice_spent','psionic_hit_dice_revision','psionic_energy_revision','class_resources','feature_uses','currency','inventory','experience_points',
+ 'hit_dice_spent','hit_dice_spent_by_type','psionic_hit_dice_revision','psionic_energy_revision','class_resources','feature_uses','currency','inventory','experience_points',
 ] as const;
 
 /** v2.765 — publish the next comparison snapshot synchronously. Two realtime
@@ -21,9 +22,11 @@ export function reconcileCharacterUpdate(ref:{current:Character},incoming:Record
  for(const field of fields) {
   if(staleConcentration&&field.startsWith('concentration_'))continue;
   // v2.782 — late acknowledgements/events cannot refund a newer paid cost.
-  if(staleHitDice&&(field==='hit_dice_spent'||field==='psionic_hit_dice_revision'))continue;
+  if(staleHitDice&&(field==='hit_dice_spent'||field==='hit_dice_spent_by_type'||field==='psionic_hit_dice_revision'))continue;
   if(staleEnergy&&field==='psionic_energy_revision')continue;
   let value=Object.prototype.hasOwnProperty.call(pending,field)?pending[field]:incoming[field];
+  // Keep allocation and its aggregate together when an older local rest is pending.
+  if(field==='hit_dice_spent_by_type'&&pending.hit_dice_spent!==undefined&&pending.hit_dice_spent!==incoming.hit_dice_spent)value=pending.hit_dice_spent_by_type??null;
   // Transaction-owned keys override pending whole-map edits. Older echoes
   // retain the latest paid keys while unrelated local edits stay pending.
   if(typeof energyRevision==='number'&&value!==undefined&&(field==='class_resources'||field==='feature_uses')&&(staleEnergy||incoming[field]!==undefined)){
@@ -42,9 +45,11 @@ export function reconcileCharacterUpdate(ref:{current:Character},incoming:Record
 }
 
 /** Accept a server payment without enqueueing another absolute-value write. */
-export function acceptPsionicHitDiceReceipt(ref:{current:Character},receipt:{hitDiceSpent:number;hitDiceRevision:number},pending:Partial<Character>={}){
+export function acceptPsionicHitDiceReceipt(ref:{current:Character},receipt:{hitDiceSpent:number;hitDiceRevision:number;hitDiceSpentByType?:Record<string,number>|null},pending:Partial<Character>={}){
  if(!Number.isInteger(receipt.hitDiceSpent)||receipt.hitDiceSpent<0||receipt.hitDiceSpent>20||!Number.isSafeInteger(receipt.hitDiceRevision)||receipt.hitDiceRevision<0)throw new Error('Invalid Psion resource receipt');
- return reconcileCharacterUpdate(ref,{hit_dice_spent:receipt.hitDiceSpent,psionic_hit_dice_revision:receipt.hitDiceRevision},pending);
+ const counts=receipt.hitDiceSpentByType??null;
+ if(counts!==null&&!isHitDiceAllocation(counts,receipt.hitDiceSpent))throw new Error('Invalid Hit Dice allocation receipt');
+ return reconcileCharacterUpdate(ref,{hit_dice_spent:receipt.hitDiceSpent,hit_dice_spent_by_type:counts,psionic_hit_dice_revision:receipt.hitDiceRevision},pending);
 }
 
 /** v2.784 — merge the transaction-owned resource keys, preserving every other
@@ -78,6 +83,7 @@ export function acceptPsionicRestReceipt(ref:{current:Character},receipt:{charac
    incoming[key]=after;
   }else if(JSON.stringify(current[key]??null)===JSON.stringify(receipt.expected[key]))incoming[key]=saved[key];
  }
+ if('hit_dice_spent' in incoming)incoming.hit_dice_spent_by_type=saved.hit_dice_spent_by_type??null;
  return reconcileCharacterUpdate(ref,incoming,pending);
 }
 

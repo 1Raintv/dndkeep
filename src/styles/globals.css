@@ -1143,7 +1143,9 @@ body.in-combat .rolllog-panel {
 
 /* ── Phone: stack everything ── */
 @media (max-width: 480px) {
-  .cs-shell { gap: var(--sp-3); }
+  /* v2.796 — short Actions lists otherwise end behind the fixed navigation
+     and dice/history buttons. The legacy .app-content inset misses this sheet. */
+  .cs-shell { gap: var(--sp-3); padding-bottom: calc(144px + env(safe-area-inset-bottom, 0px)); }
   .cs-hud-layout { gap: var(--sp-3); }
 }
 
