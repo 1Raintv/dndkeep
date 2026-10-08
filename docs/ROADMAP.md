@@ -1,5 +1,31 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.809 candidate — War Caster on the standalone sheet
+
+The sheet's own concentration roll now keeps the higher of two d20s for War
+Caster. Both dice reach the animation and action log; only the selected die is
+added to Constitution/proficiency. Natural-extreme house rules use that selected
+die. The prompt explicitly explains advantage and separates its controls from
+the explanation, with 44px touch targets and improved contrast on narrow screens.
+The prompt was extracted from the sheet root into ConcentrationCheckPrompt.
+
+Validation: seven pure rule cases; all 14 desktop/phone sheet concentration cases
+passed, including standard/house-rule extremes, two-die history and preservation
+of later castings after delayed animation. Screenshots inspected after fixing the
+initial cramped mobile layout. Final gate: 2,146 units, TS 203/203, hooks, RAW,
+coordinates/anchors, build/SW and 254 KB entry.
+
+Reliability remains unfinished: this sheet path rolls locally, calls
+setConcentration separately, and asynchronously writes action history. It has no
+durable pending-save receipt. Replace that whole path with a character-scoped
+server transaction, preserving damage-time spell/revision, save bonus, advantage
+and every damage event. Avoid a second save from realtime HP changes when combat
+already created one; HP deltas also cannot reconstruct overkill damage. The
+manual HP receipt should eventually link the same save identity without replaying
+HP. Character/account changes, multiple pending hits, lost responses, zero HP,
+new casts, and reloads all need coverage. No claim of atomic sheet recovery yet.
+
+
 ### v2.808 candidate — durable War Caster campaign concentration saves
 
 New campaign concentration offers snapshot the character's War Caster feat on
@@ -22,8 +48,8 @@ anchors, build/SW, 254 KB entry. Local security advisors report only standing
 keep_warm/client_errors warnings. Migration 20261008060147 is local only.
 
 Source: 2024 PHB p.209 / [licensed rules](https://roll20.net/compendium/dnd5e/Feats%3AWar%20Caster?expansion=32231).
-No feat prose is copied into the app. Standalone-sheet concentration uses a
-separate settlement path and still needs advantage support. Manual map damage
+No feat prose is copied into the app. Standalone-sheet concentration rolls locally; v2.809 adds its advantage math,
+but durable settlement remains open. Manual map damage
 consequences, other advantage/disadvantage sources, and mobile sheet header
 clipping remain follow-ups; this release does not certify those paths.
 
