@@ -47,6 +47,22 @@ test.describe('Atomic campaign concentration settlement',()=>{
   expect(sql(`select concentration_slot_level is null from characters where id='${character}'`)).toBe('t');
   expect(sql(`select count(*) from combat_events where chain_id='${chain}' and event_type='concentration_broken'`)).toBe('1');
  });
+ test('failed concentration leaves a waking target Prone and retains another source of incapacity',()=>{
+  sql(`update combatants set active_conditions=array['Unconscious','Prone','Incapacitated','Stunned'],condition_sources=jsonb_build_object(
+   'Unconscious',jsonb_build_object('source','spell:detect-magic','casterParticipantId','${participant}'),
+   'Prone',jsonb_build_object('source','cascade:Unconscious','expires_at_round',1),
+   'Incapacitated',jsonb_build_object('source','cascade:Unconscious'),
+   'Stunned',jsonb_build_object('source','other')) where id=(select combatant_id from combat_participants where id='${participant}')`);
+  expect(receipt().outcome).toBe('failed');
+  expect(effects()).toMatchObject({conditions:['Prone','Incapacitated','Stunned'],sources:{Prone:{source:'fall:Unconscious'},Incapacitated:{source:'cascade:Stunned'},Stunned:{source:'other'}}});
+ });
+ test('ending both parent effects in one concentration transaction removes their shared incapacity',()=>{
+  sql(`update combatants set active_conditions=array['Paralyzed','Stunned','Incapacitated'],condition_sources=jsonb_build_object(
+   'Paralyzed',jsonb_build_object('source','spell:detect-magic','casterParticipantId','${participant}'),
+   'Stunned',jsonb_build_object('source','spell:detect-magic','casterParticipantId','${participant}'),
+   'Incapacitated',jsonb_build_object('source','cascade:Paralyzed')) where id=(select combatant_id from combat_participants where id='${participant}')`);
+  expect(receipt().outcome).toBe('failed');expect(effects().conditions).toEqual([]);expect(effects().sources).toEqual({});
+ });
  for(const next of ['detect-magic','invisibility'])test(`an offer from an earlier casting cannot clear ${next}`,()=>{
   const before=effects();sql(`update characters set concentration_spell='${next}' where id='${character}'`);
   expect(receipt()).toMatchObject({outcome:'obsolete',d20:null,total:null});expect(spell()).toBe(next);expect(effects()).toEqual(before);
