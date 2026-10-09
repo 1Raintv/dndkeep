@@ -104,3 +104,9 @@ it.each(['error','missing'])('does not record a failed save when resistance is u
  await expect(rollSave('attack',0)).rejects.toThrow(/Resistance|resistance/);
  expect(m.writes).toEqual([]);expect(m.event).not.toHaveBeenCalled();
 });
+
+it('does not finalize or announce a failed save when the lair allowance is unknown',async()=>{
+ m.lrTotal=3;m.lrUsed=3;m.lair.mockRejectedValueOnce(new Error('Lair unavailable'));
+ await expect(rollSave('attack',0)).rejects.toThrow('Lair unavailable');
+ expect(m.writes).toEqual([]);expect(m.event).not.toHaveBeenCalled();
+});

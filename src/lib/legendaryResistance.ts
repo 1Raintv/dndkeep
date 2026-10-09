@@ -15,7 +15,7 @@
 // releases and the existing pipeline continues as normal.
 
 import { supabase } from './supabase';
-import {decideLegendaryResistance} from './api/legendaryResistance';
+import {decideLegendaryResistance,readEncounterLairBonus} from './api/legendaryResistance';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { isCreatureParticipantType } from './participantType';
 import type { PendingAttack } from '../types';
@@ -27,13 +27,7 @@ import type { PendingAttack } from '../types';
  *  in_lair flag; applies to every legendary participant in the
  *  encounter. Read-time only — stored totals are never mutated. */
 export async function encounterLairBonus(encounterId: string | null | undefined): Promise<number> {
-  if (!encounterId) return 0;
-  const { data } = await supabase
-    .from('combat_encounters')
-    .select('in_lair')
-    .eq('id', encounterId)
-    .maybeSingle();
-  return (data as { in_lair?: boolean } | null)?.in_lair === true ? 1 : 0;
+  return readEncounterLairBonus(encounterId);
 }
 
 export interface LrDecisionInput {

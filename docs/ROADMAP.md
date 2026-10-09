@@ -5505,3 +5505,26 @@ penalty consumption by other save kinds; those remain release requirements.
 Final full gate after the toast fix passes: 3,067 unit tests, TypeScript
 197/197, hooks/RAW/coordinates/anchors, build and 255.2 KB entry. Migration
 applied to local Docker with its ledger entry; no production deployment.
+
+### Preserve lair-only resistance on failed reads (unreleased)
+
+Lair reads now live behind the resistance repository and reject query errors,
+missing encounters and malformed flags. A failed creature save cannot silently
+skip its final in-lair resistance charge when that setting is unavailable.
+No-encounter callers still receive zero bonus. Manual resistance controls surface
+failures through the existing error toast instead of an unhandled rejection.
+
+Regression coverage includes rejected/stale/malformed reads, no save write or
+combat event after a failed lookup, and manual-control error reporting. The
+actual desktop/mobile save flow now starts with only the lair charge remaining:
+a forced read failure records no result, then a successful retry offers and
+spends that last charge atomically. Both browser cases pass; the mobile retry
+screenshot confirms the 1/4 in-lair display and visible retry message. Browser
+fault injection blocks service workers so requests reach the test interceptor.
+
+This is a prerequisite for ordinary-save penalty settlement, not its completion.
+Ordinary saves still need persisted dice and atomic settlement; retrying an
+unrecorded save can currently reroll. Manual resistance spending/reset remains
+non-atomic. Mind Sliver's other save consumers remain release requirements.
+
+Final gate passes: 3,081 unit tests, TypeScript 197/197, hooks/RAW/coordinates/anchors, build and 255.2 KB entry. No new migration or production deployment.

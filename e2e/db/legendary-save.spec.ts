@@ -4,6 +4,7 @@ import {expect,test} from '@playwright/test';
 import {gateDbSuite,signInAsSeedDm} from './helpers';
 const sql=(q:string)=>execFileSync('docker',['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-t','-A','-v','ON_ERROR_STOP=1'],{input:q,encoding:'utf8'}).trim();
 test.describe('Creature Legendary Resistance',()=>{
+ test.use({serviceWorkers:'block'});
  gateDbSuite();let charId:string,userId:string,email:string,campaignId:string;
  test.beforeEach(()=>{
   campaignId=randomUUID();charId=randomUUID();userId=randomUUID();email='propel-'+userId+'@dndkeep.local';
@@ -22,15 +23,27 @@ test.describe('Creature Legendary Resistance',()=>{
   const enc=randomUUID(),self=randomUUID(),creature=randomUUID(),attack=randomUUID();
   sql(`insert into campaigns(id,owner_id,name) values('${campaignId}','${userId}','Legendary Save Fixture');
    update characters set campaign_id='${campaignId}' where id='${charId}';
-   insert into combat_encounters(id,campaign_id,status,current_turn_index) values('${enc}','${campaignId}','active',0);
+   insert into combat_encounters(id,campaign_id,status,current_turn_index,in_lair) values('${enc}','${campaignId}','active',0,true);
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,legendary_resistance,legendary_resistance_used) values
     ('${self}','${enc}','${campaignId}','character','${charId}','Psion',0,0,0),
-    ('${creature}','${enc}','${campaignId}','creature','${randomUUID()}','Legendary Target',1,3,0);
+    ('${creature}','${enc}','${campaignId}','creature','${randomUUID()}','Legendary Target',1,3,3);
    insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,attacker_name,attacker_type,target_participant_id,target_name,target_type,attack_source,attack_name,attack_kind,save_dc,save_ability,save_success_effect,damage_dice,damage_type,state,chain_id)
    values('${attack}','${campaignId}','${enc}','${self}','Psion','character','${creature}','Legendary Target','creature','spell','Mind Sliver','save',20,'INT','none','2d6','Psychic','declared','${randomUUID()}');`);
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await signInAsSeedDm(page,email);await page.goto(`/campaigns/${campaignId}`);
   await expect(page.getByText('Legendary Save Fixture',{exact:true}).locator('visible=true').first()).toBeVisible();
+  // The last lair-only charge must survive a failed configuration lookup.
+  const lairRead=(url:URL)=>url.pathname==='/rest/v1/combat_encounters'&&url.searchParams.get('select')==='in_lair';
+  await page.route(lairRead,route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Lair setting unavailable'})}));
+  const failure=await page.evaluate(async id=>{
+   Math.random=()=>0.01;
+   const module=await import('/src/lib/pendingAttack.ts');
+   try{await module.rollSave(id,0);return null;}catch(error){return error instanceof Error?error.message:String(error);}
+  },attack);
+  expect(failure).toContain('Lair setting unavailable');
+  expect(sql(`select save_result is null from pending_attacks where id='${attack}'`)).toBe('t');
+  expect(sql(`select legendary_resistance_used from combat_participants where id='${creature}'`)).toBe('3');
+  await page.unroute(lairRead);
   const rolled=await page.evaluate(async id=>{
    Math.random=()=>0.01;
    const module=await import('/src/lib/pendingAttack.ts');
@@ -51,7 +64,7 @@ test.describe('Creature Legendary Resistance',()=>{
   await page.screenshot({path:info.outputPath('legendary-resistance-retry.png')});
   await page.getByRole('button',{name:'Use Legendary Resistance',exact:true}).click();
   await expect.poll(()=>sql(`select save_result||':'||pending_lr_decision::text from pending_attacks where id='${attack}'`)).toBe('passed:false');
-  expect(sql(`select legendary_resistance_used from combat_participants where id='${creature}'`)).toBe('1');
+  expect(sql(`select legendary_resistance_used from combat_participants where id='${creature}'`)).toBe('4');
   expect(errors).toEqual([]);
  });
 });
