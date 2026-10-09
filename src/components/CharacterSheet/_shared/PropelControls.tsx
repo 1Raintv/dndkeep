@@ -1,5 +1,7 @@
-import {useEffect,useRef,useState} from 'react';
-import type {Character,CombatParticipant} from '../../../types';
+import {Suspense,useEffect,useRef,useState} from 'react';
+import {lazyWithRetry} from '../../../lib/lazyWithRetry';
+const ClassAbilityResolveModal=lazyWithRetry(()=>import('../../Combat/ClassAbilityResolveModal'));
+import type {Character,Campaign,CombatParticipant} from '../../../types';
 import {beginPropel,finishPropel,getPropelContext,listPropel,type PropelContext,type PropelCursor,type PropelRecord,type PropelRequest,type PropelOutcome} from '../../../lib/api/psionicPropel';
 import {forgetPropel,pendingPropel,rememberPropel,type PendingPropel} from '../../../lib/propelRecovery';
 import {loadPsionicDamageContext} from '../../../lib/api/psionicDamage';
@@ -15,8 +17,9 @@ import {useModal} from '../../shared/Modal';
 import ModalPortal from '../../shared/ModalPortal';
 /** One declaration owns the target, roll, action and conditional payment.
  * Closing the dialog leaves it recoverable; it never invents a passed save. */
-export default function PropelControls({character,persistence,warp=false}:{character:Character;persistence?:PsionicEnhancementPersistence;warp?:boolean}){
+export default function PropelControls({character,persistence,warp=false,campaign=null}:{character:Character;campaign?:Campaign|null;persistence?:PsionicEnhancementPersistence;warp?:boolean}){
  const latest=useOptimisticCharacterRef(character),modal=useModal();
+ const [assisted,setAssisted]=useState(false);
  const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
  const [context,setContext]=useState<PropelContext|null>(null),[targets,setTargets]=useState<CombatParticipant[]>([]);
  const [target,setTarget]=useState(''),[confirmed,setConfirmed]=useState(false),[mode,setMode]=useState<PropelRequest['mode']>('free');
@@ -26,10 +29,10 @@ export default function PropelControls({character,persistence,warp=false}:{chara
  const key=JSON.stringify([character.id,character.campaign_id,warp,psionProgression(character)]),epoch=useRef({key,value:0});
  if(epoch.current.key!==key)epoch.current={key,value:epoch.current.value+1};
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
- useEffect(()=>{setOpen(false);setRow(null);setContext(null);setPending([]);},[key]);
+ useEffect(()=>{setOpen(false);setAssisted(false);setRow(null);setContext(null);setPending([]);},[key]);
  const close=()=>{if(!lock.current)setOpen(false);};
  useEffect(()=>{
-  if(!open)return;const previous=document.activeElement as HTMLElement|null;
+  if(!open||assisted)return;const previous=document.activeElement as HTMLElement|null;
   dialog.current?.focus();
   const handler=(event:KeyboardEvent)=>{
    if(event.key==='Escape'){event.stopPropagation();if(!lock.current)setOpen(false);}
@@ -41,7 +44,7 @@ export default function PropelControls({character,persistence,warp=false}:{chara
    }
   };
   document.addEventListener('keydown',handler);return()=>{document.removeEventListener('keydown',handler);previous?.focus();};
- },[open]);
+ },[open,assisted]);
  async function run(task:(active:()=>boolean,id:string)=>Promise<void>){
   if(lock.current)return;lock.current=true;setBusy(true);setError('');
   const id=latest.current.id,e=epoch.current.value,active=()=>mounted.current&&latest.current.id===id&&epoch.current.value===e;
@@ -89,10 +92,11 @@ export default function PropelControls({character,persistence,warp=false}:{chara
   await send({kind:'begin',request},active,id);
  });}
  function finish(outcome:PropelOutcome){if(!row)return;const id=row.request_id;void run(async(active,characterId)=>{await send({kind:'finish',request:{requestId:id,outcome}},active,characterId);});}
+ const savedEncounter=row&&'encounterId' in row.turn_context?row.turn_context.encounterId:null;
  const state=psionicPowerState(character),title=warp?'Warp Propel':'Telekinetic Propel';
  return <>
  <button className="btn-ghost" style={{fontSize:11,minHeight:36}} disabled={busy} onClick={launch}>Use / resume</button>
- {open&&<ModalPortal><div className="modal-overlay"><div className="modal" ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} style={{width:520,maxWidth:'calc(100vw - 24px)',maxHeight:'85dvh',overflowY:'auto',padding:20}}>
+ {open&&!assisted&&<ModalPortal><div className="modal-overlay" onClick={event=>event.stopPropagation()}><div className="modal" ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} style={{width:520,maxWidth:'calc(100vw - 24px)',maxHeight:'85dvh',overflowY:'auto',padding:20}}>
  <h3>{title} · Bonus Action</h3>
  {error&&<p role="alert">{error}</p>}
  {pending.length>0&&<section aria-label="Unconfirmed Propel requests"><p>Confirm the saved request before rolling or choosing a different result.</p>{pending.map(p=><button key={p.kind+p.request.requestId} disabled={busy} onClick={()=>void run((active,id)=>send(p,active,id))}>Confirm saved {p.kind==='begin'?'use':p.request.outcome+' result'}</button>)}</section>}
@@ -103,6 +107,7 @@ export default function PropelControls({character,persistence,warp=false}:{chara
  <p>{row.mode==='powered'?'One Energy Die is spent only on a failed save.':'No Energy Die cost.'} Paid Hit Dice stay spent.</p>
  {row.outcome?<p role="status">Saved: {row.outcome}. {row.result?.energyCost??0} Energy Dice spent.</p>:<div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
  {!row.roll_result&&<button className="btn-ghost" disabled={busy||pending.length>0} onClick={()=>void run((active,id)=>resume(row.request_id,active,id))}>Continue saved roll</button>}
+ {row.target.participantId&&savedEncounter&&row.caster_snapshot.campaign_id&&<button className="btn-ghost" disabled={busy||pending.length>0||!row.roll_result} onClick={()=>setAssisted(true)}>Resolve combat save</button>}
  <button className="btn-ghost" disabled={busy||pending.length>0||!row.roll_result} onClick={()=>finish('passed')}>Save passed</button>
  <button className="btn-ghost" disabled={busy||pending.length>0||!row.roll_result} onClick={()=>finish('failed')}>Save failed</button>
  <button className="btn-ghost" disabled={busy||pending.length>0} onClick={()=>void run(async(active,id)=>{if(await modal.confirm({title:'Cancel this Propel use?',message:'The Bonus Action and paid Hit Dice stay spent. No Energy Die is spent.',confirmLabel:'Cancel use'})&&active())await send({kind:'finish',request:{requestId:row.request_id,outcome:'cancelled'}},active,id);})}>Cancel use</button>
@@ -119,5 +124,13 @@ export default function PropelControls({character,persistence,warp=false}:{chara
  {saved.length>0&&<section aria-label="Unfinished Propel uses"><h4>Unfinished uses</h4>{saved.map(r=><button className="btn-ghost" style={{display:'block',margin:'6px 0',maxWidth:'100%',whiteSpace:'normal'}} key={r.request_id} disabled={busy||pending.length>0} onClick={()=>void run((active,id)=>resume(r.request_id,active,id))}>Resume {r.source_feature} · {r.target.name??'creature'} · {new Date(r.created_at).toLocaleString()}</button>)}{cursor&&<button className="btn-ghost" disabled={busy} onClick={()=>void run((active,id)=>refresh(active,id,cursor))}>Load older uses</button>}</section>}
  <button className="btn-ghost" disabled={busy} style={{marginTop:16}} onClick={close}>Close for later</button>
  </div></div></ModalPortal>}
+ {open&&assisted&&row&&row.roll_result&&row.target.participantId&&savedEncounter&&row.caster_snapshot.campaign_id&&<Suspense fallback={<p role="status">Loading save controls…</p>}><ClassAbilityResolveModal open
+  boundTarget={{participantId:row.target.participantId,encounterId:savedEncounter}}
+  onClose={()=>setAssisted(false)} character={row.caster_snapshot} campaign={campaign?.id===row.caster_snapshot.campaign_id?campaign:null}
+  campaignId={row.caster_snapshot.campaign_id} saveDC={classSaveDC(row.caster_snapshot,'INT')}
+  ability={{name:row.source_feature,actionType:'bonus',minLevel:1,description:'',save:{ability:'STR',dc:{classAbility:'INT'},targetMode:'any'},
+   psionicUse:{kind:'propel',mode:row.mode,roll:row.roll_result.total,...(row.movement==='warp'?{movement:'warp' as const}:{})}}}
+  onConfirmed={outcomes=>{if(outcomes.length===1&&outcomes[0].participantId===row.target.participantId&&outcomes[0].outcome!=='pending')finish(outcomes[0].outcome==='passed'?'passed':'failed');}}
+ /></Suspense>}
  </>;
 }

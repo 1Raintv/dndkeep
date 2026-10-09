@@ -12,7 +12,7 @@ vi.mock('./continuePropel',()=>({continuePropel:m.resume}));
 import PropelControls from './PropelControls';
 import {pendingPropel} from '../../../lib/propelRecovery';
 const character={id:'00000000-0000-4000-8000-000000000001',name:'Hero',class_name:'Psion',level:5,intelligence:16,class_resources:{'psionic-energy-dice':2}} as unknown as Character;
-const row={request_id:'00000000-0000-4000-8000-000000000002',target:{name:'Goblin'},caster_snapshot:{...character,intelligence:15},mode:'powered',movement:'push',base_roll:3,roll_result:{total:3},outcome:null};
+const row={turn_context:{soloTurn:0},request_id:'00000000-0000-4000-8000-000000000002',target:{name:'Goblin'},caster_snapshot:{...character,intelligence:15},mode:'powered',movement:'push',base_roll:3,roll_result:{total:3},outcome:null};
 beforeEach(()=>{localStorage.clear();vi.resetAllMocks();m.context.mockResolvedValue({bonusAvailable:true,turnId:'turn',encounterId:null});m.list.mockResolvedValue({items:[],nextCursor:null});m.roll.mockReturnValue(3);m.begin.mockResolvedValue(row);m.resume.mockResolvedValue(row);m.finish.mockResolvedValue({...row,outcome:'passed',result:{energyCost:0}});});
 afterEach(cleanup);
 async function open(){fireEvent.click(screen.getByRole('button',{name:'Use / resume'}));await waitFor(()=>expect((screen.getByLabelText('Target') as HTMLInputElement).disabled).toBe(false));}

@@ -64,6 +64,8 @@ export { formatOutcomesLog } from '../../lib/classAbilityOutcomes';
 import type { SaveOutcome, TargetOutcome } from '../../lib/classAbilityOutcomes';
 
 interface Props {
+  /** A persisted declaration cannot switch targets or encounters during resolution. */
+  boundTarget?:{participantId:string;encounterId:string};
   open: boolean;
   onClose: () => void;
   ability: ClassAbility;
@@ -105,12 +107,12 @@ function filterTargets(
 }
 
 export default function ClassAbilityResolveModal({
-  open, onClose, ability, saveDC, character, campaign, campaignId, onConfirmed,
+  open, onClose, ability, saveDC, character, campaign, campaignId, onConfirmed, boundTarget,
 }: Props) {
-  const singleTarget=ability.psionicUse?.kind==='propel';
+  const singleTarget=!!boundTarget||ability.psionicUse?.kind==='propel';
   const [checking,setChecking]=useState(false),[saveError,setSaveError]=useState('');
   const busy=useRef(false),generation=useRef(0);
-  const context=JSON.stringify([open,campaignId,character.id,ability.name,ability.save,ability.psionicUse,saveDC]);
+  const context=JSON.stringify([open,campaignId,character.id,ability.name,ability.save,ability.psionicUse,saveDC,boundTarget]);
   const latest=useRef(context);latest.current=context;
   useEffect(()=>{busy.current=false;setChecking(false);setSaveError('');return()=>{generation.current++;};},[context]);
   const [selectedTarget,setSelectedTarget]=useState('');
@@ -144,7 +146,7 @@ export default function ClassAbilityResolveModal({
       setLoading(true);
       setError(null);
       setOutcomes({});
-      setSelectedTarget('');
+      setSelectedTarget(boundTarget?.participantId??'');
       setSaveBonuses({});
 
       const { data: enc } = await supabase
@@ -154,6 +156,9 @@ export default function ClassAbilityResolveModal({
         .eq('status', 'active')
         .maybeSingle();
       if (cancelled) return;
+      if (boundTarget&&enc?.id!==boundTarget.encounterId) {
+        setTargets([]);setError('The declared encounter is no longer active. Keep this saved use for manual resolution.');setLoading(false);return;
+      }
       if (!enc?.id) {
         setError('No active combat encounter.');
         setLoading(false);
@@ -180,7 +185,9 @@ export default function ClassAbilityResolveModal({
       if (cancelled) return;
 
       const list = ((all ?? []) as CombatParticipant[]);
-      const filtered = ability.save ? filterTargets(list, casterId, ability.save) : [];
+      const eligible = ability.save ? filterTargets(list, casterId, ability.save) : [];
+      const filtered = boundTarget?eligible.filter(p=>p.id===boundTarget.participantId):eligible;
+      if(boundTarget&&filtered.length!==1)setError('The declared target is no longer available. Keep this saved use for manual resolution.');
       setTargets(filtered);
       setOutcomes(Object.fromEntries(filtered.map(p => [p.id, {
         participantId: p.id,
@@ -354,7 +361,7 @@ export default function ClassAbilityResolveModal({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {saveError&&<p role="alert" style={{color:'#f87171',fontSize:12}}>{saveError}</p>}
               {checking&&<p role="status">Checking protection…</p>}
-              {singleTarget&&<div style={{marginBottom:12}}><p>Choose one Large or smaller creature other than yourself that you can see within 30 ft. {ability.psionicUse?.kind==='propel'&&ability.psionicUse.movement==='warp'?'On failure, teleport to an unoccupied space you can see within 30 ft of you, horizontal to you.':'Apply movement straight toward or away from you.'}</p><p>{ability.psionicUse?.kind==='propel'?(ability.psionicUse.mode==='free'?(ability.psionicUse.movement==='warp'?'No Energy Die required.':'Free: 5 ft on a failed save.'):`Rolled ${ability.psionicUse.roll}: ${ability.psionicUse.movement==='warp'?'teleport destination remains within 30 ft of you':`${ability.psionicUse.roll*5} ft on failure`}. ${ability.psionicUse.mode==='powered'?'Spend 1 die only on failure.':'No die spent.'}`):''}</p><label>Propel target<select disabled={checking} aria-label="Propel target" value={selectedTarget} onChange={e=>setSelectedTarget(e.target.value)} style={{width:'100%'}}><option value="">Choose one target</option>{targets.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label></div>}
+              {singleTarget&&<div style={{marginBottom:12}}><p>Choose one Large or smaller creature other than yourself that you can see within 30 ft. {ability.psionicUse?.kind==='propel'&&ability.psionicUse.movement==='warp'?'On failure, teleport to an unoccupied space you can see within 30 ft of you, horizontal to you.':'Apply movement straight toward or away from you.'}</p><p>{ability.psionicUse?.kind==='propel'?(ability.psionicUse.mode==='free'?(ability.psionicUse.movement==='warp'?'No Energy Die required.':'Free: 5 ft on a failed save.'):`Rolled ${ability.psionicUse.roll}: ${ability.psionicUse.movement==='warp'?'teleport destination remains within 30 ft of you':`${ability.psionicUse.roll*5} ft on failure`}. ${ability.psionicUse.mode==='powered'?'Spend 1 die only on failure.':'No die spent.'}`):''}</p><label>Propel target<select disabled={checking||!!boundTarget} aria-label="Propel target" value={selectedTarget} onChange={e=>setSelectedTarget(e.target.value)} style={{width:'100%'}}><option value="">Choose one target</option>{targets.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label></div>}
               {visibleTargets.map(p => {
                 const out = outcomes[p.id];
                 const showAutoFail =

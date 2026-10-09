@@ -2,7 +2,7 @@ import type {Character} from '../../types';
 import type {ActionClaim} from '../../rules/actionBudget';
 import {psionProgression} from '../../rules/psionProgression';
 import {psionicDieSides} from '../../rules/psionicRestoration';
-import {psionicRpc,PsionicRequestError,type EnergyReceipt} from './psionicTurns';
+import {psionicRpc,PsionicRequestError,type EnergyReceipt,type PsionicTurn} from './psionicTurns';
 export interface PropelTarget {participantId?:string|null;name?:string;legalTargetConfirmed:true}
 export interface PropelRequest {requestId:string;turnId:string;mode:'free'|'powered'|'technique';movement:'push'|'warp';roll:number;target:PropelTarget}
 export interface PropelRoll {declarationId:string;originalRolls:number[];enkindledRolls:number[];usedSurge:boolean;rolls:number[];total:number}
@@ -11,6 +11,7 @@ export interface PropelRecord {
  request_id:string;character_id:string;request:Omit<PropelRequest,'requestId'>&{roll:number};
  source_feature:'Telekinetic Propel'|'Warp Propel';mode:PropelRequest['mode'];movement:PropelRequest['movement'];base_roll:number;psion_level:number;
  target:PropelTarget;caster_snapshot:Character;created_at:string;
+ turn_context:PsionicTurn;
  action_receipt:{claim:ActionClaim;replayed:boolean;attackLimit:null};roll_result:PropelRoll|null;
  outcome:PropelOutcome|null;result:null|{declarationId:string;outcome:PropelOutcome;energyCost:number;energy:EnergyReceipt|null;feet:number;movement:PropelRequest['movement'];target:PropelTarget;roll:PropelRoll|null;action:PropelRecord['action_receipt'];replayed:boolean};
  replayed?:boolean;
@@ -51,6 +52,10 @@ export function validPropelRecord(value:unknown,characterId:string):value is Pro
   ||(r.movement==='warp'&&(r.psion_level<3||psionProgression(r.caster_snapshot)?.subclass!=='Psi Warper'))
   ||(r.mode==='technique'&&(r.psion_level<3||psionProgression(r.caster_snapshot)?.subclass!=='Psykinetic'))
   ||(r.replayed!==undefined&&typeof r.replayed!=='boolean'))return false;
+ const context=r.turn_context;
+ if(!context||typeof context!=='object'||('soloTurn' in context
+  ? !integer(context.soloTurn,0,Number.MAX_SAFE_INTEGER)||r.request.turnId!==`solo:${characterId}:${context.soloTurn}`||r.target.participantId!=null
+  : !uuid(context.encounterId)||context.turnId!==r.request.turnId||!integer(context.round,0,Number.MAX_SAFE_INTEGER)||!integer(context.index,0,Number.MAX_SAFE_INTEGER)||!uuid(r.target.participantId)))return false;
  const a=r.action_receipt,c=a?.claim;
  if(!c||c.requestId!==r.request_id||c.actorId!==characterId||c.turnId!==r.request.turnId||!text(c.ownerTurnId)
   ||c.kind!=='bonusAction'||c.grantId!=='normal:bonusAction'||c.grantSource!=='normal'||c.purpose!=='feature'||c.sourceId!==r.source_feature

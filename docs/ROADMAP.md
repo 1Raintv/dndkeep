@@ -100,11 +100,24 @@ the saved-DC regression fails when deliberately changed to use current stats.
 Screenshots inspected; dialog-scoped skill overflow checks clean. Whole-sheet
 probe still reports pre-existing +/- button and Free Misty Step label clipping.
 
-Release work still required: retain/integrate combat save automation and history
-logging, update the older Propel E2E selectors/turn assumptions, cover combat
-roster/recovery and enhancement flows in-browser, and connect every other action
+Release work still required: preserve save-roll details and history logging,
+update the older Propel E2E selectors/turn assumptions, cover combat
+recovery and enhancement flows in-browser, and connect every other action
 writer before treating the shared budget as enforced. Map movement and target
 size/sight/range remain manual. No release/version bump for this working branch.
+
+Combat save assistance is connected to the saved declaration. The existing
+save resolver accepts a bound encounter/target, disables target substitution,
+and refuses automatic resolution if that encounter or participant disappeared.
+The declared DC is retained; existing save bonuses, natural-extremes house rule,
+willing failures and Psionic Guards handling are reused. Solo/combat stored-turn
+formats are validated separately. No save is inferred when the dialog closes.
+Four local browser cases pass (solo reload + combat rolled save, desktop/mobile),
+with clean console/network and inspected screenshots. Full gate passed with
+2,956 unit tests, 199 TypeScript errors at baseline, and 255.2 KB entry; five
+additional malformed-turn cases pass in the focused 44-test rerun. The bound
+selection test fails under deliberate target-filter removal, then passes restored.
+The shared budget still does not feed every action writer or its UI indicators.
 
 Remaining implementation and required evidence:
 

@@ -4,10 +4,10 @@ vi.mock('./psionicTurns',async()=>{const actual=await vi.importActual<typeof imp
 vi.mock('../supabase',()=>({supabase:{}}));
 import {beginPropel,readPropel,finalizePropel,finishPropel,listPropel,getPropelContext,getPropelEnhancements,validPropelRecord,type PropelRecord,type PropelRequest} from './psionicPropel';
 const character='00000000-0000-4000-8000-000000000001',id='00000000-0000-4000-8000-000000000002';
-const request:PropelRequest={requestId:id,turnId:'turn',mode:'powered',movement:'push',roll:4,target:{name:'Goblin',legalTargetConfirmed:true}};
-const record=()=>({request_id:id,character_id:character,request:{turnId:'turn',mode:'powered',movement:'push',roll:4,target:request.target},
+const request:PropelRequest={requestId:id,turnId:`solo:${character}:0`,mode:'powered',movement:'push',roll:4,target:{name:'Goblin',legalTargetConfirmed:true}};
+const record=()=>({turn_context:{soloTurn:0},request_id:id,character_id:character,request:{turnId:`solo:${character}:0`,mode:'powered',movement:'push',roll:4,target:request.target},
  source_feature:'Telekinetic Propel',mode:'powered',movement:'push',base_roll:4,psion_level:5,target:request.target,caster_snapshot:{id:character,class_name:'Psion',level:5},created_at:'2026-10-09T15:00:00Z',
- action_receipt:{claim:{requestId:id,actorId:character,turnId:'turn',ownerTurnId:'own',kind:'bonusAction',grantId:'normal:bonusAction',grantSource:'normal',purpose:'feature',sourceId:'Telekinetic Propel'},replayed:false,attackLimit:null},roll_result:null,outcome:null,result:null});
+ action_receipt:{claim:{requestId:id,actorId:character,turnId:`solo:${character}:0`,ownerTurnId:'own',kind:'bonusAction',grantId:'normal:bonusAction',grantSource:'normal',purpose:'feature',sourceId:'Telekinetic Propel'},replayed:false,attackLimit:null},roll_result:null,outcome:null,result:null});
 const roll=()=>({declarationId:id,originalRolls:[4],enkindledRolls:[],rolls:[4],usedSurge:false,total:4});
 const finished=()=>{const r={...record(),roll_result:roll(),outcome:'failed'};return {...r,result:{declarationId:id,outcome:'failed',energyCost:1,
  energy:{requestId:id,remaining:2,energyRevision:1,replayed:false,rolls:[4],restorationResource:null,restorationUsed:null},feet:20,movement:'push',target:r.target,roll:r.roll_result,action:r.action_receipt,replayed:false}};};
@@ -48,7 +48,7 @@ it('validates recovery pages, cursors and pending-only records',async()=>{
  }
 });
 it('does not use a context for a different character',async()=>{
- const context={actorId:character,turnId:'turn',ownerTurnId:'own',isOwnTurn:true,encounterId:null,participantId:null,bonusAvailable:true};
+ const context={actorId:character,turnId:`solo:${character}:0`,ownerTurnId:'own',isOwnTurn:true,encounterId:null,participantId:null,bonusAvailable:true};
  mocks.rpc.mockResolvedValue(context);expect(await getPropelContext(character)).toEqual(context);
  mocks.rpc.mockResolvedValue({...context,actorId:id});await expect(getPropelContext(character)).rejects.toMatchObject({definitelyNotPaid:false});
 });
@@ -69,4 +69,8 @@ it('validates paid enhancement identities, levels and dice before recovery',asyn
  }
  mocks.rpc.mockResolvedValue({declarationId:id,extraRolls:[2],usedSurge:false});
  await expect(getPropelEnhancements(record() as unknown as PropelRecord)).rejects.toMatchObject({definitelyNotPaid:false});
+});
+
+it.each([null,7,{soloTurn:-1},{soloTurn:1},{encounterId:'bad',turnId:'turn',round:1,index:0}])('rejects inconsistent saved turn contexts: %j',async turn_context=>{
+ mocks.rpc.mockResolvedValue({...record(),turn_context});await expect(readPropel(character,id)).rejects.toMatchObject({definitelyNotPaid:false});
 });

@@ -104,3 +104,22 @@ it('replaces old resolved outcomes when the requested save changes',async()=>{
  view.rerender(cloneElement(guardedView(),{saveDC:19}));await chooseGuardedTarget();
  expect((screen.getByRole('button',{name:'Confirm'}) as HTMLButtonElement).disabled).toBe(true);
 });
+const boundView=(boundTarget:{participantId:string;encounterId:string},onConfirmed=vi.fn())=><ClassAbilityResolveModal open onClose={vi.fn()} boundTarget={boundTarget} character={{id:'hero'} as Character} campaign={null} campaignId="campaign" saveDC={13} onConfirmed={onConfirmed} ability={{name:'Telekinetic Propel',actionType:'bonus',minLevel:1,description:'',save:{ability:'STR',dc:'spell',targetMode:'any'},psionicUse:{kind:'propel',mode:'powered',roll:4}}}/>;
+it('binds a saved declaration to one target and submits its rolled save',async()=>{
+ const confirmed=vi.fn();render(boundView({participantId:'two',encounterId:'enc'},confirmed));
+ const picker=await screen.findByRole('combobox',{name:'Propel target'});
+ expect((picker as HTMLSelectElement).disabled).toBe(true);expect((picker as HTMLSelectElement).value).toBe('two');
+ expect(screen.queryByRole('option',{name:'Goblin one'})).toBeNull();
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Roll Save'}) as HTMLButtonElement).disabled).toBe(false));
+ fireEvent.click(screen.getByRole('button',{name:'Roll Save'}));fireEvent.click(screen.getByRole('button',{name:'Confirm'}));
+ expect(confirmed).toHaveBeenCalledWith([expect.objectContaining({participantId:'two',outcome:'failed',total:10})]);
+});
+it('does not silently replace the declared encounter with the current one',async()=>{
+ const confirmed=vi.fn();render(boundView({participantId:'one',encounterId:'earlier'},confirmed));
+ await screen.findByText(/declared encounter is no longer active/);expect(screen.queryByRole('button',{name:'Roll Save'})).toBeNull();
+ expect((screen.getByRole('button',{name:'Use anyway'}) as HTMLButtonElement).disabled).toBe(true);expect(confirmed).not.toHaveBeenCalled();
+});
+it('does not substitute another target when the declared target has left',async()=>{
+ render(boundView({participantId:'missing',encounterId:'enc'}));await screen.findByText(/declared target is no longer available/);
+ expect(screen.queryByRole('button',{name:'Roll Save'})).toBeNull();expect((screen.getByRole('button',{name:'Use anyway'}) as HTMLButtonElement).disabled).toBe(true);
+});
