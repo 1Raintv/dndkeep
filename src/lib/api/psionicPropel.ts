@@ -104,3 +104,13 @@ export async function listPropel(character:string,cursor:PropelCursor|null=null)
  if(page.items.some((r,i)=>i>0&&!older(r,{createdAt:page.items[i-1].created_at,requestId:page.items[i-1].request_id})))throw invalid();
  return page;
 }
+
+/** Read paid choices before resuming an unfinished roll. Never recreate extras. */
+export async function getPropelEnhancements(record:PropelRecord):Promise<{declarationId:string;extraRolls:number[];usedSurge:boolean}>{
+ const data=await call(record.character_id,'enhancements',{declarationId:record.request_id}) as {declarationId:string;extraRolls:number[];usedSurge:boolean};
+ if(!data||data.declarationId!==record.request_id||!Array.isArray(data.extraRolls)||typeof data.usedSurge!=='boolean')throw invalid();
+ const original=[...(record.mode==='free'?[]:[record.base_roll]),...data.extraRolls];
+ const rolls=original.map(n=>data.usedSurge?Math.max(4,n):n);
+ if(!validRoll({declarationId:data.declarationId,originalRolls:original,enkindledRolls:data.extraRolls,usedSurge:data.usedSurge,rolls,total:rolls.reduce((a,b)=>a+b,0)},record))throw invalid();
+ return data;
+}

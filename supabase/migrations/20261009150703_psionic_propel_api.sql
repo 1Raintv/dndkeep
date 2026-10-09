@@ -23,6 +23,14 @@ begin
   end if;
   result:=dndkeep_private.enhance_propel(c.id,declaration,(p_payload->>'requestId')::uuid,p_payload->>'kind',extra,(p_payload->>'hitDie')::integer);
   return result||jsonb_build_object('activationId',declaration);
+ when 'enhancements' then
+  declaration:=(p_payload->>'declarationId')::uuid;
+  perform dndkeep_private.read_propel(c.id,declaration);
+  select f.extra_rolls into extra from dndkeep_private.propel_enhancements e
+   join public.psionic_feature_uses f on f.request_id=e.request_id
+   where e.declaration_id=declaration and e.kind='enkindled';
+  return jsonb_build_object('declarationId',declaration,'extraRolls',coalesce(extra,'{}'::integer[]),
+   'usedSurge',exists(select 1 from dndkeep_private.propel_enhancements e where e.declaration_id=declaration and e.kind='surge'));
  when 'finalize' then
   declaration:=(p_payload->>'declarationId')::uuid;
   perform dndkeep_private.finalize_propel_roll(c.id,declaration);

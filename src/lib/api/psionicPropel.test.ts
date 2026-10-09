@@ -2,7 +2,7 @@ import {beforeEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({rpc:vi.fn()}));
 vi.mock('./psionicTurns',async()=>{const actual=await vi.importActual<typeof import('./psionicTurns')>('./psionicTurns');return {...actual,psionicRpc:mocks.rpc};});
 vi.mock('../supabase',()=>({supabase:{}}));
-import {beginPropel,readPropel,finalizePropel,finishPropel,listPropel,getPropelContext,validPropelRecord,type PropelRequest} from './psionicPropel';
+import {beginPropel,readPropel,finalizePropel,finishPropel,listPropel,getPropelContext,getPropelEnhancements,validPropelRecord,type PropelRecord,type PropelRequest} from './psionicPropel';
 const character='00000000-0000-4000-8000-000000000001',id='00000000-0000-4000-8000-000000000002';
 const request:PropelRequest={requestId:id,turnId:'turn',mode:'powered',movement:'push',roll:4,target:{name:'Goblin',legalTargetConfirmed:true}};
 const record=()=>({request_id:id,character_id:character,request:{turnId:'turn',mode:'powered',movement:'push',roll:4,target:request.target},
@@ -58,4 +58,15 @@ it('preserves microsecond ordering when recovering older pending declarations',a
  const cursor={createdAt:'2026-10-09T15:00:00.123456Z',requestId:character};
  mocks.rpc.mockResolvedValue({items:[r],nextCursor:null});expect((await listPropel(character,cursor)).items).toEqual([r]);
  mocks.rpc.mockResolvedValue({items:[{...r,created_at:cursor.createdAt}],nextCursor:null});await expect(listPropel(character,cursor)).rejects.toMatchObject({definitelyNotPaid:false});
+});
+
+it('validates paid enhancement identities, levels and dice before recovery',async()=>{
+ const saved={...record(),psion_level:20,caster_snapshot:{id:character,class_name:'Psion',level:20}} as unknown as PropelRecord;
+ mocks.rpc.mockResolvedValue({declarationId:id,extraRolls:[2,6],usedSurge:true});
+ expect(await getPropelEnhancements(saved)).toEqual({declarationId:id,extraRolls:[2,6],usedSurge:true});
+ for(const patch of [{declarationId:character},{extraRolls:[13]},{extraRolls:[1,2,3]},{usedSurge:'true'}]){
+  mocks.rpc.mockResolvedValue({declarationId:id,extraRolls:[2,6],usedSurge:true,...patch});await expect(getPropelEnhancements(saved)).rejects.toMatchObject({definitelyNotPaid:false});
+ }
+ mocks.rpc.mockResolvedValue({declarationId:id,extraRolls:[2],usedSurge:false});
+ await expect(getPropelEnhancements(record() as unknown as PropelRecord)).rejects.toMatchObject({definitelyNotPaid:false});
 });

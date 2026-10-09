@@ -219,6 +219,18 @@ test.describe('Private action turn context' ,()=>{
   sql(asUser(owner,'finalize',{declarationId:id}));expect(JSON.parse(sql(asUser(owner,'finish',{declarationId:id,outcome:'passed'}))).result.energyCost).toBe(0);
   expect(sql(`select has_function_privilege('anon','public.psionic_propel(uuid,text,jsonb)','EXECUTE')`)).toBe('f');
  });
+ test('recovery reads paid Propel extras and Surge before finalization',()=>{
+  sql(`update characters set level=20,subclass='Psi Warper',hit_dice_spent=0,class_resources='{"psionic-energy-dice":12}' where id='${character}'`);
+  const id=randomUUID();sql(auth(powerSql(id,'powered','warp',1)));
+  const read=()=>JSON.parse(sql(auth(`select public.psionic_propel('${character}','enhancements','{"declarationId":"${id}"}')`)));
+  expect(read()).toEqual({declarationId:id,extraRolls:[],usedSurge:false});
+  sql(auth(`select dndkeep_private.enhance_propel('${character}','${id}','${randomUUID()}','enkindled',array[2,6],null)`));
+  expect(read()).toEqual({declarationId:id,extraRolls:[2,6],usedSurge:false});
+  sql(auth(`select dndkeep_private.enhance_propel('${character}','${id}','${randomUUID()}','surge',null,6)`));
+  expect(read()).toEqual({declarationId:id,extraRolls:[2,6],usedSurge:true});
+  expect(JSON.parse(sql(auth(`select dndkeep_private.read_propel('${character}','${id}')`))).roll_result).toBeNull();
+  expect(()=>sql(auth(`select public.psionic_propel('${character}','enhancements','{"declarationId":"${randomUUID()}"}')`))).toThrow(/unavailable/);
+ });
  test('keeps all clock functions and tables inaccessible to direct app callers',()=>{
   for(const role of ['anon','authenticated']){
    expect(sql(`select has_function_privilege('${role}','dndkeep_private.action_turn_context(uuid)','EXECUTE')`)).toBe('f');

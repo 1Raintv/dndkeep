@@ -78,6 +78,15 @@ Verification: full gate passes (2,933 units / 261 files, TypeScript 199/199,
 255.2 KB entry); the additional Surge retry/parent-substitution test also passes.
 Authenticated SQL flow passes; SQL lint/advisors report no Propel findings.
 
+Recovery continuation now reads paid Enkindled dice and Surge status from the
+scoped Propel API before offering choices. `continuePropel` retains the saved
+base/extras, skips already-paid enhancements, blocks unknown payment receipts,
+and freezes old-turn rolls without offering new costs. The local database test
+confirms both enhancements are readable before finalization without mutating it.
+Full gate: 2,945 units / 262 files, TypeScript 199/199, entry 255.2 KB;
+changed modules lint clean and SQL lint has no Propel findings. Player controls
+still need to call this continuation; this is not a deployed UI change.
+
 Remaining implementation and required evidence:
 
 - Server derives grants, turn ownership, conditions and feature eligibility;
