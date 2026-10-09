@@ -29,7 +29,7 @@ const older=(r:PropelRecord,c:PropelCursor)=>timeOrder(r.created_at,c.createdAt)
 const invalid=()=>new PsionicRequestError('The saved Propel result could not be verified. Keep its request; do not roll or spend again.',false);
 function validateIds(character:string,id?:string){if(!uuid(character)||(id!==undefined&&!uuid(id)))throw new PsionicRequestError('Invalid Propel identity. No request was sent.',true);}
 function validTarget(t:PropelTarget|null|undefined){return !!t&&t.legalTargetConfirmed===true&&(t.participantId!=null?uuid(t.participantId):text(t.name)&&t.name.length<=120);}
-function validRequest(r:PropelRequest){return uuid(r.requestId)&&text(r.turnId)&&['free','powered','technique'].includes(r.mode)&&['push','warp'].includes(r.movement)&&integer(r.roll,r.mode==='free'?0:1,r.mode==='free'?0:r.mode==='technique'?4:12)&&validTarget(r.target);}
+export function validPropelRequest(r:PropelRequest){return uuid(r.requestId)&&text(r.turnId)&&['free','powered','technique'].includes(r.mode)&&['push','warp'].includes(r.movement)&&integer(r.roll,r.mode==='free'?0:1,r.mode==='free'?0:r.mode==='technique'?4:12)&&validTarget(r.target);}
 function validRoll(v:PropelRoll|null,record:PropelRecord):boolean{
  if(!v||v.declarationId!==record.request_id||typeof v.usedSurge!=='boolean'||!Array.isArray(v.enkindledRolls)||!Array.isArray(v.originalRolls)||!Array.isArray(v.rolls))return false;
  const sides=psionicDieSides(record.psion_level),base=record.mode==='free'?[]:[record.base_roll];
@@ -42,7 +42,7 @@ function validRoll(v:PropelRoll|null,record:PropelRecord):boolean{
  * and conditional payment agree. Malformed successes stay recoverable. */
 export function validPropelRecord(value:unknown,characterId:string):value is PropelRecord{
  const r=value as PropelRecord|null;
- if(!r||!uuid(r.request_id)||r.character_id!==characterId||!r.request||!validRequest({...r.request,requestId:r.request_id})
+ if(!r||!uuid(r.request_id)||r.character_id!==characterId||!r.request||!validPropelRequest({...r.request,requestId:r.request_id})
   ||r.mode!==r.request.mode||r.movement!==r.request.movement||r.base_roll!==r.request.roll||!integer(r.psion_level,1,20)
   ||r.caster_snapshot?.id!==characterId||psionProgression(r.caster_snapshot)?.level!==r.psion_level||!date(r.created_at)
   ||!validTarget(r.target)||(r.target.participantId??null)!==(r.request.target.participantId??null)
@@ -76,7 +76,7 @@ export async function getPropelContext(characterId:string):Promise<PropelContext
   ||!((data.encounterId===null&&data.participantId===null)||(uuid(data.encounterId)&&uuid(data.participantId))))throw invalid();return data;
 }
 export async function beginPropel(character:string,input:PropelRequest){
- const request=structuredClone(input);if(!validRequest(request))throw new PsionicRequestError('Choose a valid Propel roll and confirm its target.',true);
+ const request=structuredClone(input);if(!validPropelRequest(request))throw new PsionicRequestError('Choose a valid Propel roll and confirm its target.',true);
  const result=await readResult(character,request.requestId,'begin',{...request});
  const {requestId:_id,...expected}=request;
  if(JSON.stringify(result.request)!==JSON.stringify(expected)){

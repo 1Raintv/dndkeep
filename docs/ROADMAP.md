@@ -73,7 +73,7 @@ conditional costs and recovery cursors before acknowledging a result. Existing
 Surge/Enkindled payment and recovery paths now support a single Propel parent;
 a request cannot name multiple feature parents. The authenticated local flow
 passes through begin, read/list, finalize and finish; another owner is denied.
-The player controls are not connected yet, and these migrations remain local.
+The player controls are now connected on this working branch; these migrations remain local.
 Verification: full gate passes (2,933 units / 261 files, TypeScript 199/199,
 255.2 KB entry); the additional Surge retry/parent-substitution test also passes.
 Authenticated SQL flow passes; SQL lint/advisors report no Propel findings.
@@ -84,8 +84,27 @@ base/extras, skips already-paid enhancements, blocks unknown payment receipts,
 and freezes old-turn rolls without offering new costs. The local database test
 confirms both enhancements are readable before finalization without mutating it.
 Full gate: 2,945 units / 262 files, TypeScript 199/199, entry 255.2 KB;
-changed modules lint clean and SQL lint has no Propel findings. Player controls
-still need to call this continuation; this is not a deployed UI change.
+changed modules lint clean and SQL lint has no Propel findings. The controls below
+now call this continuation; this is not a deployed UI change.
+
+Propel player controls are connected in `ClassAbilitiesSection` (including
+secondary Psions using the real character, not the projected class row). Full gate
+passes: 2,953 units / 264 files, TypeScript 199/199, 255.2 KB entry. Target
+selection/legality confirmation precedes the declaration and roll. The declared
+caster snapshot supplies the save DC; exact begin/outcome requests persist before
+sending, and server paging exposes unfinished uses after reload. Closing keeps a
+use pending; cancellation keeps the action and paid Hit Dice. Energy receipts
+are acknowledged without a second write. Desktop/mobile browser checks passed
+for target selection, declaration, reload recovery and conditional die cost;
+the saved-DC regression fails when deliberately changed to use current stats.
+Screenshots inspected; dialog-scoped skill overflow checks clean. Whole-sheet
+probe still reports pre-existing +/- button and Free Misty Step label clipping.
+
+Release work still required: retain/integrate combat save automation and history
+logging, update the older Propel E2E selectors/turn assumptions, cover combat
+roster/recovery and enhancement flows in-browser, and connect every other action
+writer before treating the shared budget as enforced. Map movement and target
+size/sight/range remain manual. No release/version bump for this working branch.
 
 Remaining implementation and required evidence:
 
