@@ -19,6 +19,18 @@ The 33 focused cases and full gate pass: 2,914 units / 260 files, TypeScript
 199/199, clean hooks/RAW/coordinates/anchors, build and 255.2 KB entry.
 Changed rule modules lint clean.
 
+Local database checkpoint: `20261009144010_shared_action_turn_context.sql`
+adds private encounter-session and actor-turn clocks. An encounter trigger
+records incoming turns even without a connected client; the private context
+reader authenticates the character/DM and distinguishes global turn changes
+from an actor's next turn. New combat sessions, solo turn counters, duplicate
+active participation, ambiguous initiative and direct caller privileges are
+covered by nine local SQL tests. Changed functions lint clean; the local
+advisors report no findings naming the new objects. This is not yet an action
+claim/charge API and has not been sent to production. Next: atomic claims and
+resource/declaration composition, using these clocks as server-owned inputs.
+The stale-dialog release v2.869 is independently verified live.
+
 Remaining implementation and required evidence:
 
 - Server derives grants, turn ownership, conditions and feature eligibility;
