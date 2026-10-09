@@ -1,3 +1,4 @@
+import {existsSync,readFileSync} from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
@@ -27,6 +28,39 @@ test.describe('Psion subclass action eligibility', () => {
   });
   test.afterEach(() => {
     if (userId) sql(`delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
+  });
+
+  test('Propel choices are adjacent Bonus Actions and the die is spent only on failure',async({page},info)=>{
+    test.setTimeout(90000);
+    sql(`update characters set level=5 where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    const abilityRow=(name:string)=>page.locator('.arow-grid').filter({has:page.getByText(name,{exact:true})}).locator('visible=true').first();
+    const base=abilityRow('Telekinetic Propel'),warp=abilityRow('Warp Propel');
+    await expect(base.getByTitle('Action type: bonus',{exact:true})).toBeVisible();
+    await expect(warp.getByTitle('Action type: bonus',{exact:true})).toBeVisible();
+    const order=await page.locator('.arow-grid .arow-name').allTextContents();
+    expect(order.findIndex(t=>t.trim()==='Warp Propel')).toBe(order.findIndex(t=>t.trim()==='Telekinetic Propel')+1);
+    await base.scrollIntoViewIfNeeded();
+    if(existsSync('propel-overflow-probe.tmp')){
+      const report=await page.evaluate(readFileSync('propel-overflow-probe.tmp','utf8'));
+      await info.attach('propel-overflow',{body:JSON.stringify(report),contentType:'application/json'});
+      expect(report.sideways).toBe(false);expect(report.clipped).toEqual([]);expect(report.pastEdge).toEqual([]);
+    }
+    await page.screenshot({path:info.outputPath('propel-choices.png')});
+    await warp.getByRole('button',{name:'Teleport (no die)',exact:true}).click();
+    const dialog=page.getByRole('dialog',{name:'Telekinetic Propel',exact:true});
+    await expect(dialog).toContainText('Warp Propel');await expect(dialog).toContainText('horizontal to you');
+    await expect(dialog).not.toContainText('Movement is straight');
+    await dialog.getByRole('button',{name:'Save failed',exact:true}).click();await expect(dialog).toBeHidden();
+    expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('2');
+    await base.getByRole('button',{name:'Roll Energy Die',exact:true}).click();
+    await expect(dialog).toContainText('Spend 1 die only if the target fails.');
+    await dialog.getByRole('button',{name:'Save passed',exact:true}).click();await expect(dialog).toBeHidden();
+    expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('2');
+    await base.getByRole('button',{name:'Roll Energy Die',exact:true}).click();
+    await page.screenshot({path:info.outputPath('propel-energy-die.png')});
+    await dialog.getByRole('button',{name:'Save failed',exact:true}).click();
+    await expect.poll(()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('1');
   });
 
   test('only Psi Warpers see their six subclass actions',async({page},info)=>{

@@ -391,6 +391,11 @@ function ClassAbilityRows({ persistence, character, combatFilter, onUpdate, user
  }
  }
  const allAbilities = [...abilities, ...disciplineAbilities];
+ // Warp is a modifier of Propel, not an independent special action. Keep the
+ // two choices adjacent even when the source table or action filters change.
+ const warpIndex=allAbilities.findIndex(a=>a.name==='Warp Propel');
+ if(warpIndex>=0){const [warp]=allAbilities.splice(warpIndex,1);const propelIndex=allAbilities.findIndex(a=>a.name==='Telekinetic Propel');allAbilities.splice(propelIndex<0?allAbilities.length:propelIndex+1,0,warp);}
+
  // v2.674.0 — disciplines get their own sub-header INSIDE the row list,
  // the same way species traits do. It used to render above the whole
  // list, so it labelled Psionic Energy Dice and Telekinetic Propel
@@ -617,6 +622,7 @@ function ClassAbilityRows({ persistence, character, combatFilter, onUpdate, user
  return (
  <div
  className="arow-grid"
+ data-propel={ability.name==='Telekinetic Propel'||ability.name==='Warp Propel'?true:undefined}
  onClick={() => { if (canExpand) setExpandedAbility(isExpanded ? null : ability.name); }}
  style={{
  padding: '7px 10px',
@@ -791,7 +797,7 @@ function ClassAbilityRows({ persistence, character, combatFilter, onUpdate, user
  const target = e.target as HTMLElement;
  if (target.closest('button')) e.stopPropagation();
  }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'nowrap' as const, alignItems: 'center', width: '100%' }}>
- {conditionalDiscipline?.id==='destructive-thoughts' ? <DestructiveThoughtsButton persistence={persistence} character={resourceCharacter} onUpdate={onUpdate}/> : conditionalDiscipline?.id==='biofeedback' ? <BiofeedbackButton persistence={persistence} character={resourceCharacter} onUpdate={onUpdate}/> : conditionalDiscipline?.conditionalOutcome ? <ConditionalPsionicButton persistence={persistence} character={resourceCharacter} discipline={conditionalDiscipline} onUpdate={onUpdate} campaignId={campaignId}/> : (ability.name==='Telekinetic Propel'||ability.name==='Telepathic Connection') ? <PsionicPowerButton persistence={persistence} character={character} onUpdate={onUpdate} kind={ability.name==='Telekinetic Propel'?'propel':'connection'} onUse={async(use:PsionicPowerUse)=>{await handleUseAbility({...ability,psionicUse:use});}}/> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton persistence={persistence} character={character} onUpdate={onUpdate}/> : ability.psionicDie && (conditionalDiscipline || ability.actionType !== 'free') ? <PsionicDieRollButton persistence={persistence} character={resourceCharacter} onUpdate={onUpdate} feature={ability.name} label={conditionalDiscipline?.id==='psionic-guards'?'Activate Guards':conditionalDiscipline?'Use discipline':restingLabel} onRolled={(value,sides)=>setPsionicRollHistory(prev=>[{value,die:`d${sides}`},...prev].slice(0,5))}/> : ability.actionType !== 'free' && (
+ {conditionalDiscipline?.id==='destructive-thoughts' ? <DestructiveThoughtsButton persistence={persistence} character={resourceCharacter} onUpdate={onUpdate}/> : conditionalDiscipline?.id==='biofeedback' ? <BiofeedbackButton persistence={persistence} character={resourceCharacter} onUpdate={onUpdate}/> : conditionalDiscipline?.conditionalOutcome ? <ConditionalPsionicButton persistence={persistence} character={resourceCharacter} discipline={conditionalDiscipline} onUpdate={onUpdate} campaignId={campaignId}/> : (['Telekinetic Propel','Warp Propel','Telepathic Connection'].includes(ability.name)) ? <PsionicPowerButton persistence={persistence} character={character} onUpdate={onUpdate} warp={ability.name==='Warp Propel'} kind={ability.name==='Telepathic Connection'?'connection':'propel'} onUse={async(use:PsionicPowerUse)=>{await handleUseAbility({...ability,psionicUse:use});}}/> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton persistence={persistence} character={character} onUpdate={onUpdate}/> : ability.psionicDie && (conditionalDiscipline || ability.actionType !== 'free') ? <PsionicDieRollButton persistence={persistence} character={resourceCharacter} onUpdate={onUpdate} feature={ability.name} label={conditionalDiscipline?.id==='psionic-guards'?'Activate Guards':conditionalDiscipline?'Use discipline':restingLabel} onRolled={(value,sides)=>setPsionicRollHistory(prev=>[{value,die:`d${sides}`},...prev].slice(0,5))}/> : ability.actionType !== 'free' && (
  <button
  onClick={() => handleUseAbility(ability, maxUses !== undefined ? 1 : undefined)}
  disabled={isPedPoolRow && (psionicPoolRemaining(character.level,character.class_resources?.['psionic-energy-dice'])??0)<1}
