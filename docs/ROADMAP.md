@@ -19,17 +19,30 @@ The 33 focused cases and full gate pass: 2,914 units / 260 files, TypeScript
 199/199, clean hooks/RAW/coordinates/anchors, build and 255.2 KB entry.
 Changed rule modules lint clean.
 
-Local database checkpoint: `20261009144010_shared_action_turn_context.sql`
-adds private encounter-session and actor-turn clocks. An encounter trigger
-records incoming turns even without a connected client; the private context
-reader authenticates the character/DM and distinguishes global turn changes
-from an actor's next turn. New combat sessions, solo turn counters, duplicate
-active participation, ambiguous initiative and direct caller privileges are
-covered by nine local SQL tests. Changed functions lint clean; the local
-advisors report no findings naming the new objects. This is not yet an action
-claim/charge API and has not been sent to production. Next: atomic claims and
-resource/declaration composition, using these clocks as server-owned inputs.
-The stale-dialog release v2.869 is independently verified live.
+Local database checkpoints (not deployed):
+
+- `20261009144010_shared_action_turn_context.sql` reuses the existing
+  `psionic_turn_starts` observer. Its separate action epoch changes only on an
+  actual turn-context change, not rest/effect-expiry updates. Actor selection is
+  shared with Psion effects and skips dead combatants. The earlier unshipped
+  duplicate clock implementation was removed from the migration and local DB.
+- `20261009144534_shared_action_claims.sql` adds private action claims and extra
+  grants. Character locks serialize competing tabs; exact retries return the
+  original claim even on later turns. Normal budgets respect existing combat
+  flags. Haste/Action Surge grants retain restrictions, and action/resource
+  changes roll back together when composed in one transaction.
+
+All 18 new SQL cases and 96 existing Psion discipline/turn/Sharpened cases pass.
+The full release gate also passes (2,914 units, 199 TypeScript baseline, 255.2 KB
+entry). New SQL cases cover concurrency, replay, rollback, off-turn reactions,
+incapacitation, legacy flags, extra-grant restrictions, dead-actor selection,
+solo turns and direct caller privileges. Changed functions lint clean and local
+advisors have no findings naming the new/changed objects. These are private
+composition helpers, not public action or feature APIs. Extra-grant activation,
+all feature/target verification, non-incapacitation reaction restrictions,
+immutable power rolls/targets, saved recovery and player UI integration remain.
+No production action-budget behavior has changed. The stale-dialog release
+v2.869 is independently verified live.
 
 Remaining implementation and required evidence:
 

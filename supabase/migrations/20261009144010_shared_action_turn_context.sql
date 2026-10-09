@@ -1,63 +1,48 @@
--- Shared action budget: private turn identity groundwork, no public action RPC.
--- Global encounter turns and an actor's own-turn refresh are different clocks.
-create table if not exists dndkeep_private.action_encounter_epochs (
- encounter_id uuid primary key references public.combat_encounters(id) on delete cascade,
- session_id uuid not null
-);
-create table if not exists dndkeep_private.action_actor_turns (
- participant_id uuid primary key references public.combat_participants(id) on delete cascade,
- encounter_id uuid not null references public.combat_encounters(id) on delete cascade,
- session_id uuid not null,
- own_turn_id uuid not null
-);
-create index if not exists action_actor_turns_encounter_idx on dndkeep_private.action_actor_turns(encounter_id);
-alter table dndkeep_private.action_encounter_epochs enable row level security;
-alter table dndkeep_private.action_actor_turns enable row level security;
-revoke all on dndkeep_private.action_encounter_epochs,dndkeep_private.action_actor_turns from public,anon,authenticated;
-
-create or replace function dndkeep_private.observe_action_turn()
-returns trigger language plpgsql security definer set search_path='' as $$
-declare actor uuid; session uuid;
+-- Shared action context reuses the existing Psion own-turn observer.
+-- Its effect token also expires on rests; action budgets must NOT follow those
+-- effect-expiry writes. Advance action_epoch only when turn context changes.
+alter table dndkeep_private.psionic_turn_starts add column if not exists action_epoch uuid not null default gen_random_uuid();
+create or replace function dndkeep_private.observe_action_epoch()
+returns trigger language plpgsql security invoker set search_path='' as $$
 begin
- if new.status<>'active' then return new;end if;
- if tg_op='UPDATE' then
-  if new.psionic_turn_id=old.psionic_turn_id then return new;end if;
- end if;
- if tg_op='INSERT' then
-  insert into dndkeep_private.action_encounter_epochs values(new.id,new.psionic_turn_id)
-   on conflict(encounter_id) do update set session_id=excluded.session_id;
- elsif old.status is distinct from 'active' then
-  insert into dndkeep_private.action_encounter_epochs values(new.id,new.psionic_turn_id)
-   on conflict(encounter_id) do update set session_id=excluded.session_id;
- end if;
- -- For an already-active encounter at installation, preserve the initial
- -- session identity across subsequent enemy turns, including before first use.
- insert into dndkeep_private.action_encounter_epochs values(new.id,new.id) on conflict do nothing;
- select session_id into session from dndkeep_private.action_encounter_epochs where encounter_id=new.id;
- if new.current_turn_index is null or new.current_turn_index<0 or exists(
-  select 1 from public.combat_participants p where p.encounter_id=new.id group by p.turn_order having count(*)>1
- ) then return new;end if;
- select p.id into actor from public.combat_participants p where p.encounter_id=new.id
-  order by p.turn_order,p.id offset greatest(coalesce(new.current_turn_index,0),0) limit 1;
- if actor is not null then
-  insert into dndkeep_private.action_actor_turns values(actor,new.id,session,new.psionic_turn_id)
-   on conflict(participant_id) do update set encounter_id=excluded.encounter_id,
-    session_id=excluded.session_id,own_turn_id=excluded.own_turn_id;
- end if;
+ if new.context is distinct from old.context then new.action_epoch:=gen_random_uuid();
+ else new.action_epoch:=old.action_epoch;end if;
  return new;
 end;$$;
-revoke all on function dndkeep_private.observe_action_turn() from public,anon,authenticated;
-drop trigger if exists observe_action_turn on public.combat_encounters;
-create trigger observe_action_turn after insert or update on public.combat_encounters
- for each row execute function dndkeep_private.observe_action_turn();
+revoke all on function dndkeep_private.observe_action_epoch() from public,anon,authenticated;
+drop trigger if exists observe_action_epoch on dndkeep_private.psionic_turn_starts;
+create trigger observe_action_epoch before update on dndkeep_private.psionic_turn_starts
+ for each row execute function dndkeep_private.observe_action_epoch();
 
--- Must be called from a verified action transaction, not exposed as an RPC.
--- Lock order matches existing Psion payments: character -> encounter -> clock.
--- The trigger never takes a character lock, avoiding the reverse dependency.
+-- One actor selector for class-feature expiry and action-budget eligibility.
+-- Matches CombatProvider: dead combatants do not occupy initiative indices.
+create or replace function dndkeep_private.current_action_participant(p_encounter uuid,p_index integer)
+returns uuid language sql stable set search_path='' as $$
+ with living as (
+  select cp.id,cp.turn_order from public.combat_participants cp
+  left join public.combatants cb on cb.id=cp.combatant_id
+  left join lateral (
+   select recovered.is_dead from public.combatants recovered
+   where cp.combatant_id is null and recovered.campaign_id=cp.campaign_id
+    and recovered.definition_type=cp.participant_type and recovered.definition_id=cp.entity_id limit 1
+  ) fallback on true
+  where cp.encounter_id=p_encounter and not coalesce(cb.is_dead,fallback.is_dead,false)
+ )
+ select id from living where p_index>=0 and not exists(select 1 from living group by turn_order having count(*)>1)
+ order by turn_order offset greatest(0,p_index) limit 1;
+$$;
+revoke all on function dndkeep_private.current_action_participant(uuid,integer) from public,anon,authenticated;
+create or replace function dndkeep_private.current_psionic_character(p_encounter uuid,p_index integer) returns uuid
+language sql stable set search_path='' as $$
+ select c.id from public.combat_participants p join public.characters c
+  on p.participant_type='character' and p.entity_id=c.id::text and p.campaign_id=c.campaign_id
+ where p.id=dndkeep_private.current_action_participant(p_encounter,p_index);
+$$;
+revoke all on function dndkeep_private.current_psionic_character(uuid,integer) from public,anon,authenticated;
+
 create or replace function dndkeep_private.action_turn_context(p_character_id uuid)
 returns jsonb language plpgsql security definer set search_path='' as $$
-declare c public.characters; e public.combat_encounters; ids uuid[]; participant uuid; actor uuid;
- session uuid; own_turn uuid; solo bigint;
+declare c public.characters; e public.combat_encounters; ids uuid[]; participant uuid; actor uuid; own_epoch uuid; solo bigint;
 begin
  c:=public.psionic_character_for_update(p_character_id);
  select array_agg(p.id) into ids from public.combat_participants p
@@ -77,24 +62,14 @@ begin
  perform 1 from public.combat_participants p where p.id=participant and p.encounter_id=e.id
   and p.participant_type='character' and p.entity_id=c.id::text for share;
  if not found then raise exception 'Combat participation changed; retry the action';end if;
- if e.current_turn_index is null or e.current_turn_index<0 then raise exception 'Combat has no current actor';end if;
- if exists(select 1 from public.combat_participants p where p.encounter_id=e.id group by p.turn_order having count(*)>1)
-  then raise exception 'Resolve tied turn positions before taking an action';end if;
- select p.id into actor from public.combat_participants p where p.encounter_id=e.id
-  order by p.turn_order,p.id offset greatest(coalesce(e.current_turn_index,0),0) limit 1;
- if actor is null then raise exception 'Combat has no current actor';end if;
- insert into dndkeep_private.action_encounter_epochs values(e.id,e.id) on conflict do nothing;
- select session_id into session from dndkeep_private.action_encounter_epochs where encounter_id=e.id;
- -- Covers encounters created before their participant rows, without requiring
- -- a UI to have been open at each intervening turn boundary.
- if actor=participant then
-  insert into dndkeep_private.action_actor_turns values(participant,e.id,session,e.psionic_turn_id)
-   on conflict(participant_id) do update set encounter_id=excluded.encounter_id,
-    session_id=excluded.session_id,own_turn_id=excluded.own_turn_id;
- end if;
- select t.own_turn_id into own_turn from dndkeep_private.action_actor_turns t
-  where t.participant_id=participant and t.encounter_id=e.id and t.session_id=session;
- return jsonb_build_object('actorId',c.id,'turnId',e.psionic_turn_id,'ownerTurnId',coalesce(own_turn,session),
+ actor:=dndkeep_private.current_action_participant(e.id,e.current_turn_index);
+ if actor is null then raise exception 'Combat has no unambiguous current actor; resolve tied or missing initiative positions';end if;
+ -- The existing observer handles encounter, roster, death and solo changes.
+ -- Calling it also initializes the currently active actor during rollout.
+ perform dndkeep_private.observe_psionic_turn_start(e.id);
+ select action_epoch into own_epoch from dndkeep_private.psionic_turn_starts where character_id=c.id;
+ if own_epoch is null then raise exception 'Own-turn state is unavailable';end if;
+ return jsonb_build_object('actorId',c.id,'turnId',e.psionic_turn_id,'ownerTurnId',e.id||':'||own_epoch,
   'isOwnTurn',actor=participant,'encounterId',e.id,'participantId',participant);
 end;$$;
 revoke all on function dndkeep_private.action_turn_context(uuid) from public,anon,authenticated;
