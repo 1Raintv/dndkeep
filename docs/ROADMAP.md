@@ -5927,3 +5927,32 @@ pending-prompt roll receipts/history. Reusing a combatant preserves its combat
 life state instead of reinitializing it from the sheet, as before. Broader healing,
 rest and simultaneous-update behavior must be covered by that next integration.
 Do not interpret these tests as complete Mind Sliver or death-save automation.
+
+### Atomic prompted death-save backend (unreleased; UI not yet connected)
+
+`20261010021000_atomic_prompted_death_saves.sql` adds an owner/DM-authorized
+context reader and settlement RPC. Character/prompt/encounter/participant/
+combatant locks protect the result. A private per-prompt receipt returns the
+original outcome on retry. Save result, shared next-save penalty consumption,
+combatant and character life state, pending status and combat event commit or
+roll back together. Natural faces retain death-save rules independently of the
+modified total; exhaustion applies to the total. Natural20 removes Unconscious
+from both records. Obsolete healed/stable/dead/inactive-encounter prompts expire
+without consuming an effect or producing a rolled event. Changed context or
+identity is rejected; private receipt storage is inaccessible to authenticated
+clients. Local migration applied, production untouched.
+
+All19 database cases pass after final identity checks: permissions, concurrent
+replay, stabilization, natural extremes, advantage/disadvantage, exhaustion,
+stale/obsolete state, actual seeded Mind Sliver consumption and rollback.
+Full gate passed (3,161 unit tests, TypeScript197/197, hooks, RAW, coordinates,
+anchors, build,255.2KB entry). SQL error-level lint and new-test ESLint pass.
+
+Not a released feature: the current dialog/automatic/sheet writers still use
+legacy paths. Next connect persisted dice proposals, explicit effect-modifier
+review and result recovery to the new transaction, then block bypass writes.
+Bonus/advantage inputs currently represent reviewed effects; they are not
+server-derived from all equipment/feature sources. Prevent duplicate prompt
+creation for the same turn, cover stale prompts across a revived-then-downed
+life cycle, and add full actual spell-delivery end-to-end evidence. The seeded
+Mind Sliver tests prove consumption, not its complete casting/damage pipeline.
