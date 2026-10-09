@@ -27,13 +27,14 @@ test.describe('Creature Legendary Resistance',()=>{
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,legendary_resistance,legendary_resistance_used) values
     ('${self}','${enc}','${campaignId}','character','${charId}','Psion',0,0,0),
     ('${creature}','${enc}','${campaignId}','creature','${randomUUID()}','Legendary Target',1,3,3);
+   update combatants set definition_id=p.entity_id from combat_participants p where combatants.id=p.combatant_id and p.encounter_id='${enc}';
    insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,attacker_name,attacker_type,target_participant_id,target_name,target_type,attack_source,attack_name,attack_kind,save_dc,save_ability,save_success_effect,damage_dice,damage_type,state,chain_id)
    values('${attack}','${campaignId}','${enc}','${self}','Psion','character','${creature}','Legendary Target','creature','spell','Mind Sliver','save',20,'INT','none','2d6','Psychic','declared','${randomUUID()}');`);
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await signInAsSeedDm(page,email);await page.goto(`/campaigns/${campaignId}`);
   await expect(page.getByText('Legendary Save Fixture',{exact:true}).locator('visible=true').first()).toBeVisible();
   // The last lair-only charge must survive a failed configuration lookup.
-  const lairRead=(url:URL)=>url.pathname==='/rest/v1/combat_encounters'&&url.searchParams.get('select')==='in_lair';
+  const lairRead='**/rest/v1/rpc/get_pending_attack_save_context';
   await page.route(lairRead,route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Lair setting unavailable'})}));
   const failure=await page.evaluate(async id=>{
    Math.random=()=>0.01;
@@ -44,12 +45,41 @@ test.describe('Creature Legendary Resistance',()=>{
   expect(sql(`select save_result is null from pending_attacks where id='${attack}'`)).toBe('t');
   expect(sql(`select legendary_resistance_used from combat_participants where id='${creature}'`)).toBe('3');
   await page.unroute(lairRead);
-  const rolled=await page.evaluate(async id=>{
-   Math.random=()=>0.01;
-   const module=await import('/src/lib/pendingAttack.ts');
-   const result=await module.rollSave(id,0);await module.rollDamage(id);return result;
-  },attack);
-  expect(rolled).toMatchObject({save_result:'failed',pending_lr_decision:true});
+  const effect=randomUUID(),turn=JSON.parse(sql(`select dndkeep_private.next_save_turn_context('${enc}','${self}')`));
+  sql(`insert into dndkeep_private.mind_sliver_effects(cast_id,encounter_id,caster_id,target_id,cast_turn,cast_turn_ordinal,status) values('${effect}','${enc}','${self}','${creature}','${turn.turnId}',${turn.castTurnOrdinal},'active')`);
+  const settlement='**/rest/v1/rpc/settle_pending_attack_save';
+  await page.route(settlement,route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Save not confirmed. Retry saved dice.'})}));
+  await page.evaluate(()=>{Math.random=()=>0.5;});
+  await page.getByRole('spinbutton').fill('0');
+  await page.getByRole('button',{name:/Roll Save/}).click();
+  await expect(page.getByText(/Saved throw: d20 11/)).toBeVisible();
+  const saved=await page.evaluate(id=>localStorage.getItem('dndkeep:attack-save:'+id),attack);
+  expect(JSON.parse(saved!).penaltyD4).toBe(3);
+  await page.screenshot({path:info.outputPath('saved-attack-save.png')});
+  await page.reload();
+  await expect(page.getByText(/Saved throw: d20 11/)).toBeVisible();
+  await page.getByRole('spinbutton').fill('0');
+  await page.getByRole('spinbutton').fill('1');
+  await page.getByRole('button',{name:'Review changed settings'}).click();
+  await expect(page.getByText(/Saved throw: d20 11 · bonus 1/)).toBeVisible();
+  await page.getByRole('spinbutton').fill('0');
+  await page.getByRole('button',{name:'Review changed settings'}).click();
+  await expect(page.getByText(/Saved throw: d20 11 · bonus 0/)).toBeVisible();
+  const overflow=await page.getByRole('region',{name:'Resolve attack'}).evaluate(el=>el.scrollWidth>el.clientWidth+1);
+  expect(overflow).toBe(false);
+  await page.unroute(settlement);
+  let settlementCalls=0;
+  await page.route(settlement,async route=>{
+   settlementCalls++;const response=await route.fetch();expect(response.ok()).toBe(true);
+   await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Confirmation lost. Refresh combat.'})});
+  });
+  await page.getByRole('button',{name:/Roll Save/}).click();
+  await expect.poll(()=>sql(`select save_total from pending_attacks where id='${attack}'`)).toBe('8');
+  expect(sql(`select consumed_by from dndkeep_private.mind_sliver_effects where cast_id='${effect}'`)).toBe(attack);
+  await expect(page.getByText('Mind Sliver −3 included')).toBeVisible();
+  await page.evaluate(async id=>{const module=await import('/src/lib/pendingAttack.ts');await module.rollSave(id,0);await module.rollDamage(id);},attack);
+  expect(settlementCalls).toBe(1);
+  expect(sql(`select count(*) from combat_events where event_type='save_rolled' and chain_id=(select chain_id from pending_attacks where id='${attack}')`)).toBe('1');
   expect(sql(`select state from pending_attacks where id='${attack}'`)).toBe('declared');
   await expect(page.getByRole('button',{name:'Use Legendary Resistance',exact:true})).toBeEnabled();
   await page.screenshot({path:info.outputPath('legendary-resistance.png')});
@@ -59,7 +89,7 @@ test.describe('Creature Legendary Resistance',()=>{
    else await route.continue();
   });
   await page.getByRole('button',{name:'Use Legendary Resistance',exact:true}).click();
-  await expect(page.getByRole('alert')).toContainText('Retry the same choice');
+  await expect(page.getByRole('alert').filter({hasText:'Retry the same choice'})).toContainText('Retry the same choice');
   await expect(page.getByRole('button',{name:'Use Legendary Resistance',exact:true})).toBeEnabled();
   await page.screenshot({path:info.outputPath('legendary-resistance-retry.png')});
   await page.getByRole('button',{name:'Use Legendary Resistance',exact:true}).click();
@@ -68,4 +98,3 @@ test.describe('Creature Legendary Resistance',()=>{
   expect(errors).toEqual([]);
  });
 });
-

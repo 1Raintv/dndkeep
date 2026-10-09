@@ -988,6 +988,7 @@ export interface PendingAttack {
   save_success_effect: string | null;
   save_d20: number | null;
   save_total: number | null;
+  save_penalty?: {penalty:number;die:number|null;saveId:string;saveKind:string;consumedIds:string[];expiredIds:string[]} | null;
   save_result: SaveResult | null;
 
   damage_dice: string | null;

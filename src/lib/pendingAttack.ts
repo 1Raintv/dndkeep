@@ -1,14 +1,12 @@
+import {resolveAttackSave,forgetAttackSave} from './api/attackSaves';
 import {psychicDamageRoll} from '../rules/psychicDamageRoll';
 import {attackIsMelee,type AttackMode} from '../rules/attackMode';
 import {psionicDamageComponent,readPsionicDamageDice,type PsionicDamageDice} from '../rules/psionicDamageDice';
 import {recordPendingDamage} from './api/pendingDamage';
 import {damageRollComponent,readDamageComponents,type DamageDieKind} from '../rules/damageComponents';
-import {getPsionicGuardsSaveAdvantage} from './api/psionicDisciplines';
 import {settleCounterspellSave} from './api/counterspellSettlement';
 import {createConcentrationOffer,resolveConcentrationSave} from './api/concentrationSaves';
 import {log} from './log';
-import { savingThrowPassed } from '../rules/savingThrows';
-import { getCharacterSaveNaturalExtremes } from './api/characterSaveRules';
 // v2.97.0 — Phase E of the Combat Backbone
 //
 // Pending attack state machine. Every attack routes through this pipeline so
@@ -27,14 +25,13 @@ import { getCharacterSaveNaturalExtremes } from './api/characterSaveRules';
 // the Phase A log renders the full story end-to-end.
 
 import { supabase } from './supabase';
-import { encounterLairBonus } from './legendaryResistance';
 import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { offerReactionsFor } from './pendingReaction';
 import { abilityModifier, characterProficiencyBonus, crToProficiencyBonus } from './gameUtils';
-import { getAdvantageState, meleeAutoCritApplies, conditionsAutoFailSave, conditionsDisadvantageSave, conditionsResistAll } from './conditions';
+import { getAdvantageState, meleeAutoCritApplies, conditionsResistAll } from './conditions';
 import {
-  getAttackRollBonuses, getSaveBonuses, getDamageRiders, removeBuff,
+  getAttackRollBonuses, getDamageRiders, removeBuff,
 } from './buffs';
 import type { ActiveBuff } from './buffs';
 import { surveyMasteryMarkers, consumeMasteryMarkers } from './masteryRiders';
@@ -56,7 +53,7 @@ import { isCreatureParticipantType } from './participantType';
 // previously buffs.ts's weaker parser (no ±modifier support) — it now
 // aliases the canonical one, which fixes riders/ticks with dice like
 // "2d4+2" silently contributing 0.
-import { rollDie, rollDiceExpr, doubleDice, physicalDiceList, physicalDiceOutcome } from '../rules/dice';
+import { rollDie, rollDiceExpr, doubleDice } from '../rules/dice';
 import { applyDamageToPools, concentrationDC } from '../rules/hp';
 export { rollDiceExpr };
 const rollBuffDice = rollDiceExpr;
@@ -636,235 +633,17 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   return (updated as PendingAttack) ?? null;
 }
 
-// ─── Roll save (attack_kind='save' only) ─────────────────────────
-// v2.102.0 — Phase F pt 3a: per-target save prompt.
-//
-// Rolls 1d20 + saveBonus for the target and stashes the result on the
-// pending_attacks row. Does NOT change state — the attack stays in 'declared'
-// because damage still needs to be rolled next. rollDamage reads save_result
-// to determine half / zero / full damage.
-//
-// v2.752 — use the target character's house rule; creatures use standard saves.
-export async function rollSave(
-  attackId: string,
-  saveBonus: number,
-): Promise<PendingAttack | null> {
-  const { data: row } = await supabase
-    .from('pending_attacks')
-    .select('*')
-    .eq('id', attackId)
-    .single();
-  if (!row) return null;
-  const atk = row as PendingAttack;
-
-  if (atk.attack_kind !== 'save') return atk;
-  if (atk.save_result) { await settleCounterspellSave(atk); return atk; } // retry settlement without rerolling
-
-  // v2.111.0 — Phase H pt 2: look up target's active conditions for save
-  // modifications. Auto-fail wins over disadvantage (e.g., Paralyzed target
-  // fails DEX saves outright regardless of modifier).
-  let targetConditions: string[] = [];
-  let targetBuffs: ActiveBuff[] = [];
-  let targetExhaustion = 0;
-  let targetCharacterId: string | null = null;
-  let naturalExtremes = false;
-  if (atk.target_participant_id) {
-    const { data: tRowRaw, error: targetError } = await (supabase as any)
-      .from('combat_participants')
-      .select('entity_id, participant_type, ' + JOINED_COMBATANT_FIELDS)
-      .eq('id', atk.target_participant_id)
-      .maybeSingle();
-  if (targetError || !tRowRaw) throw new Error(targetError?.message ?? 'The save target could not be verified. Try again.');
-  const tRow = normalizeParticipantRow(tRowRaw);
-    targetConditions = ((tRow?.active_conditions as string[] | null) ?? []);
-    targetBuffs = ((tRow?.active_buffs as ActiveBuff[] | null) ?? []);
-    targetExhaustion = ((tRow?.exhaustion_level as number | null) ?? 0);
-    if (tRow?.participant_type === 'character' && tRow.entity_id) {
-      targetCharacterId = tRow.entity_id;
-      naturalExtremes = await getCharacterSaveNaturalExtremes(tRow.entity_id);
-    }
-  }
-  const ability = atk.save_ability ?? '';
-  const autoFail = conditionsAutoFailSave(targetConditions, ability);
-  const saveDisadvantage = !autoFail && conditionsDisadvantageSave(targetConditions, ability);
-  // v2.820: campaign saves run as the current DM. Verify the target's live
-  // protection before rolling or writing; a failed read must not lose Advantage.
-  const saveAdvantage = !autoFail && !!targetCharacterId && await getPsionicGuardsSaveAdvantage(targetCharacterId, ability);
-
-  // v2.103.0 — Phase F: half / three-quarters cover grants +2 / +5 to DEX
-  // saves (2024 PHB). Doesn't apply to other save abilities.
-  const coverLevel = (atk.cover_level ?? 'none') as 'none' | 'half' | 'three_quarters' | 'total';
-  const coverSaveBonus =
-    atk.save_ability === 'DEX'
-      ? (coverLevel === 'half' ? 2 : coverLevel === 'three_quarters' ? 5 : 0)
-      : 0;
-
-  // v2.113.0 — Phase H pt 4: Bless save bonus (+1d4). Readers return all
-  // buffs that modify saves; we roll each and add to effectiveBonus.
-  const saveBuffBonuses = getSaveBonuses(targetBuffs);
-  type RolledSaveBonus = { buff: ActiveBuff; dice: string; rolls: number[]; total: number };
-  const rolledSaveBuffs: RolledSaveBonus[] = saveBuffBonuses.map(b => {
-    const r = rollBuffDice(b.dice);
-    return { buff: b.buff, dice: b.dice, rolls: r.rolls, total: r.total };
-  });
-  const buffSaveTotal = rolledSaveBuffs.reduce((s, r) => s + r.total, 0);
-
-  // v2.116.0 — Phase H pt 7: 2024 exhaustion applies to ALL d20 rolls
-  // including saves. -2 per level.
-  const saveExhaustionPenalty = -2 * targetExhaustion;
-
-  const effectiveBonus = saveBonus + coverSaveBonus + buffSaveTotal + saveExhaustionPenalty;
-
-  // Auto-fail: force result=failed, d20=0 shown as cosmetic 1, no actual roll
-  let d20: number;
-  let d20Alt: number | null = null;
-  let total: number;
-  if (autoFail) {
-    d20 = 1;                                   // cosmetic — always a "nat 1" for log readability
-    total = 1 + effectiveBonus;
-  } else {
-    // Reuse the physical roller's selection rules, including cancellation.
-    const event = {dieType:20,result:0,advantage:saveAdvantage,disadvantage:saveDisadvantage};
-    const dice = physicalDiceList(event).map(d=>({...d,value:rollD20()}));
-    const outcome = physicalDiceOutcome(event,dice);
-    d20 = outcome.total;
-    d20Alt = outcome.discarded.length ? dice[outcome.discarded[0]].value : null;
-    total = d20 + effectiveBonus;
-  }
-  const dc = atk.save_dc ?? 10;
-
-  const result = savingThrowPassed(d20, total, dc, { naturalExtremes, forceFailure: autoFail }) ? 'passed' : 'failed';
-
-  // v2.139.0 — Phase M pt 2: Legendary Resistance decision point.
-  // When a monster target has LR charges left AND the save failed, flip
-  // pending_lr_decision=true so the DM gets prompted. The DM picks:
-  //   - Accept (acceptLegendaryResistance) → save_result='passed',
-  //     legendary_resistance_used++, save becomes a success
-  //   - Decline (declineLegendaryResistance) → save stays 'failed',
-  //     damage proceeds normally
-  // rollDamage guards on pending_lr_decision so it can't run while the
-  // prompt is open. No prompt when: save passed, no target, target isn't
-  // a monster, or no LR charges remain.
-  let triggerLrPrompt = false;
-  // Canonical participants use 'creature'; retain legacy aliases for old casts.
-  if (result === 'failed' && atk.target_participant_id && isCreatureParticipantType(atk.target_type)) {
-    const { data: lrRow, error: lrError } = await supabase
-      .from('combat_participants')
-      .select('legendary_resistance, legendary_resistance_used')
-      .eq('id', atk.target_participant_id)
-      .maybeSingle();
-    if (lrError || !lrRow) throw new Error(lrError?.message ?? 'Legendary Resistance could not be verified. Retry the save.');
-    const lrTotal = (lrRow?.legendary_resistance as number | null) ?? 0;
-    const lrUsed = (lrRow?.legendary_resistance_used as number | null) ?? 0;
-    // v2.625.0 — 2024 in-lair benefit: +1 LR/Day while in_lair.
-    const lrCap = lrTotal > 0 ? lrTotal + await encounterLairBonus(atk.encounter_id ?? null) : 0;
-    if (lrTotal > 0 && lrUsed < lrCap) {
-      triggerLrPrompt = true;
-    }
-  }
-
-  const { data: updated, error: saveError } = await supabase
-    .from('pending_attacks')
-    .update({
-      save_d20: d20,
-      save_total: total,
-      save_result: result,
-      pending_lr_decision: triggerLrPrompt,
-    })
-    .eq('id', attackId)
-    .select()
-    .single();
-
-  if (saveError || !updated) throw new Error(saveError?.message ?? 'The saving throw was not recorded.');
-
-  if (coverSaveBonus > 0) {
-    await emitCombatEvent({
-      campaignId: atk.campaign_id,
-      encounterId: atk.encounter_id,
-      chainId: atk.chain_id,
-      sequence: 0,
-      actorType: 'system',
-      actorName: 'System',
-      targetType: atk.target_type,
-      targetName: atk.target_name,
-      eventType: 'cover_applied',
-      payload: {
-        level: coverLevel,
-        save_bonus: coverSaveBonus,
-        save_ability: atk.save_ability,
-      },
-    });
-  }
-
-  await emitCombatEvent({
-    campaignId: atk.campaign_id,
-    encounterId: atk.encounter_id,
-    chainId: atk.chain_id,
-    sequence: 1,
-    actorType: atk.target_type === 'character' ? 'player' : isCreatureParticipantType(atk.target_type) ? 'monster' : 'system',
-    actorName: atk.target_name,
-    targetType: 'self',
-    targetName: atk.target_name,
-    eventType: 'save_rolled',
-    payload: {
-      save_type: 'attack',
-      ability: atk.save_ability,
-      dc,
-      d20,
-      bonus: effectiveBonus,
-      base_bonus: saveBonus,
-      cover_bonus: coverSaveBonus,
-      total,
-      result,
-      trigger_attack_name: atk.attack_name,
-      trigger_attacker: atk.attacker_name,
-      // v2.111.0 — Phase H pt 2: condition-sourced save mods
-      auto_fail: autoFail,
-      advantage: saveAdvantage && !saveDisadvantage,
-      disadvantage: saveDisadvantage && !saveAdvantage,
-      psionic_guards: saveAdvantage,
-      individual_results: d20Alt != null ? [d20, d20Alt] : undefined,
-      // v2.113.0 — Phase H pt 4 buff contributions
-      buff_contributions: rolledSaveBuffs.map(r => ({
-        key: r.buff.key,
-        name: r.buff.name,
-        dice: r.dice,
-        rolls: r.rolls,
-        total: r.total,
-      })),
-      buff_total: buffSaveTotal,
-      // v2.116.0 — Phase H pt 7 exhaustion penalty
-      exhaustion_level: targetExhaustion,
-      exhaustion_penalty: saveExhaustionPenalty,
-    },
-  });
-
-  // v2.113.0 — Phase H pt 4: emit dedicated buff_contributed events for saves
-  for (const r of rolledSaveBuffs) {
-    await emitCombatEvent({
-      campaignId: atk.campaign_id,
-      encounterId: atk.encounter_id,
-      chainId: atk.chain_id,
-      sequence: 2,
-      actorType: 'system',
-      actorName: r.buff.name,
-      targetType: atk.target_type,
-      targetName: atk.target_name,
-      eventType: 'buff_contributed',
-      payload: {
-        key: r.buff.key,
-        source: r.buff.source,
-        applies_to: 'save_roll',
-        dice: r.dice,
-        rolls: r.rolls,
-        total: r.total,
-      },
-    });
-  }
-
-  await settleCounterspellSave(updated as PendingAttack);
-
-  return (updated as PendingAttack) ?? null;
+// v2.869 follow-up: server stores dice result, next-save penalty and history once.
+export async function rollSave(attackId:string,saveBonus:number):Promise<PendingAttack|null>{
+ const {data,error}=await supabase.from('pending_attacks').select('*').eq('id',attackId).single();
+ if(error)throw new Error(error.message);if(!data)return null;
+ const existing=data as PendingAttack;
+ if(existing.attack_kind!=='save')return existing;
+ const result=existing.save_result?existing:await resolveAttackSave(attackId,saveBonus);
+ if(existing.save_result)forgetAttackSave(attackId);
+ // Counterspell payment can fail after the save committed. Retrying this path
+ // settles the saved outcome without rolling or consuming another penalty.
+ await settleCounterspellSave(result);return result;
 }
 
 // ─── Roll damage ─────────────────────────────────────────────────

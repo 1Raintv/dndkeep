@@ -5566,3 +5566,43 @@ settlement, and block legacy writes from bypassing the new boundary. Then verify
 the actual spell/save UI, including lost responses and stale settings. This
 backend alone is not releasable Mind Sliver automation; other save consumers and
 the full damage-to-concentration chain are still pending.
+
+### Ordinary save controls use the transaction (unreleased)
+
+`rollSave` now delegates to `src/lib/api/attackSaves.ts`; the old separate
+save/Legendary Resistance/event writes were removed. The client saves its d20
+pool, buff rolls, penalty proposal and context before settlement. Failed or
+unverifiable responses retain that proposal; concurrent clicks share one
+request. Successful confirmation removes it. A recorded result still retries
+Counterspell settlement without rolling again.
+
+The recovery panel shows saved dice and bonus. Changing a bonus requires an
+explicit settings review, then a separate confirmation. Reviews preserve
+compatible dice and retain temporarily unused dice (including the penalty die),
+adding only newly required dice. Failed reads keep the previous proposal.
+Corrupt storage refuses a replacement roll. The result banner names Mind
+Sliver's deduction and separates it from the ordinary modifier in its equation.
+
+`20261009213000_guard_attack_save_writes.sql` blocks direct browser inserts of
+resolved saves and updates to save result/dice/penalty/resistance-decision
+fields. Invoker trigger security allows the authorized definer transactions to
+perform those writes. Old browser bundles receive a reload instruction instead
+of bypassing effect consumption. Applied to local Docker only, with ledger row.
+
+Validation: the 48 ordinary-save SQL cases still pass with the guard installed;
+four additional SQL cases reject legacy inserts/updates. Desktop/mobile UI
+checks exercise failed settings reads, failed settlement, reload recovery,
+explicit bonus review, a committed save whose response is lost, one penalty/log
+entry, and the last lair resistance charge. A fixture alert selector was narrowed
+after lost-response coverage legitimately produced multiple alerts; both final
+UI cases pass. Screenshots inspected; recovery panel stays within the modal.
+Fifteen API tests cover stored proposals, concurrent clicks, changed settings,
+blocked/corrupt storage, module reload, malformed receipts and competing winners.
+Three recovery-control tests and save/Counterspell delegation tests pass.
+
+Final full gate: 3,082 units, TypeScript 197/197, hooks/RAW/coordinates/anchors,
+build and 255.2 KB entry. Old client-only save math tests were replaced by the
+real SQL and delegation coverage. Public/private SQL lint reports no errors;
+changed-file lint has warnings only. No deployment yet: class/Propel, sheet,
+death, creature/standalone origins and full declared-spell damage-to-concentration
+coverage still need completion before Mind Sliver can be called complete.

@@ -128,4 +128,12 @@ test.describe('Atomic ordinary saves',()=>{
   expect(context().advantage).toBe(true);expect(settle([4,12])).toMatchObject({attack:{save_d20:12,save_total:9,save_result:'failed'},dice:[4,12]});
  });
 
+ test('an older client cannot directly record or overwrite a saving throw',()=>{
+  expect(()=>sql(auth(dm,`update pending_attacks set save_result='passed',save_d20=20,save_total=20 where id='${attack}'`))).toThrow(/current save controls/);
+  settle();expect(()=>sql(auth(dm,`update pending_attacks set save_result='passed',save_total=999 where id='${attack}'`))).toThrow(/current save controls/);
+ });
+ test('an older client cannot insert an already-resolved save',()=>{
+  expect(()=>sql(auth(dm,`insert into pending_attacks select (jsonb_populate_record(null::pending_attacks,to_jsonb(a)||jsonb_build_object('id','${randomUUID()}','save_result','passed','save_d20',20,'save_total',20))).* from pending_attacks a where id='${attack}'`))).toThrow(/current save controls/);
+ });
+
 });

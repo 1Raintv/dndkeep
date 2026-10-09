@@ -1,3 +1,4 @@
+import SavedAttackSaveControls from './SavedAttackSaveControls';
 import {psychicDamageRoll} from '../../rules/psychicDamageRoll';
 import PsionicDamageResolutionPanel from './PsionicDamageResolutionPanel';
 import {readDamageComponents} from '../../rules/damageComponents';
@@ -325,6 +326,7 @@ function AttackResolutionContent({ campaignId, isDM }: Props) {
                   </div>
                 </>
               )}
+              {isSaveBased && !atk.save_result && <SavedAttackSaveControls key={atk.id} attackId={atk.id} bonus={parseInt(saveBonus,10)||0} disabled={controlsDisabled}/> }
               {/* Save already rolled — show result + Roll Damage */}
               {isSaveBased && atk.save_result && (
                 <>
@@ -480,6 +482,8 @@ function HitBanner({ atk }: { atk: PendingAttack }) {
 }
 
 function SaveBanner({ atk }: { atk: PendingAttack }) {
+  const penalty=atk.save_penalty?.penalty??0;
+  const modifier=(atk.save_total??0)-(atk.save_d20??0)+penalty;
   const saved = atk.save_result === 'passed';
   const color = saved ? '#34d399' : '#f87171';
   const label = saved ? 'SAVED' : 'FAILED';
@@ -493,7 +497,8 @@ function SaveBanner({ atk }: { atk: PendingAttack }) {
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
     }}>
       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: 'var(--t-2)' }}>
-        {atk.target_name} rolled {atk.save_d20} + {((atk.save_total ?? 0) - (atk.save_d20 ?? 0))} = <strong style={{ color: 'var(--t-1)' }}>{atk.save_total}</strong> vs DC {atk.save_dc}
+        {(atk.save_penalty?.penalty??0)>0 && <div style={{color:'#a78bfa',marginBottom:4}}>Mind Sliver −{atk.save_penalty!.penalty} included</div>}
+        {atk.target_name} rolled {atk.save_d20} {modifier<0?'−':'+'} {Math.abs(modifier)}{penalty>0?` − ${penalty}`:''} = <strong style={{ color: 'var(--t-1)' }}>{atk.save_total}</strong> vs DC {atk.save_dc}
         <span style={{ color: 'var(--t-3)', marginLeft: 8 }}>→ {effectCopy}</span>
       </div>
       <span style={{
