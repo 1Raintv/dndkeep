@@ -94,3 +94,45 @@ it('Warp submits the same Propel save flow with an explicit teleport choice',asy
  await waitFor(()=>expect(onUse).toHaveBeenCalledWith({kind:'propel',movement:'warp',mode:'free',roll:0}));
  expect(screen.getByRole('button',{name:'Roll Energy Die'})).toBeTruthy();
 });
+
+// A pending enhancement belongs to the exact feature/progression that opened it.
+it.each(['subclass','level','campaign','power'] as const)('does not spend or submit after %s changes during Surge',async change=>{
+ mocks.roll=1;const onUse=vi.fn().mockResolvedValue(undefined),onUpdate=vi.fn();
+ const original={...highLevel,subclass:'Psi Warper',campaign_id:'campaign-a'};
+ const ui=(c:Character,warp=true)=><ModalProvider><PsionicPowerButton character={c} warp={warp} onUpdate={onUpdate} kind="propel" onUse={onUse}/></ModalProvider>;
+ const view=render(ui(original));fireEvent.click(screen.getByRole('button',{name:'Roll Energy Die'}));
+ await screen.findByRole('dialog',{name:'Psionic Surge'});
+ view.rerender(ui({...original,...(change==='subclass'?{subclass:'Telepath'}:change==='level'?{level:11}:change==='campaign'?{campaign_id:'campaign-b'}:{})},change!=='power'));
+ fireEvent.click(screen.getByRole('button',{name:'Spend 1 Hit Point Die'}));
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Roll Energy Die'}) as HTMLButtonElement).disabled).toBe(change==='subclass'));
+ expect(onUse).not.toHaveBeenCalled();expect(onUpdate).not.toHaveBeenCalled();
+});
+it('does not redirect a Connection confirmation into a new power callback',async()=>{
+ const onUse=vi.fn().mockResolvedValue(undefined),newUse=vi.fn().mockResolvedValue(undefined);
+ const view=render(<ModalProvider><PsionicPowerButton character={character} onUpdate={vi.fn()} kind="connection" onUse={onUse}/></ModalProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Extend (free)'}));
+ view.rerender(<ModalProvider><PsionicPowerButton character={character} onUpdate={vi.fn()} kind="propel" onUse={newUse}/></ModalProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Extend telepathy'}));
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Free 5 ft'}) as HTMLButtonElement).disabled).toBe(false));
+ expect(onUse).not.toHaveBeenCalled();expect(newUse).not.toHaveBeenCalled();
+});
+
+it('rejects an old dialog after changing away from and back to its feature',async()=>{
+ mocks.roll=1;const onUse=vi.fn().mockResolvedValue(undefined),onUpdate=vi.fn();
+ const ui=(warp:boolean)=><ModalProvider><PsionicPowerButton character={{...highLevel,subclass:'Psi Warper'}} warp={warp} onUpdate={onUpdate} kind="propel" onUse={onUse}/></ModalProvider>;
+ const view=render(ui(true));fireEvent.click(screen.getByRole('button',{name:'Roll Energy Die'}));
+ await screen.findByRole('dialog',{name:'Psionic Surge'});view.rerender(ui(false));view.rerender(ui(true));
+ fireEvent.click(screen.getByRole('button',{name:'Spend 1 Hit Point Die'}));
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Roll Energy Die'}) as HTMLButtonElement).disabled).toBe(false));
+ expect(onUse).not.toHaveBeenCalled();expect(onUpdate).not.toHaveBeenCalled();
+});
+it('keeps a valid power through unrelated HP and available-pool changes',async()=>{
+ mocks.roll=1;const onUse=vi.fn().mockResolvedValue(undefined),onUpdate=vi.fn();
+ const ui=(c:Character)=><ModalProvider><PsionicPowerButton character={c} onUpdate={onUpdate} kind="propel" onUse={onUse}/></ModalProvider>;
+ const view=render(ui(highLevel));fireEvent.click(screen.getByRole('button',{name:'Roll Energy Die'}));
+ await screen.findByRole('dialog',{name:'Psionic Surge'});
+ view.rerender(ui({...highLevel,current_hp:7,class_resources:{'psionic-energy-dice':1}}));
+ fireEvent.click(screen.getByRole('button',{name:'Spend 1 Hit Point Die'}));
+ await waitFor(()=>expect(onUse).toHaveBeenCalledTimes(1));
+ expect(onUpdate).toHaveBeenCalledTimes(1);
+});
