@@ -5528,3 +5528,41 @@ unrecorded save can currently reroll. Manual resistance spending/reset remains
 non-atomic. Mind Sliver's other save consumers remain release requirements.
 
 Final gate passes: 3,081 unit tests, TypeScript 197/197, hooks/RAW/coordinates/anchors, build and 255.2 KB entry. No new migration or production deployment.
+
+### Atomic ordinary-save settlement (local backend; client wiring pending)
+
+`20261009210500_atomic_attack_saves.sql` adds DM-authorized context and settlement
+RPCs. One transaction chooses the appropriate d20, applies cover/exhaustion and
+the submitted DM modifiers, consumes Mind Sliver, determines Legendary
+Resistance, saves the result and writes combat history. Failures roll everything
+back. Different saves serialize on their target; only the first qualifying save
+can consume a given next-save effect. No SQL dice generator was introduced.
+
+The context records target identity, conditions, buffs, exhaustion, house rule
+and active Psionic Guards. Changes reject a stale submission. Buff identities
+must match the current snapshot and contribution totals must add up; the DM's
+base modifier and individual buff results remain submitted inputs, as in the
+existing DM-controlled flow. Automatic failures use no dice and still consume
+the next-save trigger. Save/cover/buff history preserves hidden-target visibility.
+
+Replay keeps the winning dice and penalty but returns the current attack row,
+so a subsequent Legendary Resistance decision is not overwritten by the older
+failed-save receipt. Authorization is checked before replay. The receipt table
+and raw helper functions have no direct authenticated access.
+
+Validation: 46 database cases pass across the two configured test projects,
+plus two focused cases using a real Psionic Guards activation. They cover
+penalty outcomes, lair resistance, automatic failure, disadvantage, cover,
+exhaustion, house rules, stale context, unauthorized access, competing retries,
+competing saves, rollback, invalid dice, hidden logs, post-combat replay and
+condition-table parity. These are SQL integration cases, not UI checks. Full
+gate passes (3,081 units, TypeScript 197/197, hooks/RAW/coordinates/anchors,
+build and 255.2 KB entry). Private-schema SQL lint and test lint pass.
+
+Applied only to local Docker with its migration ledger entry. The browser's
+`rollSave` still uses its legacy path. Next: replace that path with saved client
+dice proposals and receipt validation, render the penalty, preserve Counterspell
+settlement, and block legacy writes from bypassing the new boundary. Then verify
+the actual spell/save UI, including lost responses and stale settings. This
+backend alone is not releasable Mind Sliver automation; other save consumers and
+the full damage-to-concentration chain are still pending.
