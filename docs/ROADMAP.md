@@ -6211,3 +6211,36 @@ coordinates, anchors, build and255.2KB entry pass. Both live condition retry bro
 cases and44 condition/death-save database/browser regressions pass. SQL error-level
 lint and changed-file ESLint pass with the existing any-type warning. No production
 migration or deployment.
+
+
+### Equipment bonuses in shared combat saves (unreleased)
+
+getTargetSaveBonus now includes eligible flat equipment save bonuses using
+computeActiveBonuses with no combat-buff input. This keeps equipped/attuned gating
+consistent with the sheet and avoids rolling Bless twice. The breakdown names
+the equipment contribution. The runConcentrationSave offer uses the same item
+bonus in addition to effective Constitution and proficiency. Malformed equipment
+save values stop the calculation instead of producing a string/invalid total.
+
+The shared server saving_target_context now fingerprints bonus inputs: character
+inventory, ability scores, progression and save proficiencies, or creature scores,
+proficiencies and CR. Only an opaque revision is returned, so an attacker does not
+receive the target's private inventory. Equipment/stat changes invalidate pending
+attack, Propel and condition-save context comparisons before settlement. The
+migration is applied only locally.
+
+Coverage includes attuned/equipped gating, ability-override plus protection stacking,
+concentration-offer bonuses, and the actual lost-response End Turn flow with both
+Bless and a protection item. A database test changes inventory after the context
+read and verifies rejection without a result or inventory disclosure.
+
+This does not finish all save automation: standaloneDamage/standaloneConcentration
+use a separate caller-supplied modifier contract and require an equipment-bonus
+audit too. Saved-condition review UI remains needed to recover changed settings;
+the underlying review API preserves dice. No production deployment yet.
+
+Equipment-save verification:3,218 unit tests and108 database/browser regressions
+pass. TypeScript197/197, hooks, RAW, coordinates, anchors, build and255.2KB entry
+pass. SQL error-level lint is clean. Changed test-file lint passes; pendingAttack
+retains its pre-existing prefer-const error for rolledDamageRiders and standing
+warnings, with no new lint findings from this patch.

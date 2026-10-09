@@ -98,4 +98,11 @@ test.describe('Atomic condition turn saves',()=>{
  });
  test('receipt discovery returns no invented result for an unrolled save',()=>{expect(sql(auth(owner,`select get_condition_turn_save('${part}','${turn}','Poisoned')`))).toBe('');});
 
+ test('equipment changes require review without exposing inventory in the save context',()=>{
+  const c=ctx();expect(c.state.bonusRevision).toMatch(/^[a-f0-9]{32}$/);expect(c.state).not.toHaveProperty('inventory');
+  sql(`update characters set inventory='[{"name":"Private ring","magical":true,"equipped":true,"attuned":true,"saveBonus":1}]' where id='${char}'`);
+  expect(ctx().state.bonusRevision).not.toBe(c.state.bonusRevision);expect(JSON.stringify(ctx())).not.toContain('Private ring');
+  expect(()=>settle([12],c)).toThrow();expect(sql(`select count(*) from dndkeep_private.condition_turn_saves where participant_id='${part}'`)).toBe('0');
+ });
+
 });

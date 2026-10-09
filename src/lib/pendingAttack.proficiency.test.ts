@@ -40,3 +40,24 @@ it.each([[true,true,7],[true,false,4],[false,true,4]])('snapshots effective CON 
  await runConcentrationSave({campaignId:'campaign',encounterId:null,chainId:'chain',participantId:'participant',targetName:'Psion',damage:80});
  expect(createConcentrationOffer).toHaveBeenCalledWith(expect.objectContaining({bonus,dc:30,revision:4,spell:'Fly',proficient:true}));
 });
+
+const ring=(equipped:boolean,attuned:boolean)=>({magic_item_id:'ring-protection',magical:true,equipped,attuned,saveBonus:1});
+it.each([[true,true,8],[true,false,7],[false,true,7]])('includes an eligible protection item in automated INT saves (equipped %s, attuned %s)',async(equipped,attuned,expected)=>{
+ characterReads({level:5,intelligence:18,saving_throw_proficiencies:['INT'],inventory:[ring(equipped,attuned)]});
+ const result=await getTargetSaveBonus('participant','INT');expect(result.bonus).toBe(expected);
+ if(equipped&&attuned)expect(result.breakdown).toContain('+ 1 (equipment)');else expect(result.breakdown).not.toContain('equipment');
+});
+it('combines an ability override with protection once, without treating combat buffs as equipment',async()=>{
+ characterReads({level:5,intelligence:10,saving_throw_proficiencies:['INT'],inventory:[{magic_item_id:'headband-of-intellect',magical:true,equipped:true,attuned:true},ring(true,true)],active_buffs:[{name:'Bless',saveBonus:4}]});
+ expect((await getTargetSaveBonus('participant','INT')).bonus).toBe(8);
+});
+it.each([[true,true,5],[true,false,4],[false,true,4]])('includes protection in the concentration offer (equipped %s, attuned %s)',async(equipped,attuned,bonus)=>{
+ vi.mocked(createConcentrationOffer).mockClear();
+ characterReads({id:'psion',level:5,constitution:12,concentration_spell:'Fly',concentration_revision:4,saving_throw_proficiencies:['CON'],inventory:[ring(equipped,attuned)]});
+ await runConcentrationSave({campaignId:'campaign',encounterId:null,chainId:'chain',participantId:'participant',targetName:'Psion',damage:20});
+ expect(createConcentrationOffer).toHaveBeenCalledWith(expect.objectContaining({bonus,dc:10}));
+});
+it('does not silently accept malformed equipment save values',async()=>{
+ characterReads({level:5,intelligence:18,inventory:[{...ring(true,true),saveBonus:'unknown'}]});
+ await expect(getTargetSaveBonus('participant','INT')).rejects.toThrow('Review equipment');
+});

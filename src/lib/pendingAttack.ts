@@ -28,7 +28,7 @@ import { supabase } from './supabase';
 import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { offerReactionsFor } from './pendingReaction';
-import { abilityModifier, characterProficiencyBonus, crToProficiencyBonus } from './gameUtils';
+import { abilityModifier, characterProficiencyBonus, crToProficiencyBonus, computeActiveBonuses } from './gameUtils';
 import { getAdvantageState, meleeAutoCritApplies, conditionsResistAll } from './conditions';
 import {
   getAttackRollBonuses, getDamageRiders, removeBuff,
@@ -1516,10 +1516,15 @@ export async function getTargetSaveBonus(
   const full = abiFull[ability];
   const hasProf = profs.some(p => p.toLowerCase() === ability.toLowerCase() || p.toLowerCase() === full);
   const pb = characterProficiencyBonus(c as any);
-  const bonus = mod + (hasProf ? pb : 0);
+  // v2.869 audit: ability overrides alone omitted Ring/Cloak-style save bonuses.
+  // Combat buffs are rolled by the save resolver; include only equipment here.
+  const equipment = computeActiveBonuses([], c.inventory as unknown as InventoryItem[]).saveBonus;
+  if(!Number.isSafeInteger(equipment))throw new Error('Review equipment saving throw bonuses.');
+  const bonus = mod + (hasProf ? pb : 0) + equipment;
+  const equipmentLabel=equipment?` ${equipment>=0?'+':'−'} ${Math.abs(equipment)} (equipment)`:'';
   const breakdown = hasProf
-    ? `${mod >= 0 ? '+' : ''}${mod} (${ability}) + ${pb} (prof) = ${bonus >= 0 ? '+' : ''}${bonus}`
-    : `${mod >= 0 ? '+' : ''}${mod} (${ability}) = ${bonus >= 0 ? '+' : ''}${bonus}`;
+    ? `${mod >= 0 ? '+' : ''}${mod} (${ability}) + ${pb} (prof)${equipmentLabel} = ${bonus >= 0 ? '+' : ''}${bonus}`
+    : `${mod >= 0 ? '+' : ''}${mod} (${ability})${equipmentLabel} = ${bonus >= 0 ? '+' : ''}${bonus}`;
   return { bonus, breakdown, confidence: 'high', naturalExtremes: c.nat_1_20_saves !== false };
 }
 
@@ -1607,7 +1612,9 @@ export async function runConcentrationSave(ctx: ConcentrationSaveContext): Promi
 
   const conMod = abilityModifier(con);
   const pb = characterProficiencyBonus(charRow as any);
-  const bonus = conMod + (hasConProf ? pb : 0);
+  const equipment = computeActiveBonuses([], charRow.inventory as unknown as InventoryItem[]).saveBonus;
+  if(!Number.isSafeInteger(equipment))throw new Error('Review equipment saving throw bonuses.');
+  const bonus = conMod + (hasConProf ? pb : 0) + equipment;
   // v2.636 — was an inline max(10, floor(dmg/2)) missing the RAW DC 30 cap
   const dc = concentrationDC(ctx.damage);
 

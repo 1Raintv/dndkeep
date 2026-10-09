@@ -17,7 +17,7 @@ test.describe('Condition turn recovery',()=>{
    values('${id}','${user}','${campaign}','Death Fixture','Human','Fighter','Sage',1,10,10);
    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaign}','active',1,0);
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values('${part}','${encounter}','${campaign}','character','${id}','Death Fixture',0);
-   update characters set intelligence=18,nat_1_20_saves=false where id='${id}';
+   update characters set intelligence=18,nat_1_20_saves=false,inventory='[{"magic_item_id":"ring-protection","name":"Ring of Protection","magical":true,"equipped":true,"attuned":true,"saveBonus":1}]'  where id='${id}';
    update combatants set active_conditions=array['Poisoned'],condition_sources='{"Poisoned":{"source":"fixture","save_to_end":{"ability":"INT","dc":999}}}',exhaustion_level=1,active_buffs='[{"key":"bless","name":"Bless","source":"Spell","saveBonus":"1d4"}]' where id=(select combatant_id from combat_participants where id='${part}');commit;`);
  });
  test.afterEach(()=>sql(`delete from campaigns where id='${campaign}';delete from characters where id='${id}';delete from auth.users where id='${user}';`));
@@ -28,7 +28,7 @@ test.describe('Condition turn recovery',()=>{
   await expect(page.getByText(/Turn could not be completed:/)).toBeVisible();
   expect(sql(`select round_number from combat_encounters where id='${encounter}'`)).toBe('1');
   const result=JSON.parse(sql(`select result from dndkeep_private.condition_turn_saves where participant_id='${part}'`));
-  expect(result.passed).toBe(false);expect(result.reviewedBonus).toBeGreaterThanOrEqual(5);expect(result.reviewedBonus).toBeLessThanOrEqual(8);expect(result.total).toBe(result.d20+result.reviewedBonus-2);
+  expect(result.passed).toBe(false);expect(result.reviewedBonus).toBeGreaterThanOrEqual(6);expect(result.reviewedBonus).toBeLessThanOrEqual(9);expect(result.total).toBe(result.d20+result.reviewedBonus-2);
   await page.unroute('**/rest/v1/rpc/settle_condition_turn_save');await page.reload();
   await page.getByRole('button',{name:/End Turn/}).locator('visible=true').first().click();
   await expect.poll(()=>sql(`select round_number from combat_encounters where id='${encounter}'`)).toBe('2');
