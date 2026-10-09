@@ -531,6 +531,44 @@ test.describe('Private action turn context' ,()=>{
   test('completed declarations cannot generate another save',()=>{
    const id=declare();sql(authenticated(owner,`select psionic_propel('${character}','finish','{"declarationId":"${id}","outcome":"passed","save":null}')`));expect(()=>read(id)).toThrow(/already resolved/);
   });
+  const saveEvidence=()=>({participantId:enemy,outcome:'failed',dc:15,d20:5,bonus:0,total:5,rolls:[5],advantage:false,naturalExtremes:false});
+  const finishSave=(id:string,save:ReturnType<typeof saveEvidence>)=>sql(authenticated(owner,`select psionic_propel('${character}','finish','${JSON.stringify({declarationId:id,outcome:save.outcome,save})}')`));
+  test('condition changes after rolling reject payment and preserve the unresolved declaration',()=>{
+   const id=declare(),save=saveEvidence();
+   sql(`update combatants set active_conditions=array['Paralyzed'] where id=(select combatant_id from combat_participants where id='${enemy}')`);
+   expect(()=>finishSave(id,save)).toThrow(/Target save conditions changed/);
+   expect(sql(`select outcome is null from dndkeep_private.propel_declarations where request_id='${id}'`)).toBe('t');
+   expect(sql(`select count(*) from psionic_energy_uses where request_id='${id}'`)).toBe('0');
+   expect(sql(`select count(*) from action_logs where id='${id}'`)).toBe('0');
+   sql(`update combatants set active_conditions='{}' where id=(select combatant_id from combat_participants where id='${enemy}')`);
+   expect(JSON.parse(finishSave(id,save)).result.energyCost).toBe(1);
+   // Receipt replay must not re-evaluate conditions or charge again.
+   sql(`update combatants set active_conditions=array['Paralyzed'] where id=(select combatant_id from combat_participants where id='${enemy}')`);
+   expect(JSON.parse(finishSave(id,save)).result.energyCost).toBe(1);
+   expect(sql(`select count(*) from psionic_energy_uses where request_id='${id}'`)).toBe('1');
+  });
+  test('removed automatic failure and newly applied disadvantage cannot use stale evidence',()=>{
+   const id=declare();
+   const automatic={...saveEvidence(),d20:1,total:1,rolls:[],automaticFailure:true};
+   expect(()=>finishSave(id,automatic)).toThrow(/Target save conditions changed/);
+   sql(`update combatants set active_conditions=array['Encumbered'] where id=(select combatant_id from combat_participants where id='${enemy}')`);
+   expect(()=>finishSave(id,saveEvidence())).toThrow(/Target save conditions changed/);
+   expect(sql(`select count(*) from psionic_energy_uses where request_id='${id}'`)).toBe('0');
+  });
+  test('waits for an in-flight condition change before charging',async()=>{
+   const id=declare(),marker=parseInt(randomUUID().slice(0,7),16);
+   const update=parallel(`begin;update combatants set active_conditions=array['Paralyzed'] where id=(select combatant_id from combat_participants where id='${enemy}');select pg_advisory_xact_lock(${marker});select pg_sleep(3);commit;`);
+   await expect.poll(()=>sql(`select count(*) from pg_locks where locktype='advisory' and objid=${marker} and granted`)).toBe('1');
+   expect(()=>finishSave(id,saveEvidence())).toThrow(/Target save conditions changed/);
+   expect(await update).toMatchObject({code:0,error:''});
+   expect(sql(`select count(*) from psionic_energy_uses where request_id='${id}'`)).toBe('0');
+   expect(sql(`select outcome is null from dndkeep_private.propel_declarations where request_id='${id}'`)).toBe('t');
+  });
+  test('ending the encounter after rolling cannot settle an assisted save',()=>{
+   const id=declare();sql(`update combat_encounters set status='ended' where id='${encounter}'`);
+   expect(()=>finishSave(id,saveEvidence())).toThrow(/no longer active/);
+   expect(sql(`select count(*) from psionic_energy_uses where request_id='${id}'`)).toBe('0');
+  });
   test('the shared unscoped target reader is private',()=>{
    expect(()=>sql(authenticated(owner,`select dndkeep_private.saving_target_context('${campaign}','${encounter}','${enemy}','STR')`))).toThrow(/permission denied/);
   });

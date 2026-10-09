@@ -5673,3 +5673,36 @@ the final result before paying Propel's conditional cost. Legendary Resistance
 needs a DM decision before finalizing a failed feature save. Buff/exhaustion
 values are returned for that transaction but are not newly applied by this
 change. Full feature/standalone/death-save coverage remains a release gate.
+
+
+### Propel settlement rechecks condition evidence (unreleased)
+
+`20261009224000_propel_settlement_condition_guard.sql` now checks assisted
+Propel save evidence inside the same transaction as conditional Energy Die
+payment. It locks the encounter, participant and combatant state, then compares
+current automatic-failure, advantage/disadvantage and natural-extremes flags
+against the submitted roll. Changed flags, missing targets and ended encounters
+reject before payment or history writes. Completed receipt replays bypass fresh
+eligibility checks and never charge again. Explicit manual/tabletop outcomes
+remain adjudicated outcomes rather than fabricated rolls.
+
+The target character is locked before encounter/participant rows. Simultaneous
+cross-character resolutions can encounter PostgreSQL deadlock detection; that
+transaction rolls back rather than committing a partial cost and can be retried.
+This does not yet make every save input authoritative: buff/exhaustion arithmetic,
+Mind Sliver consumption, Legendary Resistance decisions, target replacement
+identity at declaration, and persistent dice review after stale-context rejection
+remain open. Do not deploy the combined branch as complete feature-save support.
+
+Validation: focused database regressions cover changed/removed automatic failure,
+new disadvantage, ended encounters, zero rejected-use cost/history, successful
+retry, and receipt replay after conditions change. Migration applied only to local
+Docker with its ledger entry; unrelated preserved migration history unchanged.
+
+Final checks: 12 focused SQL cases passed, including an actual concurrent
+condition update held open while settlement waits. All 16 browser scenarios
+pass across desktop/mobile (12 unaffected cases in the initial run; four
+Teleporter cases rerun after repairing an out-of-scope variable in their test
+fixture). Required gate: 3,104 unit tests, TypeScript 197/197, hooks, RAW,
+coordinates, anchors, build and 255.2 KB entry. Private SQL lint has zero errors;
+existing warning-level findings remain. Changed test files pass ESLint.

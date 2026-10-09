@@ -119,7 +119,7 @@ test.describe('Saved Propel controls',()=>{
    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaignId}','active',1,0);
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values
    ('${self}','${encounter}','${campaignId}','character','${charId}','Psion',0),('${enemy}','${encounter}','${campaignId}','character','${targetCharacter}','Target Fighter',1);
-   update combatants set active_conditions=${condition&&condition!=='Paralyzed'?"array['"+condition+"']":"array[]::text[]"} where id=(select combatant_id from combat_participants where id='${enemy}');`);
+   update combatants set active_conditions=array[]::text[] where id=(select combatant_id from combat_participants where id='${enemy}');`);
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
   await page.locator('.arow-grid').filter({has:page.getByText('Free Misty Step (Teleportation)',{exact:true})}).getByRole('button',{name:'Cast',exact:true}).click();
