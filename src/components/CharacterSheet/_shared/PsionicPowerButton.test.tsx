@@ -23,7 +23,7 @@ it('cancels without rolling/submitting, then submits one free extension',async()
 it('at zero dice offers free Propel and blocks powered Propel',()=>{
  render(<PsionicPowerButton onUpdate={vi.fn()} character={{...character,class_resources:{'psionic-energy-dice':0}}} kind="propel" onUse={vi.fn()}/>);
  expect((screen.getByRole('button',{name:'Free 5 ft'}) as HTMLButtonElement).disabled).toBe(false);
- expect((screen.getByRole('button',{name:'Powered (1 die)'}) as HTMLButtonElement).disabled).toBe(true);
+ expect((screen.getByRole('button',{name:'Roll Energy Die'}) as HTMLButtonElement).disabled).toBe(true);
 });
 it('does not silently charge a free use when resources change during confirmation',async()=>{
  const onUse=vi.fn().mockResolvedValue(undefined);
@@ -38,7 +38,7 @@ const highLevel={...character,level:7,hit_dice_spent:0};
 it('Surge spends a Hit Point Die before submitting powered Propel',async()=>{
  mocks.roll=1;const onUse=vi.fn().mockResolvedValue(undefined),onUpdate=vi.fn();
  render(<ModalProvider><PsionicPowerButton character={highLevel} onUpdate={onUpdate} kind="propel" onUse={onUse}/></ModalProvider>);
- fireEvent.click(screen.getByRole('button',{name:'Powered (1 die)'}));
+ fireEvent.click(screen.getByRole('button',{name:'Roll Energy Die'}));
  fireEvent.click(await screen.findByRole('button',{name:'Spend 1 Hit Point Die'}));
  await waitFor(()=>expect(onUse).toHaveBeenCalledWith({kind:'propel',mode:'powered',roll:4,originalRoll:1,surged:true}));
  expect(onUpdate).toHaveBeenCalledTimes(1);expect(onUpdate).toHaveBeenCalledWith({hit_dice_spent:1});
@@ -56,7 +56,7 @@ it('offers Surge after the free Connection confirmation without spending an Ener
 it('keeps the original roll when Surge is declined',async()=>{
  mocks.roll=3;const onUse=vi.fn().mockResolvedValue(undefined),onUpdate=vi.fn();
  render(<ModalProvider><PsionicPowerButton character={highLevel} onUpdate={onUpdate} kind="propel" onUse={onUse}/></ModalProvider>);
- fireEvent.click(screen.getByRole('button',{name:'Powered (1 die)'}));
+ fireEvent.click(screen.getByRole('button',{name:'Roll Energy Die'}));
  fireEvent.click(await screen.findByRole('button',{name:'Keep roll of 3'}));
  await waitFor(()=>expect(onUse).toHaveBeenCalledWith({kind:'propel',mode:'powered',roll:3}));
  expect(onUpdate).not.toHaveBeenCalled();
@@ -71,7 +71,7 @@ it('does not offer Surge for the free Psykinetic d4',async()=>{
 it('rechecks the pool before spending Surge after concurrent depletion',async()=>{
  mocks.roll=1;const onUse=vi.fn().mockResolvedValue(undefined),onUpdate=vi.fn();
  const ui=(c:Character)=><ModalProvider><PsionicPowerButton character={c} onUpdate={onUpdate} kind="propel" onUse={onUse}/></ModalProvider>;
- const view=render(ui(highLevel));fireEvent.click(screen.getByRole('button',{name:'Powered (1 die)'}));
+ const view=render(ui(highLevel));fireEvent.click(screen.getByRole('button',{name:'Roll Energy Die'}));
  await screen.findByRole('dialog',{name:'Psionic Surge'});
  view.rerender(ui({...highLevel,class_resources:{'psionic-energy-dice':0}}));
  fireEvent.click(screen.getByRole('button',{name:'Spend 1 Hit Point Die'}));
@@ -82,8 +82,15 @@ it('rechecks the pool before spending Surge after concurrent depletion',async()=
 it('carries a capstone total above one die into power settlement',async()=>{
  mocks.roll=6;const onUse=vi.fn().mockResolvedValue(undefined),onUpdate=vi.fn();
  render(<ModalProvider><PsionicPowerButton character={{...character,level:20,hit_dice_spent:0}} onUpdate={onUpdate} kind="propel" onUse={onUse}/></ModalProvider>);
- fireEvent.click(screen.getByRole('button',{name:'Powered (1 die)'}));await screen.findByRole('dialog',{name:'Enkindled Life Force'});
+ fireEvent.click(screen.getByRole('button',{name:'Roll Energy Die'}));await screen.findByRole('dialog',{name:'Enkindled Life Force'});
  fireEvent.change(screen.getByRole('textbox'),{target:{value:'2'}});fireEvent.click(screen.getByRole('button',{name:'Continue'}));
  await waitFor(()=>expect(onUse).toHaveBeenCalledWith({kind:'propel',mode:'powered',roll:18,originalRoll:6,enkindledRolls:[6,6]}));
  expect(onUpdate).toHaveBeenCalledTimes(1);expect(onUpdate).toHaveBeenCalledWith({hit_dice_spent:2});
+});
+it('Warp submits the same Propel save flow with an explicit teleport choice',async()=>{
+ const onUse=vi.fn().mockResolvedValue(undefined);
+ render(<PsionicPowerButton warp onUpdate={vi.fn()} character={{...character,subclass:'Psi Warper'}} kind="propel" onUse={onUse}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Teleport (no die)'}));
+ await waitFor(()=>expect(onUse).toHaveBeenCalledWith({kind:'propel',movement:'warp',mode:'free',roll:0}));
+ expect(screen.getByRole('button',{name:'Roll Energy Die'})).toBeTruthy();
 });

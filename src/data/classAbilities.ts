@@ -1395,11 +1395,12 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
     {
       name: 'Warp Propel',
       requiredSubclass: 'Psi Warper',
-      actionType: 'special',
+      actionType: 'bonus',
       description: WARP_PROPEL_SUMMARY,
       descriptionLong: `${WARP_PROPEL_TEXT}\n\nTelekinetic Propel\n${TELEKINETIC_PROPEL_TEXT}`,
       minLevel: 3,
       range: '30 ft',
+      save: { ability: 'STR', dc: 'spell', targetMode: 'any' },
     },
     {
       name: 'Warp Space',

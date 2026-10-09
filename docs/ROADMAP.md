@@ -1,5 +1,24 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.868 — Propel action and resolution corrections
+
+Telekinetic Propel and Warp Propel are adjacent Bonus Action entries. Both expose
+an explicit Energy Die roll; Warp also offers its no-die teleport through the same
+single-target Strength-save flow instead of the old generic Special button.
+Powered uses spend one Energy Die only after a failed save. Warp destinations
+remain unoccupied, visible, within 30 feet of the caster and horizontal to the
+caster; a higher roll does not extend that limit or add Prone. Map placement,
+visibility, size and range verification remain manual; this is not automatic
+forced movement. The supplied Psion text is the rule reference.
+
+Focused rules/component and desktop/phone tests cover Bonus Action labels,
+adjacency, subclass/level eligibility and actual conditional pool changes.
+The browser regression rejects the old Special label. Continue the ability audit
+with action cost, target restrictions, optional die choices, failure/success costs,
+cancel/retry behavior and manual-versus-automatic effects reviewed together.
+The broader weapon transaction remains on `codex/weapon-damage-resolution`.
+
+
 ### v2.867 — Psychic saving spells use Sharpened damage resolution
 
 New paid single-target Psychic saving spells use the guarded damage preview and

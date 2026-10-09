@@ -87,3 +87,14 @@ it('uses secondary Psion level and subclass for power dice, range and technique'
  expect(resolvePsionicPower({...secondary,secondary_level:2,secondary_subclass:'Psykinetic'},
   {kind:'propel',mode:'technique',roll:4},true)).toBeNull();
 });
+it.each([true,false])('Warp keeps caster-relative 30-foot destination and conditional die cost (%s)',failed=>{
+ const r=resolvePsionicPower({...c,subclass:'Psi Warper'},{kind:'propel',movement:'warp',mode:'powered',roll:8},failed)!;
+ expect(r.cost).toBe(failed?1:0);expect(r.feet).toBe(failed?30:0);expect(r.notes).not.toContain('40 ft');
+ if(failed)expect(r.notes).toContain('horizontal to you');
+});
+it('Warp requires the subclass but does not require an Energy Die for the base use',()=>{
+ const use={kind:'propel',movement:'warp',mode:'free',roll:0} as const;
+ expect(resolvePsionicPower(c,use,true)).toBeNull();
+ expect(resolvePsionicPower({...c,subclass:'Psi Warper',level:2},use,true)).toBeNull();
+ expect(resolvePsionicPower({...c,subclass:'Psi Warper',class_resources:{'psionic-energy-dice':0}},use,true)).toMatchObject({cost:0,feet:30});
+});
