@@ -47,6 +47,17 @@ test.describe('Saved Propel controls',()=>{
   await expect(page.getByRole('button',{name:'Bonus Action Available',exact:true})).toBeEnabled({timeout:10000});
   expect(errors).toEqual([]);
  });
+ test('free Misty Step records the Bonus Action and retains it after reload',async({page})=>{
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+  const ability=page.locator('.arow-grid').filter({has:page.getByText('Free Misty Step (Teleportation)',{exact:true})});
+  await ability.getByRole('button',{name:'Cast',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Bonus Action Used',exact:true})).toBeDisabled({timeout:10000});
+  expect(sql(`select feature_uses->>'Free Misty Step (Teleportation)' from characters where id='${charId}'`)).toBe('1');
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('2');
+  await page.reload();await expect(page.getByRole('button',{name:'Bonus Action Used',exact:true})).toBeDisabled({timeout:10000});
+  expect(errors).toEqual([]);
+ });
  test('combat resolution stays on the declared target and settles its rolled save',async({page},info)=>{
   const encounter=randomUUID(),self=randomUUID(),enemy=randomUUID(),targetCharacter=randomUUID();
   sql(`insert into campaigns(id,owner_id,name) values('${campaignId}','${userId}','Propel Combat');

@@ -345,6 +345,37 @@ test.describe('Private action turn context' ,()=>{
   expect(outcomes.filter(o=>o.code===0)).toHaveLength(1);expect(outcomes.find(o=>o.code!==0)?.error).toMatch(/already spent/);
   expect(flags().bonus).toBe(true);expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${character}'`)).toBe('1');
  });
+ const misty=(id=randomUUID(),operation='use-misty-step')=>`select public.settle_psionic_energy('${character}','${id}','${operation}',${operation==='refresh-misty-step'?1:0},array[]::integer[],'Free Misty Step (Teleportation)')`;
+ const warper=()=>sql(`update characters set subclass='Psi Warper',class_resources='{"psionic-energy-dice":3}' where id='${character}'`);
+ test('free Misty Step claims the Bonus Action and restoring its use does not restore that action',()=>{
+  warper();const q=misty();sql(auth(q));expect(flags().bonus).toBe(true);expect(energy()).toBe(3);
+  sql(auth(misty(randomUUID(),'refresh-misty-step')));expect(energy()).toBe(2);expect(flags().bonus).toBe(true);
+  expect(()=>sql(auth(misty()))).toThrow(/already spent/);expect(()=>sql(auth(powerSql(randomUUID(),'free','warp',0)))).toThrow(/already spent/);
+  next(1);next(0,2);sql(auth(q));expect(flags().bonus).toBe(false);
+  sql(auth(misty()));expect(flags().bonus).toBe(true);expect(energy()).toBe(2);
+ });
+ test('Propel blocks free Misty Step without consuming its once-per-rest use',()=>{
+  warper();sql(auth(powerSql(randomUUID(),'free','push',0)));
+  expect(()=>sql(auth(misty()))).toThrow(/already spent/);
+  expect(sql(`select coalesce(feature_uses->>'Free Misty Step (Teleportation)','0') from characters where id='${character}'`)).toBe('0');expect(energy()).toBe(3);
+ });
+ test('manual Misty Step recovery refunds only the feature use and failed transactions leave no claim',()=>{
+  warper();const id=randomUUID();expect(()=>sql(auth(misty(id)+`;do $$begin raise exception 'forced failure';end$$`))).toThrow(/forced failure/);
+  expect(flags().bonus).toBe(false);expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${id}'`)).toBe('0');
+  sql(auth(misty()));sql(auth(misty(randomUUID(),'recover-misty-step')));expect(flags().bonus).toBe(true);
+  expect(()=>sql(auth(misty()))).toThrow(/already spent/);
+ });
+ test('free Misty Step leaves the spell-slot allowance available for an Action spell',()=>{
+  warper();prepareSpells();sql(`update characters set spell_sources=spell_sources||'{"fly":["class:Psion"]}',spell_preparation_sources=spell_preparation_sources||'{"fly":["class:Psion"]}',spell_slots=spell_slots||'{"3":{"total":1,"used":0}}' where id='${character}'`);
+  sql(auth(misty()));sql(auth(`select public.declare_spell_cast_atomic('${randomUUID()}','${character}','${participant}','fly','Fly',3,'{"total":1,"used":0}','{"source":"class:Psion","spellLevel":3,"isBonusAction":false,"actionKind":"action"}')`));
+  expect(flags()).toMatchObject({action:true,bonus:true});expect(energy()).toBe(3);
+  expect(sql(`select spell_slots->'3'->>'used' from characters where id='${character}'`)).toBe('1');
+ });
+ test('free Misty Step uses the solo action clock and the trigger stays private',()=>{
+  warper();sql(`delete from combat_encounters where id='${encounter}'`);sql(auth(misty()));
+  expect(JSON.parse(sql(auth(`select public.get_action_budget('${character}')`))).spent.bonusAction).toBe(true);
+  for(const role of ['anon','authenticated'])expect(sql(`select has_function_privilege('${role}','dndkeep_private.claim_free_misty_step_action()','execute')`)).toBe('f');
+ });
  test('keeps all clock functions and tables inaccessible to direct app callers',()=>{
   for(const role of ['anon','authenticated']){
    expect(sql(`select has_function_privilege('${role}','dndkeep_private.action_turn_context(uuid)','EXECUTE')`)).toBe('f');

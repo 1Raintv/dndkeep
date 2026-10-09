@@ -219,6 +219,21 @@ cases confirm source selection, lost-response retries and Reaction Used after
 reload. Full gate passes: 2,987 units / 267 files, TypeScript 198/198, 255.2 KB
 entry; changed functions lint clean. Still a working branch, not deployed.
 
+`20261009163045_shared_misty_step_action.sql` (local only) composes free
+Psi Warper Misty Step with the shared Bonus Action in its existing resource
+transaction. Paid/manual restoration restores only the feature use, never the
+Bonus Action. Replays do not spend a later turn; failed writes roll back both
+trackers. It spends no spell slot, so an Action spell remains available under
+the separate slot rule. The existing payment-recovery event refreshes the sheet.
+Five focused SQL cases and the full 15-case energy ledger suite plus the
+free-cast/Action-spell combination pass. Six desktop/mobile Propel/Misty Step
+flows verify spending and reload persistence. Full gate remains green (2,987
+units, 198 TypeScript baseline, 255.2 KB entry); new function lint clean.
+Audit follow-up: Teleporter Combat is present in feature descriptions, but a
+source search found no dedicated automation for its attached Psion cantrip.
+Verify and implement that exception before calling Psi Warper automation complete.
+Manual destination/visibility validation and other free/solo casts remain.
+
 ### v2.869 — Pending Psion rolls keep their original context
 
 Power confirmations now invalidate when the character, campaign, Psion
