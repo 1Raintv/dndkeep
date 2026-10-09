@@ -317,6 +317,34 @@ test.describe('Private action turn context' ,()=>{
   sql(auth(claimSql(randomUUID(),input({kind:'action',grantId:'extra:'+grant,purpose:'dash'}))));
   expect(flags().action).toBe(false);
  });
+ const prepareSpells=()=>sql(`update characters set current_hp=20,max_hp=20,spell_sources='{"misty-step":["class:Psion"],"light":["class:Psion"]}',spell_preparation_sources='{"misty-step":["class:Psion"]}',prepared_spells=array['misty-step'],spell_slots='{"2":{"total":3,"used":0}}' where id='${character}';update combatants set current_hp=20 where id=(select combatant_id from combat_participants where id='${participant}')`);
+ const spellQuery=(id:string,kind='bonusAction',slot=2)=>`select public.declare_spell_cast_atomic('${id}','${character}','${participant}','${slot?'misty-step':'light'}','Spell',${slot},${slot?"'"+sql(`select spell_slots->'2' from characters where id='${character}'`)+"'":'null'},'${JSON.stringify({source:'class:Psion',spellLevel:slot,isBonusAction:kind==='bonusAction',actionKind:kind})}')`;
+ test('Propel and a Bonus Action spell compete before a slot or declaration is spent',()=>{
+  prepareSpells();sql(auth(powerSql(randomUUID(),'free','push',0)));
+  expect(()=>sql(auth(spellQuery(randomUUID())))).toThrow(/already spent/);
+  expect(sql(`select spell_slots->'2'->>'used' from characters where id='${character}'`)).toBe('0');
+  expect(sql(`select count(*) from pending_spell_casts where caster_character_id='${character}'`)).toBe('0');
+  next(1);next(0,2);sql(auth(spellQuery(randomUUID())));
+  expect(flags().bonus).toBe(true);expect(()=>sql(auth(powerSql(randomUUID(),'free','push',0)))).toThrow(/already spent/);
+ });
+ test('cantrip action claims and paid Bonus Action spells share budgets without conflating slot limits',()=>{
+  prepareSpells();const id=randomUUID(),q=spellQuery(id,'action',0);sql(auth(q));
+  expect(flags().action).toBe(true);sql(auth(spellQuery(randomUUID())));
+  expect(()=>sql(auth(spellQuery(randomUUID(),'action',0)))).toThrow(/already spent/);
+  next(1);next(0,2);sql(auth(q));expect(flags().action).toBe(false);
+  expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${id}'`)).toBe('1');
+ });
+ test('spell action validation rejects missing actions and off-turn actions without payment',()=>{
+  prepareSpells();expect(()=>sql(auth(spellQuery(randomUUID(),'unknown')))).toThrow(/action context/);
+  expect(()=>sql(auth(spellQuery(randomUUID()).replace(',\"actionKind\":\"bonusAction\"','')))).toThrow(/action context/);
+  next(1);expect(()=>sql(auth(spellQuery(randomUUID())))).toThrow(/own turn/);
+  expect(sql(`select spell_slots->'2'->>'used' from characters where id='${character}'`)).toBe('0');
+ });
+ test('concurrent Propel and spell declarations have exactly one Bonus Action winner',async()=>{
+  prepareSpells();const outcomes=await Promise.all([parallel(auth(powerSql(randomUUID(),'free','push',0))),parallel(auth(spellQuery(randomUUID())))]);
+  expect(outcomes.filter(o=>o.code===0)).toHaveLength(1);expect(outcomes.find(o=>o.code!==0)?.error).toMatch(/already spent/);
+  expect(flags().bonus).toBe(true);expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${character}'`)).toBe('1');
+ });
  test('keeps all clock functions and tables inaccessible to direct app callers',()=>{
   for(const role of ['anon','authenticated']){
    expect(sql(`select has_function_privilege('${role}','dndkeep_private.action_turn_context(uuid)','EXECUTE')`)).toBe('f');

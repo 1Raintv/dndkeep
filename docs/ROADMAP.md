@@ -187,6 +187,23 @@ flows and two privilege checks passed across desktop/mobile. Full code gate
 passes (2,985 units, 198 TypeScript baseline, 255.2 KB entry); changed functions
 lint clean. Spell/attack/other legacy writers still need atomic integration.
 
+`20261009161444_shared_spell_action_claims.sql` (local only) reserves a normal
+casting action in the same transaction as the paid declaration, including
+cantrips. Missing/invalid action types, off-turn normal actions and conflicting
+Propel/spell spending roll back the declaration and slot together. Retries retain
+the original claim; Counterspell refunds only the slot, not the action. Casting
+locks now order character/encounter/participant consistently with Propel while
+retaining cast/advisory locks for settlement/cancellation. Verified declarations
+notify the sheet to refresh saved action indicators.
+Four targeted SQL cases, 22 delivery cases, two final missing-action/refund
+checks and four desktop/mobile Mind Spike/Witch Bolt recovery flows pass. Full
+gate: 2,986 units / 267 files, 198 TypeScript baseline, 255.2 KB entry. Changed
+functions lint clean. Remaining before release: update old spell-slot fixtures
+that assumed unlimited/off-turn actions or omitted action type; exercise their
+full settlement suite, Counterspell shared reaction claims, free/manual casting,
+extra-action eligibility, and server verification of declared casting metadata.
+The existing slot-per-turn limit remains distinct from the shared action budget.
+
 ### v2.869 — Pending Psion rolls keep their original context
 
 Power confirmations now invalidate when the character, campaign, Psion

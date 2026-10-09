@@ -24,12 +24,12 @@ test.describe('Declared spell combat delivery (local stack)',()=>{
    insert into pending_reactions(id,campaign_id,reactor_participant_id,reactor_name,reactor_type,reaction_key,reaction_name,trigger_point,expires_at,decision_payload)
    values('${offer}','${campaign}','${reactor}','Reactor','character','counterspell','Counterspell','spell_declared',now()+interval '5 minutes','{"spell_cast_id":"${cast}"}');`);
  });
- test.beforeEach(()=>sql(`delete from pending_reactions where id='${offer}';delete from pending_spell_casts where id='${cast}';
+ test.beforeEach(()=>sql(`update combat_encounters set current_turn_index=1 where id='${encounter}';delete from pending_reactions where id='${offer}';delete from pending_spell_casts where id='${cast}';
   update characters set spell_slots='{"3":{"total":3,"used":0},"4":{"total":1,"used":0}}',prepared_spells=ARRAY['fly'],spell_sources='{"fly":["class:Wizard"],"light":["class:Wizard"]}',spell_preparation_sources='{"fly":["class:Wizard"]}' where id='${caster}'`));
  test.afterEach(()=>sql(`delete from pending_reactions where campaign_id='${campaign}';delete from pending_spell_casts where campaign_id='${campaign}';delete from pending_attacks where campaign_id='${campaign}';delete from combat_participants where campaign_id='${campaign}';delete from combat_encounters where campaign_id='${campaign}';delete from characters where campaign_id='${campaign}';delete from combatants where campaign_id='${campaign}';delete from campaigns where id='${campaign}';delete from auth.users where id in('${owner}','${dm}','${outsider}');`));
 
  const character=()=>JSON.parse(sql(`select row_to_json(c) from characters c where id='${caster}'`));
- const declare=(id=cast,level=3,expected=character().spell_slots[String(level)]??null,spell=level===0?'light':'fly',combat=intent())=>`select declare_spell_cast_atomic('${id}','${caster}','${target}','${spell}','${spell}',${level},${expected===null?'null':"'"+JSON.stringify(expected)+"'"},'{"source":"class:Wizard","spellLevel":${level===0?0:3},"target":"Reactor","saveDC":15,"combat":${JSON.stringify(combat)}}')`;
+ const declare=(id=cast,level=3,expected=character().spell_slots[String(level)]??null,spell=level===0?'light':'fly',combat=intent())=>`select declare_spell_cast_atomic('${id}','${caster}','${target}','${spell}','${spell}',${level},${expected===null?'null':"'"+JSON.stringify(expected)+"'"},'{"source":"class:Wizard","actionKind":"action","isBonusAction":false,"spellLevel":${level===0?0:3},"target":"Reactor","saveDC":15,"combat":${JSON.stringify(combat)}}')`;
  const settle=(id=cast)=>`select settle_declared_spell_atomic('${id}')`;
  function counter(id=cast,passed=false){
   const offerId=randomUUID();
@@ -73,6 +73,8 @@ test.describe('Declared spell combat delivery (local stack)',()=>{
  });
  test('interrupted spells never create damage and return the recorded slot',()=>{
   sql(auth(dm,declare()));counter();sql(auth(dm,settle()));expect(character().spell_slots['3'].used).toBe(0);
+  expect(sql(`select action_used from combat_participants where id='${target}'`)).toBe('t');
+  expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${cast}'`)).toBe('1');
   expect(()=>sql(auth(dm,queue()))).toThrow(/interrupted/);expect(attacks()).toBe('0');
  });
  test('a successful Counterspell save retains the payment and permits delivery',()=>{

@@ -132,3 +132,9 @@ it.each([{kind:'bonusAction'},{turnId:'invalid'},{encounterId:id},{currentTurnId
  vi.mocked(supabase.rpc).mockResolvedValueOnce({data:{cast:{...row,encounter_id:other},actionContext:{encounterId:other,turnId:id,currentTurnId:id,kind:'action',...patch}},error:null} as never);
  await expect(declarePaidSpell({...request,context:{...request.context,actionKind:'action'}})).rejects.toThrow('action receipt');
 });
+
+it('refreshes shared action indicators after a verified declaration',async()=>{
+ const changed=vi.fn();window.addEventListener('dndkeep:action-budget-changed',changed);
+ try{await declarePaidSpell(request);expect(changed).toHaveBeenCalledTimes(1);}
+ finally{window.removeEventListener('dndkeep:action-budget-changed',changed);}
+});
