@@ -915,14 +915,14 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
   // actually ticked over.
   const lairUpdates = roundIncremented ? { lair_action_used_this_round: false } : {};
 
-  const { error: encUpdErr } = await supabase
+  const { data: advancedTurn, error: encUpdErr } = await supabase
     .from('combat_encounters')
     .update({
       current_turn_index: nextIdx,
       round_number: nextRound,
       ...lairUpdates,
     })
-    .eq('id', encounterId);
+    .eq('id', encounterId).select('psionic_turn_id').single();
   if (encUpdErr) {
     console.error('[advanceTurn] encounter turn-advance failed:', encUpdErr);
     return { ok: false, reason: encUpdErr.message ?? 'Failed to advance turn' };
@@ -1118,6 +1118,7 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
         const { createPendingDeathSave } = await import('./deathSaves');
         await createPendingDeathSave({
           campaignId: incomingParticipant.campaign_id,
+          turnId: advancedTurn!.psionic_turn_id,
           encounterId,
           participantId: incomingParticipant.id,
           characterId: incomingParticipant.entity_id as string,

@@ -663,6 +663,7 @@ export type Database = {
           status: string;
           round_number: number;
           current_turn_index: number;
+          psionic_turn_id: string;
           initiative_mode: string;
           hidden_monster_reveal_mode: string;
           started_at: string | null;
@@ -680,6 +681,7 @@ export type Database = {
           status?: string;
           round_number?: number;
           current_turn_index?: number;
+          psionic_turn_id?: string;
           initiative_mode?: string;
           hidden_monster_reveal_mode?: string;
           started_at?: string | null;
@@ -697,6 +699,7 @@ export type Database = {
           status?: string;
           round_number?: number;
           current_turn_index?: number;
+          psionic_turn_id?: string;
           initiative_mode?: string;
           hidden_monster_reveal_mode?: string;
           started_at?: string | null;

@@ -5988,3 +5988,35 @@ Final player-flow gate: 3,167 unit tests, TypeScript197/197, hooks, RAW,
 coordinates, anchors, production build and255.2KB entry all pass. Changed-file
 ESLint and diff whitespace checks pass. Two browser scenarios passed with the
 final layout and overflow probe enabled. No new database migration in this batch.
+
+### Death-save offer identity and duplicate prevention (unreleased)
+
+`20261010032000_death_save_offer_identity.sql` adds a turn token and combatant
+life-state revision to each new offer. Revision advances when zero-HP/stable/dead
+state changes and cannot be manually rewound. Creation locks character, encounter,
+participant and combatant, verifies owner/DM and the actual current actor, and
+returns one offer per participant/turn even after it is resolved. A new turn
+expires an older pending offer. Settlement expires offers from another turn or
+from before healing/stabilization followed by a new downing; it consumes no save
+penalty for those obsolete offers. Old unbound pending offers are expired at
+migration time instead of being attached to an unverifiable dying episode.
+
+Authenticated direct offer insert/update/delete is revoked. The current prompt
+creation caller uses the authorized RPC and passes the exact token returned by
+its turn update. The existing schema type now includes psionic_turn_id.
+
+Verification:10 new database cases pass (creation races, permission boundaries,
+resolved-offer replay, turn changes, heal/down and stable/damage cycles, revision
+rewind rejection, and healthy actors). Existing40 death-save database/browser
+cases pass under the migration. Four API caller tests cover the exact observed
+token, no-offer result, target mismatch and propagated errors. Full gate passes
+with TypeScript197/197 and255.2KB entry; SQL error-level lint and changed-file
+ESLint pass. Migration applied only locally.
+
+Important integration finding: live callers still import advanceTurn from
+combatEncounter.ts, whose turn write/round clock/buff decrement remain the legacy
+client sequence. The existing commitCombatClock API has no live importer. Thus
+caster-owned next-save expiry cannot yet rely on all live transitions being in
+the atomic ledger. Wire the actual turn path (including recovery ordering) before
+claiming complete Mind Sliver expiration. Automatic death saves also still use
+the legacy direct writer; this batch protects prompted offer identity only.

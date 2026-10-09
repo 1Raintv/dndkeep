@@ -1,9 +1,10 @@
 // v2.144: creates turn-start death-save offers. v2.869 audit moved player
 // resolution to api/deathSaves.ts and the atomic settlement RPC.
-import { supabase } from './supabase';
+import {psionicRpc} from './api/psionicTurns';
 
 export interface CreatePendingDeathSaveInput {
   campaignId: string;
+  turnId: string;
   encounterId: string | null;
   participantId: string;
   characterId: string;
@@ -24,39 +25,9 @@ export interface PendingDeathSaveRow {
   resolved_at: string | null;
 }
 
-/**
- * Insert a pending_death_saves row. Idempotent — if a pending row
- * already exists for this participant in this encounter, returns the
- * existing row instead of creating a duplicate (covers the edge case
- * where the round-start tick fires twice due to double-subscription or
- * manual resolver triggers).
- */
-export async function createPendingDeathSave(
-  input: CreatePendingDeathSaveInput,
-): Promise<PendingDeathSaveRow | null> {
-  // Check for an existing pending row for this participant
-  const { data: existing } = await supabase
-    .from('pending_death_saves')
-    .select('*')
-    .eq('participant_id', input.participantId)
-    .eq('state', 'pending')
-    .maybeSingle();
-  if (existing) return existing as PendingDeathSaveRow;
-
-  const { data, error } = await supabase
-    .from('pending_death_saves')
-    .insert({
-      campaign_id: input.campaignId,
-      encounter_id: input.encounterId,
-      participant_id: input.participantId,
-      character_id: input.characterId,
-    })
-    .select()
-    .single();
-  if (error) {
-    // eslint-disable-next-line no-console
-    console.error('[createPendingDeathSave] insert failed:', error.message);
-    return null;
-  }
-  return data as PendingDeathSaveRow;
+/** The server serializes creation by character and current turn. */
+export async function createPendingDeathSave(input:CreatePendingDeathSaveInput):Promise<PendingDeathSaveRow|null>{
+ const r=await psionicRpc('create_death_save_offer',{p_character:input.characterId,p_participant:input.participantId,p_turn:input.turnId},true) as PendingDeathSaveRow|null;
+ if(r&&(r.character_id!==input.characterId||r.participant_id!==input.participantId||r.campaign_id!==input.campaignId||r.encounter_id!==input.encounterId))throw new Error('Death save offer could not be verified.');
+ return r;
 }
