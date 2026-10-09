@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 import {beforeEach,expect,it,vi} from 'vitest';
 import type {Character,PendingReaction} from '../../types';
 import {acceptCounterspellAtomic} from './counterspell';
@@ -43,4 +44,13 @@ it('coalesces identical in-flight requests and refuses a changed choice',async()
  const first=acceptCounterspellAtomic(offer,character,3);expect(acceptCounterspellAtomic(offer,character,3)).toBe(first);
  await expect(acceptCounterspellAtomic(offer,character,5)).rejects.toThrow('different Counterspell');
  resolve({data:receipt,error:null});await first;expect(supabase.rpc).toHaveBeenCalledTimes(1);
+});
+
+it('refreshes saved action indicators only after a verified acceptance',async()=>{
+ const changed=vi.fn();window.addEventListener('dndkeep:action-budget-changed',changed);
+ try{
+  await acceptCounterspellAtomic(offer,character,3);expect(changed).toHaveBeenCalledTimes(1);
+  vi.mocked(supabase.rpc).mockResolvedValueOnce({data:{...receipt,castId:'wrong'},error:null} as never);
+  await expect(acceptCounterspellAtomic(offer,character,3)).rejects.toThrow('receipt');expect(changed).toHaveBeenCalledTimes(1);
+ }finally{window.removeEventListener('dndkeep:action-budget-changed',changed);}
 });

@@ -1,3 +1,4 @@
+import {notifyActionBudgetChanged} from './actionBudget';
 import {supabase} from '../supabase';
 import {selectedCounterspellCasting} from '../counterspellCasting';
 import type {Character,PendingReaction} from '../../types';
@@ -39,7 +40,7 @@ export function acceptCounterspellAtomic(offer:Pick<PendingReaction,'id'|'decisi
     ||receipt.slotLevel!==slotLevel||receipt.source!==casting.source||receipt.ability!==casting.ability
     ||receipt.saveDC!==casting.saveDC||typeof receipt.replayed!=='boolean')
     throw new Error('The Counterspell receipt could not be verified.');
-   return receipt as CounterspellReceipt;
+   notifyActionBudgetChanged();return receipt as CounterspellReceipt;
   }
  })().finally(()=>active.delete(offer.id));
  active.set(offer.id,{request:serialized,promise});return promise;

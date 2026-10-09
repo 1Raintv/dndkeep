@@ -203,10 +203,21 @@ real own-turn progression and separate Action/Bonus Action/Reaction budgets. All
 46 settlement cases pass, plus two added rollback checks proving a rejected cast
 leaves neither a claim nor a spent combat flag. Counterspell test setup no longer
 resets reactions on every acceptance; refresh happens only during turn advance.
-The full gate remains green. Remaining before release: Counterspell shared
-reaction claims, free/manual casting,
+The full gate remains green. Remaining before release: free/manual casting,
 extra-action eligibility, and server verification of declared casting metadata.
 The existing slot-per-turn limit remains distinct from the shared action budget.
+
+`20261009162438_shared_counterspell_reaction.sql` (local only) reserves the
+Counterspell reaction in the same transaction as its slot, save and acceptance.
+Stale flag resets cannot restore it; the next own turn refreshes it, and old
+acceptance replays do not spend the refreshed reaction. Lock order now matches
+other action spending after cast/offer serialization. The client refreshes its
+saved-action indicator only after validating the acceptance receipt.
+All 86 Counterspell/payment/delivery SQL regressions pass, including competing
+reaction requests, rollback and later-turn replay. Four desktop/mobile browser
+cases confirm source selection, lost-response retries and Reaction Used after
+reload. Full gate passes: 2,987 units / 267 files, TypeScript 198/198, 255.2 KB
+entry; changed functions lint clean. Still a working branch, not deployed.
 
 ### v2.869 — Pending Psion rolls keep their original context
 

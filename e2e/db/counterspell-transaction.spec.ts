@@ -29,6 +29,27 @@ test.describe('Atomic Counterspell acceptance (local stack)',()=>{
  const snapshot=()=>{const c=row();return {...Object.fromEntries(['class_name','level','subclass','secondary_class','secondary_level','secondary_subclass','intelligence','wisdom','charisma','inventory','spell_sources','spell_preparation_sources','prepared_spells'].map(k=>[k,c[k]])),slot:c.spell_slots['3']};};
  const request=(id=offer,expected=snapshot(),source='class:Psion',ability='intelligence',modifier=4)=>`select accept_counterspell_atomic('${id}',3,'${source}','${ability}',${modifier},'${JSON.stringify(expected)}')`;
  const counts=()=>sql(`select (select count(*) from pending_attacks where campaign_id='${campaign}')||','||(select count(*) from dndkeep_private.counterspell_acceptances where character_id='${hero}')||','||(select count(*) from combat_events where campaign_id='${campaign}')`);
+ const reaction=()=>sql(`select reaction_used from combat_participants where id='${reactor}'`);
+ test('saved Counterspell reaction survives stale resets and expires only at the next own turn',()=>{
+  const q=request();sql(auth(owner,q));
+  expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${offer}' and grant_id='normal:reaction'`)).toBe('1');
+  sql(`update combat_participants set reaction_used=false where id='${reactor}'`);expect(reaction()).toBe('t');
+  sql(`update combat_encounters set current_turn_index=1 where id='${encounter}'`);expect(reaction()).toBe('t');
+  sql(`update combat_encounters set current_turn_index=0,round_number=2 where id='${encounter}'`);expect(reaction()).toBe('f');
+  expect(JSON.parse(sql(auth(owner,q))).replayed).toBe(true);expect(reaction()).toBe('f');
+ });
+ test('a failed Counterspell history write rolls the shared reaction back with its payment',()=>{
+  sql(`insert into combat_events(id,chain_id,actor_type,actor_name,event_type,campaign_id,payload) values('${offer}','${randomUUID()}','system','Fixture','reaction_used','${campaign}','{}')`);
+  expect(()=>sql(auth(owner,request()))).toThrow(/duplicate key/);
+  expect(reaction()).toBe('f');expect(row().spell_slots['3'].used).toBe(0);
+  expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${offer}'`)).toBe('0');
+ });
+ test('Counterspell acceptance and another reaction spell cannot both spend the reaction',async()=>{
+  const id=randomUUID();const declare=`select public.declare_spell_cast_atomic('${id}','${hero}','${reactor}','counterspell','Counterspell',3,'${JSON.stringify(row().spell_slots['3'])}','{"source":"class:Psion","spellLevel":3,"actionKind":"reaction","isBonusAction":false}')`;
+  const outcomes=await Promise.all([parallel(auth(owner,request())),parallel(auth(owner,declare))]);
+  expect(outcomes.filter(r=>r.code===0)).toHaveLength(1);expect(reaction()).toBe('t');expect(row().spell_slots['3'].used).toBe(1);
+  expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${hero}'`)).toBe('1');
+ });
  test('links another caster while preserving the restriction on arbitrary direct edits',()=>{
   expect(sql(auth(owner,`update pending_spell_casts set state='canceled' where id='${cast}' returning id`))).toBe('');
   const q=request(),r=JSON.parse(sql(auth(owner,q)));
