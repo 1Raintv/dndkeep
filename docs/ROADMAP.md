@@ -6020,3 +6020,34 @@ caster-owned next-save expiry cannot yet rely on all live transitions being in
 the atomic ledger. Wire the actual turn path (including recovery ordering) before
 claiming complete Mind Sliver expiration. Automatic death saves also still use
 the legacy direct writer; this batch protects prompted offer identity only.
+
+### Durable combat-clock recovery record (unreleased; caller integration pending)
+
+`api/combatTransitionRecovery.ts` persists a user/encounter-scoped exact request
+before confirmation and retains a validated clock receipt. It distinguishes
+clock-pending, clock-confirmed and effects-started. It refuses to replace an
+unfinished transition, coalesces in-process confirmations, preserves the original
+request after transport/storage failure, and requires explicit post-effect
+completion before clearing recovery. An effects-started record is an uncertain
+outcome requiring reconciliation; it is never treated as permission to rerun
+effects. Receipt validation is shared with combatClock.ts. This is a browser
+journal, not a cross-tab server lease or proof that external effects completed.
+
+Eleven new recovery tests and21 existing clock tests pass. Live advanceTurn is
+not wired yet: doing that without restructuring its surrounding effects would
+repeat or skip gameplay on retries. The current function runs outgoing condition
+resaves, end-turn ticks, end-turn auras and movement-feature recovery before
+resetting incoming budgets/recharge/mastery state. After its clock write it also
+increments campaign rounds and decrements buff durations (both must be removed
+when the atomic clock owns them), then emits lair/recharge/refill events, handles
+death saves, runs start-turn ticks and emits turn-boundary events.
+
+Next integration must give those effects durable identities/receipts and resume
+them in order. In particular the automatic death-save writer cannot be replayed;
+it must use the new per-turn offer and atomic save path. Do not clear a saved
+clock request merely because its position was acknowledged. No user-visible
+turn behavior changed in this foundation batch; production remains untouched.
+
+Recovery-foundation final gate:3,182 unit tests, TypeScript197/197, hooks, RAW,
+coordinates, anchors, build and255.2KB entry pass. Changed-file ESLint and diff
+whitespace checks pass. No schema/UI change in this batch.
