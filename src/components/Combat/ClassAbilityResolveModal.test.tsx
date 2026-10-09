@@ -5,14 +5,14 @@ import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import ClassAbilityResolveModal from './ClassAbilityResolveModal';
 import type {Character} from '../../types';
 vi.mock('../../lib/supabase',()=>({supabase:{from:(table:string)=>{
- const query={select:()=>query,eq:()=>query,maybeSingle:async()=>({data:{id:table==='combat_encounters'?'enc':'caster'}}),order:async()=>({data:[{id:'one',name:'Goblin one',participant_type:mocks.character?'character':'creature',entity_id:'target-hero',current_hp:5},{id:'two',name:'Goblin two',participant_type:'creature',current_hp:5}]})};return query;
+ const query={select:()=>query,eq:()=>query,maybeSingle:async()=>({data:{id:table==='combat_encounters'?'enc':'caster'}}),order:async()=>({data:[{id:'one',name:'Goblin one',participant_type:mocks.character?'character':'creature',entity_id:'target-hero',current_hp:5,active_conditions:mocks.conditions},{id:'two',name:'Goblin two',participant_type:'creature',current_hp:5,active_conditions:mocks.conditions}]})};return query;
 }}}));
 vi.mock('../../lib/automations',()=>({resolveAutomation:()=> 'manual'}));
-const mocks=vi.hoisted(()=>({roll:vi.fn(),bonus:vi.fn(),guards:vi.fn(),character:false}));
+const mocks=vi.hoisted(()=>({roll:vi.fn(),bonus:vi.fn(),guards:vi.fn(),character:false,conditions:[] as string[]}));
 vi.mock('../../rules/dice',async original=>({...await original<typeof import('../../rules/dice')>(),rollDie:mocks.roll}));
 vi.mock('../../lib/api/psionicDisciplines',()=>({getPsionicGuardsSaveAdvantage:mocks.guards}));
 vi.mock('../../lib/pendingAttack',()=>({getTargetSaveBonus:mocks.bonus}));
-beforeEach(()=>{mocks.character=false;mocks.guards.mockReset().mockResolvedValue(false);mocks.roll.mockReset().mockReturnValue(10);mocks.bonus.mockReset().mockResolvedValue({bonus:0,breakdown:'',confidence:'high'});});
+beforeEach(()=>{mocks.conditions=[];mocks.character=false;mocks.guards.mockReset().mockResolvedValue(false);mocks.roll.mockReset().mockReturnValue(10);mocks.bonus.mockReset().mockResolvedValue({bonus:0,breakdown:'',confidence:'high'});});
 vi.mock('../shared/ActionLog',()=>({logAction:vi.fn()}));
 afterEach(cleanup);
 it('Propel requires one chosen target and submits only that target save',async()=>{
@@ -122,4 +122,17 @@ it('does not silently replace the declared encounter with the current one',async
 it('does not substitute another target when the declared target has left',async()=>{
  render(boundView({participantId:'missing',encounterId:'enc'}));await screen.findByText(/declared target is no longer available/);
  expect(screen.queryByRole('button',{name:'Roll Save'})).toBeNull();expect((screen.getByRole('button',{name:'Use anyway'}) as HTMLButtonElement).disabled).toBe(true);
+});
+
+it('a Paralyzed Propel target fails without rolling dice',async()=>{
+ mocks.conditions=['Paralyzed'];mocks.bonus.mockResolvedValue({bonus:30});const confirmed=vi.fn();render(boundView({participantId:'two',encounterId:'enc'},confirmed));
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Roll Save'}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:'Roll Save'}));
+ await screen.findByText('Automatic failure from condition — no dice rolled');expect(screen.queryByText('1+30=31')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'Confirm'}));
+ expect(mocks.roll).not.toHaveBeenCalled();expect(confirmed).toHaveBeenCalledWith([expect.objectContaining({outcome:'failed',automaticFailure:true,rolls:[],total:31})]);
+});
+it('an encumbered Propel target keeps the lower die',async()=>{
+ mocks.conditions=['Encumbered'];mocks.roll.mockReturnValueOnce(18).mockReturnValueOnce(3);const confirmed=vi.fn();render(boundView({participantId:'two',encounterId:'enc'},confirmed));
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Roll Save'}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:'Roll Save'}));
+ await screen.findByText('Disadvantage: 18 or 3 — keep lowest');fireEvent.click(screen.getByRole('button',{name:'Confirm'}));
+ expect(confirmed).toHaveBeenCalledWith([expect.objectContaining({outcome:'failed',d20:3,rolls:[18,3],disadvantage:true})]);
 });

@@ -68,14 +68,15 @@ test.describe('Saved Propel controls',()=>{
    await page.screenshot({path:info.outputPath(name.toLowerCase().replaceAll(' ','-')+'.png')});
   }
  });
- test('combat resolution stays on the declared target and settles its rolled save',async({page},info)=>{
+ for(const condition of ['', 'Paralyzed','Encumbered'])test(`combat resolution stays on the declared target and settles its rolled save ${condition||'normal'}`,async({page},info)=>{
   const encounter=randomUUID(),self=randomUUID(),enemy=randomUUID(),targetCharacter=randomUUID();
   sql(`insert into campaigns(id,owner_id,name) values('${campaignId}','${userId}','Propel Combat');
    update characters set campaign_id='${campaignId}' where id='${charId}';
    insert into characters(id,user_id,campaign_id,name,species,class_name,background,level) values('${targetCharacter}','${userId}','${campaignId}','Target Fighter','Human','Fighter','Sage',1);
    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaignId}','active',1,0);
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values
-   ('${self}','${encounter}','${campaignId}','character','${charId}','Psion',0),('${enemy}','${encounter}','${campaignId}','character','${targetCharacter}','Target Fighter',1);`);
+   ('${self}','${encounter}','${campaignId}','character','${charId}','Psion',0),('${enemy}','${encounter}','${campaignId}','character','${targetCharacter}','Target Fighter',1);
+   update combatants set active_conditions=${condition?"array['"+condition+"']":"array[]::text[]"} where id=(select combatant_id from combat_participants where id='${enemy}');`);
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
   const ability=page.locator('.arow-grid').filter({has:page.getByText('Telekinetic Propel',{exact:true})});await ability.getByRole('button',{name:'Use / resume'}).click();
@@ -88,13 +89,23 @@ test.describe('Saved Propel controls',()=>{
   await dialog.getByRole('button',{name:'Resolve combat save'}).click();
   const saves=page.getByRole('dialog',{name:'Telekinetic Propel saving throws'});
   await expect(saves.getByRole('combobox',{name:'Propel target'})).toHaveValue(enemy);await expect(saves.getByRole('combobox',{name:'Propel target'})).toBeDisabled();
-  await expect(saves.getByRole('button',{name:'Roll Save'})).toBeEnabled();await page.evaluate(()=>{Math.random=()=>0.01;});
+  await expect(saves.getByRole('button',{name:'Roll Save'})).toBeEnabled();await page.evaluate(c=>{let n=0;Math.random=()=>c==='Encumbered'?(n++%2===0?0.99:0.01):0.01;},condition);
+  if(condition==='Paralyzed')await saves.getByRole('spinbutton').fill('30');
   await saves.getByRole('button',{name:'Roll Save'}).click();await page.screenshot({path:info.outputPath('propel-combat-save.png')});
+  if(condition){
+   const declaration=sql(`select request_id from dndkeep_private.propel_declarations where character_id='${charId}'`);
+   const badSave={participantId:enemy,outcome:'failed',dc:100,d20:condition==='Paralyzed'?1:20,bonus:0,total:condition==='Paralyzed'?1:20,rolls:condition==='Paralyzed'?[1]:[20,1],advantage:false,naturalExtremes:false,...(condition==='Paralyzed'?{automaticFailure:true}:{disadvantage:true})};
+   const payload=JSON.stringify({declarationId:declaration,outcome:'failed',save:badSave});
+   expect(()=>sql(`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${userId}","role":"authenticated"}';select psionic_propel('${charId}','finish','${payload}');commit;`)).toThrow(/Invalid rolled save/);
+   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('2');
+   expect(sql(`select outcome is null from dndkeep_private.propel_declarations where request_id='${declaration}'`)).toBe('t');
+  }
   await saves.getByRole('button',{name:'Confirm',exact:true}).click();await expect(dialog.getByRole('status')).toContainText('Saved: failed.');
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('1');
   expect(sql(`select target->>'participantId' from dndkeep_private.propel_declarations where character_id='${charId}'`)).toBe(enemy);
-  expect(JSON.parse(sql(`select save_details from dndkeep_private.propel_declarations where character_id='${charId}'`))).toMatchObject({participantId:enemy,d20:1,rolls:[1],outcome:'failed'});
+  expect(JSON.parse(sql(`select save_details from dndkeep_private.propel_declarations where character_id='${charId}'`))).toMatchObject({participantId:enemy,d20:1,rolls:condition==='Paralyzed'?[]:condition==='Encumbered'?[20,1]:[1],outcome:'failed',...(condition==='Paralyzed'?{automaticFailure:true}:condition==='Encumbered'?{disadvantage:true}:{})});
   expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Telekinetic Propel'`)).toBe('1');
+  if(condition==='Paralyzed'){const notes=sql(`select notes from action_logs where character_id='${charId}' and action_name='Telekinetic Propel'`);expect(notes).toContain('automatic failure from condition (no dice)');expect(notes).not.toContain('cosmetic face');}
   expect(errors).toEqual([]);
  });
 
@@ -105,7 +116,8 @@ test.describe('Saved Propel controls',()=>{
    insert into characters(id,user_id,campaign_id,name,species,class_name,background,level,current_hp,max_hp) values('${targetCharacter}','${userId}','${campaignId}','Target Fighter','Human','Fighter','Sage',1,40,40);
    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaignId}','active',1,0);
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values
-   ('${self}','${encounter}','${campaignId}','character','${charId}','Psion',0),('${enemy}','${encounter}','${campaignId}','character','${targetCharacter}','Target Fighter',1);`);
+   ('${self}','${encounter}','${campaignId}','character','${charId}','Psion',0),('${enemy}','${encounter}','${campaignId}','character','${targetCharacter}','Target Fighter',1);
+   update combatants set active_conditions=${condition?"array['"+condition+"']":"array[]::text[]"} where id=(select combatant_id from combat_participants where id='${enemy}');`);
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
   await page.locator('.arow-grid').filter({has:page.getByText('Free Misty Step (Teleportation)',{exact:true})}).getByRole('button',{name:'Cast',exact:true}).click();

@@ -1,3 +1,4 @@
+import {conditionsAutoFailSave,conditionsDisadvantageSave} from '../../lib/conditions';
 import {rollSavingThrow} from '../../rules/savingThrows';
 import {getPsionicGuardsSaveAdvantage} from '../../lib/api/psionicDisciplines';
 // v2.247.0 — Class-ability save resolver modal.
@@ -222,7 +223,7 @@ export default function ClassAbilityResolveModal({
 
   if (!open) return null;
 
-  function setOutcome(participantId: string, outcome: SaveOutcome, d20?: number, total?: number, bonus?: number, rolls?:number[],advantage?:boolean,naturalExtremes?:boolean) {
+  function setOutcome(participantId: string, outcome: SaveOutcome, d20?: number, total?: number, bonus?: number, rolls?:number[],advantage?:boolean,naturalExtremes?:boolean,disadvantage?:boolean,automaticFailure?:boolean) {
     setOutcomes(prev => ({
       ...prev,
       [participantId]: {
@@ -231,7 +232,7 @@ export default function ClassAbilityResolveModal({
         d20,
         total,
         bonus,
-        rolls,advantage,naturalExtremes,
+        rolls,advantage,naturalExtremes,disadvantage,automaticFailure,
       },
     }));
   }
@@ -260,11 +261,13 @@ export default function ClassAbilityResolveModal({
     const issued=generation.current,bonus=saveBonuses[p.id].bonus;
     const current=()=>issued===generation.current&&latest.current===context;
     try {
-      const advantage=p.participant_type==='character'&&!!p.entity_id&&
+      const conditions=p.active_conditions??[],automaticFailure=conditionsAutoFailSave(conditions,ability.save?.ability??'');
+      const disadvantage=!automaticFailure&&conditionsDisadvantageSave(conditions,ability.save?.ability??'');
+      const advantage=!automaticFailure&&p.participant_type==='character'&&!!p.entity_id&&
         await getPsionicGuardsSaveAdvantage(p.entity_id,ability.save?.ability??'');
       if(!current())return;
-      const roll=rollSavingThrow(bonus,saveDC,{advantage,naturalExtremes:saveBonuses[p.id].naturalExtremes});
-      setOutcome(p.id,roll.passed?'passed':'failed',roll.d20,roll.total,bonus,roll.rolls,advantage,saveBonuses[p.id].naturalExtremes??false);
+      const roll=rollSavingThrow(bonus,saveDC,{advantage,disadvantage,forceFailure:automaticFailure,naturalExtremes:saveBonuses[p.id].naturalExtremes});
+      setOutcome(p.id,roll.passed?'passed':'failed',roll.d20,roll.total,bonus,roll.rolls,advantage,saveBonuses[p.id].naturalExtremes??false,disadvantage||undefined,automaticFailure||undefined);
     }catch(error){if(current())setSaveError(error instanceof Error?error.message:'Protection could not be verified. Try again.');}
     finally{if(current()){busy.current=false;setChecking(false);}}
   }
@@ -392,7 +395,7 @@ export default function ClassAbilityResolveModal({
                       <TargetGroupChip group={targetGroup(p, { id: casterParticipantId ?? '', participant_type: 'character' })} />
                       {/* v2.249.0 — d20 + bonus = total chip. Replaces the
                           v2.247 "d20: N" pill once the player has rolled. */}
-                      {out?.d20 !== undefined && (
+                      {out?.d20 !== undefined && !out.automaticFailure && (
                         <span
                           title={out.bonus !== undefined ? `d20 ${out.d20} ${out.bonus >= 0 ? '+' : ''}${out.bonus} = ${out.total ?? out.d20}` : `d20 ${out.d20}`}
                           style={{
@@ -485,7 +488,9 @@ export default function ClassAbilityResolveModal({
                         </div>
                       );
                     })()}
-                    {out?.advantage&&<div style={{fontSize:11,color:'#c4b5fd',marginBottom:6}}>Psionic Guards: {out.rolls?.join(' or ')} — keep highest</div>}
+                    {out?.automaticFailure&&<div style={{fontSize:11,color:'#f87171',marginBottom:6}}>Automatic failure from condition — no dice rolled</div>}
+                    {out?.disadvantage&&!out.advantage&&<div style={{fontSize:11,color:'#c4b5fd',marginBottom:6}}>Disadvantage: {out.rolls?.join(' or ')} — keep lowest</div>}
+                    {out?.advantage&&!out.disadvantage&&<div style={{fontSize:11,color:'#c4b5fd',marginBottom:6}}>Psionic Guards: {out.rolls?.join(' or ')} — keep highest</div>}
                     {/* Row 3: action buttons */}
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <button
@@ -498,14 +503,14 @@ export default function ClassAbilityResolveModal({
                       </button>
                       <button
                         disabled={checking}
-                        onClick={() => setOutcome(p.id, 'passed', out?.d20, out?.total, out?.bonus,out?.rolls,out?.advantage)}
+                        onClick={() => setOutcome(p.id, 'passed', out?.d20, out?.total, out?.bonus,out?.rolls,out?.advantage,out?.naturalExtremes,out?.disadvantage,out?.automaticFailure)}
                         style={btnStyle('#4ade80', out?.outcome === 'passed')}
                       >
                         Mark Pass
                       </button>
                       <button
                         disabled={checking}
-                        onClick={() => setOutcome(p.id, 'failed', out?.d20, out?.total, out?.bonus,out?.rolls,out?.advantage)}
+                        onClick={() => setOutcome(p.id, 'failed', out?.d20, out?.total, out?.bonus,out?.rolls,out?.advantage,out?.naturalExtremes,out?.disadvantage,out?.automaticFailure)}
                         style={btnStyle('#f87171', out?.outcome === 'failed')}
                       >
                         Mark Fail

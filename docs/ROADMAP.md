@@ -5606,3 +5606,38 @@ real SQL and delegation coverage. Public/private SQL lint reports no errors;
 changed-file lint has warnings only. No deployment yet: class/Propel, sheet,
 death, creature/standalone origins and full declared-spell damage-to-concentration
 coverage still need completion before Mind Sliver can be called complete.
+
+### Class-save condition evidence corrected (unreleased)
+
+The remaining feature-save audit found that the class resolver only applied
+Psionic Guards Advantage. It now applies the existing condition table's automatic
+failure and Disadvantage flags too. No dice are generated for an automatic
+failure; a Disadvantage roll keeps the lower die. Logs distinguish a condition
+failure from a willing failure. Automatic failures no longer show a misleading
+numerical roll badge. Manual outcome buttons retain the original rule flags.
+
+Propel's evidence contract and server validator now support optional
+`disadvantage` and `automaticFailure` fields, preserve legacy records, and verify
+die count, kept face and forced outcome. Opposing Advantage/Disadvantage cancels
+to one die. The migration is
+`20261009215000_propel_condition_save_evidence.sql`, applied only to local Docker
+with a ledger entry. A bad kept face or invented automatic-failure die rejects
+before the conditional Energy Die cost or history commits.
+
+Unit coverage checks the new evidence contract and actual class resolver.
+Desktop/mobile Propel tests cover normal, Paralyzed and Encumbered targets,
+including a 20/1 Disadvantage pair and a Paralyzed target with a +30 bonus.
+The powered use still spends exactly one Energy Die on failure. Negative server
+submissions preserve both the pool and unresolved declaration. Six initial UI
+cases pass, four stronger condition/validation cases pass, and two final
+Paralyzed cases pass after removing the cosmetic badge and log arithmetic.
+Screenshots inspected on desktop/mobile. SQL lint and changed-test lint pass.
+
+Still incomplete: feature conditions are read from the modal's participant
+snapshot, not revalidated at resource settlement. This correction does not yet
+consume Mind Sliver for class saves. Next work must connect an authoritative
+feature-save transaction, preserve retries, and apply the penalty before deciding
+Propel's conditional cost. General feature buff/exhaustion handling also needs
+review. No production deployment of this branch.
+
+Final full gate passes: 3,087 unit tests, TypeScript 197/197, hooks/RAW/coordinates/anchors, build and 255.2 KB entry.

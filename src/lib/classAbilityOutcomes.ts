@@ -15,6 +15,8 @@ export interface TargetOutcome {
   d20?: number;
   rolls?: number[];
   advantage?: boolean;
+  disadvantage?: boolean;
+  automaticFailure?: boolean;
   naturalExtremes?: boolean;
   // v2.249.0 — total includes the bonus applied at roll time. Used by
   // the action log so the line reads "(d20=12 +3 = 15)" rather than
@@ -38,14 +40,14 @@ export function formatOutcomesLog(
 ): string {
   if (outcomes.length === 0) return `${abilityName} · DC ${saveDC} ${saveAbility} · no targets`;
   const parts = outcomes.map(o => {
-    const rollDetail = o.total != null && o.bonus != null && o.d20 != null
+    const rollDetail = o.automaticFailure ? '' : o.total != null && o.bonus != null && o.d20 != null
       ? ` (d20=${o.d20}${o.bonus >= 0 ? '+' : ''}${o.bonus}=${o.total})`
       : o.d20 != null ? ` (d20=${o.d20})` : '';
     const tag = o.outcome === 'auto-failed' ? 'willing' :
                 o.outcome === 'passed' ? `passed${rollDetail}` :
                 o.outcome === 'failed' ? `failed${rollDetail}` :
                 'pending';
-    const protection=o.advantage&&o.rolls?.length?` [Psionic Guards: ${o.rolls.join(" or ")}; keep highest]`:"";
+    const protection=o.automaticFailure?" [automatic failure from condition]":o.disadvantage&&!o.advantage&&o.rolls?.length?` [Disadvantage: ${o.rolls.join(" or ")}; keep lowest]`:o.advantage&&!o.disadvantage&&o.rolls?.length?` [Psionic Guards: ${o.rolls.join(" or ")}; keep highest]`:"";
     return `${o.participantName}: ${tag}${protection}`;
   });
   return `${abilityName} · DC ${saveDC} ${saveAbility} · ${parts.join(' · ')}`;
