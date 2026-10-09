@@ -135,6 +135,7 @@ test.describe('Declared spell combat delivery (local stack)',()=>{
   deliverSliver();sql(`update pending_attacks set save_result='failed',pending_lr_decision=false where id='${cast}'`);expect(sliverStatus()).toBe('active');
   sql(`update pending_attacks set save_result='failed' where id='${cast}';delete from pending_attacks where id='${cast}';delete from pending_spell_casts where id='${cast}'`);
   expect(sliverStatus()).toBe('active');
+  expect(JSON.parse(sql(`select dndkeep_private.consume_next_save_penalty('concentration','${randomUUID()}','${encounter}','${reactor}',2)`))).toMatchObject({penalty:2,consumedIds:[cast]});
  });
  test('Mind Sliver waits for a resistance decision before activation',()=>{
   deliverSliver();sql(`update pending_attacks set save_result='failed',pending_lr_decision=true where id='${cast}'`);expect(sliverStatus()).toBe('waiting');

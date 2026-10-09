@@ -121,4 +121,56 @@ test.describe('Atomic combat clock transitions',()=>{
   run();sql(`update combat_participants set turn_order=case when id='${pa}' then 1 else 0 end where encounter_id='${enc}'`);
   expect(()=>effectClock()).toThrow(/history is incomplete/);
  });
+ function seedPenalty(id=randomUUID(),caster=pa,victim=pb,status='active'){
+  const clock=effectClock(caster);
+  sql(`insert into dndkeep_private.mind_sliver_effects(cast_id,encounter_id,caster_id,target_id,cast_turn,cast_turn_ordinal,status) values('${id}','${enc}','${caster}','${victim}','${clock.turnId}',${clock.castTurnOrdinal},'${status}')`);return id;
+ }
+ const penaltyCall=(save=randomUUID(),kind='attack',die:number|null=3,victim=pb,automatic=false)=>`select dndkeep_private.consume_next_save_penalty('${kind}','${save}','${enc}','${victim}',${die===null?'null':die},${automatic})`;
+ const consume=(save=randomUUID(),kind='attack',die:number|null=3,victim=pb,automatic=false)=>JSON.parse(sql(penaltyCall(save,kind,die,victim,automatic)));
+ test('penalty consumption subtracts one die once and exact retries replay it',()=>{
+  const origin=seedPenalty(),save=randomUUID(),first=consume(save);
+  expect(first).toMatchObject({penalty:3,die:3,consumedIds:[origin],replayed:false});
+  expect(consume(save)).toEqual({...first,replayed:true});expect(consume().penalty).toBe(0);
+  expect(()=>consume(save,'attack',2)).toThrow(/Saved penalty request changed/);
+ });
+ test('penalty consumption does not stack overlapping copies',()=>{
+  const ids=[seedPenalty(),seedPenalty()];const r=consume();expect(r.penalty).toBe(3);expect(r.consumedIds.sort()).toEqual(ids.sort());expect(consume().penalty).toBe(0);
+ });
+ test('penalty consumption serializes different save kinds on the same target',async()=>{
+  seedPenalty();const result=await Promise.all([parallel(penaltyCall(randomUUID(),'attack')),parallel(penaltyCall(randomUUID(),'concentration'))]);
+  expect(result.every(r=>r.code===0),JSON.stringify(result)).toBe(true);expect(result.map(r=>JSON.parse(r.out).penalty).sort()).toEqual([0,3]);
+ });
+ test('penalty consumption in two tabs preserves one receipt and one die',async()=>{
+  seedPenalty();const save=randomUUID(),q=penaltyCall(save);const result=await Promise.all([parallel(q),parallel(q)]);
+  expect(result.every(r=>r.code===0),JSON.stringify(result)).toBe(true);expect(result.map(r=>JSON.parse(r.out).replayed).sort()).toEqual([false,true]);expect(consume().penalty).toBe(0);
+ });
+ test('penalty consumption rolls back with a failed save transaction',()=>{
+  const origin=seedPenalty(),save=randomUUID();expect(()=>sql(`begin;${penaltyCall(save)};select 1/0;commit;`)).toThrow(/division by zero/);
+  expect(sql(`select consumed_by is null from dndkeep_private.mind_sliver_effects where cast_id='${origin}'`)).toBe('t');expect(consume(save).replayed).toBe(false);
+ });
+ test('penalty consumption ignores expired caster effects',()=>{
+  const origin=seedPenalty();run();run(call(randomUUID(),state().turn,pa,0,2));run(call(randomUUID(),state().turn,pb,1,2));
+  expect(consume()).toMatchObject({penalty:0,die:null,consumedIds:[],expiredIds:[origin]});
+ });
+ test('penalty consumption respects target identity and inactive origins',()=>{
+  seedPenalty();for(const status of ['waiting','resisted','countered','canceled'])seedPenalty(randomUUID(),pa,pa,status);
+  expect(consume(randomUUID(),'feature',3,pa).penalty).toBe(0);expect(consume().penalty).toBe(3);
+ });
+ test('automatic failed saves consume the next-save trigger without rolling dice',()=>{
+  const origin=seedPenalty();expect(consume(randomUUID(),'feature',null,pb,true)).toMatchObject({penalty:0,die:null,consumedIds:[origin]});expect(consume().penalty).toBe(0);
+ });
+ test('penalty receipts still replay after combat ends',()=>{
+  seedPenalty();const save=randomUUID(),first=consume(save);sql(`update combat_encounters set status='ended' where id='${enc}'`);
+  expect(consume(save)).toEqual({...first,replayed:true});expect(()=>consume()).toThrow(/Active encounter/);
+ });
+ test('a spell penalty cannot change its own original save',()=>{
+  const origin=seedPenalty();expect(()=>consume(origin)).toThrow(/own original save/);expect(consume().penalty).toBe(3);
+ });
+ test('penalty consumption rejects invalid dice without spending the effect',()=>{
+  seedPenalty();for(const die of [0,5,null])expect(()=>consume(randomUUID(),'attack',die)).toThrow(/Invalid next-save/);
+  expect(consume().penalty).toBe(3);
+ });
+ test('penalty consumption is private and cannot be spent without an authorized save',()=>{
+  expect(sql(`select has_function_privilege('authenticated','dndkeep_private.consume_next_save_penalty(text,uuid,uuid,uuid,integer,boolean)','execute')::text||':'||has_function_privilege('anon','dndkeep_private.consume_next_save_penalty(text,uuid,uuid,uuid,integer,boolean)','execute')::text`)).toBe('false:false');
+ });
 });

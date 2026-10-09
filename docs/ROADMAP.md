@@ -5434,3 +5434,31 @@ receipt guard; the final focused runs cover that guard. Full project gate
 passes: 3,061 units, TypeScript 197/197, build and 255.2 KB entry. SQL lint and
 changed-test lint pass. An ambiguous SQL column reference exposed by execution
 was corrected before these final runs. Local-only migration; not deployed.
+
+### Shared next-save penalty consumption (local only; not wired to save RPCs)
+
+`20261009203825_next_save_penalty_consumption.sql` adds a private transaction
+component for attack, concentration, feature, sheet and death saves. Every kind
+locks the same target participant, rechecks caster-owned expiry and records an
+immutable request/result receipt. Overlapping Mind Sliver records are consumed
+together for one d4; expired or already-consumed records contribute nothing.
+Automatic failures consume the next-save trigger without generating a die.
+The helper accepts a saved canonical-dice proposal; it generates no SQL dice.
+
+Exact retries replay the same receipt, including after combat ends. Changed
+dice/context reject. The helper cannot apply a spell's effect to its own
+original save. If the enclosing save transaction fails, consumption and its
+receipt roll back too. Mind Sliver activation now takes the same participant
+lock, ordering a newly activated effect relative to concurrent saves.
+
+There is no standalone public consumption endpoint. Authorized save settlement
+RPCs still need to call this component and include its penalty in their result;
+client handlers must save the proposed die and display the returned receipt.
+Until those callers are connected, player rolls remain unchanged. This helper
+alone does not prove all save paths or automatic-failure handling are complete.
+
+Validation: 24 focused SQL cases pass across both test configurations, plus two
+integration cases consuming a real declared Mind Sliver effect after pending
+cast/attack pruning. Full gate passes (3,061 units, TypeScript 197/197, clean
+hooks/RAW/coordinates/anchors, build and 255.2 KB entry); SQL and changed-test
+lint pass. Applied to local Docker with its ledger entry; no production apply.
