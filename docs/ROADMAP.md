@@ -5706,3 +5706,47 @@ Teleporter cases rerun after repairing an out-of-scope variable in their test
 fixture). Required gate: 3,104 unit tests, TypeScript 197/197, hooks, RAW,
 coordinates, anchors, build and 255.2 KB entry. Private SQL lint has zero errors;
 existing warning-level findings remain. Changed test files pass ESLint.
+
+
+### Propel penalty and resistance transaction (unreleased backend)
+
+`20261009231000_propel_save_settlement.sql` adds a scoped, persistent save receipt
+for a declared combat Propel. `settle_propel_save` authorizes the character owner
+or campaign DM, locks current target state, rejects stale context, validates dice
+and buff contribution identity/totals, applies exhaustion and the shared Mind
+Sliver consumer, and calculates the actual result. With no resistance decision,
+the receipt, next-save consumption, conditional Energy Die cost and history
+commit together. Any payment failure rolls the whole operation back. Competing
+submissions return the winning dice, not a replacement roll.
+
+A penalized failure with remaining Legendary Resistance commits its save and
+consumed next-save effect, then waits without spending an Energy Die. The DM-only
+`decide_propel_resistance` validates the original target, active encounter and
+current charges (including lair allowance). Accepting spends one resistance and
+finishes passed with no Energy Die; declining finishes failed with its conditional
+cost. Decision, charge and completion share a transaction. Replays are idempotent;
+a conflicting repeat is rejected. Later conditions do not change a recorded save.
+Legacy manual finish/cancel cannot bypass a pending decision.
+
+The immutable receipt retains original failed dice and penalty even when
+resistance changes the final outcome. Accepted resistance stores no fabricated
+passed roll in the legacy `save_details`; the new receipt is the detailed source.
+`get_propel_save` provides owner/DM recovery. Raw tables/helpers stay private.
+
+Remaining integration: wire the new API into Propel controls with persisted dice,
+explicit stale-context review, penalty presentation and a recoverable DM decision.
+Existing controls still use the older save route; this backend is not advertised
+as player-facing support yet. Submitted base bonus and DC remain reviewed inputs
+(the client must derive DC from the declaration snapshot); buff dice expression
+arithmetic is not fully server-derived. Feature/standalone/death coverage and full
+declared Mind Sliver-to-damage-to-concentration testing remain release gates.
+Migration applied only to local Docker, preserving unrelated ledger entries.
+
+Validation: 35 focused checks pass: 20 new transaction cases, 12 prior context/
+condition regressions, and three desktop browser save flows. They include
+concurrent roll submissions and resistance decisions, owner/outsider permissions,
+penalty-driven failure, lair-only resistance, automatic failure, buff/exhaustion
+arithmetic, stale inputs and payment rollback. The first run exposed only a test
+reader parsing SQL NULL as empty JSON; corrected and all cases passed. Full gate:
+3,104 unit tests, TypeScript 197/197, hooks, RAW, coordinates, anchors, build and
+255.2 KB entry. Changed test lint and private SQL error-level lint pass.
