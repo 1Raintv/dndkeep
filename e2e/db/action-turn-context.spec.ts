@@ -386,4 +386,45 @@ test.describe('Private action turn context' ,()=>{
    for(const table of ['psionic_turn_starts','action_claims','action_extra_grants','propel_declarations','propel_enhancements'])expect(sql(`select has_table_privilege('${role}','dndkeep_private.${table}','SELECT,INSERT,UPDATE,DELETE')`)).toBe('f');
   }
  });
+ const origin=(id:string,user=owner)=>sql(`begin;set local request.jwt.claims='{"sub":"${user}","role":"authenticated"}';select dndkeep_private.teleporter_combat_origin('${character}','${id}');commit;`);
+ const originCount=()=>sql(`select count(*) from dndkeep_private.teleporter_combat_windows where character_id='${character}'`);
+ test('Teleporter origin requires six Psion levels at casting, not total character level',()=>{
+  warper();sql(`update characters set secondary_class='Fighter',secondary_level=1 where id='${character}'`);
+  const id=randomUUID();sql(auth(misty(id)));expect(originCount()).toBe('0');
+  sql(`update characters set level=6 where id='${character}'`);
+  sql(auth(misty(id)));expect(originCount()).toBe('0');expect(origin(id)).toBe('');
+ });
+ test('Teleporter origin captures secondary Psion progression and exact retries once',()=>{
+  warper();sql(`update characters set class_name='Fighter',level=1,subclass=null,secondary_class='Psion',secondary_level=6,secondary_subclass='Psi Warper' where id='${character}'`);
+  const id=randomUUID();sql(auth(misty(id)));const captured=JSON.parse(origin(id));
+  expect(captured).toMatchObject({parentId:id,characterId:character,psionLevel:6,turnId:context().turnId});
+  sql(auth(misty(id)));expect(originCount()).toBe('1');expect(JSON.parse(origin(id))).toEqual(captured);
+  expect(()=>origin(id,other)).toThrow(/unavailable|own/i);
+  expect(origin(randomUUID())).toBe('');
+ });
+ test('Teleporter origin expires after another shared action even inside one transaction',()=>{
+  warper();sql(`update characters set level=6 where id='${character}'`);
+  const id=randomUUID(),payload=input({kind:'action',grantId:'normal:action',purpose:'magic',sourceId:'fire-bolt'});
+  sql(auth(`${misty(id)};${claimSql(randomUUID(),payload)}`));expect(originCount()).toBe('1');expect(origin(id)).toBe('');
+ });
+ test('Teleporter origin cannot be banked across turns or reopened by replay',()=>{
+  warper();sql(`update characters set level=6 where id='${character}'`);
+  const id=randomUUID();sql(auth(misty(id)));expect(origin(id)).not.toBe('');
+  next(1);expect(origin(id)).toBe('');next(0,2);sql(auth(misty(id)));expect(origin(id)).toBe('');expect(originCount()).toBe('1');
+ });
+ test('Teleporter origin rolls back with payment and remains inaccessible to direct callers',()=>{
+  warper();sql(`update characters set level=6 where id='${character}'`);const id=randomUUID();
+  sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';${misty(id)};rollback;`);
+  expect(originCount()).toBe('0');expect(flags().bonus).toBe(false);
+  for(const role of ['anon','authenticated']){
+   expect(sql(`select has_table_privilege('${role}','dndkeep_private.teleporter_combat_windows','SELECT')`)).toBe('f');
+   expect(sql(`select has_function_privilege('${role}','dndkeep_private.teleporter_combat_origin(uuid,uuid)','EXECUTE')`)).toBe('f');
+  }
+ });
+ test('Teleporter origin rechecks subclass and feature availability',()=>{
+  warper();sql(`update characters set level=6 where id='${character}'`);const id=randomUUID();sql(auth(misty(id)));
+  sql(`update characters set subclass='Psi Warrior' where id='${character}'`);expect(origin(id)).toBe('');
+  sql(`update characters set subclass='Psi Warper',level=5 where id='${character}'`);expect(origin(id)).toBe('');
+ });
+
 });

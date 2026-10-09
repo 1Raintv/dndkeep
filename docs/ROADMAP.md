@@ -19,6 +19,27 @@ The 33 focused cases and full gate pass: 2,914 units / 260 files, TypeScript
 199/199, clean hooks/RAW/coordinates/anchors, build and 255.2 KB entry.
 Changed rule modules lint clean.
 
+Teleporter Combat origin checkpoint (local only):
+`20261009164359_teleporter_combat_windows.sql` records qualifying free Misty
+Step casts atomically with their payment and Bonus Action. It snapshots Psion
+level (including secondary Psion), excludes pre-level-6 casts even if retried
+after leveling, and rejects old-turn or subsequent-action origins. An identity
+sequence orders same-transaction actions; transaction timestamps cannot do so.
+The table and inspection helper are private and grant no casting permission.
+All 55 action-context SQL cases pass, including six new origin cases; the full
+release gate passes. No player UI or production behavior changed here.
+
+Still required for Teleporter Combat: capture slotted Misty Step settlement,
+resolve Counterspell timing against the current rule source, validate canonical
+cantrip level and exact one-Action casting time plus Psion ownership, atomically
+consume one origin per child cast, return a no-extra-Action receipt, and connect
+the picker/recovery UI. Local `public.spells` contains 32 rows and no level-0
+rows: do not depend on it as a complete cantrip catalog or trust client-supplied
+spell level. `spellActionKind` intentionally treats long castings as initial
+Actions and is insufficient for this feature's eligibility. Origin inspection
+currently observes shared claims only; legacy action writers must also be
+covered before this can become an immediate-casting authorization boundary.
+
 Local database checkpoints (not deployed):
 
 - `20261009144010_shared_action_turn_context.sql` reuses the existing
