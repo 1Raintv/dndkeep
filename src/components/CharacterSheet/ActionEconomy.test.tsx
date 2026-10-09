@@ -50,3 +50,9 @@ it('does not reset the shared Psion turn while another combatant is acting',asyn
  mocks.actor={participant_type:'creature',entity_id:'goblin'};mocks.turn.mockResolvedValue({turn:{encounterId:'fight',round:1,index:1,turnId:'turn'},used:null});const reset=vi.fn();
  render(<ActionEconomy characterId="psion" speedFeet={30} trackPsionicTurns onNewTurn={reset}/>);fireEvent.click(end());await waitFor(()=>expect(reset).toHaveBeenCalledTimes(1));expect(mocks.solo).not.toHaveBeenCalled();expect(mocks.advance).not.toHaveBeenCalled();
 });
+it('shows saved spending and does not offer a local undo',()=>{
+ const changed=vi.fn();const view=render(<ActionEconomy characterId="psion" speedFeet={30} onActionUsed={changed} savedUsed={{action:false,bonusAction:true,reaction:false}}/>);
+ const bonus=screen.getByRole('button',{name:'Bonus Action Used'});expect((bonus as HTMLButtonElement).disabled).toBe(true);fireEvent.click(bonus);expect(changed).not.toHaveBeenCalled();
+ view.rerender(<ActionEconomy characterId="psion" speedFeet={30} onActionUsed={changed} savedUsed={{action:false,bonusAction:false,reaction:false}}/>);
+ expect((screen.getByRole('button',{name:'Bonus Action Available'}) as HTMLButtonElement).disabled).toBe(false);
+});

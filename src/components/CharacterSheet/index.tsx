@@ -1,3 +1,4 @@
+import {useActionBudget} from '../../lib/hooks/useActionBudget';
 import {canUpcastSpell} from '../../rules/spellSlots';
 import SharpenedRollPanel from './_shared/SharpenedRollPanel';
 import SavePromptBanner from './SavePromptBanner';
@@ -842,13 +843,17 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  const [expandedActionsSpell, setExpandedActionsSpell] = useState<string | null>(null);
  // v2.36.0: Actions-tab level filter — 'all' | number. Mirrors SpellsTab level tabs.
  const [actionsLevelFilter, setActionsLevelFilter] = useState<number | 'all'>('all');
- const [spellCastThisTurn, setSpellCastThisTurn] = useState(false);
- // Per 2024 rules: if you cast a leveled BONUS ACTION spell, main action = cantrip only
- const [bonusActionSpellCast, setBonusActionSpellCast] = useState(false);
+ const [localActionUsed, setSpellCastThisTurn] = useState(false);
+ // Action spending is separate from the one-spell-slot-per-turn casting rule.
+ const [localBonusUsed, setBonusActionSpellCast] = useState(false);
  // v2.76.0: Reaction state lifted so the Actions-tab filter chiclet and the
  // ActionEconomy panel share one source of truth. Reset on New Turn.
- const [reactionUsedThisTurn, setReactionUsedThisTurn] = useState(false);
+ const [localReactionUsed, setReactionUsedThisTurn] = useState(false);
  const [isDM, setIsDM] = useState(false);
+ const actionBudget=useActionBudget(character.id,!!userId&&(character.user_id===userId||isDM));
+ const spellCastThisTurn=localActionUsed||!!actionBudget.budget?.spent.action;
+ const bonusActionSpellCast=localBonusUsed||!!actionBudget.budget?.spent.bonusAction;
+ const reactionUsedThisTurn=localReactionUsed||!!actionBudget.budget?.spent.reaction;
  // v2.82.0: potion-use modal state. When set, shows a Self/Other chooser;
  // picking Self rolls the heal dice and applies HP to this character, picking
  // Other rolls and logs but leaves HP untouched (the other character's sheet
@@ -2036,7 +2041,9 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  return (
  <div style={{ marginBottom: 'var(--sp-3)' }}>
  <ActionEconomy
- trackPsionicTurns={(psionProgression(character)?.level??0)>=2}
+ trackPsionicTurns={(psionProgression(character)?.level??0)>=1}
+ savedUsed={actionBudget.budget?.spent}
+ savedError={actionBudget.error}
  speedFeet={effectiveSpeed}
  characterId={character.id}
  actionUsedExternal={spellCastThisTurn}

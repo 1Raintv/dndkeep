@@ -27,6 +27,7 @@ test.describe('Saved Propel controls',()=>{
   await dialog.getByRole('checkbox').check();await dialog.getByLabel('Movement',{exact:true}).selectOption('powered');
   await page.screenshot({path:info.outputPath('propel-target.png')});
   await dialog.getByRole('button',{name:'Declare Bonus Action'}).click();await expect(dialog).toContainText('Saved dice total:');
+  await expect(page.getByRole('button',{name:'Bonus Action Used',exact:true})).toBeDisabled({timeout:10000});
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('2');
   const declaration=sql(`select request_id from dndkeep_private.propel_declarations where character_id='${charId}'`);
   const roll=sql(`select base_roll from dndkeep_private.propel_declarations where request_id='${declaration}'`);
@@ -37,7 +38,14 @@ test.describe('Saved Propel controls',()=>{
   await expect(dialog.getByRole('status')).toContainText('Saved: failed. 1 Energy Dice spent.');
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('1');
   expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${charId}'`)).toBe('1');
-  await page.screenshot({path:info.outputPath('propel-finished.png')});expect(errors).toEqual([]);
+  await page.screenshot({path:info.outputPath('propel-finished.png')});
+  await dialog.getByRole('button',{name:'Close for later'}).click();
+  await expect(page.getByRole('button',{name:'Bonus Action Used',exact:true})).toBeDisabled();
+  await page.getByRole('group',{name:'Turn economy',exact:true}).scrollIntoViewIfNeeded();
+  await page.screenshot({path:info.outputPath('propel-budget-spent.png')});
+  await page.getByRole('button',{name:/End Turn/}).locator('visible=true').first().click();
+  await expect(page.getByRole('button',{name:'Bonus Action Available',exact:true})).toBeEnabled({timeout:10000});
+  expect(errors).toEqual([]);
  });
  test('combat resolution stays on the declared target and settles its rolled save',async({page},info)=>{
   const encounter=randomUUID(),self=randomUUID(),enemy=randomUUID(),targetCharacter=randomUUID();

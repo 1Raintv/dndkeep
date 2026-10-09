@@ -1,3 +1,4 @@
+import type {ActionFlags} from '../../lib/api/actionBudget';
 import {getEnkindledTurn,advancePsionicSoloTurn,PsionicRequestError} from '../../lib/api/psionicTurns';
 import { useState, useEffect, useRef } from 'react';
 import { useToast } from '../shared/Toast';
@@ -13,6 +14,8 @@ interface ActionState {
 }
 
 interface ActionEconomyProps {
+ savedUsed?:ActionFlags;
+ savedError?:string;
  trackPsionicTurns?:boolean;
  speedFeet: number;
  onActionUsed?: (action: string, used: boolean) => void;
@@ -38,7 +41,7 @@ const TOKEN = {
  reaction: { label: 'Reaction', key: 'reaction', icon: '', color: '#3b82f6' },
 };
 
-export default function ActionEconomy({ trackPsionicTurns=false, speedFeet, onActionUsed, onNewTurn, actionUsedExternal, bonusActionUsedExternal, reactionUsedExternal, characterId }: ActionEconomyProps) {
+export default function ActionEconomy({ savedUsed,savedError,trackPsionicTurns=false, speedFeet, onActionUsed, onNewTurn, actionUsedExternal, bonusActionUsedExternal, reactionUsedExternal, characterId }: ActionEconomyProps) {
  const [state, setState] = useState<ActionState>({
  action: false, bonusAction: false, reaction: false, movedFeet: 0,
  });
@@ -132,7 +135,7 @@ export default function ActionEconomy({ trackPsionicTurns=false, speedFeet, onAc
  const movingColor = movePct >= 100 ? '#ef4444' : movePct > 50 ? '#f59e0b' : '#22c55e';
 
  return (
- <div style={{
+ <div role="group" aria-label="Turn economy" style={{
  background: 'var(--c-surface)',
  border: '1px solid var(--c-border)',
  borderRadius: 'var(--r-lg)',
@@ -146,18 +149,20 @@ export default function ActionEconomy({ trackPsionicTurns=false, speedFeet, onAc
  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 11, letterSpacing: '.14em', textTransform: 'uppercase', color: 'var(--c-gold-l)', marginBottom: 'var(--sp-2)' }}>
  Turn Economy
  </div>
+ {savedError&&<p role="status" style={{fontSize:11}}>{savedError}</p>}
 
  {/* Stacked Action / Bonus Action / Reaction — each full-width */}
  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 'var(--sp-2)' }}>
  {Object.values(TOKEN).map(t => {
- const used = state[t.key as keyof Omit<ActionState,'movedFeet'>];
+ const recorded=!!savedUsed?.[t.key as keyof ActionFlags];
+ const used = recorded||state[t.key as keyof Omit<ActionState,'movedFeet'>];
  const fullLabel = t.key === 'bonusAction' ? 'Bonus Action' : t.label;
  return (
  <button
  key={t.key}
- disabled={endingTurn}
+ disabled={endingTurn||recorded}
  onClick={() => toggle(t.key as keyof Omit<ActionState,'movedFeet'>)}
- title={used ? `${fullLabel} used — click to undo` : `Mark ${fullLabel} used`}
+ title={recorded?`${fullLabel} spending is recorded. Advance the turn to refresh it.`:used ? `${fullLabel} used — click to undo` : `Mark ${fullLabel} used`}
  style={{
  width: '100%',
  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
@@ -195,11 +200,11 @@ export default function ActionEconomy({ trackPsionicTurns=false, speedFeet, onAc
  Movement
  </span>
  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
- <button disabled={endingTurn} onClick={() => addMove(-5)} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: 'var(--t-2)', fontSize: 11, width: 18, height: 18, cursor: 'pointer', lineHeight: 1, display:'flex', alignItems:'center', justifyContent:'center' }}>−</button>
+ <button disabled={endingTurn} onClick={() => addMove(-5)} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: 'var(--t-2)', fontSize: 11, padding: 0, minWidth: 32, width: 32, height: 32, cursor: 'pointer', lineHeight: 1, display:'flex', alignItems:'center', justifyContent:'center' }}>−</button>
  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11, color: movingColor, minWidth: 56, textAlign: 'center' }}>
  {state.movedFeet}/{speedFeet}ft
  </span>
- <button disabled={endingTurn} onClick={() => addMove(5)} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: 'var(--t-2)', fontSize: 11, width: 18, height: 18, cursor: 'pointer', lineHeight: 1, display:'flex', alignItems:'center', justifyContent:'center' }}>+</button>
+ <button disabled={endingTurn} onClick={() => addMove(5)} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: 'var(--t-2)', fontSize: 11, padding: 0, minWidth: 32, width: 32, height: 32, cursor: 'pointer', lineHeight: 1, display:'flex', alignItems:'center', justifyContent:'center' }}>+</button>
  </div>
  </div>
  <div style={{ height: 4, background: 'var(--c-border)', borderRadius: 2, overflow: 'hidden' }}>

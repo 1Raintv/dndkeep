@@ -1,6 +1,6 @@
 # DNDKeep — Two-Track Roadmap
 
-### In progress — Shared action budget (not connected to live abilities)
+### In progress — Shared action budget (Propel connected locally; not released)
 
 `src/rules/actionBudget.ts` defines action declarations against verified grants,
 immutable request identities and the actor's own-turn epoch. One Bonus Action
@@ -161,6 +161,19 @@ Remaining implementation and required evidence:
   subcounts, solo play, additional actors, Ready/reaction timing, permission
   boundaries and simultaneous-tab use. Verify complete desktop/phone flows.
 
+
+
+`20261009155514_shared_action_budget_read.sql` (local only) exposes an
+owner/DM-checked read of saved normal-action claims plus existing combat flags.
+The sheet now retains the recorded Used state after reload, prevents local undo
+of saved spending, and refreshes on confirmed turn changes. Failed reads retain
+last confirmed spending; late responses cannot update another character. Level-1
+Psions also advance the solo turn counter. Movement +/- controls no longer clip.
+Desktop/mobile reload and End Turn checks pass, including the scoped UI overflow
+probe and inspected screenshots. The saved-spending regression fails when that
+state is deliberately removed. Full gate: 2,985 units / 267 files; TypeScript
+baseline reduced to 198; entry stays 255.2 KB. The shared claims still need to
+write combat flags and cover other action writers atomically before release.
 
 ### v2.869 — Pending Psion rolls keep their original context
 

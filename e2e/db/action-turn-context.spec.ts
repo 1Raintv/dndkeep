@@ -270,6 +270,17 @@ test.describe('Private action turn context' ,()=>{
   expect(sql(`select count(*) from action_logs where id='${id}'`)).toBe('1');
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('5');
  });
+ test('shared budget read combines claims and combat flags without refunding off-turn use',()=>{
+  const read=(user=owner)=>JSON.parse(sql(`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${user}","role":"authenticated"}';select public.get_action_budget('${character}');commit;`));
+  const id=randomUUID();sql(auth(powerSql(id,'free','push',0)));
+  expect(read().spent).toEqual({action:false,bonusAction:true,reaction:false});expect(read().claimed.bonusAction).toBe(true);
+  sql(`update combat_participants set reaction_used=true where id='${participant}'`);next(1);
+  expect(read().spent).toEqual({action:false,bonusAction:true,reaction:true});
+  next(0,2);sql(`update combat_participants set reaction_used=false where id='${participant}'`);
+  expect(read().spent).toEqual({action:false,bonusAction:false,reaction:false});
+  expect(()=>read(other)).toThrow(/unavailable/);
+  expect(sql(`select has_function_privilege('anon','public.get_action_budget(uuid)','EXECUTE')`)).toBe('f');
+ });
  test('keeps all clock functions and tables inaccessible to direct app callers',()=>{
   for(const role of ['anon','authenticated']){
    expect(sql(`select has_function_privilege('${role}','dndkeep_private.action_turn_context(uuid)','EXECUTE')`)).toBe('f');

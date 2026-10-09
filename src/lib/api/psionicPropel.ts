@@ -1,3 +1,4 @@
+import {notifyActionBudgetChanged} from './actionBudget';
 import {validPropelSave,type PropelSaveDetails} from '../../rules/propelSaveDetails';
 import type {Character} from '../../types';
 import type {ActionClaim} from '../../rules/actionBudget';
@@ -92,7 +93,7 @@ export async function beginPropel(character:string,input:PropelRequest){
   if(result.request.turnId!==expected.turnId||result.mode!==expected.mode||result.movement!==expected.movement||result.base_roll!==expected.roll
    ||result.request.target.participantId!==expected.target.participantId||result.request.target.name!==expected.target.name||result.request.target.legalTargetConfirmed!==expected.target.legalTargetConfirmed)throw invalid();
  }
- return result;
+ notifyActionBudgetChanged();return result;
 }
 export function readPropel(character:string,id:string){return readResult(character,id,'read',{declarationId:id});}
 export async function finalizePropel(character:string,id:string){const record=await readResult(character,id,'finalize',{declarationId:id});if(!record.roll_result)throw invalid();return record;}
