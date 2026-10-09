@@ -98,4 +98,38 @@ test.describe('Saved Propel controls',()=>{
   expect(errors).toEqual([]);
  });
 
+ for(const spellId of ['mage-hand','mind-sliver'])test(`Teleporter picker resumes ${spellId} without spending an Action`,async({page},info)=>{
+  const encounter=randomUUID(),self=randomUUID(),enemy=randomUUID(),targetCharacter=randomUUID();
+  sql(`insert into campaigns(id,owner_id,name) values('${campaignId}','${userId}','Teleporter Combat');
+   update characters set campaign_id='${campaignId}',level=6,current_hp=40,max_hp=40,known_spells=array['mage-hand','mind-sliver','mending','true-strike'],spell_sources='{"mage-hand":["class:Psion"],"mind-sliver":["class:Psion"],"mending":["class:Psion"],"true-strike":["class:Psion"]}' where id='${charId}';
+   insert into characters(id,user_id,campaign_id,name,species,class_name,background,level,current_hp,max_hp) values('${targetCharacter}','${userId}','${campaignId}','Target Fighter','Human','Fighter','Sage',1,40,40);
+   insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaignId}','active',1,0);
+   insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values
+   ('${self}','${encounter}','${campaignId}','character','${charId}','Psion',0),('${enemy}','${encounter}','${campaignId}','character','${targetCharacter}','Target Fighter',1);`);
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
+  await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+  await page.locator('.arow-grid').filter({has:page.getByText('Free Misty Step (Teleportation)',{exact:true})}).getByRole('button',{name:'Cast',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Bonus Action Used',exact:true})).toBeDisabled();await page.reload();
+  await page.getByRole('button',{name:'Choose cantrip',exact:true}).click();
+  const picker=page.getByRole('dialog',{name:'Teleporter Combat',exact:true});
+  await expect(picker.getByText('Misty Step confirmed',{exact:false})).toBeVisible();
+  const select=picker.getByRole('combobox',{name:'Psion cantrip',exact:true});
+  await select.selectOption('true-strike');await expect(picker.getByText(/No casting has been spent/)).toBeVisible();
+  expect(sql(`select count(*) from dndkeep_private.teleporter_combat_children where character_id='${charId}'`)).toBe('0');
+  await select.selectOption(spellId);
+  expect(await select.locator('option').allTextContents()).not.toContain('Mending');
+  await page.screenshot({path:info.outputPath('teleporter-picker.png')});
+  if(spellId==='mage-hand')await picker.getByRole('button',{name:'Cast follow-up',exact:true}).click();
+  else {await picker.getByRole('button',{name:'Choose follow-up target',exact:true}).click();await page.getByRole('button').filter({hasText:'Target Fighter'}).last().click();}
+  const name=spellId==='mage-hand'?'Mage Hand':'Mind Sliver';
+  const castDialog=page.getByRole('dialog',{name:`Casting ${name}`,exact:true});await expect(castDialog).toBeVisible();
+  await expect.poll(()=>sql(`select count(*) from dndkeep_private.teleporter_combat_children where character_id='${charId}'`)).toBe('1');
+  expect(sql(`select action_used from combat_participants where id='${self}'`)).toBe('f');
+  if(spellId==='mind-sliver')expect(sql(`select request->'context'->'combat'->'target'->>'participantId' from dndkeep_private.declared_spell_payments where character_id='${charId}'`)).toBe(enemy);
+  await page.reload();await expect(castDialog).toBeVisible();
+  expect(sql(`select count(*) from dndkeep_private.teleporter_combat_children where character_id='${charId}'`)).toBe('1');
+  await page.screenshot({path:info.outputPath('teleporter-cast-recovered.png')});
+  expect(errors).toEqual([]);
+ });
+
 });

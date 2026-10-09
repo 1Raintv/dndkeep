@@ -1,5 +1,5 @@
 import {canUpcastSpell,availableSpellSlots} from '../../rules/spellSlots';
-import {createSpellDeclarationRequest} from '../../lib/spellDeclarationRequest';
+import {createSpellDeclarationRequest,createTeleporterCantripRequest} from '../../lib/spellDeclarationRequest';
 import {declarationParticipant,saveSpellDeclaration} from '../../lib/api/declaredSpells';
 import {useSpellEffects} from './useSpellEffects';
 import type {ConcentrationCastSource} from '../../rules/concentrationCasting';
@@ -37,6 +37,8 @@ import { findMultiAttackSpell, computeDefaultAttackCount } from '../../lib/multi
 import { findHealSpell, resolveHealDice, rollResolvedHeal, type HealSpellDef } from '../../lib/healSpells';
 
 interface SpellCastButtonProps {
+ teleporterCombatParent?:string;
+ onTeleporterDeclared?:()=>void;
  spell: SpellData;
  character: Character;
  userId: string;
@@ -74,7 +76,9 @@ const DAMAGE_COLORS: Record<string, string> = {
 };
 
 export default function SpellCastButton(props:SpellCastButtonProps){
- const casting=useSpellCasting(props.character,props.spell,computeStats(props.character));
+ const allCasting=useSpellCasting(props.character,props.spell,computeStats(props.character));
+ const psionChoice=allCasting.options.find(option=>option.source==='class:Psion'||option.source==='grant:class:Psion')??null;
+ const casting=props.teleporterCombatParent?{...allCasting,selected:psionChoice,options:psionChoice?[psionChoice]:[],unresolvedSources:[],needsSourceReview:!psionChoice}:allCasting;
  const [review,setReview]=useState(false);
  return <><SpellCastingChoice casting={casting} name={props.spell.name}/>{casting.needsSourceReview&&props.onReviewSpellSources&&<div onClick={event=>event.stopPropagation()}>
   <button type="button" className="btn btn-secondary" onClick={()=>setReview(current=>!current)}>{review?'Close source review':'Review spell source'}</button>
@@ -83,7 +87,7 @@ export default function SpellCastButton(props:SpellCastButtonProps){
 }
 function ResolvedSpellCastButton({
  spell, character, userId, campaignId, onUpdateSlots, compact = false,
- spellLockedOut = false, onLeveledSpellCast, forceSlotLevel, onConcentrationCast, upcastTrigger, casting, castingBlocked,
+ spellLockedOut = false, onLeveledSpellCast, forceSlotLevel, onConcentrationCast, upcastTrigger, casting, castingBlocked, teleporterCombatParent,onTeleporterDeclared,
 }: SpellCastButtonProps & {casting:NonNullable<SpellCastingState['selected']>}) {
  const isBonusActionCast = /bonus action/i.test(spell.casting_time);
  const [showModal, setShowModal] = useState(false);
@@ -314,10 +318,13 @@ function ResolvedSpellCastButton({
   declaring.current=true;setDeclarationError('');
   const captured=structuredClone(character),source={source:casting.source,ability:casting.ability,saveDC:casting.saveDC},castId=crypto.randomUUID();
   try{
+   if(teleporterCombatParent&&!campaignId)throw new Error('Teleporter follow-up casting outside combat is not connected yet.');
    if(!campaignId){await castUtility(slotLevel,targetName);return;}
    const participant=await declarationParticipant(captured.id,campaignId);
+   if(teleporterCombatParent&&!participant)throw new Error('This follow-up requires the original active combat.');
    if(!participant){await castUtility(slotLevel,targetName);return;}
-   saveSpellDeclaration(createSpellDeclarationRequest(captured,spell,participant,userId,slotLevel,source,targetName,castId));
+   saveSpellDeclaration(teleporterCombatParent?createTeleporterCantripRequest(captured,spell,participant,userId,source,targetName,teleporterCombatParent,castId):createSpellDeclarationRequest(captured,spell,participant,userId,slotLevel,source,targetName,castId));
+   if(teleporterCombatParent)onTeleporterDeclared?.();
   }catch(error){setDeclarationError(error instanceof Error?error.message:'The casting could not be started.');}
   finally{declaring.current=false;}
  }
@@ -336,6 +343,22 @@ function ResolvedSpellCastButton({
 
  function renderCastControls(){
  if(castingBlocked)return <button type="button" disabled>Finish pending casting first</button>;
+ // Teleporter declarations must never fall into legacy slot/attack writers.
+ // Complex cantrips stay explicit until their durable multi-target/weapon path
+ // is connected; a generic success button would silently lose their effects.
+ if(teleporterCombatParent){
+  if(spell.id==='true-strike'||spell.area_of_effect||findMultiAttackSpell(spell.name)||spell.heal_dice||(mechanics.saveType&&!mechanics.damageDice))return <p role="status">This cantrip still needs manual resolution. Its weapon, area, or non-damaging saving-throw choices are not automated here yet. No casting has been spent.</p>;
+  if(mechanics.damageDice&&(mechanics.isAttack||mechanics.saveType))return <SpellAttackCastButton
+   character={character} spell={spell} userId={userId} casting={casting} slotLevel={0}
+   teleporterCombatParent={teleporterCombatParent} onSaved={onTeleporterDeclared}
+   attackKind={mechanics.isAttack?'attack_roll':'save'} attackMode={mechanics.attackType}
+   maxRangeFt={parseRangeToFt(spell.range)} attackBonus={spellAttack}
+   saveAbility={mechanics.saveType as 'STR'|'DEX'|'CON'|'INT'|'WIS'|'CHA'|undefined}
+   saveSuccessEffect="none" damageDice={damageForSlot(0)!} damageType={mechanics.damageType??''} label="Choose follow-up target"/>;
+  return <div style={{display:'grid',gap:8}}><label>Target or point (optional)<input aria-label="Follow-up target" value={target} onChange={e=>setTarget(e.target.value)} maxLength={300}/></label>
+   <button type="button" className="btn btn-primary" onClick={()=>void openDeclareCast(0,target)}>Cast follow-up</button></div>;
+ }
+
  // No slots available for leveled spell
  if (!canCast && !isCantrip) {
  return (

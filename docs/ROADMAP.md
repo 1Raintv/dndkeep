@@ -66,8 +66,27 @@ interrupted and saved-through parent casts. Full gate passes with 3,016 units,
 clean. The recovery facade is invoker and unavailable to anonymous callers.
 
 
-Still required for Teleporter Combat: decide the interrupted-parent rule,
-connect the picker/recovery UI, and support solo follow-up casting. Local `public.spells` contains 32 rows and no level-0 rows:
+The local Teleporter Combat row now opens a recovered cantrip picker. It filters
+confirmed Psion sources and exact one-Action cantrips, preserves the parent in
+saved requests, and connects utility and single-target damage paths to the
+existing declaration/target/recovery flow. Failed availability reads remove
+casting choices; character switches ignore stale responses. Mage Hand and Mind
+Sliver have desktop/mobile browser coverage with a real parent/child record,
+unchanged normal Action and saved target after reload. The skill overflow probe
+passes on the changed dialog, and screenshots were inspected. Removing the
+parent link made the browser test fail (expected one child, received zero);
+the exact source was restored. Full gate passes with 3,022 unit tests,
+TypeScript 198/198 and 255.2 KB entry. All 16 desktop/mobile Propel and
+damaging-spell recovery cases pass after restoring the mutation.
+
+True Strike, area/multi-attack cantrips, healing and non-damaging saves display
+an explicit manual-resolution limitation without spending a cast. Solo and
+interrupted parents also remain explicit limitations. These paths still need
+their actual resolution flow before the feature can be called complete.
+
+Still required for Teleporter Combat: finish weapon/area/save-only/solo follow-up
+resolution, decide the interrupted-parent rule, and cover intervening legacy
+activity before release. Local `public.spells` contains 32 rows and no level-0 rows:
 do not depend on it as a complete cantrip catalog or trust client-supplied spell
 level. `spellActionKind` includes long castings' initial Actions and cannot be
 used as this feature's eligibility test. Origin inspection currently observes
