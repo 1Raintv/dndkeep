@@ -1,6 +1,7 @@
 import {beforeEach,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({createOffer:vi.fn(),resolve:vi.fn(),targetError:null as {message:string}|null,targetMissing:false,guards:vi.fn(),disadvantage:false,ability:'STR',saveResult:null as string|null,saveCharacter:null as Record<string,unknown>|null,die:vi.fn(),query:vi.fn(),event:vi.fn(),clearConditions:vi.fn(),clearBuffs:vi.fn(),preference:vi.fn(),writes:[] as Array<{table:string;patch:Record<string,unknown>}>,writeError:null as {message:string}|null,character:false,conditions:[] as string[]}));
+const m=vi.hoisted(()=>({createOffer:vi.fn(),resolve:vi.fn(),creatureType:'creature',lrTotal:0,lrUsed:0,lrError:null as {message:string}|null,lrMissing:false,lair:vi.fn(),targetError:null as {message:string}|null,targetMissing:false,guards:vi.fn(),disadvantage:false,ability:'STR',saveResult:null as string|null,saveCharacter:null as Record<string,unknown>|null,die:vi.fn(),query:vi.fn(),event:vi.fn(),clearConditions:vi.fn(),clearBuffs:vi.fn(),preference:vi.fn(),writes:[] as Array<{table:string;patch:Record<string,unknown>}>,writeError:null as {message:string}|null,character:false,conditions:[] as string[]}));
 vi.mock('./api/concentrationSaves',()=>({createConcentrationOffer:m.createOffer,resolveConcentrationSave:m.resolve}));
+vi.mock('./legendaryResistance',()=>({encounterLairBonus:m.lair}));
 vi.mock('./supabase',()=>({supabase:{from:m.query}}));
 vi.mock('../rules/dice',async importOriginal=>({...await importOriginal<typeof import('../rules/dice')>(),rollDie:m.die}));
 vi.mock('./combatEvents',()=>({emitCombatEvent:m.event,newChainId:()=> 'chain'}));
@@ -11,11 +12,11 @@ vi.mock('./buffs',()=>({getSaveBonuses:()=>[],clearBuffsFromConcentration:m.clea
 vi.mock('./combatParticipantNormalize',()=>({JOINED_COMBATANT_FIELDS:'combatant',normalizeParticipantRow:(r:unknown)=>r}));
 import {rollSave,runConcentrationSave} from './pendingAttack';
 beforeEach(()=>{
- vi.clearAllMocks();m.targetError=null;m.targetMissing=false;m.guards.mockResolvedValue(false);m.disadvantage=false;m.ability='STR';m.saveResult=null;m.saveCharacter=null;m.createOffer.mockResolvedValue('offer');m.resolve.mockResolvedValue({outcome:'passed'});m.writes=[];m.writeError=null;m.character=false;m.conditions=[];m.die.mockReturnValue(1);m.preference.mockResolvedValue(false);
+ vi.clearAllMocks();m.creatureType='creature';m.lrTotal=0;m.lrUsed=0;m.lrError=null;m.lrMissing=false;m.lair.mockResolvedValue(0);m.targetError=null;m.targetMissing=false;m.guards.mockResolvedValue(false);m.disadvantage=false;m.ability='STR';m.saveResult=null;m.saveCharacter=null;m.createOffer.mockResolvedValue('offer');m.resolve.mockResolvedValue({outcome:'passed'});m.writes=[];m.writeError=null;m.character=false;m.conditions=[];m.die.mockReturnValue(1);m.preference.mockResolvedValue(false);
  m.query.mockImplementation((table:string)=>{
-  let patch:Record<string,unknown>|undefined;
-  const result=()=>({error:table==='characters'?m.writeError:table==='combat_participants'?m.targetError:null,data:table==='pending_attacks'?{id:'attack',attack_kind:'save',save_ability:m.ability,save_result:m.saveResult,save_dc:13,target_participant_id:'target',target_type:m.character?'character':'creature',...patch}:table==='combat_participants'?(m.targetMissing?null:{participant_type:m.character?'character':'creature',entity_id:'hero',active_conditions:m.conditions}):table==='characters'?m.saveCharacter:null});
-  const q={select:()=>q,eq:()=>q,update:(p:Record<string,unknown>)=>{patch=p;m.writes.push({table,patch:p});return q;},single:async()=>result(),maybeSingle:async()=>result(),then:(resolve:(v:unknown)=>unknown)=>Promise.resolve(result()).then(resolve)};
+  let patch:Record<string,unknown>|undefined;let fields='';
+  const result=()=>fields.startsWith('legendary_resistance')?{error:m.lrError,data:m.lrMissing?null:{legendary_resistance:m.lrTotal,legendary_resistance_used:m.lrUsed}}:({error:table==='characters'?m.writeError:table==='combat_participants'?m.targetError:null,data:table==='pending_attacks'?{id:'attack',attack_kind:'save',save_ability:m.ability,save_result:m.saveResult,save_dc:13,target_participant_id:'target',target_type:m.character?'character':m.creatureType,...patch}:table==='combat_participants'?(m.targetMissing?null:{participant_type:m.character?'character':m.creatureType,entity_id:'hero',active_conditions:m.conditions}):table==='characters'?m.saveCharacter:null});
+  const q={select:(value='')=>{fields=value;return q;},eq:()=>q,update:(p:Record<string,unknown>)=>{patch=p;m.writes.push({table,patch:p});return q;},single:async()=>result(),maybeSingle:async()=>result(),then:(resolve:(v:unknown)=>unknown)=>Promise.resolve(result()).then(resolve)};
   return q;
  });
 });
@@ -83,4 +84,23 @@ it('a recorded save retry neither rolls nor rereads Guards',async()=>{
 it.each(['error','missing'])('unverified target (%s) never falls back to an unprotected save',async mode=>{
  if(mode==='error')m.targetError={message:'Target unavailable'};else m.targetMissing=true;
  await expect(rollSave('attack',7)).rejects.toThrow();expect(m.die).not.toHaveBeenCalled();expect(m.writes).toEqual([]);expect(m.event).not.toHaveBeenCalled();
+});
+
+it.each(['creature','monster','npc'])('offers Legendary Resistance for a failed %s save',async type=>{
+ m.creatureType=type;m.lrTotal=3;m.lrUsed=1;
+ expect(await rollSave('attack',0)).toMatchObject({save_result:'failed',pending_lr_decision:true});
+ expect(m.event).toHaveBeenCalledWith(expect.objectContaining({actorType:'monster',eventType:'save_rolled'}));
+});
+it('does not offer exhausted resistance or resistance after a passed save',async()=>{
+ m.lrTotal=3;m.lrUsed=3;expect((await rollSave('attack',0))?.pending_lr_decision).toBe(false);
+ m.lrUsed=0;expect((await rollSave('attack',20))?.pending_lr_decision).toBe(false);
+});
+it('respects the existing in-lair allowance without granting resistance to ordinary creatures',async()=>{
+ m.lrTotal=3;m.lrUsed=3;m.lair.mockResolvedValue(1);expect((await rollSave('attack',0))?.pending_lr_decision).toBe(true);
+ m.lrTotal=0;m.lrUsed=0;expect((await rollSave('attack',0))?.pending_lr_decision).toBe(false);
+});
+it.each(['error','missing'])('does not record a failed save when resistance is unverified (%s)',async kind=>{
+ if(kind==='error')m.lrError={message:'Resistance unavailable'};else m.lrMissing=true;
+ await expect(rollSave('attack',0)).rejects.toThrow(/Resistance|resistance/);
+ expect(m.writes).toEqual([]);expect(m.event).not.toHaveBeenCalled();
 });

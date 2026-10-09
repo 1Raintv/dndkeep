@@ -969,7 +969,7 @@ export interface PendingAttack {
 
   target_participant_id: string | null;
   target_name: string;
-  target_type: 'character' | 'monster' | 'npc' | 'object' | 'area' | 'self' | null;
+  target_type: 'character' | 'creature' | 'monster' | 'npc' | 'object' | 'area' | 'self' | null;
 
   attack_source: string | null;
   attack_mode?: 'melee' | 'ranged' | null;

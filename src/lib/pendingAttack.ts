@@ -746,12 +746,14 @@ export async function rollSave(
   // prompt is open. No prompt when: save passed, no target, target isn't
   // a monster, or no LR charges remain.
   let triggerLrPrompt = false;
-  if (result === 'failed' && atk.target_participant_id && atk.target_type === 'monster') {
-    const { data: lrRow } = await supabase
+  // Canonical participants use 'creature'; retain legacy aliases for old casts.
+  if (result === 'failed' && atk.target_participant_id && isCreatureParticipantType(atk.target_type)) {
+    const { data: lrRow, error: lrError } = await supabase
       .from('combat_participants')
       .select('legendary_resistance, legendary_resistance_used')
       .eq('id', atk.target_participant_id)
       .maybeSingle();
+    if (lrError || !lrRow) throw new Error(lrError?.message ?? 'Legendary Resistance could not be verified. Retry the save.');
     const lrTotal = (lrRow?.legendary_resistance as number | null) ?? 0;
     const lrUsed = (lrRow?.legendary_resistance_used as number | null) ?? 0;
     // v2.625.0 — 2024 in-lair benefit: +1 LR/Day while in_lair.
@@ -799,7 +801,7 @@ export async function rollSave(
     encounterId: atk.encounter_id,
     chainId: atk.chain_id,
     sequence: 1,
-    actorType: atk.target_type === 'character' ? 'player' : atk.target_type === 'monster' ? 'monster' : 'system',
+    actorType: atk.target_type === 'character' ? 'player' : isCreatureParticipantType(atk.target_type) ? 'monster' : 'system',
     actorName: atk.target_name,
     targetType: 'self',
     targetName: atk.target_name,
