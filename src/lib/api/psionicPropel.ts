@@ -1,3 +1,4 @@
+import {validPropelSave,type PropelSaveDetails} from '../../rules/propelSaveDetails';
 import type {Character} from '../../types';
 import type {ActionClaim} from '../../rules/actionBudget';
 import {psionProgression} from '../../rules/psionProgression';
@@ -13,6 +14,7 @@ export interface PropelRecord {
  target:PropelTarget;caster_snapshot:Character;created_at:string;
  turn_context:PsionicTurn;
  action_receipt:{claim:ActionClaim;replayed:boolean;attackLimit:null};roll_result:PropelRoll|null;
+ save_details:PropelSaveDetails|null;
  outcome:PropelOutcome|null;result:null|{declarationId:string;outcome:PropelOutcome;energyCost:number;energy:EnergyReceipt|null;feet:number;movement:PropelRequest['movement'];target:PropelTarget;roll:PropelRoll|null;action:PropelRecord['action_receipt'];replayed:boolean};
  replayed?:boolean;
 }
@@ -61,7 +63,8 @@ export function validPropelRecord(value:unknown,characterId:string):value is Pro
   ||c.kind!=='bonusAction'||c.grantId!=='normal:bonusAction'||c.grantSource!=='normal'||c.purpose!=='feature'||c.sourceId!==r.source_feature
   ||a.attackLimit!==null||typeof a.replayed!=='boolean')return false;
  if(r.roll_result!==null&&!validRoll(r.roll_result,r))return false;
- if(r.outcome===null)return r.result===null;
+ if(r.outcome===null)return r.result===null&&r.save_details==null;
+ if(!validPropelSave(r.save_details,r.outcome,r.target.participantId))return false;
  if(!['passed','failed','cancelled'].includes(r.outcome)||!r.result||(r.outcome!=='cancelled'&&!r.roll_result))return false;
  const result=r.result,cost=r.outcome==='failed'&&r.mode==='powered'?1:0;
  const feet=r.outcome!=='failed'?0:r.movement==='warp'?30:r.mode==='free'?5:5*r.roll_result!.total;
@@ -93,9 +96,15 @@ export async function beginPropel(character:string,input:PropelRequest){
 }
 export function readPropel(character:string,id:string){return readResult(character,id,'read',{declarationId:id});}
 export async function finalizePropel(character:string,id:string){const record=await readResult(character,id,'finalize',{declarationId:id});if(!record.roll_result)throw invalid();return record;}
-export async function finishPropel(character:string,id:string,outcome:PropelOutcome){
- if(!['passed','failed','cancelled'].includes(outcome))throw new PsionicRequestError('Choose a Propel outcome.',true);
- const record=await readResult(character,id,'finish',{declarationId:id,outcome});if(record.outcome!==outcome)throw invalid();return record;
+export async function finishPropel(character:string,id:string,outcome:PropelOutcome,save:PropelSaveDetails|null=null){
+ if(!['passed','failed','cancelled'].includes(outcome)||!validPropelSave(save,outcome,save?.participantId))throw new PsionicRequestError('Choose a Propel outcome.',true);
+ const evidence=save===null?null:structuredClone(save);
+ const record=await readResult(character,id,'finish',{declarationId:id,outcome,save:evidence});
+ if(record.outcome!==outcome||!validPropelSave(evidence,outcome,record.target.participantId)||JSON.stringify(record.save_details??null)!==JSON.stringify(evidence)){
+  // JSONB normalizes key order; exact field equality still preserves the saved request.
+  const actual=record.save_details??null;
+  if(record.outcome!==outcome||!validPropelSave(evidence,outcome,record.target.participantId)||!actual||!evidence||Object.keys({...actual,...evidence}).some(k=>JSON.stringify(actual[k as keyof PropelSaveDetails])!==JSON.stringify(evidence[k as keyof PropelSaveDetails])))throw invalid();
+ }return record;
 }
 export async function listPropel(character:string,cursor:PropelCursor|null=null):Promise<{items:PropelRecord[];nextCursor:PropelCursor|null}>{
  if(cursor&&(!date(cursor.createdAt)||!uuid(cursor.requestId)))throw new PsionicRequestError('Invalid Propel recovery cursor.',true);

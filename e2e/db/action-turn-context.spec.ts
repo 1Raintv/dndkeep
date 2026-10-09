@@ -231,12 +231,51 @@ test.describe('Private action turn context' ,()=>{
   expect(JSON.parse(sql(auth(`select dndkeep_private.read_propel('${character}','${id}')`))).roll_result).toBeNull();
   expect(()=>sql(auth(`select public.psionic_propel('${character}','enhancements','{"declarationId":"${randomUUID()}"}')`))).toThrow(/unavailable/);
  });
+ test('Propel resolution retains save evidence and exactly one history entry on replay',()=>{
+  const id=randomUUID();sql(auth(powerSql(id,'powered','push',4)));finalizePower(id);
+  const save={participantId:enemy,outcome:'failed',dc:15,d20:3,bonus:2,total:5,rolls:[3],advantage:false,naturalExtremes:false};
+  const resolve=`select public.psionic_propel('${character}','finish','${JSON.stringify({declarationId:id,outcome:'failed',save})}')`;
+  const first=JSON.parse(sql(auth(resolve)));expect(first.save_details).toEqual(save);expect(first.result.energyCost).toBe(1);
+  const remaining=sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`);
+  expect(JSON.parse(sql(auth(resolve))).replayed).toBe(true);
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe(remaining);
+  expect(sql(`select count(*) from action_logs where id='${id}'`)).toBe('1');
+  expect(sql(`select notes from action_logs where id='${id}'`)).toContain('kept 3 + bonus 2 = 5');
+  expect(()=>sql(auth(`select public.psionic_propel('${character}','finish','${JSON.stringify({declarationId:id,outcome:'failed',save:{...save,dc:16}})}')`))).toThrow(/already saved/);
+ });
+ test('invalid Propel save details cannot finish or charge the declaration',()=>{
+  const id=randomUUID();sql(auth(powerSql(id,'powered','push',4)));finalizePower(id);
+  const before=sql(`select class_resources from characters where id='${character}'`);
+  const save={participantId:enemy,outcome:'failed',dc:15,d20:3,bonus:2,total:5,rolls:[3],advantage:false,naturalExtremes:false};
+  for(const patch of [{participantId:participant},{total:6},{rolls:[2]},{advantage:true},{dc:1},{d20:3.5}]){
+   expect(()=>sql(auth(`select public.psionic_propel('${character}','finish','${JSON.stringify({declarationId:id,outcome:'failed',save:{...save,...patch}})}')`))).toThrow(/invalid/i);
+  }
+  expect(sql(`select class_resources from characters where id='${character}'`)).toBe(before);
+  expect(sql(`select outcome is null from dndkeep_private.propel_declarations where request_id='${id}'`)).toBe('t');
+  expect(sql(`select count(*) from action_logs where id='${id}'`)).toBe('0');
+ });
+ test('a Propel history failure rolls back the outcome and Energy Die charge',()=>{
+  const id=randomUUID();sql(auth(powerSql(id,'powered','push',4)));finalizePower(id);
+  const before=sql(`select class_resources from characters where id='${character}'`);
+  sql(`insert into action_logs(id,character_id,action_name) values('${id}','${character}','Collision fixture')`);
+  expect(()=>sql(auth(`select public.psionic_propel('${character}','finish','{"declarationId":"${id}","outcome":"failed"}')`))).toThrow(/duplicate key/);
+  expect(sql(`select class_resources from characters where id='${character}'`)).toBe(before);
+  expect(sql(`select outcome is null from dndkeep_private.propel_declarations where request_id='${id}'`)).toBe('t');
+  sql(`delete from action_logs where id='${id}'`);
+ });
+ test('concurrent Propel confirmations share one history entry and one die cost',async()=>{
+  const id=randomUUID();sql(auth(powerSql(id,'powered','push',4)));finalizePower(id);
+  const query=auth(`select public.psionic_propel('${character}','finish','{"declarationId":"${id}","outcome":"failed"}')`);
+  const results=await Promise.all([parallel(query),parallel(query)]);expect(results.map(r=>r.code)).toEqual([0,0]);
+  expect(sql(`select count(*) from action_logs where id='${id}'`)).toBe('1');
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('5');
+ });
  test('keeps all clock functions and tables inaccessible to direct app callers',()=>{
   for(const role of ['anon','authenticated']){
    expect(sql(`select has_function_privilege('${role}','dndkeep_private.action_turn_context(uuid)','EXECUTE')`)).toBe('f');
    expect(sql(`select has_function_privilege('${role}','dndkeep_private.observe_action_epoch()','EXECUTE')`)).toBe('f');
    expect(sql(`select has_function_privilege('${role}','dndkeep_private.claim_action(uuid,uuid,jsonb)','EXECUTE')`)).toBe('f');
-   for(const signature of ['begin_propel(uuid,uuid,text,text,text,integer,jsonb)','enhance_propel(uuid,uuid,uuid,text,integer[],integer)','finalize_propel_roll(uuid,uuid)','finish_propel(uuid,uuid,text)','read_propel(uuid,uuid)','list_propel(uuid,timestamp with time zone,uuid)'])expect(sql(`select has_function_privilege('${role}','dndkeep_private.${signature}','EXECUTE')`)).toBe('f');
+   for(const signature of ['begin_propel(uuid,uuid,text,text,text,integer,jsonb)','enhance_propel(uuid,uuid,uuid,text,integer[],integer)','finalize_propel_roll(uuid,uuid)','finish_propel(uuid,uuid,text)','read_propel(uuid,uuid)','list_propel(uuid,timestamp with time zone,uuid)','resolve_propel(uuid,uuid,text,jsonb)'])expect(sql(`select has_function_privilege('${role}','dndkeep_private.${signature}','EXECUTE')`)).toBe('f');
    for(const table of ['psionic_turn_starts','action_claims','action_extra_grants','propel_declarations','propel_enhancements'])expect(sql(`select has_table_privilege('${role}','dndkeep_private.${table}','SELECT,INSERT,UPDATE,DELETE')`)).toBe('f');
   }
  });

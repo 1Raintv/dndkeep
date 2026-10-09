@@ -37,7 +37,7 @@ begin
   return dndkeep_private.read_propel(c.id,declaration);
  when 'finish' then
   declaration:=(p_payload->>'declarationId')::uuid;
-  result:=dndkeep_private.finish_propel(c.id,declaration,p_payload->>'outcome');
+  result:=dndkeep_private.resolve_propel(c.id,declaration,p_payload->>'outcome',p_payload->'save');
   return dndkeep_private.read_propel(c.id,declaration)||jsonb_build_object('replayed',result->'replayed');
  when 'read' then return dndkeep_private.read_propel(c.id,(p_payload->>'declarationId')::uuid);
  when 'list' then return dndkeep_private.list_propel(c.id,(p_payload->>'beforeTime')::timestamptz,(p_payload->>'beforeId')::uuid);

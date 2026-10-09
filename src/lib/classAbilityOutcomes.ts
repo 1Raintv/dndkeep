@@ -15,6 +15,7 @@ export interface TargetOutcome {
   d20?: number;
   rolls?: number[];
   advantage?: boolean;
+  naturalExtremes?: boolean;
   // v2.249.0 — total includes the bonus applied at roll time. Used by
   // the action log so the line reads "(d20=12 +3 = 15)" rather than
   // just the raw d20.

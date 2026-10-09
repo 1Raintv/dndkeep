@@ -222,7 +222,7 @@ export default function ClassAbilityResolveModal({
 
   if (!open) return null;
 
-  function setOutcome(participantId: string, outcome: SaveOutcome, d20?: number, total?: number, bonus?: number, rolls?:number[],advantage?:boolean) {
+  function setOutcome(participantId: string, outcome: SaveOutcome, d20?: number, total?: number, bonus?: number, rolls?:number[],advantage?:boolean,naturalExtremes?:boolean) {
     setOutcomes(prev => ({
       ...prev,
       [participantId]: {
@@ -231,7 +231,7 @@ export default function ClassAbilityResolveModal({
         d20,
         total,
         bonus,
-        rolls,advantage,
+        rolls,advantage,naturalExtremes,
       },
     }));
   }
@@ -264,7 +264,7 @@ export default function ClassAbilityResolveModal({
         await getPsionicGuardsSaveAdvantage(p.entity_id,ability.save?.ability??'');
       if(!current())return;
       const roll=rollSavingThrow(bonus,saveDC,{advantage,naturalExtremes:saveBonuses[p.id].naturalExtremes});
-      setOutcome(p.id,roll.passed?'passed':'failed',roll.d20,roll.total,bonus,roll.rolls,advantage);
+      setOutcome(p.id,roll.passed?'passed':'failed',roll.d20,roll.total,bonus,roll.rolls,advantage,saveBonuses[p.id].naturalExtremes??false);
     }catch(error){if(current())setSaveError(error instanceof Error?error.message:'Protection could not be verified. Try again.');}
     finally{if(current()){busy.current=false;setChecking(false);}}
   }

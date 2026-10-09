@@ -1,11 +1,12 @@
+import {validPropelSave,type PropelSaveDetails} from '../rules/propelSaveDetails';
 import type {PropelRequest,PropelOutcome} from './api/psionicPropel';
 import {validPropelRequest} from './api/psionicPropel';
-export type PendingPropel={kind:'begin';request:PropelRequest}|{kind:'finish';request:{requestId:string;outcome:PropelOutcome}};
+export type PendingPropel={kind:'begin';request:PropelRequest}|{kind:'finish';request:{requestId:string;outcome:PropelOutcome;save?:PropelSaveDetails|null}};
 const prefix=(characterId:string)=>`dndkeep:propel:${characterId}:`;
 const uuid=(v:unknown)=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 function valid(v:unknown):v is PendingPropel{
  const p=v as PendingPropel|null;
- return !!p&&!!p.request&&(p.kind==='begin'?validPropelRequest(p.request):p.kind==='finish'&&uuid(p.request.requestId)&&['passed','failed','cancelled'].includes(p.request.outcome));
+ return !!p&&!!p.request&&(p.kind==='begin'?validPropelRequest(p.request):p.kind==='finish'&&uuid(p.request.requestId)&&['passed','failed','cancelled'].includes(p.request.outcome)&&validPropelSave(p.request.save,p.request.outcome,p.request.save?.participantId));
 }
 /** Store before sending; an uncertain reply must retain the exact roll/outcome. */
 export function rememberPropel(characterId:string,pending:PendingPropel){

@@ -74,3 +74,12 @@ it('validates paid enhancement identities, levels and dice before recovery',asyn
 it.each([null,7,{soloTurn:-1},{soloTurn:1},{encounterId:'bad',turnId:'turn',round:1,index:0}])('rejects inconsistent saved turn contexts: %j',async turn_context=>{
  mocks.rpc.mockResolvedValue({...record(),turn_context});await expect(readPropel(character,id)).rejects.toMatchObject({definitelyNotPaid:false});
 });
+
+it('sends frozen save evidence and rejects a substituted confirmed save',async()=>{
+ const save={participantId:'manual',outcome:'failed' as const,dc:15,d20:3,bonus:2,total:5,rolls:[3],advantage:false,naturalExtremes:false};
+ const good={...finished(),save_details:save};mocks.rpc.mockResolvedValue(good);
+ expect(await finishPropel(character,id,'failed',save)).toEqual(good);
+ expect(mocks.rpc).toHaveBeenCalledWith('psionic_propel',{p_character:character,p_operation:'finish',p_payload:{declarationId:id,outcome:'failed',save}},true);
+ mocks.rpc.mockResolvedValue({...good,save_details:{...save,dc:16}});
+ await expect(finishPropel(character,id,'failed',save)).rejects.toMatchObject({definitelyNotPaid:false});
+});

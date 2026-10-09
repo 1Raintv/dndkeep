@@ -62,6 +62,8 @@ test.describe('Saved Propel controls',()=>{
   await saves.getByRole('button',{name:'Confirm',exact:true}).click();await expect(dialog.getByRole('status')).toContainText('Saved: failed.');
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('1');
   expect(sql(`select target->>'participantId' from dndkeep_private.propel_declarations where character_id='${charId}'`)).toBe(enemy);
+  expect(JSON.parse(sql(`select save_details from dndkeep_private.propel_declarations where character_id='${charId}'`))).toMatchObject({participantId:enemy,d20:1,rolls:[1],outcome:'failed'});
+  expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Telekinetic Propel'`)).toBe('1');
   expect(errors).toEqual([]);
  });
 

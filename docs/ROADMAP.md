@@ -100,7 +100,7 @@ the saved-DC regression fails when deliberately changed to use current stats.
 Screenshots inspected; dialog-scoped skill overflow checks clean. Whole-sheet
 probe still reports pre-existing +/- button and Free Misty Step label clipping.
 
-Release work still required: preserve save-roll details and history logging,
+Release work still required:
 update the older Propel E2E selectors/turn assumptions, cover combat
 recovery and enhancement flows in-browser, and connect every other action
 writer before treating the shared budget as enforced. Map movement and target
@@ -118,6 +118,27 @@ with clean console/network and inspected screenshots. Full gate passed with
 additional malformed-turn cases pass in the focused 44-test rerun. The bound
 selection test fails under deliberate target-filter removal, then passes restored.
 The shared budget still does not feed every action writer or its UI indicators.
+
+`20261009154619_psionic_propel_history.sql` (local only) now saves confirmed
+save evidence, conditional payment, outcome and one action-log entry in the same
+transaction. Exact repeated/concurrent confirmations share the entry and cost;
+a log-write failure rolls both outcome and cost back. The saved request retains
+target, DC, every save die, kept die, bonus, total, advantage and the natural-
+extremes preference. Arithmetic/outcome checks reject contradictory evidence;
+manual/willing results do not invent dice. History also identifies original power
+dice, resolved total, Enkindled extras, Surge and manual movement limits.
+Five targeted SQL checks pass (evidence replay, rejection, log rollback,
+concurrency and private-helper grants); four desktop/mobile browser cases also
+pass and verify combat evidence/history. Full gate: 2,973 units / 265 files,
+199 TypeScript baseline, 255.2 KB entry; two later receipt/storage tests pass in
+the focused 40-test run. New SQL objects have no lint/advisor findings and changed
+client modules lint clean. The migration has been applied/recorded locally only.
+
+Save dice are still provisional until confirmation; confirmed outcome requests
+survive reload in browser storage. If final payment cannot commit, the server
+keeps the declaration unfinished and the browser retains that exact outcome.
+Recovery after losing that browser state before successful commit remains a
+case to harden, along with all shared action writers and visible action flags.
 
 Remaining implementation and required evidence:
 

@@ -1,3 +1,4 @@
+import type {PropelSaveDetails} from '../../../rules/propelSaveDetails';
 import {Suspense,useEffect,useRef,useState} from 'react';
 import {lazyWithRetry} from '../../../lib/lazyWithRetry';
 const ClassAbilityResolveModal=lazyWithRetry(()=>import('../../Combat/ClassAbilityResolveModal'));
@@ -74,7 +75,7 @@ export default function PropelControls({character,persistence,warp=false,campaig
  async function send(p:PendingPropel,active:()=>boolean,id:string){
   rememberPropel(id,p);
   let result:PropelRecord;
-  try{result=p.kind==='begin'?await beginPropel(id,p.request):await finishPropel(id,p.request.requestId,p.request.outcome);}
+  try{result=p.kind==='begin'?await beginPropel(id,p.request):await finishPropel(id,p.request.requestId,p.request.outcome,p.request.save??null);}
   catch(cause){if(cause instanceof PsionicRequestError&&cause.definitelyNotPaid)forgetPropel(id,p);throw cause;}
   forgetPropel(id,p);
   if(!active())return;setRow(result);
@@ -91,7 +92,7 @@ export default function PropelControls({character,persistence,warp=false,campaig
    target:fresh.encounterId?{participantId:target,legalTargetConfirmed:true}:{name:target.trim(),legalTargetConfirmed:true}};
   await send({kind:'begin',request},active,id);
  });}
- function finish(outcome:PropelOutcome){if(!row)return;const id=row.request_id;void run(async(active,characterId)=>{await send({kind:'finish',request:{requestId:id,outcome}},active,characterId);});}
+ function finish(outcome:PropelOutcome,save:PropelSaveDetails|null=null){if(!row)return;const id=row.request_id;void run(async(active,characterId)=>{await send({kind:'finish',request:{requestId:id,outcome,save}},active,characterId);});}
  const savedEncounter=row&&'encounterId' in row.turn_context?row.turn_context.encounterId:null;
  const state=psionicPowerState(character),title=warp?'Warp Propel':'Telekinetic Propel';
  return <>
@@ -130,7 +131,7 @@ export default function PropelControls({character,persistence,warp=false,campaig
   campaignId={row.caster_snapshot.campaign_id} saveDC={classSaveDC(row.caster_snapshot,'INT')}
   ability={{name:row.source_feature,actionType:'bonus',minLevel:1,description:'',save:{ability:'STR',dc:{classAbility:'INT'},targetMode:'any'},
    psionicUse:{kind:'propel',mode:row.mode,roll:row.roll_result.total,...(row.movement==='warp'?{movement:'warp' as const}:{})}}}
-  onConfirmed={outcomes=>{if(outcomes.length===1&&outcomes[0].participantId===row.target.participantId&&outcomes[0].outcome!=='pending')finish(outcomes[0].outcome==='passed'?'passed':'failed');}}
+  onConfirmed={outcomes=>{if(outcomes.length===1&&outcomes[0].participantId===row.target.participantId&&outcomes[0].outcome!=='pending'){const {participantName:_name,...details}=outcomes[0];finish(outcomes[0].outcome==='passed'?'passed':'failed',{...details,outcome:outcomes[0].outcome,dc:classSaveDC(row.caster_snapshot,'INT')});}}}
  /></Suspense>}
  </>;
 }

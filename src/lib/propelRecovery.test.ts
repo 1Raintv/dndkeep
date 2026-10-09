@@ -7,3 +7,10 @@ beforeEach(()=>localStorage.clear());
 it('roundtrips the frozen roll, scoped to its owner',()=>{rememberPropel('hero',pending);expect(pendingPropel('hero')).toEqual([pending]);expect(pendingPropel('other')).toEqual([]);forgetPropel('hero',pending);expect(pendingPropel('hero')).toEqual([]);});
 it('rejects changing a saved roll or outcome',()=>{rememberPropel('hero',pending);expect(()=>rememberPropel('hero',{...pending,request:{...pending.request,roll:4}})).toThrow(/original/);const p:PendingPropel={kind:'finish',request:{requestId:pending.request.requestId,outcome:'failed'}};rememberPropel('hero',p);expect(()=>rememberPropel('hero',{kind:'finish',request:{...p.request,outcome:'passed'}})).toThrow(/original/);});
 it('ignores malformed requests rather than executing them',()=>{localStorage.setItem('dndkeep:propel:hero:bad:begin','{"kind":"begin","request":{}}');expect(pendingPropel('hero')).toEqual([]);});
+
+it('keeps both save dice and prevents changing evidence on retry',()=>{
+ const save={participantId:'manual',outcome:'failed' as const,dc:15,d20:3,bonus:2,total:5,rolls:[1,3],advantage:true,naturalExtremes:false};
+ const p:PendingPropel={kind:'finish',request:{requestId:pending.request.requestId,outcome:'failed',save}};
+ rememberPropel('hero',p);expect(pendingPropel('hero')).toEqual([p]);
+ expect(()=>rememberPropel('hero',{kind:'finish',request:{...p.request,save:{...save,dc:16}}})).toThrow(/original/);
+});
