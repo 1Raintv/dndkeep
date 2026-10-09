@@ -67,3 +67,18 @@ it('preserves the optional invisibility and Somatic exception in every Subtle Te
   expect(feature.description).not.toContain('control');
   expect(CLASS_LEVEL_PROGRESSION.Psion[0].features).toContain(`Subtle Telekinesis: ${feature.description}`);
 });
+
+it('keeps Psi Warper targeting and movement limits consistent across sheet and creation',()=>{
+ for(const name of ['Warp Space','Teleporter Combat','Duplicitous Target','Mass Teleportation']){
+  const action=CLASS_COMBAT_ABILITIES.Psion.find(a=>a.name===name)!;
+  const feature=CLASS_MAP.Psion.subclasses.find(s=>s.name==='Psi Warper')!.features!.find(f=>f.name===name)!;
+  expect(action.description).toBe(feature.description);expect(action.descriptionLong).toBeUndefined();
+ }
+ const text=(name:string)=>String(CLASS_COMBAT_ABILITIES.Psion.find(a=>a.name===name)!.description);
+ expect(text('Duplicitous Target')).toContain('not Incapacitated');expect(text('Duplicitous Target')).toContain('attack’s target');
+ expect(text('Duplicitous Target')).not.toMatch(/attack hits|ally takes|both.*sight|full cover/i);
+ expect(text('Warp Space')).toContain('as close to the center as possible');expect(text('Warp Space')).not.toContain('pulled up to 10');
+ expect(text('Mass Teleportation')).toContain('Huge or smaller');expect(text('Mass Teleportation')).toContain('minimum 1');
+ expect(text('Mass Teleportation')).not.toContain('space you can see');
+ expect(text('Teleporter Combat')).toContain('one of your Psion cantrips');expect(text('Teleporter Combat')).toContain('same Bonus Action');
+});

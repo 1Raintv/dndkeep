@@ -16,3 +16,10 @@ export const SUBTLE_TELEKINESIS_TEXT = 'You know the Mage Hand cantrip. You can 
 
 // v2.759 — Owner UA update p.3: only Psion spells receive these exceptions.
 export const PSIONIC_SPELLCASTING_TEXT = 'When casting a Psion spell, you can ignore Verbal components and ordinary Material components. Materials that the spell consumes or that have a specified cost are still required. Somatic components still apply when listed.';
+
+// v2.869 follow-up — original UA p.8; the Update p.7 keeps Psi Warper unchanged.
+// Private playtest paraphrases, not SRD text. Keep all reader surfaces consistent.
+export const TELEPORTER_COMBAT_TEXT = 'Immediately after casting Misty Step, you may cast one of your Psion cantrips whose casting time is an Action. The cantrip is included in that same Bonus Action; it does not spend your Action.';
+export const WARP_SPACE_TEXT = 'When casting Shatter, spend 1 Psionic Energy Die to enlarge its sphere to a 20-foot radius. Creatures failing the spell’s save are pulled straight toward its center, ending in an unoccupied space as close to the center as possible.';
+export const DUPLICITOUS_TARGET_TEXT = 'When a creature you can see makes an attack roll against you, spend your Reaction and 1 Psionic Energy Die. Choose a willing creature you can see within 30 feet that is not Incapacitated. Teleport to exchange positions; that creature becomes the attack’s target. Resolve the attack against the new target.';
+export const MASS_TELEPORTATION_TEXT = 'Magic action: spend 4 Psionic Energy Dice. Choose Huge or smaller creatures within 30 feet, up to your Intelligence modifier (minimum 1). Teleport each to an unoccupied space within 150 feet. An unwilling creature resists on a successful Wisdom save against your spell save DC.';

@@ -1,4 +1,4 @@
-import { SUBTLE_TELEKINESIS_TEXT, TELEKINETIC_PROPEL_TEXT, TELEKINETIC_PROPEL_SUMMARY, WARP_PROPEL_TEXT, WARP_PROPEL_SUMMARY } from './psionFeatureDescriptions';
+import { TELEPORTER_COMBAT_TEXT, WARP_SPACE_TEXT, DUPLICITOUS_TARGET_TEXT, MASS_TELEPORTATION_TEXT, SUBTLE_TELEKINESIS_TEXT, TELEKINETIC_PROPEL_TEXT, TELEKINETIC_PROPEL_SUMMARY, WARP_PROPEL_TEXT, WARP_PROPEL_SUMMARY } from './psionFeatureDescriptions';
 import type {PsionicPowerUse} from '../rules/psionicPowers';
 import { abilityModifier } from '../rules/abilities';
 import type { Character } from '../types';
@@ -1406,8 +1406,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       name: 'Warp Space',
       requiredSubclass: 'Psi Warper',
       actionType: 'action',
-      description: 'Cast Shatter, spend 1 PED to expand radius to 20 ft and pull failing creatures toward the center.',
-      descriptionLong: 'When you cast Shatter, you can spend 1 Psionic Energy Die. The spell\'s radius expands from 10 ft to 20 ft, and creatures that fail the Constitution saving throw are pulled up to 10 ft toward the spell\'s point of origin in addition to taking damage.\n\nThis is an alternate cast of Shatter (which remains separately available in your spell list); Warp Space costs both a 2nd-level spell slot AND 1 Psionic Energy Die.',
+      description: WARP_SPACE_TEXT,
       minLevel: 6,
       // v2.189.0 — explicit pedCost replaces the old isPool/psionicDie
       // flags which only deducted 1 die generically. New flow: Use
@@ -1422,8 +1421,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       name: 'Teleporter Combat',
       requiredSubclass: 'Psi Warper',
       actionType: 'bonus',
-      description: 'After casting Misty Step, immediately cast a Psion cantrip (action casting time) as part of the same Bonus Action.',
-      descriptionLong: 'When you cast Misty Step (whether via spell slot or via your Free Misty Step feature), you may immediately cast one Psion cantrip with an Action casting time as part of the same Bonus Action — without taking a separate Action.\n\nThis effectively lets you teleport and attack in the same turn while keeping your Action free for Dash, Dodge, or another use.',
+      description: TELEPORTER_COMBAT_TEXT,
       minLevel: 6,
       range: 'Self',
     },
@@ -1431,8 +1429,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       name: 'Duplicitous Target',
       requiredSubclass: 'Psi Warper',
       actionType: 'reaction',
-      description: 'Reaction: when attacked, spend 1 PED to swap places with a willing ally within 30 ft. Attack hits them instead.',
-      descriptionLong: 'When a creature you can see attacks you, you can use your Reaction and spend 1 Psionic Energy Die to swap places with a willing ally within 30 ft. The ally takes the attack instead of you.\n\nThe ally must be willing — you can\'t involuntarily swap with an unwilling target. Both you and the ally must have line of sight to each other and there must be no full cover between you.',
+      description: DUPLICITOUS_TARGET_TEXT,
       minLevel: 10,
       pedCost: 1,
       range: '30 ft',
@@ -1441,8 +1438,7 @@ export const CLASS_COMBAT_ABILITIES: Record<string, ClassAbility[]> = {
       name: 'Mass Teleportation',
       requiredSubclass: 'Psi Warper',
       actionType: 'action',
-      description: 'Magic action: spend 4 PED. Teleport up to INT mod creatures within 30 ft to spaces within 150 ft. Unwilling targets WIS save.',
-      descriptionLong: 'Take a Magic action and spend 4 Psionic Energy Dice. Choose up to a number of creatures equal to your Intelligence modifier (minimum 1) within 30 ft of you. You teleport each chosen creature to an unoccupied space you can see within 150 ft.\n\nWilling targets are simply moved. Unwilling targets must succeed on a Wisdom saving throw against your spell save DC or be teleported anyway.\n\nYou may include yourself among the chosen targets.',
+      description: MASS_TELEPORTATION_TEXT,
       minLevel: 14,
       pedCost: 4,
       range: '30/150 ft',

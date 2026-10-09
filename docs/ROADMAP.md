@@ -234,6 +234,17 @@ source search found no dedicated automation for its attached Psion cantrip.
 Verify and implement that exception before calling Psi Warper automation complete.
 Manual destination/visibility validation and other free/solo casts remain.
 
+Psi Warper description audit: verified the original UA p.8 against the Update
+p.7 carry-forward note. Warp Space, Teleporter Combat, Duplicitous Target and
+Mass Teleportation now share one complete description across the sheet and
+creation data, removing duplicate prose and unsupported restrictions/outcomes.
+Source: [original UA](https://media.dndbeyond.com/compendium-images/ua/the-psion/mXCPWlh2yy5tBKqP/UA2025-ThePsion.pdf).
+These remain private UA references, not SRD content. Full gate passes (2,988
+units, 198 TypeScript baseline, 255.2 KB entry). Desktop/mobile rendering and
+scoped overflow checks pass; screenshots inspected. Removing a required target
+condition makes the new browser regression fail. Teleporter Combat's attached
+cantrip remains unimplemented; this checkpoint corrects reference data only.
+
 ### v2.869 — Pending Psion rolls keep their original context
 
 Power confirmations now invalidate when the character, campaign, Psion

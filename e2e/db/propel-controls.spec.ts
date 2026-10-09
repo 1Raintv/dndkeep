@@ -58,6 +58,16 @@ test.describe('Saved Propel controls',()=>{
   await page.reload();await expect(page.getByRole('button',{name:'Bonus Action Used',exact:true})).toBeDisabled({timeout:10000});
   expect(errors).toEqual([]);
  });
+ test('Psi Warper details retain target limits without invented automatic hits',async({page},info)=>{
+  sql(`update characters set level=14 where id='${charId}'`);
+  await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+  for(const [name,detail] of [['Duplicitous Target','not Incapacitated'],['Warp Space','as close to the center as possible'],['Mass Teleportation','Huge or smaller'],['Teleporter Combat','does not spend your Action']]){
+   const row=page.locator('.arow-grid').filter({has:page.getByText(name,{exact:true})});await row.click();
+   await expect(page.getByText(detail,{exact:false})).toBeVisible();
+   await page.getByText(detail,{exact:false}).scrollIntoViewIfNeeded();
+   await page.screenshot({path:info.outputPath(name.toLowerCase().replaceAll(' ','-')+'.png')});
+  }
+ });
  test('combat resolution stays on the declared target and settles its rolled save',async({page},info)=>{
   const encounter=randomUUID(),self=randomUUID(),enemy=randomUUID(),targetCharacter=randomUUID();
   sql(`insert into campaigns(id,owner_id,name) values('${campaignId}','${userId}','Propel Combat');
