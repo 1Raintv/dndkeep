@@ -191,4 +191,40 @@ test.describe('Atomic campaign concentration settlement',()=>{
   const before=effects();expect(receipt()).toMatchObject({outcome:'failed'});expect(effects()).toEqual(before);expect(spell()).toBe('');
  });
 
+ function seedSliver(){
+  const id=randomUUID();const ctx=JSON.parse(sql(`select dndkeep_private.next_save_turn_context('${encounter}','${participant}')`));
+  sql(`insert into dndkeep_private.mind_sliver_effects(cast_id,encounter_id,caster_id,target_id,cast_turn,cast_turn_ordinal,status) values('${id}','${encounter}','${participant}','${participant}','${ctx.turnId}',${ctx.castTurnOrdinal},'active')`);return id;
+ }
+ const penalized=(d20=12,d4=3)=>`select settle_pending_concentration_save('${pending}',${d20},'player',null,${d4})`;
+ test('Mind Sliver changes the actual concentration outcome and cleanup atomically',()=>{
+  const effect=seedSliver(),r=JSON.parse(sql(authenticated(owner,penalized())));
+  expect(r).toMatchObject({outcome:'failed',d20:12,total:9,penalty:{penalty:3,die:3,consumedIds:[effect]}});expect(spell()).toBe('');
+  expect(sql(`select consumed_by from dndkeep_private.mind_sliver_effects where cast_id='${effect}'`)).toBe(pending);
+  expect(JSON.parse(sql(authenticated(owner,penalized(20,4))))).toEqual({...r,replayed:true});
+  expect(JSON.parse(sql(`select payload from combat_events where chain_id='${chain}' and event_type='save_rolled'`))).toMatchObject({total:9,penalty:{penalty:3}});
+ });
+ test('older concentration clients cannot silently skip a live Mind Sliver penalty',()=>{
+  const effect=seedSliver();expect(()=>receipt(owner,12)).toThrow(/saved penalty die/);expect(spell()).toBe('detect-magic');
+  expect(sql(`select consumed_by is null from dndkeep_private.mind_sliver_effects where cast_id='${effect}'`)).toBe('t');
+  expect(sql(`select state from pending_concentration_saves where id='${pending}'`)).toBe('offered');
+ });
+ test('an obsolete concentration offer does not consume Mind Sliver',()=>{
+  const effect=seedSliver();sql(`update characters set concentration_spell='invisibility' where id='${character}'`);
+  expect(JSON.parse(sql(authenticated(owner,penalized())))).toMatchObject({outcome:'obsolete',penalty:null});
+  expect(sql(`select consumed_by is null from dndkeep_private.mind_sliver_effects where cast_id='${effect}'`)).toBe('t');
+ });
+ test('a failed concentration transaction preserves the penalty for retry',()=>{
+  const effect=seedSliver();sql(`update combatants set active_buffs='{}' where id=(select combatant_id from combat_participants where id='${participant}')`);
+  expect(()=>sql(authenticated(owner,penalized()))).toThrow(/effect data/);
+  expect(spell()).toBe('detect-magic');expect(sql(`select consumed_by is null from dndkeep_private.mind_sliver_effects where cast_id='${effect}'`)).toBe('t');
+ });
+ test('concentration uses advantage first and subtracts Mind Sliver once',()=>{
+  withWarCaster();seedSliver();
+  expect(JSON.parse(sql(authenticated(owner,`select settle_pending_concentration_save('${pending}',2,'player',12,3)`))))
+   .toMatchObject({d20:12,rolls:[2,12],total:9,outcome:'failed',penalty:{penalty:3}});
+ });
+ test('another player cannot consume Mind Sliver through a concentration offer',()=>{
+  const effect=seedSliver();expect(()=>sql(authenticated(outsider,penalized()))).toThrow(/unavailable/);
+  expect(sql(`select consumed_by is null from dndkeep_private.mind_sliver_effects where cast_id='${effect}'`)).toBe('t');
+ });
 });

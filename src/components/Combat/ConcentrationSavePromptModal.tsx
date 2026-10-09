@@ -60,9 +60,10 @@ export default function ConcentrationSavePromptModal({ characterId }: Props) {
       const result=await resolveConcentrationSave(characterId,id,source);
       if(currentId.current!==characterId)return;
       setOffers(previous=>previous.filter(offer=>offer.id!==id));
+      const penaltyText=result.penalty?.penalty?` (Mind Sliver -${result.penalty.penalty})`:'';
       setNotice(result.outcome==='obsolete'?'Earlier concentration save retired. Your current spell was not changed.':
-        result.replayed?`Earlier save confirmed: ${result.outcome} (roll ${result.d20}, total ${result.total}). Your current spell is unchanged.`:
-        `Concentration ${result.outcome==='passed'?'maintained':'broken'}: saved roll ${result.d20}, total ${result.total}.`);
+        result.replayed?`Earlier save confirmed: ${result.outcome} (roll ${result.d20}, total ${result.total}${penaltyText}). Your current spell is unchanged.`:
+        `Concentration ${result.outcome==='passed'?'maintained':'broken'}: saved roll ${result.d20}, total ${result.total}${penaltyText}.`);
       await load();
     }catch(failure){if(currentId.current===characterId)setError(failure instanceof Error?failure.message:'Result not confirmed. Confirm the saved roll.');}
     finally{if(currentId.current===characterId){busyRef.current=false;setBusy(false);setSaved(savedConcentrationRolls(characterId));}}

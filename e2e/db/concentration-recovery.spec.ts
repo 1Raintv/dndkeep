@@ -139,4 +139,18 @@ test.describe('Campaign concentration recovery (local stack)', () => {
     sql(`update characters set current_hp=47 where id='${charId}'`);await expect(page.getByText('Concentration Check Required',{exact:true})).toBeVisible();
   });
 
+  test('Mind Sliver penalty changes the visible concentration result once',async({page},info)=>{
+    const effect=randomUUID();
+    sql(`insert into dndkeep_private.mind_sliver_effects(cast_id,encounter_id,caster_id,target_id,cast_turn,cast_turn_ordinal,status)
+     select '${effect}',id,'${participant}','${participant}',psionic_turn_id,1,'active' from combat_encounters where id='${encounter}'`);
+    await page.addInitScript(()=>{Math.random=()=>0.55;});await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    const dialog=page.getByRole('dialog',{name:'Concentration save',exact:true});await expect(dialog).toBeVisible();
+    await dialog.getByRole('button',{name:'Roll Save'}).click();
+    const result=page.getByRole('status',{name:'Concentration recovery'});
+    await expect(result).toContainText('Concentration broken: saved roll 12, total 9 (Mind Sliver -3)');
+    expect(spell()).toBe('');expect(sql(`select consumed_by from dndkeep_private.mind_sliver_effects where cast_id='${effect}'`)).toBe(pending);
+    await expect(page.getByText('Lost concentration on Detect Magic',{exact:true})).toBeVisible();
+    await result.scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('mind-sliver-concentration.png')});
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  });
 });

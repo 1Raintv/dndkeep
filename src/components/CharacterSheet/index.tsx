@@ -389,8 +389,8 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  const oldConcSpell = current['concentration_spell'] as string;
  const newConcSpell = (patch as any).concentration_spell as string | undefined;
  if (oldConcSpell && newConcSpell === '' && newConcSpell !== oldConcSpell) {
- // Most common cause from external sync = round timer ran out via DM tick
- showConcentrationLossToast(oldConcSpell, 'duration timer expired');
+ // v2.869: realtime reports the clear, not its cause. Don't label a failed save as timer expiry.
+ showConcentrationLossToast(oldConcSpell);
  }
  // v2.169.0 — Phase Q.0 pt 10: externally-driven HP / inspiration
  // toasts. When the DM applies damage / heal / gives inspiration
@@ -664,9 +664,9 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  // v2.47.0: Fire a toast notifying the player they lost concentration.
  // `reason` is a short phrase explaining why (e.g. "CON save failed", "timer expired").
  // The spell name is looked up from the previously-concentrated spell ID.
- function showConcentrationLossToast(spellId: string | null, reason: string) {
+ function showConcentrationLossToast(spellId: string | null, reason = '') {
  const spellName = spellId ? (spellMap[spellId]?.name ?? 'your spell') : 'your spell';
- setConcentrationLossToast(`Lost concentration on ${spellName} — ${reason}`);
+ setConcentrationLossToast(`Lost concentration on ${spellName}${reason ? ` — ${reason}` : ''}`);
  // Auto-dismiss after 6 seconds
  setTimeout(() => setConcentrationLossToast(null), 6000);
  }

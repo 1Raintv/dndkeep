@@ -1,8 +1,8 @@
 import {supabase} from '../supabase';
 import {rollDie} from '../../rules/dice';
 export type ConcentrationResolutionSource='player'|'timeout';
-export interface SavedConcentrationRoll {characterId:string;pendingId:string;d20:number;source:ConcentrationResolutionSource;advantage?:boolean;secondD20?:number}
-export interface ConcentrationReceipt {pendingId:string;outcome:'passed'|'failed'|'obsolete';d20:number|null;total:number|null;replayed:boolean;rolls?:number[]|null;advantage?:boolean}
+export interface SavedConcentrationRoll {characterId:string;pendingId:string;d20:number;source:ConcentrationResolutionSource;advantage?:boolean;secondD20?:number;penaltyD4?:number}
+export interface ConcentrationReceipt {pendingId:string;outcome:'passed'|'failed'|'obsolete';d20:number|null;total:number|null;replayed:boolean;rolls?:number[]|null;advantage?:boolean;penalty?:{saveId:string;saveKind:string;penalty:number;die:number|null;consumedIds:string[];expiredIds:string[]}|null}
 export const CONCENTRATION_ROLL_CHANGED='dndkeep:concentration-roll-changed';
 const prefix=(id:string)=>`dndkeep:concentration-roll:${id}:`;
 const active=new Map<string,Promise<ConcentrationReceipt>>();
@@ -11,6 +11,7 @@ function valid(v:unknown):v is SavedConcentrationRoll{
  if(!v||typeof v!=='object')return false;
  const r=v as Partial<SavedConcentrationRoll>;
  return typeof r.characterId==='string'&&!!r.characterId&&typeof r.pendingId==='string'&&!!r.pendingId&&die(r.d20)&&(r.source==='player'||r.source==='timeout')
+  &&(r.penaltyD4===undefined||(Number.isInteger(r.penaltyD4)&&r.penaltyD4>=1&&r.penaltyD4<=4))
   &&(r.advantage===undefined?r.secondD20===undefined:typeof r.advantage==='boolean'&&(r.advantage?die(r.secondD20):r.secondD20===undefined));
 }
 function changed(){window.dispatchEvent(new Event(CONCENTRATION_ROLL_CHANGED));}
@@ -28,6 +29,14 @@ function verify(value:unknown,pendingId:string):asserts value is ConcentrationRe
   (r.outcome==='obsolete'?r.d20!==null||r.total!==null:
    !['passed','failed'].includes(r.outcome??'')||!die(r.d20)||!Number.isSafeInteger(r.total)))
   throw new Error('The concentration result could not be verified. Keep the saved roll and confirm again.');
+ if(r.penalty!=null){
+  const p=r.penalty;
+  if(p.saveId!==pendingId||p.saveKind!=='concentration'||!Number.isInteger(p.penalty)||p.penalty<0||p.penalty>4
+   ||!Array.isArray(p.consumedIds)||!p.consumedIds.every(id=>typeof id==='string'&&id.length>0)
+   ||!Array.isArray(p.expiredIds)||!p.expiredIds.every(id=>typeof id==='string'&&id.length>0)
+   ||(p.penalty>0?p.die!==p.penalty||p.consumedIds.length===0:p.die!==null||p.consumedIds.length>0))
+   throw new Error('The concentration penalty could not be verified. Keep the saved roll and confirm again.');
+ }
  if(r.rolls!=null&&(!Array.isArray(r.rolls)||r.rolls.length!==(r.advantage?2:1)||!r.rolls.every(die)||r.d20!==Math.max(...r.rolls)))
   throw new Error('The concentration dice could not be verified. Keep the saved roll and confirm again.');
 }
@@ -56,10 +65,17 @@ async function settle(characterId:string,pendingId:string,source:ConcentrationRe
   if(!valid(request))throw new Error('Invalid concentration request');
   localStorage.setItem(key,JSON.stringify(request));changed();
  }
+ if(request.penaltyD4===undefined){
+  // Save the proposal before sending. Unused dice are ignored by the server;
+  // an effect arriving concurrently is still consumed by the first real save.
+  request={...request,penaltyD4:rollDie(4)};
+  if(!valid(request))throw new Error('Invalid saved penalty die');
+  localStorage.setItem(key,JSON.stringify(request));changed();
+ }
  for(let attempt=0;;attempt++){
   let data:unknown;
   try{
-   const result=await (supabase as any).rpc('settle_pending_concentration_save',{p_pending_id:pendingId,p_d20:request.d20,p_source:request.source,...(request.advantage?{p_second_d20:request.secondD20}:{})});
+   const result=await (supabase as any).rpc('settle_pending_concentration_save',{p_pending_id:pendingId,p_d20:request.d20,p_source:request.source,p_penalty_d4:request.penaltyD4,...(request.advantage?{p_second_d20:request.secondD20}:{})});
    if(result.error)throw result.error;data=result.data;
   }catch(error){
    const code=error&&typeof error==='object'&&'code' in error?String(error.code):'';
@@ -97,12 +113,12 @@ export async function createConcentrationOffer(input:ConcentrationOfferInput):Pr
 
 /** Read an already-settled save without generating a new proposed roll. */
 export async function readConcentrationResult(characterId:string,pendingId:string):Promise<ConcentrationReceipt|null>{
- const {data,error}=await supabase.from('pending_concentration_saves').select('id,character_id,state,d20,total,result,resolution_outcome,has_advantage,d20_rolls').eq('id',pendingId).single();
+ const {data,error}=await supabase.from('pending_concentration_saves').select('id,character_id,state,d20,total,result,resolution_outcome,has_advantage,d20_rolls,save_penalty').eq('id',pendingId).single();
  if(error)throw new Error(error.message);
- const row=data as unknown as {id:string;character_id:string;state:string;d20:number|null;total:number|null;result:string|null;resolution_outcome:string|null;has_advantage:boolean;d20_rolls:number[]|null}|null;
+ const row=data as unknown as {id:string;character_id:string;state:string;d20:number|null;total:number|null;result:string|null;resolution_outcome:string|null;has_advantage:boolean;d20_rolls:number[]|null;save_penalty:ConcentrationReceipt['penalty']}|null;
  if(!row||row.id!==pendingId||row.character_id!==characterId||!['offered','resolved','expired'].includes(row.state))throw new Error('The concentration result could not be verified.');
  if(row.state==='offered')return null;
- const receipt={pendingId,outcome:row.resolution_outcome??row.result??'obsolete',d20:row.d20,total:row.total,replayed:true,advantage:row.has_advantage,rolls:row.d20_rolls};
+ const receipt={pendingId,outcome:row.resolution_outcome??row.result??'obsolete',d20:row.d20,total:row.total,replayed:true,advantage:row.has_advantage,rolls:row.d20_rolls,penalty:row.save_penalty};
  verify(receipt,pendingId);
  try{localStorage.removeItem(prefix(characterId)+pendingId);changed();}catch{/* A leftover saved roll can still confirm the immutable result. */}
  return receipt;

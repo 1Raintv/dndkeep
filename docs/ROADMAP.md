@@ -5462,3 +5462,46 @@ integration cases consuming a real declared Mind Sliver effect after pending
 cast/attack pruning. Full gate passes (3,061 units, TypeScript 197/197, clean
 hooks/RAW/coordinates/anchors, build and 255.2 KB entry); SQL and changed-test
 lint pass. Applied to local Docker with its ledger entry; no production apply.
+
+### Concentration now consumes Mind Sliver (local branch; release still gated)
+
+`20261009204354_concentration_next_save_penalty.sql` connects the shared penalty
+transaction to campaign concentration settlement. It selects the advantage die,
+subtracts the saved d4 once, then decides concentration and cleans up owned
+spell effects in the same transaction. The resulting penalty receipt is saved
+on the offer, returned on replay and included in the combat log. Obsolete
+casting offers consume nothing; failed settlement rolls the penalty back.
+
+The public RPC retains its name and older arguments with an optional penalty
+die. Legacy clients can resolve ordinary saves, but a live penalty requires
+the missing die before any write commits. The old private signature forwards
+to the new implementation, so it cannot bypass consumption. A pending effect
+with an unverifiable/inactive encounter still requires review rather than
+silently disappearing. Between-encounter offers without effects retain their
+existing behavior.
+
+The client stores its d4 proposal alongside the original d20/advantage pair,
+validates returned penalty receipts and preserves them through lost responses.
+The concentration result names Mind Sliver's deduction. This is only the
+concentration connection: ordinary attack saves, class saves, sheet/death saves
+still need the same boundary. Do not release the combined Mind Sliver feature
+while another save could happen first and leave its penalty unconsumed.
+
+Visual verification found and fixed a pre-existing misleading toast: every
+external concentration clear was labeled timer expiry. Realtime only reports
+the clear, so it now gives a neutral loss notice; actual timer-button expiry
+retains its specific reason. Desktop/mobile screenshots confirm the penalty
+result text and corrected toast, with no horizontal page overflow.
+
+Validation so far: 80 existing/new SQL and recovery cases pass in the broad
+run; its two new advantage fixtures were corrected to create a real War Caster
+offer rather than alter an immutable snapshot, and both pass on rerun. Two new
+player-facing penalty cases pass, including the final toast correction. All
+32 concentration API unit cases pass, including saved d4/retry and malformed
+receipt handling. Private-schema SQL lint passes. These checks do not yet
+prove the complete Mind Sliver damage-to-concentration chain end to end or
+penalty consumption by other save kinds; those remain release requirements.
+
+Final full gate after the toast fix passes: 3,067 unit tests, TypeScript
+197/197, hooks/RAW/coordinates/anchors, build and 255.2 KB entry. Migration
+applied to local Docker with its ledger entry; no production deployment.
