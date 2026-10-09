@@ -5394,3 +5394,43 @@ screenshots were inspected. Nine focused API/dialog unit tests pass. Full gate:
 3,061 units, TypeScript 197/197, clean hooks/RAW/coordinates/anchors, build and
 255.2 KB entry. Private-schema SQL lint is clean. Rollback coverage forces the
 receipt insert to fail and verifies charge, save and event all roll back.
+
+### Mind Sliver saved origins and final-save activation (local only)
+
+`20261009202736_mind_sliver_effect_origins.sql` captures a declared Mind Sliver's
+canonical spell ID, target and casting-time turn context in a private record.
+These records do not depend on the lifetime of pending casts or attacks.
+The helper validates Intelligence/zero-slot/no-effect-on-success settings and
+uses the existing saved-turn adapter. A display-name match cannot create an
+origin; the private spell-payment ID is authoritative.
+
+After a verified delivery, a final failed save changes the waiting origin to
+active. A pending Legendary Resistance decision keeps it waiting; acceptance
+marks it resisted, while decline activates it. Counterspell, cancellation and
+successful saves do not activate it. Resolution after its expiry marks it
+expired. Target/context tampering aborts the save write. Delivery must have
+its private receipt before any save update can activate an effect.
+
+This is persistent effect lifecycle state, not completed player automation:
+active records are not yet consumed by save settlement and no penalty is
+added to rolls by this migration. Character-origin declared casts are covered;
+other caster and standalone paths still need equivalent trusted origins.
+The next change must consume these records atomically with the first eligible
+save, including concentration caused by the same spell's damage.
+
+An `active` record is not itself proof of current eligibility: the eventual
+consumption transaction must re-read caster turn context and expire stale
+records before rolling. This migration detects late initial resolution, but
+does not run a separate turn sweep. Existing records therefore remain dormant
+until that consumer is implemented; no UI should present them as an applied
+penalty merely from the stored status.
+
+Verification: 26 focused Mind Sliver SQL cases pass across desktop/mobile
+configurations (22 lifecycle cases, then four real atomic-resistance cases
+rerun after correcting the creature fixture's definition link). Two actual
+Teleporter-picker browser cases confirm a saved waiting origin for the chosen
+target. The broader 62-case delivery suite passed before adding the stricter
+receipt guard; the final focused runs cover that guard. Full project gate
+passes: 3,061 units, TypeScript 197/197, build and 255.2 KB entry. SQL lint and
+changed-test lint pass. An ambiguous SQL column reference exposed by execution
+was corrected before these final runs. Local-only migration; not deployed.

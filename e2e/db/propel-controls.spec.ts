@@ -126,6 +126,7 @@ test.describe('Saved Propel controls',()=>{
   await expect.poll(()=>sql(`select count(*) from dndkeep_private.teleporter_combat_children where character_id='${charId}'`)).toBe('1');
   expect(sql(`select action_used from combat_participants where id='${self}'`)).toBe('f');
   if(spellId==='mind-sliver')expect(sql(`select request->'context'->'combat'->'target'->>'participantId' from dndkeep_private.declared_spell_payments where character_id='${charId}'`)).toBe(enemy);
+  if(spellId==='mind-sliver')expect(sql(`select count(*) from dndkeep_private.mind_sliver_effects where encounter_id='${encounter}' and target_id='${enemy}' and status='waiting'`)).toBe('1');
   await page.reload();await expect(castDialog).toBeVisible();
   expect(sql(`select count(*) from dndkeep_private.teleporter_combat_children where character_id='${charId}'`)).toBe('1');
   await page.screenshot({path:info.outputPath('teleporter-cast-recovered.png')});

@@ -120,4 +120,68 @@ test.describe('Declared spell combat delivery (local stack)',()=>{
   const before=character().spell_slots;sql(auth(dm,declare(cast,0)));sql(`update pending_spell_casts set expires_at=now()-interval '1 minute' where id='${cast}'`);sql(auth(dm,settle()));sql(auth(dm,queue()));
   expect(character().spell_slots).toEqual(before);expect(attacks()).toBe('1');
  });
+ const sliverStatus=()=>sql(`select status from dndkeep_private.mind_sliver_effects where cast_id='${cast}'`);
+ function declareSliver(){
+  sql(`update characters set spell_sources=spell_sources||'{"mind-sliver":["class:Wizard"]}'::jsonb where id='${caster}'`);
+  sql(auth(dm,declare(cast,0,null,'mind-sliver',{...intent(),damageDice:'4d6',saveAbility:'INT',saveSuccessEffect:'none'})));
+ }
+ function deliverSliver(){declareSliver();sql(`update pending_spell_casts set expires_at=now()-interval '1 minute' where id='${cast}'`);sql(auth(dm,settle()));sql(auth(dm,queue()));}
+ test('Mind Sliver records its original caster turn and target at declaration',()=>{
+  declareSliver();expect(sliverStatus()).toBe('waiting');
+  expect(JSON.parse(sql(`select jsonb_build_object('caster',caster_id,'target',target_id,'ordinal',cast_turn_ordinal,'turn',cast_turn) from dndkeep_private.mind_sliver_effects where cast_id='${cast}'`)))
+   .toMatchObject({caster:target,target:reactor,ordinal:1,turn:sql(`select psionic_turn_id from combat_encounters where id='${encounter}'`)});
+ });
+ test('Mind Sliver activates once on a final failed save and survives pending-row pruning',()=>{
+  deliverSliver();sql(`update pending_attacks set save_result='failed',pending_lr_decision=false where id='${cast}'`);expect(sliverStatus()).toBe('active');
+  sql(`update pending_attacks set save_result='failed' where id='${cast}';delete from pending_attacks where id='${cast}';delete from pending_spell_casts where id='${cast}'`);
+  expect(sliverStatus()).toBe('active');
+ });
+ test('Mind Sliver waits for a resistance decision before activation',()=>{
+  deliverSliver();sql(`update pending_attacks set save_result='failed',pending_lr_decision=true where id='${cast}'`);expect(sliverStatus()).toBe('waiting');
+  sql(`update pending_attacks set pending_lr_decision=false where id='${cast}'`);expect(sliverStatus()).toBe('active');
+ });
+ test('Mind Sliver does not activate after a successful save or resistance',()=>{
+  deliverSliver();sql(`update pending_attacks set save_result='failed',pending_lr_decision=true where id='${cast}';update pending_attacks set save_result='passed',pending_lr_decision=false where id='${cast}'`);
+  expect(sliverStatus()).toBe('resisted');
+ });
+ test('Mind Sliver is not activated by an interrupted casting',()=>{
+  declareSliver();counter();sql(auth(dm,settle()));expect(sliverStatus()).toBe('countered');expect(()=>sql(auth(dm,queue()))).toThrow(/interrupted/);
+ });
+ test('Mind Sliver target tampering rolls the save back',()=>{
+  deliverSliver();expect(()=>sql(`update pending_attacks set target_participant_id='${target}',save_result='failed' where id='${cast}'`)).toThrow(/target or saving throw changed/);
+  expect(sliverStatus()).toBe('waiting');expect(sql(`select save_result is null from pending_attacks where id='${cast}'`)).toBe('t');
+ });
+ test('Mind Sliver cancellation leaves no active penalty',()=>{
+  deliverSliver();sql(`update pending_attacks set state='canceled' where id='${cast}'`);expect(sliverStatus()).toBe('canceled');
+ });
+ test('a different saved spell named Mind Sliver creates no origin',()=>{
+  sql(auth(dm,declare().replace("'fly','fly'","'fly','Mind Sliver'")));expect(sliverStatus()).toBe('');
+ });
+ test('Mind Sliver pending effect records remain private',()=>{
+  declareSliver();expect(()=>sql(auth(owner,`select * from dndkeep_private.mind_sliver_effects`))).toThrow(/permission denied/);
+ });
+ test('Mind Sliver delayed resolution expires at the end of the next caster turn',()=>{
+  deliverSliver();
+  for(let i=0;i<3;i++){
+   const e=JSON.parse(sql(`select row_to_json(e) from combat_encounters e where id='${encounter}'`));
+   const next=e.current_turn_index===1?0:1,round=e.round_number+(next===0?1:0);
+   sql(auth(dm,`select commit_combat_clock_transition('${encounter}','${randomUUID()}','${e.psionic_turn_id}','${next===0?reactor:target}',${next},${round})`));
+  }
+  sql(`update pending_attacks set save_result='failed',pending_lr_decision=false where id='${cast}'`);expect(sliverStatus()).toBe('expired');
+ });
+ test('Mind Sliver requires the private delivery receipt before a save can activate it',()=>{
+  deliverSliver();sql(`update dndkeep_private.declared_spell_payments set attack_receipt=null where cast_id='${cast}'`);
+  expect(()=>sql(`update pending_attacks set save_result='failed' where id='${cast}'`)).toThrow(/delivery has not been verified/);expect(sliverStatus()).toBe('waiting');
+ });
+ for(const accept of [true,false])test(`Mind Sliver follows the atomic resistance decision (${accept})`,()=>{
+  const creature=randomUUID(),entity=randomUUID();
+  sql(`insert into combat_participants(id,campaign_id,encounter_id,participant_type,entity_id,name,turn_order,legendary_resistance) values('${creature}','${campaign}','${encounter}','creature','${entity}','Legendary target',2,3);
+   update characters set spell_sources=spell_sources||'{"mind-sliver":["class:Wizard"]}'::jsonb where id='${caster}'`);
+  sql(`update combatants set definition_type='custom',definition_id='${entity}' where id=(select combatant_id from combat_participants where id='${creature}')`);
+  const combatant=sql(`select combatant_id from combat_participants where id='${creature}'`)||null;
+  sql(auth(dm,declare(cast,0,null,'mind-sliver',{...intent(),damageDice:'4d6',saveAbility:'INT',saveSuccessEffect:'none',target:{participantId:creature,entityId:entity,type:'creature',combatantId:combatant}})));
+  sql(`update pending_spell_casts set expires_at=now()-interval '1 minute' where id='${cast}'`);sql(auth(dm,settle()));sql(auth(dm,queue()));
+  sql(`update pending_attacks set save_result='failed',pending_lr_decision=true where id='${cast}'`);expect(sliverStatus()).toBe('waiting');
+  sql(auth(dm,`select decide_legendary_resistance('${cast}',${accept})`));expect(sliverStatus()).toBe(accept?'resisted':'active');
+ });
 });
