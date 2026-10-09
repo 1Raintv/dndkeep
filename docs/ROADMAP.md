@@ -5364,3 +5364,33 @@ result is recorded below after rerun.
 
 Final full gate passes unchanged: 3,052 unit tests, TypeScript 197/197,
 clean hooks/RAW/coordinates/anchors, successful build and 255.2 KB entry.
+
+### Atomic Legendary Resistance decisions (local branch; not released)
+
+`20261009202011_atomic_legendary_resistance.sql` now settles the DM's choice,
+charge usage, final save and accepted-use combat event in one transaction.
+Attack locking serializes repeated decisions; participant locking prevents two
+different failed saves spending the last charge. Exact retries return the
+saved result, conflicting decisions reject, and authorization precedes replay.
+Expired/cancelled attacks and exhausted charges cannot become successful saves.
+The existing in-lair extra use remains limited to creatures with base uses;
+hidden targets produce hidden log events.
+
+`src/lib/api/legendaryResistance.ts` replaces the failed-save flow's independent
+client writes. The prompt catches failures, displays a retry message and releases
+its controls; same-frame clicks cannot race. This is a prerequisite for applying
+Mind Sliver only after its final failed-save outcome. Mind Sliver effect creation
+and consumption still remain to be connected.
+
+Manual LR spending/reset controls still use legacy writes and need their own
+atomic settlement; this change does not claim all resource editing is serialized.
+The existing lair-flag reader also needs error handling so failed reads cannot
+silently suppress an in-lair extra-use prompt. Local migration applied with its
+ledger entry while preserving the other branch's weapon migration. No prod apply.
+
+Validation: 24 local SQL/browser cases pass across desktop and mobile settings,
+including a simulated failed request followed by a successful retry; both error
+screenshots were inspected. Nine focused API/dialog unit tests pass. Full gate:
+3,061 units, TypeScript 197/197, clean hooks/RAW/coordinates/anchors, build and
+255.2 KB entry. Private-schema SQL lint is clean. Rollback coverage forces the
+receipt insert to fail and verifies charge, save and event all roll back.

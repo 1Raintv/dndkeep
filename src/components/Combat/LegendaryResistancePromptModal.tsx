@@ -9,7 +9,7 @@
 // Shown only to the DM. Players see nothing — LR is a monster resource
 // the DM decides how to spend.
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import {
@@ -36,6 +36,8 @@ export default function LegendaryResistancePromptModal({
   // v2.625.0 — 2024 in-lair benefit: encounter_id -> in_lair flag
   const [lairByEnc, setLairByEnc] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
+  const inFlight=useRef(false);
+  const [failure,setFailure]=useState<{id:string;message:string}|null>(null);
 
   async function load() {
     if (!isDM) return;
@@ -116,19 +118,19 @@ export default function LegendaryResistancePromptModal({
   const lrCap = lrState ? lrState.total + (promptInLair && lrState.total > 0 ? 1 : 0) : 0;
   const chargesLeft = lrState ? lrCap - lrState.used : 0;
 
-  async function onAccept() {
-    if (busy) return;
-    setBusy(true);
-    await acceptLegendaryResistance({ attackId: atk.id, dmUserName });
-    setBusy(false);
+  async function decide(accept:boolean) {
+    if(inFlight.current)return;
+    inFlight.current=true;setBusy(true);setFailure(null);
+    const id=atk.id;
+    try {
+      await (accept?acceptLegendaryResistance:declineLegendaryResistance)({attackId:id,dmUserName});
+      await load();
+    } catch(error) {
+      setFailure({id,message:error instanceof Error?error.message:'Decision not confirmed. Retry the same choice.'});
+    } finally {inFlight.current=false;setBusy(false);}
   }
-  async function onDecline() {
-    if (busy) return;
-    setBusy(true);
-    await declineLegendaryResistance({ attackId: atk.id, dmUserName });
-    setBusy(false);
-  }
-
+  const onAccept=()=>decide(true);
+  const onDecline=()=>decide(false);
   const gold = 'var(--c-gold-l)';
 
   return createPortal(
@@ -182,6 +184,7 @@ export default function LegendaryResistancePromptModal({
           </div>
         </div>
 
+        {failure?.id===atk.id&&<div role="alert" style={{padding:'0 20px 12px',color:'var(--c-danger)'}}>{failure.message}</div>}
         {/* Footer */}
         <div style={{
           padding: '12px 20px', borderTop: '1px solid var(--c-border)',

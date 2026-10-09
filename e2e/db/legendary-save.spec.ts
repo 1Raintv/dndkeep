@@ -40,6 +40,15 @@ test.describe('Creature Legendary Resistance',()=>{
   expect(sql(`select state from pending_attacks where id='${attack}'`)).toBe('declared');
   await expect(page.getByRole('button',{name:'Use Legendary Resistance',exact:true})).toBeEnabled();
   await page.screenshot({path:info.outputPath('legendary-resistance.png')});
+  let failOnce=true;
+  await page.route('**/rest/v1/rpc/decide_legendary_resistance',async route=>{
+   if(failOnce){failOnce=false;await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Decision not confirmed. Retry the same choice.'})});}
+   else await route.continue();
+  });
+  await page.getByRole('button',{name:'Use Legendary Resistance',exact:true}).click();
+  await expect(page.getByRole('alert')).toContainText('Retry the same choice');
+  await expect(page.getByRole('button',{name:'Use Legendary Resistance',exact:true})).toBeEnabled();
+  await page.screenshot({path:info.outputPath('legendary-resistance-retry.png')});
   await page.getByRole('button',{name:'Use Legendary Resistance',exact:true}).click();
   await expect.poll(()=>sql(`select save_result||':'||pending_lr_decision::text from pending_attacks where id='${attack}'`)).toBe('passed:false');
   expect(sql(`select legendary_resistance_used from combat_participants where id='${creature}'`)).toBe('1');
