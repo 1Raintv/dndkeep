@@ -1,5 +1,46 @@
 # DNDKeep — Two-Track Roadmap
 
+### In progress — Shared action budget (not connected to live abilities)
+
+`src/rules/actionBudget.ts` defines action declarations against verified grants,
+immutable request identities and the actor's own-turn epoch. One Bonus Action
+covers either Propel variant regardless of save outcome. A historical replay
+returns the original claim without spending today's grant. Reactions remain
+spent across other creatures' turns. Haste grants only its listed actions and
+one attack; Action Surge cannot fund Magic or become another Bonus Action.
+Spell action types now reuse the shared type rather than defining another.
+
+Rules checked against the 2024 [Playing the Game](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game),
+[Fighter](https://www.dndbeyond.com/sources/dnd/br-2024/character-classes), and
+[Haste](https://www.dndbeyond.com/spells/2619141-haste) references. The module is a
+pure transaction contract, not an authorization boundary or completed feature.
+No ability yet calls its planner; no production budget changes in this checkpoint.
+The 33 focused cases and full gate pass: 2,914 units / 260 files, TypeScript
+199/199, clean hooks/RAW/coordinates/anchors, build and 255.2 KB entry.
+Changed rule modules lint clean.
+
+Remaining implementation and required evidence:
+
+- Server derives grants, turn ownership, conditions and feature eligibility;
+  clients cannot invent an Action Surge/Haste grant or claim Magic is a feature.
+  Serialize competing claims, immutable receipts, resource costs and declaration
+  history in one transaction. Prove duplicate/concurrent/reload behavior in SQL.
+- Track an actor's own-turn epoch separately from the global encounter nonce.
+  Existing `psionic_turn_context_internal` returns the global nonce even off-turn;
+  using it alone would wrongly refill reactions on each opponent's turn.
+- Give Propel a persisted declaration/roll/target identity before the save and
+  enhancements. Finish the same request after pass/fail; do not refund action
+  for a passed save or recover against a different turn. Save and recover pending
+  work after reload. Preserve paid enhancement receipts on cancellation.
+- Replace local-only sheet toggles and integrate paid/free/manual spell actions,
+  class powers, attack sequences, Dash/Disengage, reactions and turn transitions.
+  `movement.takeDash` currently writes participant flags separately; spell
+  receipts restore local flags but do not enforce this shared budget.
+- Preserve explicit corrections, Action Surge/Haste restrictions and attack
+  subcounts, solo play, additional actors, Ready/reaction timing, permission
+  boundaries and simultaneous-tab use. Verify complete desktop/phone flows.
+
+
 ### v2.869 — Pending Psion rolls keep their original context
 
 Power confirmations now invalidate when the character, campaign, Psion
