@@ -5330,3 +5330,37 @@ run at turn start and cannot express this boundary correctly.
 Verification: 23 focused timing/consumption cases and changed-file lint pass;
 full project verification passes with TypeScript 197/197 and 255.2 KB entry.
 No runtime or UI behavior changed in this foundation checkpoint.
+
+### Mind Sliver saved-turn adapter (local only)
+
+`20261009201350_next_save_turn_context.sql` derives the planner's caster
+ordinals from existing `combat_clock_transitions` receipts. It creates no
+second initiative clock and works for character and creature participants.
+A +1 offset handles the initial actor and casts before a caster's first turn.
+Callers capture `castTurnOrdinal` and `turnId` at casting; later reads pass
+that saved turn ID and use `lastEndedTurnOrdinal` for expiry.
+
+The private helper checks that the active actor matches the last saved turn,
+rejects disconnected history/manual jumps, and rejects a saved casting turn
+absent from that history. The first-receipt case is checked too. It is not an
+authenticated endpoint; a future authorized effect transaction must call it.
+Pending integration remains effect application and atomic save consumption,
+including concentration, class features, and standalone saves. No player-facing
+automation was enabled by this migration.
+
+Local CLI migration apply encountered the preserved weapon branch's extra
+`20261008213500` ledger row. That row was retained. Only this reviewed migration
+was applied transactionally to local Docker, with its own ledger entry; the
+helper and ledger entry were verified. Nothing was applied to production.
+
+Validation: all 46 desktop/mobile-configured SQL transaction checks pass
+(23 cases per configuration), including creature casters and roster drift;
+private-schema SQL lint reports no errors. These are database tests, not visual
+UI verification. The first fixture used an invalid combatant definition label;
+corrected to the existing `custom` storage label with a `creature` participant.
+An unrelated damage-dialog unit test timed out during the first concurrent
+full-gate run; its isolated 10-test suite passes unchanged. Final full-gate
+result is recorded below after rerun.
+
+Final full gate passes unchanged: 3,052 unit tests, TypeScript 197/197,
+clean hooks/RAW/coordinates/anchors, successful build and 255.2 KB entry.

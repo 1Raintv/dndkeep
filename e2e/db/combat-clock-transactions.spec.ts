@@ -72,4 +72,53 @@ test.describe('Atomic combat clock transitions',()=>{
  test('clock overflow rolls back the entire wrapping transition',()=>{
   const q=wrapCall();sql(`update campaigns set combat_rounds_elapsed=2147483647 where id='${campaign}'`);const before=state();expect(()=>run(q)).toThrow(/clock limit reached/);expect(state()).toEqual(before);expect(buffs()[0].duration).toBe(3);
  });
+ const effectClock=(caster=pa,castTurn:string|null=null)=>JSON.parse(sql(`select dndkeep_private.next_save_turn_context('${enc}','${caster}',${castTurn?`'${castTurn}'`:'null'})`));
+ test('next-save expiry uses caster turns, including the initial actor',()=>{
+  expect(effectClock()).toMatchObject({castTurnOrdinal:1,lastEndedTurnOrdinal:0});
+  const castTurn=turn;run();
+  expect(effectClock(pa,castTurn)).toMatchObject({castTurnOrdinal:1,lastEndedTurnOrdinal:1});
+  run(call(randomUUID(),state().turn,pa,0,2));
+  expect(effectClock(pa,castTurn)).toMatchObject({castTurnOrdinal:2,lastEndedTurnOrdinal:1});
+  run(call(randomUUID(),state().turn,pb,1,2));
+  expect(effectClock(pa,castTurn)).toMatchObject({castTurnOrdinal:2,lastEndedTurnOrdinal:2});
+ });
+ test('pre-first-turn reaction casts expire after the first completed own turn',()=>{
+  expect(effectClock(pb)).toMatchObject({castTurnOrdinal:1,lastEndedTurnOrdinal:1});
+  const castTurn=turn;run();
+  expect(effectClock(pb,castTurn)).toMatchObject({castTurnOrdinal:2,lastEndedTurnOrdinal:1});
+  run(call(randomUUID(),state().turn,pa,0,2));
+  expect(effectClock(pb,castTurn)).toMatchObject({castTurnOrdinal:2,lastEndedTurnOrdinal:2});
+ });
+ test('a replay does not increment an effect clock',()=>{
+  run();const before=effectClock();run();expect(effectClock()).toEqual(before);
+ });
+ test('unrecorded turn jumps and disconnected history fail closed',()=>{
+  run();sql(`update combat_encounters set round_number=2 where id='${enc}'`);
+  expect(()=>effectClock()).toThrow(/history is incomplete/);
+  run(call(randomUUID(),state().turn,pa,0,3));
+  expect(()=>effectClock()).toThrow(/history is incomplete/);
+ });
+ test('a jump before the first receipt cannot validate an earlier casting turn',()=>{
+  const castTurn=turn;sql(`update combat_encounters set round_number=2 where id='${enc}'`);
+  run(call(randomUUID(),state().turn,pb,1,2));
+  expect(()=>effectClock(pa,castTurn)).toThrow(/casting turn could not be verified/);
+ });
+ test('creature casters share the existing turn ledger',()=>{
+  const creature=randomUUID();sql(`update combatants set definition_type='custom',definition_id='${creature}' where id='${cb}';update combat_participants set participant_type='creature',entity_id='${creature}' where id='${pb}'`);
+  expect(effectClock(pb)).toMatchObject({castTurnOrdinal:1,lastEndedTurnOrdinal:1});run();
+  expect(effectClock(pb)).toMatchObject({castTurnOrdinal:2,lastEndedTurnOrdinal:1});
+ });
+ test('inactive combat, foreign caster and unknown casting turn cannot prove expiry',()=>{
+  expect(()=>effectClock(randomUUID())).toThrow(/Caster is not/);
+  expect(()=>effectClock(pa,randomUUID())).toThrow(/casting turn/);
+  sql(`update combat_encounters set status='ended' where id='${enc}'`);
+  expect(()=>effectClock()).toThrow(/Active combat turn/);
+ });
+ test('the expiry helper is not a public or authenticated endpoint',()=>{
+  expect(sql(`select has_function_privilege('authenticated','dndkeep_private.next_save_turn_context(uuid,uuid,uuid)','execute')::text||':'||has_function_privilege('anon','dndkeep_private.next_save_turn_context(uuid,uuid,uuid)','execute')::text`)).toBe('false:false');
+ });
+ test('roster changes cannot silently replace the recorded actor',()=>{
+  run();sql(`update combat_participants set turn_order=case when id='${pa}' then 1 else 0 end where encounter_id='${enc}'`);
+  expect(()=>effectClock()).toThrow(/history is incomplete/);
+ });
 });
