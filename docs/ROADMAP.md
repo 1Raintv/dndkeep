@@ -51,9 +51,23 @@ separate Magic action throws it. Both are excluded from Teleporter follow-ups;
 Produce Flame's cast/throw flow still needs repair before changing its metadata.
 A parity test protects the private ID list against catalog drift.
 
-Still required for Teleporter Combat: capture slotted Misty Step settlement,
-resolve Counterspell timing against the current rule source, and connect the
-picker/recovery UI. Local `public.spells` contains 32 rows and no level-0 rows:
+`20261009193638_teleporter_combat_slotted_origins.sql` now captures slotted
+Misty Step at declaration and activates the follow-up on successful settlement.
+Eligibility is captured before leveling/retries, including multiclass Psi
+Warper casting Misty Step through another class. Later turns or subsequent
+shared Actions expire it; reactions while resolving the parent are permitted.
+A countered parent remains explicitly `interrupted` and cannot automatically
+fund a child. The owner/DM-scoped recovery endpoint exposes waiting, ready and
+interrupted records for both free and slotted casts. The TypeScript reader
+rejects malformed or contradictory receipts and preserves read failures.
+Verification: all 112 action-context/spell-settlement SQL cases pass, including
+interrupted and saved-through parent casts. Full gate passes with 3,016 units,
+198 TypeScript baseline and 255.2 KB entry; changed TS and SQL functions lint
+clean. The recovery facade is invoker and unavailable to anonymous callers.
+
+
+Still required for Teleporter Combat: decide the interrupted-parent rule,
+connect the picker/recovery UI, and support solo follow-up casting. Local `public.spells` contains 32 rows and no level-0 rows:
 do not depend on it as a complete cantrip catalog or trust client-supplied spell
 level. `spellActionKind` includes long castings' initial Actions and cannot be
 used as this feature's eligibility test. Origin inspection currently observes

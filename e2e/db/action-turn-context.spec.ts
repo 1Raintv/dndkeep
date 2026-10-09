@@ -458,4 +458,40 @@ test.describe('Private action turn context' ,()=>{
   expect(()=>sql(auth(teleporter(parent)))).toThrow(/already used/);
  });
 
+ const followup=(user=owner)=>sql(`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${user}","role":"authenticated"}';select public.get_teleporter_combat_followup('${character}');commit;`);
+ const slottedParent=()=>{warper();prepareSpells();sql(`update characters set level=6 where id='${character}'`);const id=randomUUID();sql(auth(spellQuery(id)));return id;};
+ const settleParent=(id:string)=>{sql(`update pending_spell_casts set expires_at=clock_timestamp()-interval '1 second' where id='${id}'`);return sql(auth(`select public.settle_declared_spell_atomic('${id}')`));};
+ test('slotted Teleporter waits for settlement then exposes one reloadable follow-up',()=>{
+  const parent=slottedParent();expect(JSON.parse(followup())).toMatchObject({parentId:parent,status:'waiting',kind:'slot',encounterId:encounter});
+  expect(()=>sql(auth(teleporter(parent)))).toThrow(/no longer available/);
+  settleParent(parent);expect(JSON.parse(followup())).toMatchObject({parentId:parent,status:'ready',psionLevel:6});
+  expect(()=>followup(other)).toThrow(/unavailable|own/i);
+  sql(auth(teleporter(parent)));expect(followup()).toBe('');expect(flags()).toMatchObject({action:false,bonus:true});
+  settleParent(parent);expect(followup()).toBe('');
+ });
+ test('slotted Teleporter accepts Misty Step from another class without granting that class a cantrip',()=>{
+  warper();prepareSpells();sql(`update characters set class_name='Wizard',level=3,subclass=null,secondary_class='Psion',secondary_level=6,secondary_subclass='Psi Warper',spell_sources='{"misty-step":["class:Wizard"],"light":["class:Psion"]}',spell_preparation_sources='{"misty-step":["class:Wizard"]}' where id='${character}'`);
+  const parent=randomUUID();sql(auth(spellQuery(parent).replace('class:Psion','class:Wizard')));settleParent(parent);
+  expect(JSON.parse(followup()).psionLevel).toBe(6);sql(auth(teleporter(parent)));expect(flags().action).toBe(false);
+ });
+ test('slotted Teleporter cannot activate late after another Action or a turn change',()=>{
+  const parent=slottedParent();sql(auth(spellQuery(randomUUID(),'action',0)));settleParent(parent);
+  expect(followup()).toBe('');expect(origin(parent)).toBe('');
+  next(1);next(0,2);const late=randomUUID();sql(auth(spellQuery(late)));next(1,2);settleParent(late);expect(origin(late)).toBe('');
+  next(0,3);expect(followup()).toBe('');
+ });
+ test('slotted Teleporter permits an intervening reaction during resolution but not after settlement',()=>{
+  const parent=slottedParent();sql(auth(claimSql(randomUUID(),input({kind:'reaction',grantId:'normal:reaction',purpose:'feature',sourceId:'reaction'}))));
+  expect(JSON.parse(followup()).status).toBe('waiting');settleParent(parent);expect(JSON.parse(followup()).status).toBe('ready');
+  sql(auth(teleporter(parent)));expect(flags()).toMatchObject({action:false,bonus:true,reaction:true});
+ });
+ test('slotted Teleporter snapshots eligibility at declaration and does not invent earlier origins',()=>{
+  warper();prepareSpells();const parent=randomUUID();sql(auth(spellQuery(parent)));sql(`update characters set level=6 where id='${character}'`);
+  settleParent(parent);expect(followup()).toBe('');expect(originCount()).toBe('0');
+ });
+ test('free Teleporter origins remain recoverable through the scoped reader',()=>{
+  const parent=beginTeleporter();expect(JSON.parse(followup())).toMatchObject({parentId:parent,status:'ready',kind:'free'});
+  sql(auth(teleporter(parent)));expect(followup()).toBe('');
+ });
+
 });

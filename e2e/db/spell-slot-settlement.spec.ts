@@ -295,4 +295,15 @@ test.describe('Paid spell declaration and settlement (local stack)',()=>{
   expect(()=>sql(auth(dm,declare()))).toThrow(/cannot cast/);expect(character().spell_slots['3'].used).toBe(0);
  });
 
+ for(const passed of [false,true])test(`Teleporter slotted origin preserves Counterspell ${passed?'success':'interruption'} without inventing a free Action`,()=>{
+  sql(`update characters set level=11,secondary_class='Psion',secondary_level=6,secondary_subclass='Psi Warper',spell_sources=spell_sources||'{"light":["class:Psion"]}'::jsonb where id='${caster}'`);
+  sql(auth(dm,withKind(declare(),'bonusAction')));counter(cast,passed);sql(auth(dm,settle()));
+  const read=()=>JSON.parse(sql(auth(dm,`select public.get_teleporter_combat_followup('${caster}')`)));
+  expect(read()).toMatchObject({parentId:cast,kind:'slot',status:passed?'ready':'interrupted'});
+  sql(auth(dm,settle()));expect(read().status).toBe(passed?'ready':'interrupted');
+  const child=`select public.declare_spell_cast_atomic('${randomUUID()}','${caster}','${target}','light','Light',0,null,'{"source":"class:Psion","spellLevel":0,"isBonusAction":true,"actionKind":"bonusAction","teleporterCombatParent":"${cast}"}')`;
+  if(passed)sql(auth(dm,child));else expect(()=>sql(auth(dm,child))).toThrow(/no longer available/);
+  expect(sql(`select action_used from combat_participants where id='${target}'`)).toBe('f');
+ });
+
 });
