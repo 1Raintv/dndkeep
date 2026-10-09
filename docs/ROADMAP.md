@@ -1,5 +1,21 @@
 # DNDKeep — Two-Track Roadmap
 
+### Save-resolution audit checkpoint (local branch; not released)
+
+Canonical `creature` targets now receive the existing Legendary Resistance
+choice after a failed save, alongside legacy `monster`/`npc` targets. A failed
+resistance read stops resolution instead of silently skipping the choice.
+Save events also classify these creatures correctly. Desktop/mobile browser
+checks verify the real resistance prompt, blocked damage while awaiting the
+choice, successful resistance, and one charge spent. Screenshots inspected;
+full verification passes, with the TypeScript baseline lowered from 198 to 197.
+Code checkpoint: `9d7b4b8`. No production deployment in this checkpoint.
+
+Remaining audit findings: Mind Sliver's next-save penalty is not automated;
+it needs one-use consumption and correct expiry across saving-throw paths.
+Legendary Resistance acceptance still uses legacy separate writes and needs
+an atomic concurrency review. This fix does not claim those paths are complete.
+
 ### In progress — Shared action budget (Propel connected locally; not released)
 
 `src/rules/actionBudget.ts` defines action declarations against verified grants,
