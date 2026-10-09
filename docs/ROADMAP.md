@@ -1,5 +1,29 @@
 # DNDKeep — Two-Track Roadmap
 
+### v2.869 — Pending Psion rolls keep their original context
+
+Power confirmations now invalidate when the character, campaign, Psion
+progression, power type or Warp choice changes, including changing away and
+back. Previously an open Surge prompt could spend a Hit Die for an obsolete
+power, and Connection could call the replacement power's callback. Five new
+regressions failed before the fix. Ordinary HP/resource updates still work;
+live eligibility/payment checks continue to govern those changes.
+
+Verification: 17 power-component cases, including seven new regressions; full
+release gate passes (2,881 unit tests, TypeScript 199/199, clean hooks, RAW,
+coordinates, anchors, build and 255.2 KB entry budget). Changed files lint clean.
+
+v2.868 is independently verified live (production service worker 2.868.0).
+The next action-budget implementation must cover spells, class powers and
+manual controls together. Current spell action receipts restore UI flags but
+are not a shared server-enforced action budget. Propel also needs a saved
+begin/finish identity: action consumed at declaration, die cost only on failed
+save, immutable roll/target, cancellation policy, replay and later-turn recovery.
+Do not charge an action only after a failed save, refund it on a passed save,
+or let an old resolution mark a new turn's Bonus Action. Target size, range,
+sight and map placement remain separate unresolved requirements.
+
+
 ### v2.868 — Propel action and resolution corrections
 
 Telekinetic Propel and Warp Propel are adjacent Bonus Action entries. Both expose
