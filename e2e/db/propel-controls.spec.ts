@@ -62,6 +62,8 @@ test.describe('Saved Propel controls',()=>{
   await expect(dialog.getByRole('combobox',{name:'Target',exact:true})).toBeEnabled();
   await dialog.getByRole('combobox',{name:'Target',exact:true}).selectOption({value:enemy});await expect(dialog.getByRole('combobox',{name:'Target',exact:true})).toHaveValue(enemy);await dialog.getByRole('checkbox').check();
   await dialog.getByLabel('Movement',{exact:true}).selectOption('powered');await dialog.getByRole('button',{name:'Declare Bonus Action'}).click();
+  await expect(page.getByRole('button',{name:'Bonus Action Used',exact:true})).toBeDisabled({timeout:10000});
+  expect(sql(`select bonus_used from combat_participants where id='${self}'`)).toBe('t');
   await dialog.getByRole('button',{name:'Resolve combat save'}).click();
   const saves=page.getByRole('dialog',{name:'Telekinetic Propel saving throws'});
   await expect(saves.getByRole('combobox',{name:'Propel target'})).toHaveValue(enemy);await expect(saves.getByRole('combobox',{name:'Propel target'})).toBeDisabled();

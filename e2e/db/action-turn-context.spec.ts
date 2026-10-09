@@ -281,11 +281,48 @@ test.describe('Private action turn context' ,()=>{
   expect(()=>read(other)).toThrow(/unavailable/);
   expect(sql(`select has_function_privilege('anon','public.get_action_budget(uuid)','EXECUTE')`)).toBe('f');
  });
+ const flags=()=>JSON.parse(sql(`select jsonb_build_object('action',action_used,'bonus',bonus_used,'reaction',reaction_used,'attacks',attacks_remaining) from combat_participants where id='${participant}'`));
+ test('Propel mirrors its Bonus Action and stale resets cannot refund it',()=>{
+  const id=randomUUID(),query=powerSql(id,'free','push',0);sql(auth(query));
+  expect(flags().bonus).toBe(true);
+  sql(`update combat_participants set bonus_used=false where id='${participant}'`);expect(flags().bonus).toBe(true);
+  finalizePower(id);sql(auth(finishPower(id,'cancelled')));expect(flags().bonus).toBe(true);
+  next(1);expect(flags().bonus).toBe(true);next(0,2);expect(flags().bonus).toBe(false);
+  sql(auth(query));expect(flags().bonus).toBe(false);
+ });
+ test('mirrored reactions reset only on the next own turn and token expiry cannot refund them',()=>{
+  next(1);sql(auth(claimSql(randomUUID(),input({kind:'reaction',grantId:'normal:reaction',purpose:'magic'}))));
+  expect(flags().reaction).toBe(true);
+  sql(`update dndkeep_private.psionic_turn_starts set token=gen_random_uuid() where character_id='${character}';update combat_participants set reaction_used=false where id='${participant}'`);
+  expect(flags().reaction).toBe(true);next(1,2);expect(flags().reaction).toBe(true);
+  next(0,3);expect(flags().reaction).toBe(false);
+ });
+ test('a reaction before the first observed own turn refreshes on that first turn',()=>{
+  next(1);sql(`update dndkeep_private.psionic_turn_starts set context='{}' where character_id='${character}'`);
+  sql(auth(claimSql(randomUUID(),input({kind:'reaction',grantId:'normal:reaction',purpose:'magic'}))));
+  expect(flags().reaction).toBe(true);next(0,2);expect(flags().reaction).toBe(false);
+ });
+ test('failed declarations roll back mirrored combat spending',()=>{
+  expect(()=>sql(auth(claimSql(randomUUID(),input())+`;do $$begin raise exception 'forced failure';end$$`))).toThrow(/forced failure/);
+  expect(flags().bonus).toBe(false);
+ });
+ test('normal non-Attack actions mirror without exhausting unrelated attacks or extra grants',()=>{
+  sql(`update combat_participants set attacks_per_action=2,attacks_remaining=2 where id='${participant}'`);
+  sql(auth(claimSql(randomUUID(),input({kind:'action',grantId:'normal:action',purpose:'magic'}))));
+  expect(flags()).toMatchObject({action:true,bonus:false,reaction:false,attacks:2});
+  next(1);next(0,2);expect(flags().action).toBe(false);
+  sql(auth(claimSql(randomUUID(),input({kind:'action',grantId:'normal:action',purpose:'attack'}))));
+  expect(flags()).toMatchObject({action:false,attacks:2});
+  const grant=randomUUID();sql(`insert into dndkeep_private.action_extra_grants(id,character_id,owner_turn_id,source) values('${grant}','${character}','${context().ownerTurnId}','haste')`);
+  sql(auth(claimSql(randomUUID(),input({kind:'action',grantId:'extra:'+grant,purpose:'dash'}))));
+  expect(flags().action).toBe(false);
+ });
  test('keeps all clock functions and tables inaccessible to direct app callers',()=>{
   for(const role of ['anon','authenticated']){
    expect(sql(`select has_function_privilege('${role}','dndkeep_private.action_turn_context(uuid)','EXECUTE')`)).toBe('f');
    expect(sql(`select has_function_privilege('${role}','dndkeep_private.observe_action_epoch()','EXECUTE')`)).toBe('f');
    expect(sql(`select has_function_privilege('${role}','dndkeep_private.claim_action(uuid,uuid,jsonb)','EXECUTE')`)).toBe('f');
+   for(const fn of ['mirror_action_claim','retain_claimed_combat_flags','refresh_claimed_combat_flags'])expect(sql(`select has_function_privilege('${role}','dndkeep_private.${fn}()','EXECUTE')`)).toBe('f');
    for(const signature of ['begin_propel(uuid,uuid,text,text,text,integer,jsonb)','enhance_propel(uuid,uuid,uuid,text,integer[],integer)','finalize_propel_roll(uuid,uuid)','finish_propel(uuid,uuid,text)','read_propel(uuid,uuid)','list_propel(uuid,timestamp with time zone,uuid)','resolve_propel(uuid,uuid,text,jsonb)'])expect(sql(`select has_function_privilege('${role}','dndkeep_private.${signature}','EXECUTE')`)).toBe('f');
    for(const table of ['psionic_turn_starts','action_claims','action_extra_grants','propel_declarations','propel_enhancements'])expect(sql(`select has_table_privilege('${role}','dndkeep_private.${table}','SELECT,INSERT,UPDATE,DELETE')`)).toBe('f');
   }

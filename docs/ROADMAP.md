@@ -175,6 +175,18 @@ state is deliberately removed. Full gate: 2,985 units / 267 files; TypeScript
 baseline reduced to 198; entry stays 255.2 KB. The shared claims still need to
 write combat flags and cover other action writers atomically before release.
 
+`20261009160851_shared_action_combat_flags.sql` (local only) mirrors normal
+Bonus Actions, reactions and non-Attack actions into combat flags in the claim
+transaction. Stale flag resets retain current claims; the next actual own-turn
+epoch clears mirrored spending, including reactions before the first observed
+turn. Replays cannot mark the new turn spent, cancellations keep their claim,
+and failed transactions roll flags back. Extra grants and Attack sequence
+counters remain separate. All 39 prior/current SQL cases passed, followed by
+six targeted refresh cases (including the new first-turn case); four browser
+flows and two privilege checks passed across desktop/mobile. Full code gate
+passes (2,985 units, 198 TypeScript baseline, 255.2 KB entry); changed functions
+lint clean. Spell/attack/other legacy writers still need atomic integration.
+
 ### v2.869 — Pending Psion rolls keep their original context
 
 Power confirmations now invalidate when the character, campaign, Psion
