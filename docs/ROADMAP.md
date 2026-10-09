@@ -6146,3 +6146,30 @@ log, remove the condition and grant immunity in separate steps, and do not yet
 consume Mind Sliver. processTurnTicks also uses a multi-write client path. Those
 need durable effect identities and atomic outcomes before the clock journal can
 safely resume the complete sequence. The legacy clock has not been switched.
+
+
+### Atomic turn-end condition save foundation (unreleased; not wired live)
+
+New get_condition_turn_save_context / settle_condition_turn_save RPCs validate
+owner/DM access, current actor/turn, active parent condition and its saved ability/DC.
+The shared saving_target_context supplies condition auto-failure, disadvantage,
+Psionic Guards Intelligence advantage, exhaustion and natural-extremes settings.
+The server consumes the shared next-save penalty and commits the roll, cascade
+removal, existing source-immunity policy, event and private receipt together.
+A unique participant/turn/condition identity serializes competing requests and
+returns the first result even after the turn changes or condition disappears.
+Stale settings and transaction errors leave all consequences uncommitted.
+The result carries both reviewedBonus and final bonus for accurate log arithmetic.
+
+This foundation is deliberately not called by processEndOfTurnConditions yet.
+Next: a durable client proposal/recovery API, discovery of existing results before
+rolling, explicit review of changed bonuses, then replace the live multi-write
+condition-save branch. The submitted equipment/buff bonus is still a reviewed
+input, not server-derived. Legendary Resistance choice, duration-only expiry,
+other source-immunity durations and complete buff-tick/clock recovery are not
+implemented by this RPC. Do not claim complete turn automation or deploy the
+broader branch based on these transaction tests alone. Migration applied only
+to the existing local Docker database.
+
+Condition-save foundation validation:32 database regression cases pass, including concurrency, rollback, shared-penalty consumption, Guards, disadvantage, permissions, immunity and replay after turn advance. Full gate passes3,200 unit tests, TypeScript197/197, hooks, RAW, coordinates, anchors, build and255.2KB entry. SQL error-level lint, changed-file ESLint and diff whitespace checks pass. No live UI or production behavior changed in this foundation batch.
+
