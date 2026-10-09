@@ -60,11 +60,23 @@ Verification: all 28 local action/Propel SQL cases pass (26 lifecycle cases
 plus two multiclass/Warp number checks); full gate passes with 2,914 unit tests.
 SQL lint and local advisors have no findings for the Propel objects.
 
-Public feature APIs, recovery UI, saved-DC presentation and all action-writer
-integration remain unfinished. No new helpers are granted to app roles or
-production. This checkpoint does not reserve an Energy Die while a save is
+Recovery UI, saved-DC presentation and all action-writer integration remain
+unfinished. The underlying lifecycle helpers remain private; the next migration
+adds the scoped feature facade. No production changes have been applied. This checkpoint does not reserve an Energy Die while a save is
 pending; a concurrent spend can defer final payment, which must be recovered
 without a new action/roll. Review this workflow before enabling it for players.
+
+`20261009150703_psionic_propel_api.sql` adds one authenticated, owner/DM-checked
+Propel facade. Generic action/grant helpers remain inaccessible to app roles.
+The client API validates declaration identity, Bonus Action receipt, frozen dice,
+conditional costs and recovery cursors before acknowledging a result. Existing
+Surge/Enkindled payment and recovery paths now support a single Propel parent;
+a request cannot name multiple feature parents. The authenticated local flow
+passes through begin, read/list, finalize and finish; another owner is denied.
+The player controls are not connected yet, and these migrations remain local.
+Verification: full gate passes (2,933 units / 261 files, TypeScript 199/199,
+255.2 KB entry); the additional Surge retry/parent-substitution test also passes.
+Authenticated SQL flow passes; SQL lint/advisors report no Propel findings.
 
 Remaining implementation and required evidence:
 

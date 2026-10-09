@@ -209,6 +209,16 @@ test.describe('Private action turn context' ,()=>{
   sql(auth(`select dndkeep_private.enhance_propel('${character}','${id}','${randomUUID()}','surge',null,6)`));finalizePower(id);
   expect(JSON.parse(sql(auth(finishPower(id,'failed'))))).toMatchObject({feet:30,energyCost:1,movement:'warp',roll:{total:4}});
  });
+ test('authenticated Propel facade checks ownership and preserves the saved flow',()=>{
+  const asUser=(who:string,operation:string,payload:Record<string,unknown>={})=>`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${who}","role":"authenticated"}';select public.psionic_propel('${character}','${operation}','${JSON.stringify(payload)}');commit;`;
+  const ctx=JSON.parse(sql(asUser(owner,'context')));expect(ctx.bonusAvailable).toBe(true);
+  expect(()=>sql(asUser(other,'context'))).toThrow(/unavailable/);
+  const id=randomUUID();const begun=JSON.parse(sql(asUser(owner,'begin',{requestId:id,turnId:ctx.turnId,mode:'free',movement:'push',roll:0,target:{participantId:enemy,legalTargetConfirmed:true}})));
+  expect(begun.request_id).toBe(id);expect(JSON.parse(sql(asUser(owner,'context'))).bonusAvailable).toBe(false);
+  expect(JSON.parse(sql(asUser(owner,'list'))).items[0].request_id).toBe(id);
+  sql(asUser(owner,'finalize',{declarationId:id}));expect(JSON.parse(sql(asUser(owner,'finish',{declarationId:id,outcome:'passed'}))).result.energyCost).toBe(0);
+  expect(sql(`select has_function_privilege('anon','public.psionic_propel(uuid,text,jsonb)','EXECUTE')`)).toBe('f');
+ });
  test('keeps all clock functions and tables inaccessible to direct app callers',()=>{
   for(const role of ['anon','authenticated']){
    expect(sql(`select has_function_privilege('${role}','dndkeep_private.action_turn_context(uuid)','EXECUTE')`)).toBe('f');

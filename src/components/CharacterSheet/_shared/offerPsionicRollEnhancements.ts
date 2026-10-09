@@ -24,7 +24,7 @@ export async function offerPsionicRollEnhancements(options:Options){
    if(count!==0){
     if(!spendEnkindled(options.current(),count)||!options.eligible(options.current()))options.warn('Resources or eligibility changed. Enkindled Life Force was not applied.');
     else{
-     const request={...(options.effectRollId?{effectRollId:options.effectRollId}:{}),...(options.activationId?{activationId:options.activationId}:{}),requestId:crypto.randomUUID(),turn:state.turn,count,baseRolls:base,extraRolls:Array.from({length:count},()=>rollDie(options.sides)),sourceFeature:options.feature,recoveryNote:options.recoveryNote};
+     const request={...(options.propelId?{propelId:options.propelId}:{}),...(options.effectRollId?{effectRollId:options.effectRollId}:{}),...(options.activationId?{activationId:options.activationId}:{}),requestId:crypto.randomUUID(),turn:state.turn,count,baseRolls:base,extraRolls:Array.from({length:count},()=>rollDie(options.sides)),sourceFeature:options.feature,recoveryNote:options.recoveryNote};
      const paid=await confirmPsionicPayment(()=>options.persistence!.spend(request),{...options,active:()=>options.active()&&options.current().id===id});
      if(paid.status==='unknown')return {...unchanged,unconfirmed:true};
      if(paid.status==='paid'){extra=paid.receipt.extraRolls;if(options.active()&&options.current().id===id)options.accept(paid.receipt);}

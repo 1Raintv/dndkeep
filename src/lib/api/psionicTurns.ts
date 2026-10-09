@@ -12,9 +12,9 @@ import {supabase} from '../supabase';
 export type PsionicTurn={soloTurn:number}|{encounterId:string;round:number;index:number;turnId:string};
 export interface EnkindledUse {requestId:string;sourceFeature:string;baseRolls:number[];extraRolls:number[];diceCount:number}
 export interface EnkindledTurn {turn:PsionicTurn;used:EnkindledUse|null}
-export interface EnkindledRequest {activationId?:string;effectRollId?:string;requestId:string;turn:PsionicTurn;count:number;baseRolls:number[];extraRolls:number[];sourceFeature:string;recoveryNote?:string}
+export interface EnkindledRequest {propelId?:string;activationId?:string;effectRollId?:string;requestId:string;turn:PsionicTurn;count:number;baseRolls:number[];extraRolls:number[];sourceFeature:string;recoveryNote?:string}
 export interface EnkindledReceipt {requestId:string;extraRolls:number[];hitDiceSpent:number;hitDiceRevision:number;replayed:boolean}
-export interface SurgeRequest {activationId?:string;effectRollId?:string;hitDie?:HitDie;requestId:string;rolls:number[];sourceFeature:string;recoveryNote?:string}
+export interface SurgeRequest {propelId?:string;activationId?:string;effectRollId?:string;hitDie?:HitDie;requestId:string;rolls:number[];sourceFeature:string;recoveryNote?:string}
 export interface SurgeReceipt {hitDiceSpentByType?:Record<string,number>|null;requestId:string;rolls:number[];total:number;hitDiceSpent:number;hitDiceRevision:number;replayed:boolean}
 /** Injected into roll controls so a paid server result can refresh the sheet
  * without being enqueued as another optimistic absolute-value write. */
@@ -74,9 +74,9 @@ function receipt(value:unknown,requestId:string):asserts value is Record<string,
 }
 function validRolls(value:unknown):value is number[]{return Array.isArray(value)&&value.length>0&&value.length<=14&&value.every(n=>Number.isInteger(n)&&n>=1&&n<=12);}
 export async function spendEnkindledLifeForce(characterId:string,input:EnkindledRequest):Promise<EnkindledReceipt>{
- const request=structuredClone(input),link=request.activationId??request.effectRollId;
- if(!validPsionicEnhancementLink(request)||(link!==undefined&&(!validRolls(request.baseRolls)||(request.activationId!==undefined?request.baseRolls.length!==1:request.baseRolls.length>12)||!validRolls(request.extraRolls)||![1,2].includes(request.count)||request.extraRolls.length!==request.count)))throw new PsionicRequestError('Invalid Psion roll link or dice.',true);
- const data=await psionicRpc(request.effectRollId?'enhance_psionic_effect_roll':request.activationId?'enhance_sharpened_roll':'spend_enkindled_life_force',link?{p_character_id:characterId,p_activation_id:link,p_request_id:request.requestId,p_kind:'enkindled',p_extra_rolls:request.extraRolls,p_hit_die:null}:{
+ const request=structuredClone(input),link=request.propelId??request.activationId??request.effectRollId;
+ if(!validPsionicEnhancementLink(request)||(link!==undefined&&(!validRolls(request.baseRolls)||((request.activationId!==undefined||request.propelId!==undefined)?request.baseRolls.length!==1:request.baseRolls.length>12)||!validRolls(request.extraRolls)||![1,2].includes(request.count)||request.extraRolls.length!==request.count)))throw new PsionicRequestError('Invalid Psion roll link or dice.',true);
+ const data=await psionicRpc(request.propelId?'psionic_propel':request.effectRollId?'enhance_psionic_effect_roll':request.activationId?'enhance_sharpened_roll':'spend_enkindled_life_force',request.propelId?{p_character:characterId,p_operation:'enhance',p_payload:{declarationId:link,requestId:request.requestId,kind:'enkindled',extraRolls:request.extraRolls,hitDie:null}}:link?{p_character_id:characterId,p_activation_id:link,p_request_id:request.requestId,p_kind:'enkindled',p_extra_rolls:request.extraRolls,p_hit_die:null}:{
   p_character_id:characterId,p_request_id:request.requestId,p_turn:request.turn,p_count:request.count,
   p_base_rolls:request.baseRolls,p_extra_rolls:request.extraRolls,p_source_feature:request.sourceFeature,
  },true);
@@ -92,10 +92,10 @@ export async function advancePsionicSoloTurn(characterId:string,requestId:string
 }
 
 export async function spendPsionicSurge(characterId:string,input:SurgeRequest):Promise<SurgeReceipt>{
- const request=structuredClone(input),link=request.activationId??request.effectRollId;
+ const request=structuredClone(input),link=request.propelId??request.activationId??request.effectRollId;
  if(!validPsionicEnhancementLink(request)||(link!==undefined&&request.hitDie===undefined))throw new PsionicRequestError('Invalid Psion roll link or Hit Die pool.',true);
  if(request.hitDie!==undefined&&![6,8,10,12].includes(request.hitDie))throw new PsionicRequestError('Choose a valid Hit Die size.',true);
- const data=await psionicRpc(request.effectRollId?'enhance_psionic_effect_roll':request.activationId?'enhance_sharpened_roll':request.hitDie===undefined?'spend_psionic_surge':'spend_psionic_surge_from_pool',link?{p_character_id:characterId,p_activation_id:link,p_request_id:request.requestId,p_kind:'surge',p_extra_rolls:null,p_hit_die:request.hitDie}:{...(request.hitDie===undefined?{}:{p_hit_die:request.hitDie}),p_character_id:characterId,p_request_id:request.requestId,
+ const data=await psionicRpc(request.propelId?'psionic_propel':request.effectRollId?'enhance_psionic_effect_roll':request.activationId?'enhance_sharpened_roll':request.hitDie===undefined?'spend_psionic_surge':'spend_psionic_surge_from_pool',request.propelId?{p_character:characterId,p_operation:'enhance',p_payload:{declarationId:link,requestId:request.requestId,kind:'surge',extraRolls:null,hitDie:request.hitDie}}:link?{p_character_id:characterId,p_activation_id:link,p_request_id:request.requestId,p_kind:'surge',p_extra_rolls:null,p_hit_die:request.hitDie}:{...(request.hitDie===undefined?{}:{p_hit_die:request.hitDie}),p_character_id:characterId,p_request_id:request.requestId,
   p_rolls:request.rolls,p_source_feature:request.sourceFeature},true);
  receipt(data,request.requestId);
  if(link&&(data.activationId!==link||data.kind!=='surge'))throw new PsionicRequestError('The saved linked enhancement could not be verified.',false);

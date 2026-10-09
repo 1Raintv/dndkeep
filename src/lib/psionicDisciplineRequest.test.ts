@@ -40,3 +40,10 @@ it('accepts a separate effect-roll link only for its two supported disciplines',
  for(const sourceFeature of ['Biofeedback','Destructive Thoughts'])expect(validPsionicEnhancementLink({effectRollId,requestId:'payment',sourceFeature})).toBe(true);
  expect(validPsionicEnhancementLink({effectRollId,requestId:effectRollId,sourceFeature:'Biofeedback'})).toBe(false);expect(validPsionicEnhancementLink({effectRollId,requestId:'payment',sourceFeature:'Sharpened Mind'})).toBe(false);
 });
+
+it('accepts only one matching Propel enhancement parent',()=>{
+ const propelId='00000000-0000-4000-8000-000000000010';
+ for(const sourceFeature of ['Telekinetic Propel','Warp Propel'])expect(validPsionicEnhancementLink({propelId,sourceFeature,requestId:'payment'})).toBe(true);
+ for(const patch of [{effectRollId:propelId},{activationId:propelId},{requestId:propelId},{sourceFeature:'Other'},{propelId:null}])
+  expect(validPsionicEnhancementLink({propelId,sourceFeature:'Telekinetic Propel',requestId:'payment',...patch})).toBe(false);
+});

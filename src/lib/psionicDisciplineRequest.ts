@@ -42,8 +42,9 @@ export function createDisciplineRequest(c:Character,turn:PsionicTurn,discipline:
 
 /** v2.852: linked enhancements preserve their parent through retries. Legacy
  * generic payments remain valid, but cannot acquire a parent retroactively. */
-export function validPsionicEnhancementLink(v:{activationId?:unknown;effectRollId?:unknown;sourceFeature?:unknown;requestId?:unknown}){
+export function validPsionicEnhancementLink(v:{propelId?:unknown;activationId?:unknown;effectRollId?:unknown;sourceFeature?:unknown;requestId?:unknown}){
  const uuid=(id:unknown)=>typeof id==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)&&id!==v.requestId;
+ if(v.propelId!==undefined)return v.activationId===undefined&&v.effectRollId===undefined&&uuid(v.propelId)&&['Telekinetic Propel','Warp Propel'].includes(String(v.sourceFeature));
  if(v.activationId!==undefined)return v.effectRollId===undefined&&uuid(v.activationId)&&v.sourceFeature==='Sharpened Mind';
  return v.effectRollId===undefined||uuid(v.effectRollId)&&['Destructive Thoughts','Biofeedback'].includes(String(v.sourceFeature));
 }
