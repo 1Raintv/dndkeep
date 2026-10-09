@@ -4,7 +4,7 @@ const m=vi.hoisted(()=>({rpc:vi.fn(),die:vi.fn(),groups:vi.fn()}));
 vi.mock('./psionicTurns',()=>({psionicRpc:m.rpc}));
 vi.mock('../supabase',()=>({supabase:{}}));
 vi.mock('../../rules/dice',()=>({rollDie:m.die,rollDiceGroups:m.groups}));
-import {prepareDeathSave,confirmDeathSave,savedDeathSave,pendingDeathSaveDrafts,resolveAutomaticDeathSaveRoll} from './deathSaves';
+import {prepareDeathSave,confirmDeathSave,savedDeathSave,pendingDeathSaveDrafts,resolveAutomaticDeathSaveRoll,nextDeathSave} from './deathSaves';
 const context={pendingId:'save',characterId:'hero',participantId:'part',combatantId:'cb',encounterId:'enc',state:'pending',encounterStatus:'active',hp:0,stable:false,dead:false,successes:0,failures:0,exhaustion:0,buffs:[],conditions:[]};
 const receipt={pendingId:'save',outcome:'failure',d20:12,total:9,dice:[12],bonus:0,exhaustion:0,successes:0,failures:1,stable:false,dead:false,hp:0,replayed:false,penalty:{saveId:'save',saveKind:'death',penalty:3,die:3,consumedIds:['effect'],expiredIds:[]}};
 const prepare=()=>prepareDeathSave('hero','save',0,false,false);
@@ -31,4 +31,21 @@ it('automatic failure exposes the existing offer for review',async()=>{
  await expect(resolveAutomaticDeathSaveRoll('hero','save')).rejects.toThrow('cannot be rolled');
  expect(m.rpc).toHaveBeenCalledWith('review_automatic_death_save',{p_pending:'save'},true);
  expect(m.rpc.mock.calls.some(c=>c[0]==='settle_pending_death_save')).toBe(false);
+});
+
+it('discovers abandoned automatic offers through the server clock',async()=>{
+ m.rpc.mockResolvedValue('orphan');expect(await nextDeathSave('hero')).toBe('orphan');
+ expect(m.rpc).toHaveBeenCalledWith('next_recoverable_death_save',{p_character:'hero'});
+});
+it('keeps local saved dice ahead of server discovery',async()=>{
+ await prepare();m.rpc.mockClear();expect(await nextDeathSave('hero')).toBe('save');expect(m.rpc).not.toHaveBeenCalled();
+});
+it('manual recovery changes automatic mode before rolling and uses the fresh context',async()=>{
+ m.rpc.mockResolvedValueOnce({...context,resolutionMode:'auto'}).mockResolvedValueOnce(null).mockResolvedValueOnce({...context,resolutionMode:'prompt'});
+ expect(await prepare()).toMatchObject({context:{resolutionMode:'prompt'},dice:[12]});
+ expect(m.rpc.mock.calls.map(c=>c[0])).toEqual(['get_death_save_context','review_automatic_death_save','get_death_save_context']);
+});
+it('does not roll if the automatic save won the recovery race',async()=>{
+ m.rpc.mockResolvedValueOnce({...context,resolutionMode:'auto'}).mockResolvedValueOnce(null).mockResolvedValueOnce({...context,resolutionMode:'auto',state:'rolled'});
+ await expect(prepare()).rejects.toThrow('already resolved');expect(m.die).not.toHaveBeenCalled();
 });

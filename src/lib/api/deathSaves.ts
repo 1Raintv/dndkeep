@@ -1,9 +1,8 @@
-import {supabase} from '../supabase';
 import {psionicRpc} from './psionicTurns';
 import {rollDie} from '../../rules/dice';
 import {rollDeathSaveBonuses,type DeathSaveBonusRoll} from '../../rules/deathSaveBonuses';
 import {resolveDeathSave} from '../../rules/deathSaves';
-export interface DeathSaveContext {pendingId:string;characterId:string;participantId:string;combatantId:string;encounterId:string;state:string;encounterStatus:string;hp:number;stable:boolean;dead:boolean;successes:number;failures:number;exhaustion:number;buffs:unknown[];conditions:string[];inventory?:unknown[]}
+export interface DeathSaveContext {pendingId:string;characterId:string;participantId:string;combatantId:string;encounterId:string;state:string;encounterStatus:string;hp:number;stable:boolean;dead:boolean;successes:number;failures:number;exhaustion:number;buffs:unknown[];conditions:string[];resolutionMode?:'auto'|'prompt';inventory?:unknown[]}
 export interface SavedDeathSave {version:1;bonusRolls?:DeathSaveBonusRoll[];characterId:string;pendingId:string;context:DeathSaveContext;pool:number[];dice:number[];bonus:number;advantage:boolean;disadvantage:boolean;penaltyD4:number}
 export interface DeathSaveReceipt {pendingId:string;outcome:string;d20:number|null;total:number|null;dice?:number[];bonus?:number;exhaustion?:number;successes?:number;failures?:number;stable?:boolean;dead?:boolean;hp?:number;replayed:boolean;penalty:{saveId:string;saveKind:string;penalty:number;die:number|null;consumedIds:string[];expiredIds:string[]}|null}
 const key=(c:string,id:string)=>`dndkeep:death-save:${c}:${id}`;
@@ -35,8 +34,9 @@ export function pendingDeathSaveDrafts(c:string):SavedDeathSave[]{
 }
 export async function nextDeathSave(c:string):Promise<string|null>{
  const draft=pendingDeathSaveDrafts(c).find(r=>!automatic.has(key(c,r.pendingId)));if(draft)return draft.pendingId;
- const {data,error}=await supabase.from('pending_death_saves').select('id').eq('character_id',c).eq('state','pending').eq('resolution_mode','prompt').order('created_at',{ascending:true}).limit(1).maybeSingle();
- if(error)throw error;return data?.id??null;
+ const id=await psionicRpc('next_recoverable_death_save',{p_character:c});
+ if(id!==null&&typeof id!=='string')throw invalid();
+ return id!==null&&automatic.has(key(c,id))?null:id;
 }
 export async function deathSaveContext(c:string,id:string):Promise<DeathSaveContext>{
  const context=await psionicRpc('get_death_save_context',{p_pending:id});if(!validContext(context,c,id))throw invalid();return context;
@@ -46,7 +46,11 @@ export async function prepareDeathSave(c:string,id:string,bonus:number,advantage
  try{
   const old=savedDeathSave(c,id);if(old&&!review)return old;
   if(!integer(bonus,-100,100))throw new Error('Review the effect modifier.');
-  const context=await deathSaveContext(c,id);
+  let context=await deathSaveContext(c,id);
+  if(!automatic&&context.state==='pending'&&context.resolutionMode==='auto'){
+   await psionicRpc('review_automatic_death_save',{p_pending:id},true);
+   context=await deathSaveContext(c,id);
+  }
   if(context.state!=='pending')throw new Error('This save is already resolved. Confirm the saved roll to recover its result.');
   let bonusRolls:DeathSaveBonusRoll[]|undefined;
   if(automatic){

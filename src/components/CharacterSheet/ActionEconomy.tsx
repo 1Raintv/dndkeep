@@ -49,6 +49,7 @@ export default function ActionEconomy({ savedUsed,savedError,trackPsionicTurns=f
  // context default has encounter=null, so this is a no-op there.
  const encounter = useCombatSelector(s => s.encounter); // v2.645 slice 2
  const currentActor = useCombatCurrentActor();
+ const combatLoading = useCombatSelector(s => s.loading);
  const [endingTurn, setEndingTurn] = useState(false);
  const {showToast}=useToast();
  const advancing=useRef(false),mounted=useRef(true);
@@ -63,7 +64,8 @@ export default function ActionEconomy({ savedUsed,savedError,trackPsionicTurns=f
  // v2.781 — only a confirmed advance may clear the local turn budget.
  // A failed request must not silently refund actions or reset another sheet.
  async function handleEndTurn() {
- if(advancing.current)return;
+// v2.869 audit: unknown combat state must not look like an independent turn.
+ if(advancing.current||combatLoading)return;
  if((!isMyCombatTurn||!encounter)&&(!trackPsionicTurns||!characterId)){reset();return;}
  advancing.current=true;setEndingTurn(true);
  const started=sheet.current;
@@ -200,11 +202,11 @@ export default function ActionEconomy({ savedUsed,savedError,trackPsionicTurns=f
  Movement
  </span>
  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
- <button disabled={endingTurn} onClick={() => addMove(-5)} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: 'var(--t-2)', fontSize: 11, padding: 0, minWidth: 32, width: 32, height: 32, cursor: 'pointer', lineHeight: 1, display:'flex', alignItems:'center', justifyContent:'center' }}>−</button>
+ <button disabled={endingTurn||combatLoading} onClick={() => addMove(-5)} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: 'var(--t-2)', fontSize: 11, padding: 0, minWidth: 32, width: 32, height: 32, cursor: 'pointer', lineHeight: 1, display:'flex', alignItems:'center', justifyContent:'center' }}>−</button>
  <span style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 11, color: movingColor, minWidth: 56, textAlign: 'center' }}>
  {state.movedFeet}/{speedFeet}ft
  </span>
- <button disabled={endingTurn} onClick={() => addMove(5)} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: 'var(--t-2)', fontSize: 11, padding: 0, minWidth: 32, width: 32, height: 32, cursor: 'pointer', lineHeight: 1, display:'flex', alignItems:'center', justifyContent:'center' }}>+</button>
+ <button disabled={endingTurn||combatLoading} onClick={() => addMove(5)} style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 3, color: 'var(--t-2)', fontSize: 11, padding: 0, minWidth: 32, width: 32, height: 32, cursor: 'pointer', lineHeight: 1, display:'flex', alignItems:'center', justifyContent:'center' }}>+</button>
  </div>
  </div>
  <div style={{ height: 4, background: 'var(--c-border)', borderRadius: 2, overflow: 'hidden' }}>
@@ -216,10 +218,10 @@ export default function ActionEconomy({ savedUsed,savedError,trackPsionicTurns=f
  {/* End Turn button at the bottom — full width, prominent */}
  <button
  onClick={handleEndTurn}
- disabled={endingTurn}
+ disabled={endingTurn||combatLoading}
  style={{
  width: '100%',
- opacity: endingTurn ? 0.6 : 1,
+ opacity: endingTurn||combatLoading ? 0.6 : 1,
  fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
  padding: '8px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer', minHeight: 0,
  border: '1px solid var(--c-gold-bdr)',
@@ -239,7 +241,7 @@ export default function ActionEconomy({ savedUsed,savedError,trackPsionicTurns=f
  (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--c-gold-bdr)';
  }}
  >
- ↺ {endingTurn ? 'Ending…' : isMyCombatTurn ? 'End Turn →' : 'End Turn'}
+ ↺ {combatLoading ? 'Loading turn…' : endingTurn ? 'Ending…' : isMyCombatTurn ? 'End Turn →' : 'End Turn'}
  </button>
  </div>
  );

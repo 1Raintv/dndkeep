@@ -54,4 +54,24 @@ test.describe('Death-save offer identity',()=>{
   expect(settle(first.id).outcome).toBe('success');
  });
 
+ test('server discovery exposes abandoned automatic offers only after grace and only to owner or DM',()=>{
+  const row=JSON.parse(sql(auth(owner,`select create_death_save_offer('${char}','${part}','${turn}',true)`)));
+  const discover=`select next_recoverable_death_save('${char}')`;
+  expect(sql(auth(owner,discover))).toBe('');
+  sql(`update pending_death_saves set created_at=now()-interval '2 minutes' where id='${row.id}'`);
+  expect(sql(auth(owner,discover))).toBe(row.id);expect(sql(auth(dm,discover))).toBe(row.id);
+  expect(()=>sql(auth(other,discover))).toThrow();
+  settle(row.id);expect(sql(auth(owner,discover))).toBe('');
+ });
+ test('review fences late automatic settlement while preserving committed replay',()=>{
+  const row=JSON.parse(sql(auth(owner,`select create_death_save_offer('${char}','${part}','${turn}',true)`)));
+  const stale=JSON.parse(sql(auth(owner,`select get_death_save_context('${row.id}')`)));
+  sql(auth(dm,`select review_automatic_death_save('${row.id}')`));
+  const attempt=`select settle_pending_death_save('${row.id}','${JSON.stringify(stale)}',array[10],0,false,false,3)`;
+  expect(()=>sql(auth(owner,attempt))).toThrow();expect(create().state).toBe('pending');
+  expect(settle(row.id).outcome).toBe('success');
+  expect(JSON.parse(sql(auth(owner,attempt)))).toMatchObject({outcome:'success',replayed:true});
+  expect(sql(`select count(*) from combat_events where chain_id='${row.id}'`)).toBe('1');
+ });
+
 });

@@ -6083,3 +6083,35 @@ recovery for that window. The live combat clock still needs ordered side-effect
 recovery and integration with its server ledger; direct sheet saves and other
 save callers still need full next-save penalty coverage. This is an unreleased
 checkpoint, not a claim of complete Mind Sliver or flawless Psion automation.
+
+
+### Interrupted automatic death-save discovery (unreleased)
+
+Server-timed discovery now returns pending automatic offers after60 seconds,
+including offers whose creating browser closed before persisting any dice. The
+sheet checks every15 seconds and on reconnect as well as realtime. Local saved
+dice remain first in the recovery queue; actively running saves in this browser
+stay suppressed. A new manual preparation converts automatic mode to prompt,
+then reloads context before rolling. Resolution mode is part of the expected
+context, so a late automatic request cannot settle after that handoff. An already
+committed receipt still wins on replay. The review RPC uses settlement's
+character-first lock ordering. A result arriving while the dialog is open now
+shows a terminal message and Done instead of trapping the player in an error.
+
+This closes the hidden-offer window noted above. It does not make original
+uncommitted dice available on another device: roll proposals remain local to
+the originating browser. Settlement remains exactly once per offer, but durable
+shared proposals and broader turn-effect recovery remain follow-ups. This new
+migration has been applied only locally; production is unchanged. Automatic
+advantage/disadvantage derivation and other save callers remain release gaps.
+
+
+The live browser regression also exposed an early-click bug: before combat loaded,
+the sheet could treat End Turn as a local reset. ActionEconomy now disables the
+button and guards its handler while combat state is loading. A component test
+checks that neither local trackers nor combat/solo turns change until loading
+finishes. The browser test retains its normal End Turn click to exercise this
+protection instead of hiding the race with an artificial wait.
+
+Recovery final verification:3,196 unit tests, TypeScript197/197, hooks, RAW, coordinates, anchors, production build and255.2KB entry all pass. All28 offer database cases and8 final desktop/mobile dialog cases pass. Changed-file ESLint, SQL error-level lint and diff whitespace checks pass. No production migration or deployment.
+

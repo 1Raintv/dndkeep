@@ -66,4 +66,33 @@ test.describe('Saved death-save dialog',()=>{
   await expect(page.getByRole('dialog',{name:'Death saving throw'})).toHaveCount(0);expect(errors).toEqual([]);
  });
 
+ test('abandoned automatic offer appears after reload without a local draft',async({page})=>{
+  sql(`update pending_death_saves set resolution_mode='auto',created_at=now()-interval '2 minutes' where id='${pending}'`);
+  await signInAsSeedDm(page,email);await page.goto(`/character/${id}`);
+  const dialog=page.getByRole('dialog',{name:'Death saving throw'});
+  await expect(dialog).toContainText('automatic save was interrupted');
+  await page.reload();await expect(dialog).toBeVisible();
+  await dialog.getByLabel('I reviewed the applicable save effects.').check();
+  await dialog.getByRole('button',{name:'Roll death save',exact:true}).click();
+  await expect(dialog.getByText(/Saved dice:/)).toBeVisible();
+  expect(sql(`select resolution_mode from pending_death_saves where id='${pending}'`)).toBe('prompt');
+  await dialog.getByRole('button',{name:'Confirm saved roll'}).click();
+  await expect(dialog.getByRole('status')).toBeVisible();
+  expect(sql(`select count(*) from combat_events where chain_id='${pending}'`)).toBe('1');
+ });
+
+ test('an automatic result arriving during manual recovery closes without another roll',async({page})=>{
+  sql(`update pending_death_saves set resolution_mode='auto',created_at=now()-interval '2 minutes' where id='${pending}'`);
+  await signInAsSeedDm(page,email);await page.goto(`/character/${id}`);
+  const dialog=page.getByRole('dialog',{name:'Death saving throw'});
+  await expect(dialog).toContainText('automatic save was interrupted');
+  sql(`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${user}","role":"authenticated"}';
+   select settle_pending_death_save('${pending}',get_death_save_context('${pending}'),array[10],0,false,false,3);commit;`);
+  await dialog.getByLabel('I reviewed the applicable save effects.').check();
+  await dialog.getByRole('button',{name:'Roll death save',exact:true}).click();
+  await expect(dialog.getByRole('status')).toHaveText('This save is already resolved. No new roll is needed.');
+  expect(sql(`select count(*) from combat_events where chain_id='${pending}'`)).toBe('1');
+  await dialog.getByRole('button',{name:'Done',exact:true}).click();await expect(dialog).toHaveCount(0);
+ });
+
 });

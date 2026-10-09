@@ -8,7 +8,7 @@ import ModalPortal from '../shared/ModalPortal';
 export default function DeathSavePromptModal({characterId,campaignId}:{characterId:string;campaignId:string}){
  const [id,setId]=useState<string|null>(null),[error,setError]=useState('');
  const load=useCallback(async()=>{try{const next=await nextDeathSave(characterId);setId(current=>current??next);setError('');}catch(e){setError(e instanceof Error?e.message:'Death saves could not load.');}},[characterId]);
- useEffect(()=>{void load();const changed=()=>{void load();};window.addEventListener(DEATH_SAVE_CHANGED,changed);const channel=supabase.channel(`death-save:${characterId}`).on('postgres_changes',{event:'*',schema:'public',table:'pending_death_saves',filter:`character_id=eq.${characterId}`},()=>{void load();}).subscribe();return()=>{window.removeEventListener(DEATH_SAVE_CHANGED,changed);void supabase.removeChannel(channel);};},[characterId,campaignId,load]);
+ useEffect(()=>{void load();const changed=()=>{void load();};window.addEventListener(DEATH_SAVE_CHANGED,changed);window.addEventListener('online',changed);const timer=window.setInterval(changed,15000);const channel=supabase.channel(`death-save:${characterId}`).on('postgres_changes',{event:'*',schema:'public',table:'pending_death_saves',filter:`character_id=eq.${characterId}`},()=>{void load();}).subscribe();return()=>{window.removeEventListener(DEATH_SAVE_CHANGED,changed);window.removeEventListener('online',changed);window.clearInterval(timer);void supabase.removeChannel(channel);};},[characterId,campaignId,load]);
  if(id)return <DeathSaveDialog key={`${characterId}:${id}`} characterId={characterId} id={id} onDone={()=>{setId(null);void load();}}/>;
  return error?<div role="alert">{error} <button onClick={()=>void load()}>Retry death saves</button></div>:null;
 }
@@ -21,7 +21,12 @@ function DeathSaveDialog({characterId,id,onDone}:{characterId:string;id:string;o
   if(lock.current)return;lock.current=true;setBusy(true);setError('');
   try{if(confirm){const r=await confirmDeathSave(characterId,id);if(mounted.current)setReceipt(r);}
    else{const r=await prepareDeathSave(characterId,id,bonus,adv,dis,review);if(mounted.current){setSaved(r);setContext(r.context);}}}
-  catch(e){if(mounted.current)setError(e instanceof Error?e.message:'Save failed. Retry the saved roll.');}
+  catch(e){
+   // Another browser may have finished while this dialog was open. With no local
+   // dice to recover, show its terminal state instead of trapping the player.
+   if(!saved){try{const current=await deathSaveContext(characterId,id);if(mounted.current&&current.state!=='pending'){setContext(current);return;}}catch{/* Preserve the original failure when offline. */}}
+   if(mounted.current)setError(e instanceof Error?e.message:'Save failed. Retry the saved roll.');
+  }
   finally{lock.current=false;if(mounted.current)setBusy(false);}
  }
  const edited=!!saved&&(bonus!==saved.bonus||adv!==saved.advantage||dis!==saved.disadvantage);
@@ -37,7 +42,8 @@ function DeathSaveDialog({characterId,id,onDone}:{characterId:string;id:string;o
     {receipt.d20!==null&&<p>d20 {receipt.d20} · Total {receipt.total} vs DC 10</p>}
     {!!receipt.penalty?.penalty&&<p>Mind Sliver: −{receipt.penalty.penalty}</p>}
     <button className="btn-gold" onClick={onDone}>Done</button>
-   </>:<>
+   </>:context&&context.state!=='pending'&&!saved?<><p role="status">This save is already resolved. No new roll is needed.</p><button className="btn-gold" onClick={onDone}>Done</button></>:<>
+    {context?.resolutionMode==='auto'&&<p>The automatic save was interrupted. Review its effects to resume.</p>}
     <p>At 0 HP: total 10+ succeeds. Natural 1 adds two failures; natural 20 restores 1 HP.</p>
     <p>Three successes stabilize you without restoring HP. Three failures mean death.</p>
     {context&&<p>Successes {context.successes}/3 · Failures {context.failures}/3 · Exhaustion penalty {2*context.exhaustion}</p>}
