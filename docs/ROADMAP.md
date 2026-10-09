@@ -6172,4 +6172,3 @@ broader branch based on these transaction tests alone. Migration applied only
 to the existing local Docker database.
 
 Condition-save foundation validation:32 database regression cases pass, including concurrency, rollback, shared-penalty consumption, Guards, disadvantage, permissions, immunity and replay after turn advance. Full gate passes3,200 unit tests, TypeScript197/197, hooks, RAW, coordinates, anchors, build and255.2KB entry. SQL error-level lint, changed-file ESLint and diff whitespace checks pass. No live UI or production behavior changed in this foundation batch.
-
