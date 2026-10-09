@@ -24,17 +24,19 @@ test.describe('Paid spell declaration and settlement (local stack)',()=>{
    insert into pending_reactions(id,campaign_id,reactor_participant_id,reactor_name,reactor_type,reaction_key,reaction_name,trigger_point,expires_at,decision_payload)
    values('${offer}','${campaign}','${reactor}','Reactor','character','counterspell','Counterspell','spell_declared',now()+interval '5 minutes','{"spell_cast_id":"${cast}"}');`);
  });
- test.beforeEach(()=>sql(`delete from pending_reactions where id='${offer}';delete from pending_spell_casts where id='${cast}';
-  update characters set spell_slots='{"3":{"total":3,"used":0},"4":{"total":1,"used":0}}',prepared_spells=ARRAY['fly'],spell_sources='{"fly":["class:Wizard"],"light":["class:Wizard"]}',spell_preparation_sources='{"fly":["class:Wizard"]}' where id='${caster}'`));
+ test.beforeEach(()=>sql(`update combat_encounters set current_turn_index=1 where id='${encounter}';delete from pending_reactions where id='${offer}';delete from pending_spell_casts where id='${cast}';
+  update characters set spell_slots='{"3":{"total":3,"used":0},"4":{"total":1,"used":0}}',prepared_spells=ARRAY['fly'],spell_sources='{"fly":["class:Wizard"],"light":["class:Wizard"],"misty-step":["class:Wizard"],"counterspell":["class:Wizard"]}',spell_preparation_sources='{"fly":["class:Wizard"],"misty-step":["class:Wizard"],"counterspell":["class:Wizard"]}' where id='${caster}'`));
  test.afterEach(()=>sql(`delete from pending_reactions where campaign_id='${campaign}';delete from pending_spell_casts where campaign_id='${campaign}';delete from pending_attacks where campaign_id='${campaign}';delete from combat_participants where campaign_id='${campaign}';delete from combat_encounters where campaign_id='${campaign}';delete from characters where campaign_id='${campaign}';delete from combatants where campaign_id='${campaign}';delete from campaigns where id='${campaign}';delete from auth.users where id in('${owner}','${dm}','${outsider}');`));
 
  const character=()=>JSON.parse(sql(`select row_to_json(c) from characters c where id='${caster}'`));
- const declare=(id=cast,level=3,expected=character().spell_slots[String(level)]??null,spell=level===0?'light':'fly')=>`select declare_spell_cast_atomic('${id}','${caster}','${target}','${spell}','${spell}',${level},${expected===null?'null':"'"+JSON.stringify(expected)+"'"},'{"source":"class:Wizard","spellLevel":${level===0?0:3},"target":"Self"}')`;
+ const declare=(id=cast,level=3,expected=character().spell_slots[String(level)]??null,spell=level===0?'light':'fly')=>`select declare_spell_cast_atomic('${id}','${caster}','${target}','${spell}','${spell}',${level},${expected===null?'null':"'"+JSON.stringify(expected)+"'"},'{"source":"class:Wizard","actionKind":"action","isBonusAction":false,"spellLevel":${level===0?0:3},"target":"Self"}')`;
+ const withKind=(query:string,kind:string)=>query.replace('"actionKind":"action"',`"actionKind":"${kind}"`).replace('"isBonusAction":false',`"isBonusAction":${kind==='bonusAction'}`)
+  .replace("'fly','fly'",kind==='bonusAction'?"'misty-step','misty-step'":kind==='reaction'?"'counterspell','counterspell'":"'fly','fly'")
+  .replace('"spellLevel":3',kind==='bonusAction'?'"spellLevel":2':'"spellLevel":3');
  const settle=(id=cast)=>`select settle_declared_spell_atomic('${id}')`;
  function counter(id=cast,passed=false){
   const offerId=randomUUID();
-  sql(`update combat_participants set reaction_used=false where id='${reactor}';
-   insert into pending_reactions(id,campaign_id,reactor_participant_id,reactor_name,reactor_type,reaction_key,reaction_name,trigger_point,expires_at,decision_payload)
+  sql(`insert into pending_reactions(id,campaign_id,reactor_participant_id,reactor_name,reactor_type,reaction_key,reaction_name,trigger_point,expires_at,decision_payload)
    values('${offerId}','${campaign}','${reactor}','Reactor','character','counterspell','Counterspell','spell_declared',now()+interval '5 minutes','{"spell_cast_id":"${id}"}')`);
   const c=JSON.parse(sql(`select row_to_json(c) from characters c where id='${hero}'`));
   const expected={...Object.fromEntries(['class_name','level','subclass','secondary_class','secondary_level','secondary_subclass','intelligence','wisdom','charisma','inventory','spell_sources','spell_preparation_sources','prepared_spells'].map(k=>[k,c[k]])),slot:c.spell_slots['3']};
@@ -43,53 +45,56 @@ test.describe('Paid spell declaration and settlement (local stack)',()=>{
   return receipt.attackId;
  }
 
- const nextTurn=()=>sql(`update combat_encounters set round_number=round_number+1 where id='${encounter}'`);
+ // Advance through the reactor's own turn; emulate the legacy turn-reset writer.
+ const nextTurn=(index=1)=>sql(`update combat_encounters set current_turn_index=0,round_number=round_number+1 where id='${encounter}';update combat_participants set reaction_used=false where id='${reactor}';update combat_encounters set current_turn_index=${index} where id='${encounter}'`);
  const spends=()=>JSON.parse(sql(`select coalesce(json_agg(s order by s.created_at),'[]') from dndkeep_private.spell_turn_slot_spends s where s.encounter_id='${encounter}'`));
  const readyHero=()=>sql(`update characters set spell_sources=spell_sources||'{"fly":["class:Psion"]}',spell_preparation_sources=spell_preparation_sources||'{"fly":["class:Psion"]}',prepared_spells=array_append(prepared_spells,'fly') where id='${hero}'`);
- const heroDeclare=()=>`select declare_spell_cast_atomic('${randomUUID()}','${hero}','${reactor}','fly','Fly',3,'${sql(`select spell_slots->'3' from characters where id='${hero}'`)}','{"source":"class:Psion","spellLevel":3,"isBonusAction":false}')`;
+ const heroDeclare=()=>`select declare_spell_cast_atomic('${randomUUID()}','${hero}','${reactor}','fly','Fly',3,'${sql(`select spell_slots->'3' from characters where id='${hero}'`)}','{"source":"class:Psion","spellLevel":3,"actionKind":"action","isBonusAction":false}')`;
  test('one current-turn slot covers different spell levels and action types',()=>{
   sql(auth(dm,declare()));const before=character();
-  const q=declare(randomUUID(),4).replace('"target":"Self"','"target":"Self","isBonusAction":true');
+  const q=withKind(declare(randomUUID(),4),'bonusAction');
   expect(()=>sql(auth(dm,q))).toThrow(/Only one spell slot/);
   expect(character().spell_slots).toEqual(before.spell_slots);expect(spends()).toHaveLength(1);
+  expect(sql(`select bonus_used from combat_participants where id='${target}'`)).toBe('f');
+  expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${caster}'`)).toBe('1');
   expect(sql(`select count(*) from pending_spell_casts where campaign_id='${campaign}'`)).toBe('1');
  });
  test('cantrips do not consume or collide with the slot limit',()=>{
-  sql(auth(dm,declare(cast,0)));sql(auth(dm,declare(randomUUID(),3)));sql(auth(dm,declare(randomUUID(),0)));
+  sql(auth(dm,declare(cast,0)));sql(auth(dm,withKind(declare(randomUUID(),3),'bonusAction')));expect(()=>sql(auth(dm,declare(randomUUID(),0)))).toThrow(/already spent/);
   expect(spends()).toHaveLength(1);expect(character().spell_slots['3'].used).toBe(1);
  });
  test('the next actor turn in the same round permits a new slot, with no stale replay charge',()=>{
   const q=declare();sql(auth(dm,q));const first=spends()[0].turn_id;
-  sql(`update combat_encounters set current_turn_index=1 where id='${encounter}'`);
-  sql(auth(dm,declare(randomUUID(),4)));expect(spends()).toHaveLength(2);expect(spends()[1].turn_id).not.toBe(first);
+  sql(`update combat_encounters set current_turn_index=0 where id='${encounter}'`);
+  sql(auth(dm,withKind(declare(randomUUID(),4),'reaction')));expect(spends()).toHaveLength(2);expect(spends()[1].turn_id).not.toBe(first);
   expect(JSON.parse(sql(auth(dm,q))).replayed).toBe(true);expect(spends()).toHaveLength(2);
-  expect(()=>sql(auth(dm,declare(randomUUID(),3)))).toThrow(/Only one spell slot/);
+  expect(()=>sql(auth(dm,withKind(declare(randomUUID(),3),'reaction')))).toThrow(/already spent/);
  });
  test('rewinding initiative does not reuse an old turn nonce',()=>{
-  sql(auth(dm,declare()));sql(`update combat_encounters set current_turn_index=1 where id='${encounter}';update combat_encounters set current_turn_index=0 where id='${encounter}'`);
+  sql(auth(dm,declare()));sql(`update combat_encounters set current_turn_index=0 where id='${encounter}';update combat_encounters set current_turn_index=1 where id='${encounter}'`);
   sql(auth(dm,declare(randomUUID(),4)));expect(new Set(spends().map((s:any)=>s.turn_id)).size).toBe(2);
  });
  test('competing casts at different slot levels pay for only one spell',async()=>{
-  const results=await Promise.all([parallel(auth(dm,declare(cast,3))),parallel(auth(dm,declare(randomUUID(),4)))]);
+  const results=await Promise.all([parallel(auth(dm,declare(cast,3))),parallel(auth(dm,withKind(declare(randomUUID(),4),'bonusAction')))]);
   expect(results.filter(r=>r.code===0)).toHaveLength(1);expect(spends()).toHaveLength(1);
   const slots=character().spell_slots;expect(slots['3'].used+slots['4'].used).toBe(1);
  });
  test('a refunded Counterspell interruption releases only that spell cost',()=>{
   sql(auth(dm,declare()));counter();sql(auth(dm,settle()));expect(spends().find((s:any)=>s.character_id===caster).released).toBe(true);
-  sql(auth(dm,declare(randomUUID(),4)));expect(spends().filter((s:any)=>s.character_id===caster&&!s.released)).toHaveLength(1);
-  sql(auth(dm,settle()));expect(()=>sql(auth(dm,declare(randomUUID(),3)))).toThrow(/Only one spell slot/);
+  sql(auth(dm,withKind(declare(randomUUID(),4),'bonusAction')));expect(spends().filter((s:any)=>s.character_id===caster&&!s.released)).toHaveLength(1);
+  sql(auth(dm,settle()));expect(()=>sql(auth(dm,withKind(declare(randomUUID(),3),'reaction')))).toThrow(/Only one spell slot/);
  });
  test('successful saves keep the original slot spent for the current turn',()=>{
   sql(auth(dm,declare()));counter(cast,true);sql(auth(dm,settle()));
-  expect(()=>sql(auth(dm,declare(randomUUID(),4)))).toThrow(/Only one spell slot/);
+  expect(()=>sql(auth(dm,withKind(declare(randomUUID(),4),'bonusAction')))).toThrow(/Only one spell slot/);
  });
  test('Counterspell and normal casting share the reactor current-turn limit',()=>{
-  readyHero();sql(auth(dm,declare()));counter();const before=sql(`select spell_slots from characters where id='${hero}'`);
+  readyHero();sql(`update combat_encounters set current_turn_index=0 where id='${encounter}'`);sql(auth(dm,withKind(declare(),'reaction')));counter();const before=sql(`select spell_slots from characters where id='${hero}'`);
   expect(()=>sql(auth(owner,heroDeclare()))).toThrow(/Only one spell slot/);expect(sql(`select spell_slots from characters where id='${hero}'`)).toBe(before);
-  nextTurn();sql(auth(owner,heroDeclare()));expect(spends().filter((s:any)=>s.character_id===hero)).toHaveLength(2);
+  nextTurn(0);sql(auth(owner,heroDeclare()));expect(spends().filter((s:any)=>s.character_id===hero)).toHaveLength(2);
  });
  test('Counterspell rejection after an earlier spell rolls back reaction, save and receipt',()=>{
-  readyHero();sql(auth(owner,heroDeclare()));sql(auth(dm,declare()));
+  readyHero();sql(`update combat_encounters set current_turn_index=0 where id='${encounter}'`);sql(auth(owner,heroDeclare()));sql(auth(dm,withKind(declare(),'reaction')));
   expect(()=>counter()).toThrow(/Only one spell slot/);
   expect(sql(`select reaction_used from combat_participants where id='${reactor}'`)).toBe('f');
   expect(sql(`select state from pending_spell_casts where id='${cast}'`)).toBe('declared');
@@ -97,7 +102,7 @@ test.describe('Paid spell declaration and settlement (local stack)',()=>{
  });
  test('resting, deleting the public cast or editing counters cannot erase the private current-turn cost',()=>{
   sql(auth(dm,declare()));sql(`delete from pending_spell_casts where id='${cast}';update characters set spell_slots='{"3":{"total":3,"used":0},"4":{"total":1,"used":0}}' where id='${caster}'`);
-  expect(()=>sql(auth(dm,declare(randomUUID(),4)))).toThrow(/Only one spell slot/);expect(spends()).toHaveLength(1);
+  expect(()=>sql(auth(dm,withKind(declare(randomUUID(),4),'bonusAction')))).toThrow(/Only one spell slot/);expect(spends()).toHaveLength(1);
  });
  test('turn-slot records and trigger function are not accessible to ordinary clients',()=>{
   expect(()=>sql(auth(dm,'select * from dndkeep_private.spell_turn_slot_spends'))).toThrow(/permission denied/);
@@ -106,7 +111,7 @@ test.describe('Paid spell declaration and settlement (local stack)',()=>{
 
 
  for(const kind of ['action','bonusAction','reaction'])test(`immutable ${kind} receipt preserves its original turn across replay`,()=>{
-  const q=declare().replace('"target":"Self"',`"target":"Self","actionKind":"${kind}","isBonusAction":${kind==='bonusAction'}`);
+  const q=withKind(declare(),kind);
   const first=JSON.parse(sql(auth(dm,q))).actionContext;expect(first).toMatchObject({encounterId:encounter,kind});expect(first.turnId).toBe(first.currentTurnId);
   expect(spends()[0].turn_id).toBe(first.turnId);nextTurn();const replay=JSON.parse(sql(auth(dm,q)));expect(replay.replayed).toBe(true);
   expect(replay.actionContext.turnId).toBe(first.turnId);expect(replay.actionContext.currentTurnId).not.toBe(first.turnId);
@@ -117,8 +122,8 @@ test.describe('Paid spell declaration and settlement (local stack)',()=>{
   const q=declare(cast,0).replace('"target":"Self"','"target":"Self","actionKind":"action","isBonusAction":false');
   expect(JSON.parse(sql(auth(dm,q))).actionContext.kind).toBe('action');expect(spends()).toHaveLength(0);
  });
- test('unknown legacy action context is not invented and unauthorized readers are rejected',()=>{
-  const q=declare();expect(JSON.parse(sql(auth(dm,q))).actionContext).toBeNull();
+ test('missing action metadata is rejected and unauthorized readers cannot inspect receipts',()=>{
+  const q=declare().replace(',"actionKind":"action"','');expect(()=>sql(auth(dm,q))).toThrow(/action context is invalid/);sql(auth(dm,declare()));
   expect(()=>sql(auth(outsider,`select dndkeep_private.declared_spell_action_context('${cast}')`))).toThrow(/unavailable/);
   expect(sql("select has_function_privilege('anon','dndkeep_private.declared_spell_action_context(uuid)','execute')")).toBe('f');
  });
@@ -254,6 +259,8 @@ test.describe('Paid spell declaration and settlement (local stack)',()=>{
   expect(()=>sql(auth(dm,declare()))).toThrow(/duplicate key/);expect(character().spell_slots['3'].used).toBe(0);
   expect(sql(`select count(*) from pending_spell_casts where id='${cast}'`)).toBe('0');
   expect(sql(`select count(*) from dndkeep_private.declared_spell_payments where cast_id='${cast}'`)).toBe('0');
+  expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${cast}'`)).toBe('0');
+  expect(sql(`select action_used from combat_participants where id='${target}'`)).toBe('f');
  });
  test('settlement history failure rolls back the refund, outcome and recovery revision',()=>{
   sql(auth(dm,declare()));counter();const before=character();const constraint='fixture_'+randomUUID().replaceAll('-','');

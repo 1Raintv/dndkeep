@@ -198,9 +198,13 @@ notify the sheet to refresh saved action indicators.
 Four targeted SQL cases, 22 delivery cases, two final missing-action/refund
 checks and four desktop/mobile Mind Spike/Witch Bolt recovery flows pass. Full
 gate: 2,986 units / 267 files, 198 TypeScript baseline, 255.2 KB entry. Changed
-functions lint clean. Remaining before release: update old spell-slot fixtures
-that assumed unlimited/off-turn actions or omitted action type; exercise their
-full settlement suite, Counterspell shared reaction claims, free/manual casting,
+functions lint clean. The spell-slot fixtures now use explicit casting actions,
+real own-turn progression and separate Action/Bonus Action/Reaction budgets. All
+46 settlement cases pass, plus two added rollback checks proving a rejected cast
+leaves neither a claim nor a spent combat flag. Counterspell test setup no longer
+resets reactions on every acceptance; refresh happens only during turn advance.
+The full gate remains green. Remaining before release: Counterspell shared
+reaction claims, free/manual casting,
 extra-action eligibility, and server verification of declared casting metadata.
 The existing slot-per-turn limit remains distinct from the shared action budget.
 
