@@ -5956,3 +5956,35 @@ server-derived from all equipment/feature sources. Prevent duplicate prompt
 creation for the same turn, cover stale prompts across a revived-then-downed
 life cycle, and add full actual spell-delivery end-to-end evidence. The seeded
 Mind Sliver tests prove consumption, not its complete casting/damage pipeline.
+
+### Player death-save dialog uses atomic settlement (unreleased)
+
+The live `DeathSavePromptModal` now uses `api/deathSaves.ts`. It persists the d20
+pool, proposed penalty d4, effect modifier and reviewed context before confirmation.
+Reload and transport failure preserve dice; compatible context review never
+rerolls existing faces. A second die is added only when advantage/disadvantage
+requires one, and retained if settings later change. Local proposals remain
+listed even when the server has already resolved the offer, allowing recovery
+of a lost acknowledgement. Receipt identity/arithmetic/penalty checks precede
+removing the proposal. Concurrent confirmation clicks share one request.
+
+The superseded client multi-write resolver and its five obsolete tests were
+removed. Eleven API tests now cover persistence, failed/repeated confirmation,
+settings review, storage failure, corrupt data, invalid receipts and discovery.
+Desktop/mobile browser tests commit a save, lose its response deliberately,
+reload twice and confirm the same result with exactly one combat event. Both
+pass. Updated screenshots inspected; the standard overflow probe, scoped to the
+modal with fixed-ancestor skipping disabled, reports no clipping or sideways
+scroll. Checkboxes now align beside their labels on mobile.
+
+Limits remain explicit: effect bonuses/advantage are reviewed inputs, with active
+buffs listed; their dice are not automatically derived yet. Exhaustion and Mind
+Sliver are applied by the server. Automatic turn-start and direct sheet rolls
+still need migration to this path before legacy writes can be blocked. Duplicate
+prompt prevention and revived-then-downed prompt identity remain follow-ups.
+Nothing in this branch has been deployed to production.
+
+Final player-flow gate: 3,167 unit tests, TypeScript197/197, hooks, RAW,
+coordinates, anchors, production build and255.2KB entry all pass. Changed-file
+ESLint and diff whitespace checks pass. Two browser scenarios passed with the
+final layout and overflow probe enabled. No new database migration in this batch.
