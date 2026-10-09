@@ -1,4 +1,5 @@
 import {execFileSync} from 'node:child_process';
+import {readFileSync} from 'node:fs';
 import {randomUUID} from 'node:crypto';
 import {expect,test} from '@playwright/test';
 import {gateDbSuite,signInAsSeedDm} from './helpers';
@@ -77,7 +78,7 @@ test.describe('Saved Propel controls',()=>{
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values
    ('${self}','${encounter}','${campaignId}','character','${charId}','Psion',0),('${enemy}','${encounter}','${campaignId}','character','${targetCharacter}','Target Fighter',1);
    update combatants set active_conditions=${condition&&condition!=='Paralyzed'?"array['"+condition+"']":"array[]::text[]"} where id=(select combatant_id from combat_participants where id='${enemy}');`);
-  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400&&!(condition===''&&r.status()===503&&r.url().endsWith('/rpc/settle_propel_save')))errors.push(`${r.status()} ${r.url()}`);});
   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
   const ability=page.locator('.arow-grid').filter({has:page.getByText('Telekinetic Propel',{exact:true})});await ability.getByRole('button',{name:'Use / resume'}).click();
   const dialog=page.getByRole('dialog',{name:'Telekinetic Propel',exact:true});
@@ -87,8 +88,8 @@ test.describe('Saved Propel controls',()=>{
   await expect(page.getByRole('button',{name:'Bonus Action Used',exact:true})).toBeDisabled({timeout:10000});
   expect(sql(`select bonus_used from combat_participants where id='${self}'`)).toBe('t');
   await dialog.getByRole('button',{name:'Resolve combat save'}).click();
-  const saves=page.getByRole('dialog',{name:'Telekinetic Propel saving throws'});
-  await expect(saves.getByRole('combobox',{name:'Propel target'})).toHaveValue(enemy);await expect(saves.getByRole('combobox',{name:'Propel target'})).toBeDisabled();
+  const saves=page.getByRole('dialog',{name:'Propel saving throw'});
+  await expect(saves.getByText(/Target: Target Fighter/)).toBeVisible();await expect(saves.getByRole('combobox')).toHaveCount(0);
   await expect(saves.getByRole('button',{name:'Roll Save'})).toBeEnabled();
   if(condition==='Paralyzed')sql(`update combatants set active_conditions=array['Paralyzed'] where id=(select combatant_id from combat_participants where id='${enemy}')`);
   await page.evaluate(c=>{let n=0;Math.random=()=>c==='Encumbered'?(n++%2===0?0.99:0.01):0.01;},condition);
@@ -102,13 +103,63 @@ test.describe('Saved Propel controls',()=>{
    expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('2');
    expect(sql(`select outcome is null from dndkeep_private.propel_declarations where request_id='${declaration}'`)).toBe('t');
   }
-  await saves.getByRole('button',{name:'Confirm',exact:true}).click();await expect(dialog.getByRole('status')).toContainText('Saved: failed.');
+  if(!condition){
+   let attempts=0;await page.route('**/rest/v1/rpc/settle_propel_save',async route=>{attempts++;if(attempts===1)await route.fetch();await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Lost final receipt'})});});
+   await saves.getByRole('button',{name:'Confirm save',exact:true}).click();await expect(saves.getByRole('alert')).toContainText('Lost final receipt');
+   expect(sql(`select outcome from dndkeep_private.propel_declarations where character_id='${charId}'`)).toBe('failed');
+   await page.reload();await ability.getByRole('button',{name:'Use / resume'}).click();await dialog.getByRole('button',{name:'Resume saved saving throw',exact:true}).click();
+   await expect(saves.getByRole('status')).toContainText('Saved: failed.');expect(attempts).toBe(2);
+  }else{await saves.getByRole('button',{name:'Confirm save',exact:true}).click();await expect(saves.getByRole('status')).toContainText('Saved: failed.');}
+  await page.screenshot({path:info.outputPath('propel-save-confirmed.png')});
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('1');
   expect(sql(`select target->>'participantId' from dndkeep_private.propel_declarations where character_id='${charId}'`)).toBe(enemy);
   expect(JSON.parse(sql(`select save_details from dndkeep_private.propel_declarations where character_id='${charId}'`))).toMatchObject({participantId:enemy,d20:1,rolls:condition==='Paralyzed'?[]:condition==='Encumbered'?[20,1]:[1],outcome:'failed',...(condition==='Paralyzed'?{automaticFailure:true}:condition==='Encumbered'?{disadvantage:true}:{})});
   expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Telekinetic Propel'`)).toBe('1');
   if(condition==='Paralyzed'){const notes=sql(`select notes from action_logs where character_id='${charId}' and action_name='Telekinetic Propel'`);expect(notes).toContain('automatic failure from condition (no dice)');expect(notes).not.toContain('cosmetic face');}
   expect(errors).toEqual([]);
+ });
+
+ for(const accept of [true,false])test(`Propel keeps dice through reload and lost response, then resistance ${accept}`,async({page},info)=>{
+  await page.context().route('**/sw.js',route=>route.abort());
+  const encounter=randomUUID(),self=randomUUID(),enemy=randomUUID(),effect=randomUUID();
+  sql(`insert into campaigns(id,owner_id,name) values('${campaignId}','${userId}','Propel Resistance');update characters set campaign_id='${campaignId}' where id='${charId}';
+   insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index,in_lair) values('${encounter}','${campaignId}','active',1,0,true);
+   insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,legendary_resistance,legendary_resistance_used) values
+   ('${self}','${encounter}','${campaignId}','character','${charId}','Psion',0,0,0),('${enemy}','${encounter}','${campaignId}','creature','${enemy}','Resistant creature',1,3,3);
+   update combatants set definition_id=p.entity_id from combat_participants p where combatants.id=p.combatant_id and p.id='${enemy}';`);
+  const clock=JSON.parse(sql(`select dndkeep_private.next_save_turn_context('${encounter}','${self}')`));
+  sql(`insert into dndkeep_private.mind_sliver_effects(cast_id,encounter_id,caster_id,target_id,cast_turn,cast_turn_ordinal,status) values('${effect}','${encounter}','${self}','${enemy}','${clock.turnId}',${clock.castTurnOrdinal},'active')`);
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+  const ability=page.locator('.arow-grid').filter({has:page.getByText('Telekinetic Propel',{exact:true})});
+  const dialog=page.getByRole('dialog',{name:'Telekinetic Propel',exact:true}),saves=page.getByRole('dialog',{name:'Propel saving throw'});
+  await ability.getByRole('button',{name:'Use / resume'}).click();await dialog.getByRole('combobox',{name:'Target',exact:true}).selectOption(enemy);await dialog.getByRole('checkbox').check();
+  await dialog.getByLabel('Movement',{exact:true}).selectOption('powered');await dialog.getByRole('button',{name:'Declare Bonus Action'}).click();
+  await dialog.getByRole('button',{name:'Resolve combat save'}).click();await expect(saves.getByRole('button',{name:'Roll Save'})).toBeEnabled();
+  await page.evaluate(()=>{Math.random=()=>0.55;});await saves.getByRole('button',{name:'Roll Save'}).click();await expect(saves.getByText('Saved d20 dice: 12',{exact:true})).toBeVisible();
+  const reopen=async()=>{await page.reload();await ability.getByRole('button',{name:'Use / resume'}).click();await dialog.getByRole('button',{name:/Resume Telekinetic Propel/}).click();await dialog.getByRole('button',{name:'Resolve combat save'}).click();};
+  await reopen();await expect(saves.getByText('Saved d20 dice: 12',{exact:true})).toBeVisible();
+  await saves.getByRole('spinbutton').fill('1');await saves.getByRole('button',{name:'Review changed settings'}).click();await expect(saves.getByRole('button',{name:'Confirm save'})).toBeEnabled();
+  await saves.getByRole('spinbutton').fill('0');await saves.getByRole('button',{name:'Review changed settings'}).click();await expect(saves.getByText('Saved d20 dice: 12',{exact:true})).toBeVisible();
+  let settlements=0;
+  await page.route('**/rest/v1/rpc/settle_propel_save',async route=>{settlements++;if(settlements<=2){if(settlements===1)await route.fetch();await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Simulated lost confirmation'})});}else await route.continue();});
+  await saves.getByRole('button',{name:'Confirm save'}).click();await expect(saves.getByRole('alert')).toContainText('Simulated lost confirmation');
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('2');
+  await saves.getByRole('button',{name:'Confirm save'}).click();await expect(saves.getByRole('status')).toContainText('Waiting for the DM');expect(settlements).toBe(2);
+  await expect(saves.getByText('Mind Sliver: −3 included in the total.')).toBeVisible();
+  await reopen();await expect(saves.getByRole('status')).toContainText('Waiting for the DM');
+  await page.screenshot({path:info.outputPath('propel-resistance-waiting.png')});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
+   const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8'),body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
+   const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[aria-label=\"Propel saving throw\"], [aria-label=\"Propel saving throw\"] *')").replace(/const skip = \(el, cs\) =>[\s\S]*?;\n\n {4}const clipped/,"const skip = (_el, cs) => cs.filter !== 'none';\n\n    const clipped");
+   const report=await page.evaluate('('+scoped+'\n})()');expect(report.sideways,JSON.stringify(report)).toBe(false);expect(report.clipped,JSON.stringify(report)).toEqual([]);expect(report.pastEdge,JSON.stringify(report)).toEqual([]);
+  }
+  await saves.getByRole('button',{name:accept?'Use Legendary Resistance':'Keep failed save',exact:true}).click();
+  await expect(saves.getByRole('status')).toContainText(`Saved: ${accept?'passed':'failed'}. ${accept?0:1} Energy Dice spent.`);
+  await page.screenshot({path:info.outputPath('propel-resistance-decided.png')});
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe(accept?'2':'1');
+  expect(sql(`select legendary_resistance_used from combat_participants where id='${enemy}'`)).toBe(accept?'4':'3');
+  expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Telekinetic Propel'`)).toBe('1');expect(errors).toEqual([]);
  });
 
  for(const spellId of ['mage-hand','mind-sliver'])test(`Teleporter picker resumes ${spellId} without spending an Action`,async({page},info)=>{

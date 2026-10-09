@@ -5750,3 +5750,47 @@ arithmetic, stale inputs and payment rollback. The first run exposed only a test
 reader parsing SQL NULL as empty JSON; corrected and all cases passed. Full gate:
 3,104 unit tests, TypeScript 197/197, hooks, RAW, coordinates, anchors, build and
 255.2 KB entry. Changed test lint and private SQL error-level lint pass.
+
+
+### Propel save controls use the transaction (unreleased)
+
+The real Propel controls now open `PropelSaveControls`, using `propelSaves.ts`
+for durable dice preparation, confirmation and resistance decisions. The target
+is fixed to the declaration; DC comes from its character snapshot. The reviewed
+base bonus is separate from active buffs, exhaustion and Mind Sliver. Recorded
+penalties and final Energy Die costs are shown, and automatic failures do not
+invent a displayed d20. Combat passed/failed shortcut buttons are removed from
+this view; solo/tabletop manual outcomes remain available.
+
+Proposals persist before confirmation. Explicit context review keeps compatible
+d20/buff/penalty dice and adds only newly required rolls. Invalid receipts,
+blocked storage and network errors do not silently replace a throw. Concurrent
+confirmations share the operation; conflicting decisions are rejected. The
+owner can recover a waiting receipt, while only the campaign DM sees resistance
+buttons and the server enforces that permission. Accepted resistance preserves
+the failed roll while explaining the final success and zero Energy Die cost.
+
+Completed saves are absent from the server's unfinished list. The launcher now
+also lists browser proposals with unconfirmed responses, so a reload after a
+lost successful response can recover that completed receipt. Verified receipt
+reads clear the browser proposal. New declarations wait while one needs review.
+
+Validation includes lost responses on both transport attempts, reload before
+confirmation, reload while waiting for resistance, reload after completed
+payment, explicit bonus review preserving dice, and both resistance choices on
+desktop/mobile. Screenshots were inspected for saved-dice, waiting and final
+states; the modal-scoped standard overflow probe (including fixed ancestors)
+passes in the resistance scenarios. Fault injection seeds the active Mind Sliver
+effect; full declared-spell-to-save integration remains a separate release gate.
+
+Still open: old clients/direct legacy completion can bypass a new receipt when
+none exists (the server blocks bypass once a receipt is pending); unsupported
+save consumers/origins, manual LR writes, and DM discovery outside opening this
+character's saved use. The combined branch is not deployed. Do not call all
+Psion or Mind Sliver automation complete based on these focused checks.
+
+Final gate: 3,126 unit tests, TypeScript 197/197, hooks, RAW, coordinates,
+anchors, build and 255.2 KB entry. Twenty-two new API recovery/validation tests
+pass. Ten desktop/mobile save scenarios pass: six condition/completed-recovery
+cases and four pending-resistance/lost-response cases. Changed-file ESLint and
+diff whitespace checks pass. No production migration or deployment performed.
