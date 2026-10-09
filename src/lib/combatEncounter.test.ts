@@ -147,7 +147,7 @@ describe('startEncounter 23505 fallback', () => {
 });
 
 describe('endEncounter character carry-over', () => {
-  it('writes death_saves_successes / death_saves_failures (the characters columns), never the singular', async () => {
+  it.each([false,true])('carries death counters and explicit stable state (%s)', async stable => {
     h.state.respond = c => {
       if (c.table === 'combat_encounters' && opOf(c, 'select')) {
         return { data: { campaign_id: 'camp', started_at: null, round_number: 3 }, error: null };
@@ -156,7 +156,7 @@ describe('endEncounter character carry-over', () => {
         return { data: [{ combatant_id: 'cb1', participant_type: 'character', entity_id: 'char1' }], error: null };
       }
       if (c.table === 'combatants') {
-        return { data: [{ id: 'cb1', current_hp: 4, temp_hp: null, death_save_successes: 1, death_save_failures: 2, is_stable: false, is_dead: false, active_conditions: ['Prone'], active_buffs: [] }], error: null };
+        return { data: [{ id: 'cb1', current_hp: stable ? 0 : 4, temp_hp: null, death_save_successes: stable ? 0 : 1, death_save_failures: stable ? 0 : 2, is_stable: stable, is_dead: false, active_conditions: ['Prone'], active_buffs: [] }], error: null };
       }
       return { data: [], error: null };
     };
@@ -165,14 +165,14 @@ describe('endEncounter character carry-over', () => {
     const charUpdate = h.state.calls.find(c => c.table === 'characters' && opOf(c, 'update'));
     expect(charUpdate).toBeTruthy();
     const payload = opOf(charUpdate!, 'update')!.args[0] as Record<string, unknown>;
-    expect(payload.death_saves_successes).toBe(1);
-    expect(payload.death_saves_failures).toBe(2);
-    // v2.746 — characters has no is_stable / is_dead column; sending either 400s the whole row.
-    expect(payload).not.toHaveProperty('is_stable');
+    expect(payload.death_saves_successes).toBe(stable ? 0 : 1);
+    expect(payload.death_saves_failures).toBe(stable ? 0 : 2);
+    // Stable now has an explicit character field; dead still uses failure count.
+    expect(payload.is_stable).toBe(stable);
     expect(payload).not.toHaveProperty('is_dead');
     expect(payload).not.toHaveProperty('death_save_successes');
     expect(payload).not.toHaveProperty('death_save_failures');
-    expect(payload.current_hp).toBe(4);
+    expect(payload.current_hp).toBe(stable ? 0 : 4);
     expect(payload.active_conditions).toEqual(['Prone']);
   });
 });

@@ -191,3 +191,8 @@ it('ordinary save acknowledgments synchronize HP and Hit Dice without restoring 
  expect(acceptSavedCharacterResources(ref,{...saved,id:'other',hit_point_revision:8,psionic_hit_dice_revision:8}).patch).toEqual({});
  expect(acceptSavedCharacterResources(ref,{...saved,current_hp:7,hit_point_revision:5,hit_dice_spent:4,hit_dice_spent_by_type:{'6':4},psionic_hit_dice_revision:5}).patch).toMatchObject({current_hp:7,hit_point_revision:5,hit_dice_spent:4,hit_dice_spent_by_type:{'6':4},psionic_hit_dice_revision:5});
 });
+it('reconciles stable independently of cleared death-save counters',()=>{
+ const ref={current:{...character,current_hp:0,is_stable:false,death_saves_successes:2,death_saves_failures:1}};
+ expect(reconcileCharacterUpdate(ref,{is_stable:true,death_saves_successes:0,death_saves_failures:0},{}).patch)
+  .toEqual({is_stable:true,death_saves_successes:0,death_saves_failures:0});
+});

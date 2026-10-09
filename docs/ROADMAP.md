@@ -5862,3 +5862,68 @@ unrelated ledger entry. No production migration or deployment performed.
 Next: unify death-save outcome math and reset both counters on stabilization;
 then integrate the remaining save consumers before releasing the combined
 Mind Sliver work. The coverage limitations documented above remain open.
+
+### Death-save audit in progress — do not release yet
+
+A shared `src/rules/deathSaves.ts` resolver now distinguishes the natural d20
+from the modified total and resets both counters on stabilization. The two
+combat writers are provisionally wired to it. Nineteen boundary/regression cases
+cover stabilization, natural 1/20, modified totals and invalid input; the full
+verification gate passes. These working-tree changes are NOT release-ready.
+
+Integration review found a persistence dependency that tests did not cover:
+`characters` has no stable flag. `CharacterSheet/DeathSaves.tsx` uses three
+successes as its stable marker, while `combatEncounter.ts` endEncounter copies
+combat counters and intentionally omits combatants.is_stable. Clearing the
+combat counters alone therefore loses the stable state on return to the sheet.
+Complete explicit character stable-state storage, sheet rendering/manual changes,
+combat carry-over, combatant creation, healing/damage/rest resets and realtime
+fields before committing/releasing this integration. The prompted save also
+needs a fresh dying-state check and atomic settlement; its existing multi-write
+path must not be described as retry-safe. Next-save penalties remain unwired here.
+
+Authoritative rules checked again: [2024 Death Saving Throws](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game#DeathSavingThrows).
+A stable creature stays at zero HP; both counters reset. Natural 20 restores
+one HP, natural 1 adds two failures, and ordinary outcomes use DC 10.
+
+Stable-state integration update: `20261010011000_character_stable_state.sql`
+adds `characters.is_stable`, backfills the prior three-success marker, normalizes
+healing/third-success/damage-counter writes, and seeds new combatant life state.
+The sheet now uses the shared resolver and explicit state; realtime and end-of-
+combat carry-over include it. Seven local database cases and desktop/mobile
+reload-and-heal scenarios pass. Screenshots inspected. The existing mobile
+floating history/dice controls crowd the stable panel's lower-right edge; retain
+this as a map/sheet interface follow-up. Four component roll/render cases and
+an explicit stable combat-handoff case pass. Full gate passed with 3,151 tests
+before those five additional tests, which passed separately; TypeScript197/197,
+entry255.2KB. New-file lint passes.
+
+Still uncommitted/unreleased: audit atomic damage context snapshots for the new
+field, existing/reused combatants, direct healing/rest paths and stale pending
+saves before calling this integration complete. The normalizer alone is not an
+atomic death-save settlement and does not consume next-save effects. Local
+migration applied; production untouched.
+
+### Stable-state foundation verified (unreleased)
+
+Supersedes the uncommitted status above: the shared death-save resolver, explicit
+character stable field, sheet use, realtime carry-over, new-combatant seeding and
+combat-end handoff are ready to commit. Damage snapshots now include is_stable;
+a stale preview is rejected before damage applies. Obsolete pending prompts
+expire without rolling after healing, stabilization or death. This check precedes
+the existing writes; it is not a transaction/concurrency guarantee.
+
+Verification: full gate passes with 3,161 unit tests, TypeScript197/197, hooks,
+RAW, coordinates, anchors, build and255.2KB entry. All43 local stable/party-damage/
+pending-damage-life cases pass, including critical damage and zero damage.
+Desktop/mobile sheet reload-and-heal checks and screenshots passed in the prior
+step. SQL error-level lint returns no errors; new-file lint is clean after replacing
+the test builder's any. The five stale-prompt tests were rerun after that type-only
+cleanup. Local migration/ledger updated; no production changes.
+
+Remaining death-save work: atomic resolution and next-save-effect consumption;
+live synchronization between a sheet and an already-existing combatant; and
+pending-prompt roll receipts/history. Reusing a combatant preserves its combat
+life state instead of reinitializing it from the sheet, as before. Broader healing,
+rest and simultaneous-update behavior must be covered by that next integration.
+Do not interpret these tests as complete Mind Sliver or death-save automation.

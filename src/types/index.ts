@@ -403,6 +403,7 @@ export interface Character {
   advanced_deep_edits_unlocked?: boolean;
 
   // Death saves (only relevant when current_hp === 0)
+  is_stable?: boolean; // Explicit stable-at-zero-HP state.
   death_saves_successes: number;  // 0–3; three successes stabilizes the character
   death_saves_failures: number;   // 0–3; three failures = dead
 

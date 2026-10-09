@@ -1,3 +1,4 @@
+import { resolveDeathSave } from '../rules/deathSaves';
 import { attacksPerAction } from '../rules/extraAttack';
 import { recoverInitiativeResources } from './initiativeResources';
 // v2.96.0 — Phase D of the Combat Backbone
@@ -1123,37 +1124,11 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
         });
       }
     } else if (dsSetting !== 'off') {
-      // Roll the save. RAW 2024 p.195:
-      //   d20 ≥ 10 → success, < 10 → failure
-      //   nat 1    → 2 failures (cumulative)
-      //   nat 20   → regain 1 HP + conscious (clears both counters)
+      // Shared RAW outcome math; persistence/eligibility remain caller responsibilities.
       const d20 = rollDie(20);
-      let successes = incomingParticipant.death_save_successes ?? 0;
-      let failures = incomingParticipant.death_save_failures ?? 0;
-      let isStable = false;
-      let isDead = false;
-      let currentHp = 0;
-      let result: 'success' | 'failure' | 'crit_success' | 'crit_failure';
-
-      if (d20 === 20) {
-        // Wake with 1 HP
-        successes = 0;
-        failures = 0;
-        currentHp = 1;
-        result = 'crit_success';
-      } else if (d20 === 1) {
-        failures = Math.min(3, failures + 2);
-        result = 'crit_failure';
-      } else if (d20 >= 10) {
-        successes = Math.min(3, successes + 1);
-        result = 'success';
-      } else {
-        failures = Math.min(3, failures + 1);
-        result = 'failure';
-      }
-
-      if (successes >= 3) isStable = true;
-      if (failures >= 3) isDead = true;
+      const { successes, failures, isStable, isDead, currentHp, result } = resolveDeathSave(
+        d20, d20, incomingParticipant.death_save_successes ?? 0, incomingParticipant.death_save_failures ?? 0,
+      );
 
       const updates: Record<string, any> = {
         death_save_successes: successes,
@@ -1467,10 +1442,8 @@ export async function endEncounter(encounterId: string): Promise<CombatActionRes
           // sheet after combat. Keys renamed; the read side is untouched.
           if (c.death_save_successes != null) updates.death_saves_successes = c.death_save_successes;
           if (c.death_save_failures != null) updates.death_saves_failures = c.death_save_failures;
-          // v2.746 — is_stable / is_dead are combatants columns only; the
-          // characters table has neither (src/types/supabase.ts), and sending
-          // them still 400d the whole update (PGRST204) after the key rename
-          // above. Verified live on the local stack. Death state stays in combat.
+          // v2.869 audit: stable survives cleared counters and the combat/sheet handoff.
+          updates.is_stable = c.is_stable === true;
           // v2.477.0 — Carry conditions and buffs to the character.
           // User intent: "things that are applied to the character
           // should just stay on a character after a fight ... it

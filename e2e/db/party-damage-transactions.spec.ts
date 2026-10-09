@@ -23,6 +23,14 @@ test.describe('Atomic party damage',()=>{
  const apply=(ctx=context(),damage=10)=>JSON.parse(sql(auth(dm,call(ctx,damage))));
  const state=()=>JSON.parse(sql(`select jsonb_build_object('hp',current_hp,'temp',temp_hp,'spell',concentration_spell,'marker',last_campaign_damage_id,'failures',death_saves_failures,'conditions',active_conditions) from characters where id='${char}'`));
  const count=(table:string)=>sql(`select count(*) from ${table} where character_id='${char}'`);
+ test('stable-state changes invalidate a preview even with unchanged counters',()=>{
+  sql(`update characters set current_hp=0,temp_hp=0,concentration_spell='' where id='${char}'`);
+  const ctx=context();expect(ctx.character.is_stable).toBe(false);
+  sql(`update characters set is_stable=true where id='${char}'`);
+  expect(()=>apply(ctx,1)).toThrow();expect(state().failures).toBe(0);
+  apply(context(),1);
+  expect(sql(`select is_stable::text||':'||death_saves_failures from characters where id='${char}'`)).toBe('false:1');
+ });
  test('captures species choices and rejects a legacy changed after preview',()=>{
   sql(`update characters set species='Tiefling',species_choices='{"tieflingLegacy":"abyssal"}' where id='${char}'`);
   const ctx=context();expect(ctx.character.species_choices).toEqual({tieflingLegacy:'abyssal'});

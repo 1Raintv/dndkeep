@@ -1,3 +1,4 @@
+import { resolveDeathSave } from '../rules/deathSaves';
 // v2.144.0 — Phase N pt 2 of the Combat Backbone.
 //
 // Death save prompting pipeline. Parallels the Legendary Resistance v2.139
@@ -120,37 +121,22 @@ export async function resolvePendingDeathSave(
     .single();
   const partRow = partRowRaw ? normalizeParticipantRow(partRowRaw) : partRowRaw;
   if (!partRow) return null;
-
-  // RAW 2024 p.195:
-  //   d20 ≥ 10   → success
-  //   d20 < 10   → failure
-  //   nat 1      → 2 failures
-  //   nat 20     → regain 1 HP + conscious (clears both counters)
-  const d20 = rollDie(20);
-  let successes = (partRow.death_save_successes as number | null) ?? 0;
-  let failures = (partRow.death_save_failures as number | null) ?? 0;
-  let isStable = false;
-  let isDead = false;
-  let currentHp = 0;
-  let result: 'success' | 'failure' | 'crit_success' | 'crit_failure';
-
-  if (d20 === 20) {
-    successes = 0;
-    failures = 0;
-    currentHp = 1;
-    result = 'crit_success';
-  } else if (d20 === 1) {
-    failures = Math.min(3, failures + 2);
-    result = 'crit_failure';
-  } else if (d20 >= 10) {
-    successes = Math.min(3, successes + 1);
-    result = 'success';
-  } else {
-    failures = Math.min(3, failures + 1);
-    result = 'failure';
+  // v2.869 audit: a prompt can outlive healing, stabilization, or death.
+  // Do not roll or overwrite life state already settled by another action.
+  if (partRow.current_hp !== 0 || partRow.is_stable || partRow.is_dead
+    || (partRow.death_save_successes ?? 0) >= 3 || (partRow.death_save_failures ?? 0) >= 3) {
+    await checkedWrite('pending_death_saves.expire', { pendingId }, supabase
+      .from('pending_death_saves').update({ state: 'expired', resolved_at: new Date().toISOString() })
+      .eq('id', pendingId).eq('state', 'pending'));
+    return null;
   }
-  if (successes >= 3) isStable = true;
-  if (failures >= 3) isDead = true;
+
+
+  // Shared RAW outcome math; persistence/eligibility remain caller responsibilities.
+  const d20 = rollDie(20);
+  const { successes, failures, isStable, isDead, currentHp, result } = resolveDeathSave(
+    d20, d20, partRow.death_save_successes ?? 0, partRow.death_save_failures ?? 0,
+  );
 
   const partUpdates: Record<string, any> = {
     death_save_successes: successes,

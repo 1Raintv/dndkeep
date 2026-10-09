@@ -413,6 +413,7 @@ export type Database = {
           inventory: Json;
           currency: Json;
           active_conditions: string[];
+          is_stable: boolean;
           death_saves_successes: number;
           death_saves_failures: number;
           notes: string;
@@ -504,6 +505,7 @@ export type Database = {
           inventory?: Json;
           currency?: Json;
           active_conditions?: string[];
+          is_stable?: boolean;
           death_saves_successes?: number;
           death_saves_failures?: number;
           notes?: string;
@@ -595,6 +597,7 @@ export type Database = {
           inventory?: Json;
           currency?: Json;
           active_conditions?: string[];
+          is_stable?: boolean;
           death_saves_successes?: number;
           death_saves_failures?: number;
           notes?: string;
