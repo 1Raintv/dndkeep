@@ -124,12 +124,98 @@ test.describe('Private action turn context' ,()=>{
   sql(`update combat_participants set bonus_used=false where id='${participant}';update combatants set active_conditions=array['Incapacitated'] where id=(select combatant_id from combat_participants where id='${participant}')`);
   expect(()=>sql(auth(claimSql(randomUUID(),input())))).toThrow(/incapacitated/);
  });
+ const powerSql=(id:string,mode='powered',movement='push',roll=4,target={participantId:enemy,legalTargetConfirmed:true})=>
+  `select dndkeep_private.begin_propel('${character}','${id}','${context().turnId}','${mode}','${movement}',${roll},'${JSON.stringify(target)}')`;
+ const finalizePower=(id:string)=>sql(auth(`select dndkeep_private.finalize_propel_roll('${character}','${id}')`));
+ const finishPower=(id:string,outcome:string)=>`select dndkeep_private.finish_propel('${character}','${id}','${outcome}')`;
+ const energy=()=>Number(sql(`select coalesce(class_resources->>'psionic-energy-dice','6') from characters where id='${character}'`));
+ test('Propel commits its action before the save and spends the Energy Die only on failure',()=>{
+  sql(`update characters set class_resources='{"psionic-energy-dice":2}' where id='${character}'`);
+  const first=randomUUID();sql(auth(powerSql(first)));expect(energy()).toBe(2);
+  expect(()=>sql(auth(finishPower(first,'failed')))).toThrow(/Finalize the roll/);
+  expect(()=>sql(auth(powerSql(randomUUID())))).toThrow(/already spent/);
+  finalizePower(first);expect(JSON.parse(sql(auth(finishPower(first,'passed'))))).toMatchObject({energyCost:0,feet:0});expect(energy()).toBe(2);
+  next(1);next(0,2);const second=randomUUID();sql(auth(powerSql(second)));finalizePower(second);
+  expect(JSON.parse(sql(auth(finishPower(second,'failed'))))).toMatchObject({energyCost:1,feet:20});expect(energy()).toBe(1);
+  expect(JSON.parse(sql(auth(finishPower(second,'failed')))).replayed).toBe(true);expect(energy()).toBe(1);
+  expect(()=>sql(auth(finishPower(second,'passed')))).toThrow(/already saved/);
+ });
+ test('Propel fixes the declaration identity and rejects caster/foreign/unconfirmed targets before charging',()=>{
+  for(const target of [{participantId:participant,legalTargetConfirmed:true},{participantId:randomUUID(),legalTargetConfirmed:true},{participantId:enemy,legalTargetConfirmed:false}])
+   expect(()=>sql(auth(powerSql(randomUUID(),'powered','push',4,target)))).toThrow();
+  expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${character}'`)).toBe('0');
+  const id=randomUUID(),request=powerSql(id);sql(auth(request));expect(JSON.parse(sql(auth(request))).replayed).toBe(true);
+  expect(()=>sql(auth(powerSql(id,'powered','push',5)))).toThrow(/identity changed/);
+ });
+ test('free Warp and Psykinetic d4 require their subclass and do not spend Energy Dice',()=>{
+  expect(()=>sql(auth(powerSql(randomUUID(),'free','warp',0)))).toThrow(/Psi Warper/);
+  sql(`update characters set subclass='Psi Warper',class_resources='{"psionic-energy-dice":0}' where id='${character}'`);
+  const warp=randomUUID();sql(auth(powerSql(warp,'free','warp',0)));finalizePower(warp);
+  expect(JSON.parse(sql(auth(finishPower(warp,'failed'))))).toMatchObject({movement:'warp',feet:30,energyCost:0});
+  next(1);next(0,2);sql(`update characters set subclass='Psykinetic' where id='${character}'`);
+  const technique=randomUUID();sql(auth(powerSql(technique,'technique','push',4)));finalizePower(technique);
+  expect(JSON.parse(sql(auth(finishPower(technique,'failed'))))).toMatchObject({feet:20,energyCost:0});expect(energy()).toBe(0);
+ });
+ test('Propel enhancement payments are linked, replay-safe, and frozen before the save',()=>{
+  sql(`update characters set level=20,hit_dice_spent=0,class_resources='{"psionic-energy-dice":2}' where id='${character}'`);
+  const id=randomUUID(),extra=randomUUID(),surge=randomUUID();sql(auth(powerSql(id,'powered','push',1)));
+  const enhance=(request:string,kind:string,rolls:string,hitDie:string)=>`select dndkeep_private.enhance_propel('${character}','${id}','${request}','${kind}',${rolls},${hitDie})`;
+  const extraSql=enhance(extra,'enkindled','array[2,6]','null');sql(auth(extraSql));sql(auth(extraSql));
+  const surgeSql=enhance(surge,'surge','null','6');sql(auth(surgeSql));sql(auth(surgeSql));
+  const saved=JSON.parse(finalizePower(id));expect(saved).toMatchObject({total:14,usedSurge:true,originalRolls:[1,2,6],rolls:[4,4,6]});
+  expect(()=>sql(auth(enhance(randomUUID(),'surge','null','6')))).toThrow(/already closed/);
+  expect(JSON.parse(sql(auth(finishPower(id,'failed'))))).toMatchObject({feet:70,energyCost:1});
+  expect(sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('3');expect(energy()).toBe(1);
+ });
+ test('cancellation keeps the action and paid enhancements but spends no Energy Die',()=>{
+  sql(`update characters set level=7,hit_dice_spent=0,class_resources='{"psionic-energy-dice":2}' where id='${character}'`);
+  const id=randomUUID();sql(auth(powerSql(id,'powered','push',1)));
+  sql(auth(`select dndkeep_private.enhance_propel('${character}','${id}','${randomUUID()}','surge',null,6)`));
+  expect(JSON.parse(sql(auth(finishPower(id,'cancelled'))))).toMatchObject({energyCost:0,feet:0});expect(energy()).toBe(2);
+  expect(sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('1');
+  expect(()=>sql(auth(powerSql(randomUUID())))).toThrow(/already spent/);
+ });
+ test('failed Propel payment preserves the unresolved result for the same saved roll',()=>{
+  const id=randomUUID();sql(auth(powerSql(id)));finalizePower(id);sql(`update characters set class_resources='{"psionic-energy-dice":0}' where id='${character}'`);
+  expect(()=>sql(auth(finishPower(id,'failed')))).toThrow(/Not enough/);
+  expect(sql(`select outcome is null from dndkeep_private.propel_declarations where request_id='${id}'`)).toBe('t');
+  sql(`update characters set class_resources='{"psionic-energy-dice":1}' where id='${character}'`);
+  expect(JSON.parse(sql(auth(finishPower(id,'failed'))))).toMatchObject({energyCost:1,feet:20});
+ });
+ test('concurrent failed-save acknowledgements charge only one Energy Die',async()=>{
+  sql(`update characters set class_resources='{"psionic-energy-dice":2}' where id='${character}'`);const id=randomUUID();sql(auth(powerSql(id)));finalizePower(id);
+  const q=auth(finishPower(id,'failed'));const results=await Promise.all([parallel(q),parallel(q)]);
+  expect(results.map(r=>r.code)).toEqual([0,0]);expect(results.map(r=>JSON.parse(r.out).replayed).sort()).toEqual([false,true]);expect(energy()).toBe(1);
+ });
+ test('saved Propel declarations remain discoverable across cursor pages without browser state',()=>{
+  const ids=Array.from({length:27},()=>randomUUID());
+  const statements=ids.map((id,i)=>`update combat_encounters set round_number=${i+2} where id='${encounter}';select dndkeep_private.begin_propel('${character}','${id}',(select psionic_turn_id::text from combat_encounters where id='${encounter}'),'free','push',0,'{"participantId":"${enemy}","legalTargetConfirmed":true}')`);
+  sql(auth(statements.join(';')));
+  const first=JSON.parse(sql(auth(`select dndkeep_private.list_propel('${character}')`)));expect(first.items).toHaveLength(25);
+  const cursor=first.nextCursor;
+  const second=JSON.parse(sql(auth(`select dndkeep_private.list_propel('${character}','${cursor.createdAt}','${cursor.requestId}')`)));expect(second.items).toHaveLength(2);expect(second.nextCursor).toBeNull();
+  expect(new Set([...first.items,...second.items].map(d=>d.request_id))).toEqual(new Set(ids));
+  expect(JSON.parse(sql(auth(`select dndkeep_private.read_propel('${character}','${ids[0]}')`))).caster_snapshot.id).toBe(character);
+ });
+ test('secondary Psion levels determine the saved Propel die and Warp eligibility',()=>{
+  sql(`update characters set class_name='Fighter',level=5,subclass='Champion',secondary_class='Psion',secondary_level=3,secondary_subclass='Psi Warper',class_resources='{"psionic-energy-dice":2}' where id='${character}'`);
+  expect(()=>sql(auth(powerSql(randomUUID(),'powered','warp',7)))).toThrow(/base roll/);
+  const id=randomUUID();expect(JSON.parse(sql(auth(powerSql(id,'powered','warp',6)))).psion_level).toBe(3);
+  finalizePower(id);expect(JSON.parse(sql(auth(finishPower(id,'failed'))))).toMatchObject({feet:30,energyCost:1,movement:'warp'});
+ });
+ test('powered Warp keeps its fixed teleport limit even with an enhanced roll',()=>{
+  sql(`update characters set level=7,subclass='Psi Warper',hit_dice_spent=0,class_resources='{"psionic-energy-dice":2}' where id='${character}'`);
+  const id=randomUUID();sql(auth(powerSql(id,'powered','warp',1)));
+  sql(auth(`select dndkeep_private.enhance_propel('${character}','${id}','${randomUUID()}','surge',null,6)`));finalizePower(id);
+  expect(JSON.parse(sql(auth(finishPower(id,'failed'))))).toMatchObject({feet:30,energyCost:1,movement:'warp',roll:{total:4}});
+ });
  test('keeps all clock functions and tables inaccessible to direct app callers',()=>{
   for(const role of ['anon','authenticated']){
    expect(sql(`select has_function_privilege('${role}','dndkeep_private.action_turn_context(uuid)','EXECUTE')`)).toBe('f');
    expect(sql(`select has_function_privilege('${role}','dndkeep_private.observe_action_epoch()','EXECUTE')`)).toBe('f');
    expect(sql(`select has_function_privilege('${role}','dndkeep_private.claim_action(uuid,uuid,jsonb)','EXECUTE')`)).toBe('f');
-   for(const table of ['psionic_turn_starts','action_claims','action_extra_grants'])expect(sql(`select has_table_privilege('${role}','dndkeep_private.${table}','SELECT,INSERT,UPDATE,DELETE')`)).toBe('f');
+   for(const signature of ['begin_propel(uuid,uuid,text,text,text,integer,jsonb)','enhance_propel(uuid,uuid,uuid,text,integer[],integer)','finalize_propel_roll(uuid,uuid)','finish_propel(uuid,uuid,text)','read_propel(uuid,uuid)','list_propel(uuid,timestamp with time zone,uuid)'])expect(sql(`select has_function_privilege('${role}','dndkeep_private.${signature}','EXECUTE')`)).toBe('f');
+   for(const table of ['psionic_turn_starts','action_claims','action_extra_grants','propel_declarations','propel_enhancements'])expect(sql(`select has_table_privilege('${role}','dndkeep_private.${table}','SELECT,INSERT,UPDATE,DELETE')`)).toBe('f');
   }
  });
 });

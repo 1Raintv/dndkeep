@@ -44,6 +44,28 @@ immutable power rolls/targets, saved recovery and player UI integration remain.
 No production action-budget behavior has changed. The stale-dialog release
 v2.869 is independently verified live.
 
+`20261009145709_psionic_propel_declarations.sql` adds the private Propel
+lifecycle: declaration claims the Bonus Action and freezes mode, movement,
+base die, caster snapshot and target. Paid Enkindled/Surge receipts attach to
+that declaration; roll finalization prevents later enhancement edits. A failed
+save spends one Energy Die for powered use; passed/cancelled uses spend none.
+Cancellation retains the action and any already-paid Hit Dice. A failed payment
+leaves the same pending result recoverable, and cursor paging exposes all
+unfinished declarations after browser storage is lost. Warp remains 30 feet
+from the caster, independent of the roll, and adds no condition.
+
+Target membership and self-targeting are checked in combat. Actual size, sight
+and range still require explicit tabletop confirmation; no map token moves.
+Verification: all 28 local action/Propel SQL cases pass (26 lifecycle cases
+plus two multiclass/Warp number checks); full gate passes with 2,914 unit tests.
+SQL lint and local advisors have no findings for the Propel objects.
+
+Public feature APIs, recovery UI, saved-DC presentation and all action-writer
+integration remain unfinished. No new helpers are granted to app roles or
+production. This checkpoint does not reserve an Energy Die while a save is
+pending; a concurrent spend can defer final payment, which must be recovered
+without a new action/roll. Review this workflow before enabling it for players.
+
 Remaining implementation and required evidence:
 
 - Server derives grants, turn ownership, conditions and feature eligibility;
