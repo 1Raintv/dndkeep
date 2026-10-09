@@ -196,7 +196,7 @@ const SPELL_ENTRIES: SpellData[] = [
   name: "Mending",
   level: 0,
   school: "Transmutation",
-  casting_time: "1 action",
+  casting_time: "1 minute",
   range: "Touch",
   components: "V, S, M (two lodestones)",
   duration: "Instantaneous",

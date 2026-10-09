@@ -427,4 +427,35 @@ test.describe('Private action turn context' ,()=>{
   sql(`update characters set subclass='Psi Warper',level=5 where id='${character}'`);expect(origin(id)).toBe('');
  });
 
+ const teleporter=(parent:string,id=randomUUID(),spell='light',patch:Record<string,unknown>={})=>`select public.declare_spell_cast_atomic('${id}','${character}','${participant}','${spell}','Follow-up',0,null,'${JSON.stringify({source:'class:Psion',spellLevel:0,isBonusAction:true,actionKind:'bonusAction',teleporterCombatParent:parent,...patch})}')`;
+ const beginTeleporter=()=>{warper();prepareSpells();sql(`update characters set level=6 where id='${character}'`);const id=randomUUID();sql(auth(misty(id)));return id;};
+ test('Teleporter child shares the Bonus Action and exact replay never spends the normal Action',()=>{
+  const parent=beginTeleporter(),id=randomUUID(),q=teleporter(parent,id);const receipt=JSON.parse(sql(auth(q)));
+  expect(receipt.actionContext.kind).toBe('bonusAction');expect(flags()).toMatchObject({action:false,bonus:true});
+  sql(auth(q));expect(()=>sql(auth(teleporter(parent)))).toThrow(/already used/);
+  expect(sql(`select count(*) from dndkeep_private.teleporter_combat_children where parent_id='${parent}'`)).toBe('1');
+  sql(auth(spellQuery(randomUUID(),'action',0)));expect(flags().action).toBe(true);
+  next(1);next(0,2);sql(auth(q));expect(flags()).toMatchObject({action:false,bonus:false});
+ });
+ test('Teleporter child rejects long casting, disguised leveled spells, wrong source and stale origins',()=>{
+  const parent=beginTeleporter();
+  sql(`update characters set spell_sources=spell_sources||'{"mending":["class:Psion"],"fly":["class:Psion"],"shillelagh":["class:Psion"],"produce-flame":["class:Psion"]}'::jsonb where id='${character}'`);
+  for(const spell of ['mending','fly','shillelagh','produce-flame'])expect(()=>sql(auth(teleporter(parent,randomUUID(),spell)))).toThrow(/one-Action/);
+  expect(()=>sql(auth(teleporter(parent,randomUUID(),'light',{actionKind:'action',isBonusAction:false})))).toThrow(/one-Action/);
+  expect(()=>sql(auth(teleporter(randomUUID())))).toThrow(/no longer available/);
+  expect(()=>sql(auth(teleporter('bad')))).toThrow(/parent is invalid/);
+  sql(`update characters set spell_sources=spell_sources||'{"light":["class:Psion","other"]}'::jsonb where id='${character}'`);
+  expect(()=>sql(auth(teleporter(parent,randomUUID(),'light',{source:'other'})))).toThrow(/one-Action/);
+  next(1);next(0,2);expect(()=>sql(auth(teleporter(parent)))).toThrow(/no longer available/);
+ });
+ test('Teleporter child is atomic, survives pending-cast pruning, and concurrent choices have one winner',async()=>{
+  const parent=beginTeleporter(),id=randomUUID();
+  sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';${teleporter(parent,id)};rollback;`);
+  expect(sql(`select count(*) from dndkeep_private.teleporter_combat_children where parent_id='${parent}'`)).toBe('0');
+  const results=await Promise.all([parallel(auth(teleporter(parent,id))),parallel(auth(teleporter(parent)))]);
+  expect(results.filter(r=>r.code===0)).toHaveLength(1);
+  sql(`delete from pending_spell_casts where id=(select cast_id from dndkeep_private.teleporter_combat_children where parent_id='${parent}')`);
+  expect(()=>sql(auth(teleporter(parent)))).toThrow(/already used/);
+ });
+
 });

@@ -29,16 +29,43 @@ The table and inspection helper are private and grant no casting permission.
 All 55 action-context SQL cases pass, including six new origin cases; the full
 release gate passes. No player UI or production behavior changed here.
 
+The subsequent `20261009192652_teleporter_combat_cantrip_claims.sql` checkpoint
+consumes one free-Misty-Step origin with the child spell declaration. The child
+uses its parent's Bonus Action receipt without another normal Action claim.
+The consumed record survives pending-cast pruning; exact retries replay and
+concurrent choices cannot consume it twice. A private built-in cantrip ID list
+rejects relabeled leveled spells and long castings; the client request builder
+captures parent, source and target for recovery. Neither picker nor live UI is
+connected yet. The server still requires the stored Psion ownership source.
+Custom cantrips are unsupported until trusted metadata can be validated.
+Verification: 104 action-context/spell-settlement SQL cases pass, plus the full
+release gate (3,001 unit tests, TypeScript 198/198, 255.2 KB entry). Changed
+TypeScript files lint clean; SQL lint reports no issues in the changed functions.
+Anon/authenticated cannot directly read or insert child records.
+
+
+Catalog audit corrected [Mending](https://www.dndbeyond.com/spells/2619033-mending)
+from one Action to one minute. [Produce Flame](https://www.dndbeyond.com/spells/2618901-produce-flame)
+also has stale casting metadata: its 2024 Bonus Action creates the flame, and a
+separate Magic action throws it. Both are excluded from Teleporter follow-ups;
+Produce Flame's cast/throw flow still needs repair before changing its metadata.
+A parity test protects the private ID list against catalog drift.
+
 Still required for Teleporter Combat: capture slotted Misty Step settlement,
-resolve Counterspell timing against the current rule source, validate canonical
-cantrip level and exact one-Action casting time plus Psion ownership, atomically
-consume one origin per child cast, return a no-extra-Action receipt, and connect
-the picker/recovery UI. Local `public.spells` contains 32 rows and no level-0
-rows: do not depend on it as a complete cantrip catalog or trust client-supplied
-spell level. `spellActionKind` intentionally treats long castings as initial
-Actions and is insufficient for this feature's eligibility. Origin inspection
-currently observes shared claims only; legacy action writers must also be
-covered before this can become an immediate-casting authorization boundary.
+resolve Counterspell timing against the current rule source, and connect the
+picker/recovery UI. Local `public.spells` contains 32 rows and no level-0 rows:
+do not depend on it as a complete cantrip catalog or trust client-supplied spell
+level. `spellActionKind` includes long castings' initial Actions and cannot be
+used as this feature's eligibility test. Origin inspection currently observes
+shared claims only; legacy action writers must also be covered before release.
+These checkpoints are not deployed and do not complete the feature.
+The verified 2024 Counterspell source is
+https://www.dndbeyond.com/spells/2619072-counterspell (not legacy spell 2051).
+It describes interruption, loss of effect and the casting action, and preserves
+the slot. Whether the separate Teleporter Combat trigger follows an interrupted
+Misty Step still needs an explicit rules interpretation; do not infer it from
+slot reimbursement.
+
 
 Local database checkpoints (not deployed):
 
