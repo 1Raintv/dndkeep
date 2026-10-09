@@ -5641,3 +5641,35 @@ Propel's conditional cost. General feature buff/exhaustion handling also needs
 review. No production deployment of this branch.
 
 Final full gate passes: 3,087 unit tests, TypeScript 197/197, hooks/RAW/coordinates/anchors, build and 255.2 KB entry.
+
+### Declared Propel refreshes live save conditions (unreleased)
+
+`20261009221000_shared_feature_save_context.sql` extracts the existing ordinary
+save target-state reader into one private helper. Ordinary saves preserve their
+same context shape. A new scoped Propel read requires the authorized character,
+its unresolved finalized declaration, the original active encounter and the
+bound target. It returns current conditions, buffs, exhaustion, house-rule
+flags and remaining Legendary Resistance (including lair allowance), without
+spending resources or changing the declaration. The raw helper is not exposed.
+
+Propel's assisted save now passes its declaration ID into the class resolver
+and refreshes that context immediately before rolling. A newly applied condition
+therefore takes effect even if the dialog was already open. Read failures leave
+the target unresolved and generate no dice. Other class abilities retain their
+current modal-snapshot behavior. The API validates identities and state rather
+than interpreting a failed read as an empty condition list.
+
+Validation: 74 database/browser cases pass: 16 new context cases, 52 ordinary-save
+regressions using the extracted reader, and six desktop/mobile Propel flows.
+The Paralyzed browser case applies the condition after opening the dialog and
+still produces a no-dice failure. Fifteen API validation cases and two added
+class-control tests pass. Full gate: 3,104 units, TypeScript 197/197,
+hooks/RAW/coordinates/anchors, build and 255.2 KB entry. SQL lint passes.
+Applied only to local Docker, with migration ledger entry; branch not deployed.
+
+This read is not settlement authorization. Next: preserve the submitted context
+and dice, recheck/lock the target at settlement, consume Mind Sliver, and derive
+the final result before paying Propel's conditional cost. Legendary Resistance
+needs a DM decision before finalizing a failed feature save. Buff/exhaustion
+values are returned for that transaction but are not newly applied by this
+change. Full feature/standalone/death-save coverage remains a release gate.

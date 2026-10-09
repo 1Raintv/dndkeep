@@ -126,7 +126,7 @@ export default function PropelControls({character,persistence,warp=false,campaig
  <button className="btn-ghost" disabled={busy} style={{marginTop:16}} onClick={close}>Close for later</button>
  </div></div></ModalPortal>}
  {open&&assisted&&row&&row.roll_result&&row.target.participantId&&savedEncounter&&row.caster_snapshot.campaign_id&&<Suspense fallback={<p role="status">Loading save controls…</p>}><ClassAbilityResolveModal open
-  boundTarget={{participantId:row.target.participantId,encounterId:savedEncounter}}
+  boundDeclarationId={row.request_id} boundTarget={{participantId:row.target.participantId,encounterId:savedEncounter}}
   onClose={()=>setAssisted(false)} character={row.caster_snapshot} campaign={campaign?.id===row.caster_snapshot.campaign_id?campaign:null}
   campaignId={row.caster_snapshot.campaign_id} saveDC={classSaveDC(row.caster_snapshot,'INT')}
   ability={{name:row.source_feature,actionType:'bonus',minLevel:1,description:'',save:{ability:'STR',dc:{classAbility:'INT'},targetMode:'any'},

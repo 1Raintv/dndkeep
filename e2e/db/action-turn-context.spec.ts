@@ -336,7 +336,7 @@ test.describe('Private action turn context' ,()=>{
  });
  test('spell action validation rejects missing actions and off-turn actions without payment',()=>{
   prepareSpells();expect(()=>sql(auth(spellQuery(randomUUID(),'unknown')))).toThrow(/action context/);
-  expect(()=>sql(auth(spellQuery(randomUUID()).replace(',\"actionKind\":\"bonusAction\"','')))).toThrow(/action context/);
+  expect(()=>sql(auth(spellQuery(randomUUID()).replace(',"actionKind":"bonusAction"','')))).toThrow(/action context/);
   next(1);expect(()=>sql(auth(spellQuery(randomUUID())))).toThrow(/own turn/);
   expect(sql(`select spell_slots->'2'->>'used' from characters where id='${character}'`)).toBe('0');
  });
@@ -492,6 +492,48 @@ test.describe('Private action turn context' ,()=>{
  test('free Teleporter origins remain recoverable through the scoped reader',()=>{
   const parent=beginTeleporter();expect(JSON.parse(followup())).toMatchObject({parentId:parent,status:'ready',kind:'free'});
   sql(auth(teleporter(parent)));expect(followup()).toBe('');
+ });
+
+ test.describe('Declared Propel save context',()=>{
+  const authenticated=(u:string,q:string)=>`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${u}","role":"authenticated"}';${q};commit;`;
+  function declare(finalize=true){
+   const id=randomUUID(),turn=context().turnId;
+   sql(`update combatants set definition_id=p.entity_id from combat_participants p where combatants.id=p.combatant_id and p.id='${enemy}'`);
+   const payload=JSON.stringify({requestId:id,turnId:turn,mode:'powered',movement:'push',roll:3,target:{participantId:enemy,name:'Enemy',legalTargetConfirmed:true}});
+   sql(authenticated(owner,`select psionic_propel('${character}','begin','${payload}')`));
+   if(finalize)sql(authenticated(owner,`select psionic_propel('${character}','finalize','{"declarationId":"${id}"}')`));return id;
+  }
+  const read=(id:string,user=owner)=>JSON.parse(sql(authenticated(user,`select get_propel_save_context('${character}','${id}')`)));
+  test('refreshes conditions without changing the declared use or spending resources',()=>{
+   const id=declare(),before=sql(`select to_jsonb(d) from dndkeep_private.propel_declarations d where request_id='${id}'`);
+   expect(read(id)).toMatchObject({declarationId:id,participantId:enemy,state:{autoFail:false,disadvantage:false}});
+   sql(`update combatants set active_conditions=array['Paralyzed'] where id=(select combatant_id from combat_participants where id='${enemy}')`);
+   expect(read(id).state).toMatchObject({conditions:['Paralyzed'],autoFail:true});
+   expect(sql(`select to_jsonb(d) from dndkeep_private.propel_declarations d where request_id='${id}'`)).toBe(before);
+   expect(sql(`select count(*) from psionic_energy_uses where request_id='${id}'`)).toBe('0');
+  });
+  test('includes live target buffs, exhaustion and lair resistance',()=>{
+   const id=declare();sql(`update combatants set active_conditions=array['Encumbered'],exhaustion_level=2,active_buffs='[{"key":"bless","saveBonus":"1d4"}]' where id=(select combatant_id from combat_participants where id='${enemy}');update combat_encounters set in_lair=true where id='${encounter}';update combat_participants set legendary_resistance=3,legendary_resistance_used=3 where id='${enemy}'`);
+   expect(read(id)).toMatchObject({legendaryResistanceRemaining:1,state:{disadvantage:true,exhaustion:2,buffs:[{key:'bless',saveBonus:'1d4'}]}});
+  });
+  test('rejects another user and a wrong declaration',()=>{
+   const id=declare();expect(()=>read(id,other)).toThrow();expect(()=>read(randomUUID())).toThrow(/declaration unavailable/);
+  });
+  test('requires finalized power dice before reading a combat save',()=>{
+   const id=declare(false);expect(()=>read(id)).toThrow(/Finalize/);
+  });
+  test('never substitutes a different target after deletion',()=>{
+   const id=declare();sql(`delete from combat_participants where id='${enemy}'`);expect(()=>read(id)).toThrow(/declared target is unavailable/);
+  });
+  test('refuses a ended encounter',()=>{
+   const id=declare();sql(`update combat_encounters set status='ended' where id='${encounter}'`);expect(()=>read(id)).toThrow(/no longer active/);
+  });
+  test('completed declarations cannot generate another save',()=>{
+   const id=declare();sql(authenticated(owner,`select psionic_propel('${character}','finish','{"declarationId":"${id}","outcome":"passed","save":null}')`));expect(()=>read(id)).toThrow(/already resolved/);
+  });
+  test('the shared unscoped target reader is private',()=>{
+   expect(()=>sql(authenticated(owner,`select dndkeep_private.saving_target_context('${campaign}','${encounter}','${enemy}','STR')`))).toThrow(/permission denied/);
+  });
  });
 
 });

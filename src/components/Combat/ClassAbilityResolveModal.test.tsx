@@ -8,11 +8,12 @@ vi.mock('../../lib/supabase',()=>({supabase:{from:(table:string)=>{
  const query={select:()=>query,eq:()=>query,maybeSingle:async()=>({data:{id:table==='combat_encounters'?'enc':'caster'}}),order:async()=>({data:[{id:'one',name:'Goblin one',participant_type:mocks.character?'character':'creature',entity_id:'target-hero',current_hp:5,active_conditions:mocks.conditions},{id:'two',name:'Goblin two',participant_type:'creature',current_hp:5,active_conditions:mocks.conditions}]})};return query;
 }}}));
 vi.mock('../../lib/automations',()=>({resolveAutomation:()=> 'manual'}));
-const mocks=vi.hoisted(()=>({roll:vi.fn(),bonus:vi.fn(),guards:vi.fn(),character:false,conditions:[] as string[]}));
+const mocks=vi.hoisted(()=>({roll:vi.fn(),bonus:vi.fn(),guards:vi.fn(),live:vi.fn(),character:false,conditions:[] as string[]}));
 vi.mock('../../rules/dice',async original=>({...await original<typeof import('../../rules/dice')>(),rollDie:mocks.roll}));
+vi.mock('../../lib/api/propelSaveContext',()=>({getPropelSaveContext:mocks.live}));
 vi.mock('../../lib/api/psionicDisciplines',()=>({getPsionicGuardsSaveAdvantage:mocks.guards}));
 vi.mock('../../lib/pendingAttack',()=>({getTargetSaveBonus:mocks.bonus}));
-beforeEach(()=>{mocks.conditions=[];mocks.character=false;mocks.guards.mockReset().mockResolvedValue(false);mocks.roll.mockReset().mockReturnValue(10);mocks.bonus.mockReset().mockResolvedValue({bonus:0,breakdown:'',confidence:'high'});});
+beforeEach(()=>{mocks.live.mockReset().mockResolvedValue({state:{conditions:[],autoFail:false,disadvantage:false,advantage:false,naturalExtremes:false}});mocks.conditions=[];mocks.character=false;mocks.guards.mockReset().mockResolvedValue(false);mocks.roll.mockReset().mockReturnValue(10);mocks.bonus.mockReset().mockResolvedValue({bonus:0,breakdown:'',confidence:'high'});});
 vi.mock('../shared/ActionLog',()=>({logAction:vi.fn()}));
 afterEach(cleanup);
 it('Propel requires one chosen target and submits only that target save',async()=>{
@@ -135,4 +136,16 @@ it('an encumbered Propel target keeps the lower die',async()=>{
  await waitFor(()=>expect((screen.getByRole('button',{name:'Roll Save'}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:'Roll Save'}));
  await screen.findByText('Disadvantage: 18 or 3 — keep lowest');fireEvent.click(screen.getByRole('button',{name:'Confirm'}));
  expect(confirmed).toHaveBeenCalledWith([expect.objectContaining({outcome:'failed',d20:3,rolls:[18,3],disadvantage:true})]);
+});
+
+it('a declared Propel uses fresh conditions instead of the modal snapshot',async()=>{
+ mocks.live.mockResolvedValue({state:{conditions:['Paralyzed'],autoFail:true,advantage:false,disadvantage:false,naturalExtremes:false}});
+ const confirmed=vi.fn();render(cloneElement(boundView({participantId:'two',encounterId:'enc'},confirmed),{boundDeclarationId:'saved-use'}));
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Roll Save'}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:'Roll Save'}));
+ await screen.findByText('Automatic failure from condition — no dice rolled');expect(mocks.live).toHaveBeenCalledWith('hero','saved-use','enc','two');expect(mocks.roll).not.toHaveBeenCalled();
+});
+it('a failed declared-target refresh produces no dice or result',async()=>{
+ mocks.live.mockRejectedValue(new Error('Target unavailable'));render(cloneElement(boundView({participantId:'two',encounterId:'enc'}),{boundDeclarationId:'saved-use'}));
+ await waitFor(()=>expect((screen.getByRole('button',{name:'Roll Save'}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:'Roll Save'}));
+ expect((await screen.findByRole('alert')).textContent).toBe('Target unavailable');expect(mocks.roll).not.toHaveBeenCalled();expect((screen.getByRole('button',{name:'Confirm'}) as HTMLButtonElement).disabled).toBe(true);
 });

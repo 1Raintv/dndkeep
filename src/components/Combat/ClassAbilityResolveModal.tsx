@@ -1,3 +1,4 @@
+import {getPropelSaveContext} from '../../lib/api/propelSaveContext';
 import {conditionsAutoFailSave,conditionsDisadvantageSave} from '../../lib/conditions';
 import {rollSavingThrow} from '../../rules/savingThrows';
 import {getPsionicGuardsSaveAdvantage} from '../../lib/api/psionicDisciplines';
@@ -65,6 +66,7 @@ export { formatOutcomesLog } from '../../lib/classAbilityOutcomes';
 import type { SaveOutcome, TargetOutcome } from '../../lib/classAbilityOutcomes';
 
 interface Props {
+  boundDeclarationId?:string;
   /** A persisted declaration cannot switch targets or encounters during resolution. */
   boundTarget?:{participantId:string;encounterId:string};
   open: boolean;
@@ -108,12 +110,12 @@ function filterTargets(
 }
 
 export default function ClassAbilityResolveModal({
-  open, onClose, ability, saveDC, character, campaign, campaignId, onConfirmed, boundTarget,
+  open, onClose, ability, saveDC, character, campaign, campaignId, onConfirmed, boundTarget, boundDeclarationId,
 }: Props) {
   const singleTarget=!!boundTarget||ability.psionicUse?.kind==='propel';
   const [checking,setChecking]=useState(false),[saveError,setSaveError]=useState('');
   const busy=useRef(false),generation=useRef(0);
-  const context=JSON.stringify([open,campaignId,character.id,ability.name,ability.save,ability.psionicUse,saveDC,boundTarget]);
+  const context=JSON.stringify([open,campaignId,character.id,ability.name,ability.save,ability.psionicUse,saveDC,boundTarget,boundDeclarationId]);
   const latest=useRef(context);latest.current=context;
   useEffect(()=>{busy.current=false;setChecking(false);setSaveError('');return()=>{generation.current++;};},[context]);
   const [selectedTarget,setSelectedTarget]=useState('');
@@ -261,13 +263,17 @@ export default function ClassAbilityResolveModal({
     const issued=generation.current,bonus=saveBonuses[p.id].bonus;
     const current=()=>issued===generation.current&&latest.current===context;
     try {
-      const conditions=p.active_conditions??[],automaticFailure=conditionsAutoFailSave(conditions,ability.save?.ability??'');
-      const disadvantage=!automaticFailure&&conditionsDisadvantageSave(conditions,ability.save?.ability??'');
-      const advantage=!automaticFailure&&p.participant_type==='character'&&!!p.entity_id&&
-        await getPsionicGuardsSaveAdvantage(p.entity_id,ability.save?.ability??'');
+      const live=boundDeclarationId&&boundTarget?await getPropelSaveContext(character.id,boundDeclarationId,boundTarget.encounterId,p.id):null;
       if(!current())return;
-      const roll=rollSavingThrow(bonus,saveDC,{advantage,disadvantage,forceFailure:automaticFailure,naturalExtremes:saveBonuses[p.id].naturalExtremes});
-      setOutcome(p.id,roll.passed?'passed':'failed',roll.d20,roll.total,bonus,roll.rolls,advantage,saveBonuses[p.id].naturalExtremes??false,disadvantage||undefined,automaticFailure||undefined);
+      const conditions=live?.state.conditions??p.active_conditions??[];
+      const automaticFailure=live?.state.autoFail??conditionsAutoFailSave(conditions,ability.save?.ability??'');
+      const disadvantage=live?.state.disadvantage??(!automaticFailure&&conditionsDisadvantageSave(conditions,ability.save?.ability??''));
+      const advantage=live?.state.advantage??(!automaticFailure&&p.participant_type==='character'&&!!p.entity_id&&
+        await getPsionicGuardsSaveAdvantage(p.entity_id,ability.save?.ability??''));
+      if(!current())return;
+      const naturalExtremes=live?.state.naturalExtremes??saveBonuses[p.id].naturalExtremes??false;
+      const roll=rollSavingThrow(bonus,saveDC,{advantage,disadvantage,forceFailure:automaticFailure,naturalExtremes});
+      setOutcome(p.id,roll.passed?'passed':'failed',roll.d20,roll.total,bonus,roll.rolls,advantage,naturalExtremes,disadvantage||undefined,automaticFailure||undefined);
     }catch(error){if(current())setSaveError(error instanceof Error?error.message:'Protection could not be verified. Try again.');}
     finally{if(current()){busy.current=false;setChecking(false);}}
   }

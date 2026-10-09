@@ -76,7 +76,7 @@ test.describe('Saved Propel controls',()=>{
    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaignId}','active',1,0);
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values
    ('${self}','${encounter}','${campaignId}','character','${charId}','Psion',0),('${enemy}','${encounter}','${campaignId}','character','${targetCharacter}','Target Fighter',1);
-   update combatants set active_conditions=${condition?"array['"+condition+"']":"array[]::text[]"} where id=(select combatant_id from combat_participants where id='${enemy}');`);
+   update combatants set active_conditions=${condition&&condition!=='Paralyzed'?"array['"+condition+"']":"array[]::text[]"} where id=(select combatant_id from combat_participants where id='${enemy}');`);
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
   const ability=page.locator('.arow-grid').filter({has:page.getByText('Telekinetic Propel',{exact:true})});await ability.getByRole('button',{name:'Use / resume'}).click();
@@ -89,7 +89,9 @@ test.describe('Saved Propel controls',()=>{
   await dialog.getByRole('button',{name:'Resolve combat save'}).click();
   const saves=page.getByRole('dialog',{name:'Telekinetic Propel saving throws'});
   await expect(saves.getByRole('combobox',{name:'Propel target'})).toHaveValue(enemy);await expect(saves.getByRole('combobox',{name:'Propel target'})).toBeDisabled();
-  await expect(saves.getByRole('button',{name:'Roll Save'})).toBeEnabled();await page.evaluate(c=>{let n=0;Math.random=()=>c==='Encumbered'?(n++%2===0?0.99:0.01):0.01;},condition);
+  await expect(saves.getByRole('button',{name:'Roll Save'})).toBeEnabled();
+  if(condition==='Paralyzed')sql(`update combatants set active_conditions=array['Paralyzed'] where id=(select combatant_id from combat_participants where id='${enemy}')`);
+  await page.evaluate(c=>{let n=0;Math.random=()=>c==='Encumbered'?(n++%2===0?0.99:0.01):0.01;},condition);
   if(condition==='Paralyzed')await saves.getByRole('spinbutton').fill('30');
   await saves.getByRole('button',{name:'Roll Save'}).click();await page.screenshot({path:info.outputPath('propel-combat-save.png')});
   if(condition){
@@ -117,7 +119,7 @@ test.describe('Saved Propel controls',()=>{
    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaignId}','active',1,0);
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values
    ('${self}','${encounter}','${campaignId}','character','${charId}','Psion',0),('${enemy}','${encounter}','${campaignId}','character','${targetCharacter}','Target Fighter',1);
-   update combatants set active_conditions=${condition?"array['"+condition+"']":"array[]::text[]"} where id=(select combatant_id from combat_participants where id='${enemy}');`);
+   update combatants set active_conditions=${condition&&condition!=='Paralyzed'?"array['"+condition+"']":"array[]::text[]"} where id=(select combatant_id from combat_participants where id='${enemy}');`);
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
   await page.locator('.arow-grid').filter({has:page.getByText('Free Misty Step (Teleportation)',{exact:true})}).getByRole('button',{name:'Cast',exact:true}).click();
