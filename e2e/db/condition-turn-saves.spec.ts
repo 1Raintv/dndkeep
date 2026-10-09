@@ -90,4 +90,12 @@ test.describe('Atomic condition turn saves',()=>{
   expect(settle([20],c)).toEqual({...first,replayed:true});
  });
 
+ test('owner and DM can recover a committed receipt after condition removal and turn change',()=>{
+  const first=settle();sql(`update combat_encounters set round_number=2 where id='${encounter}'`);
+  const read=`select get_condition_turn_save('${part}','${turn}','Poisoned')`;
+  expect(JSON.parse(sql(auth(owner,read)))).toEqual({...first,replayed:true});expect(JSON.parse(sql(auth(dm,read)))).toEqual({...first,replayed:true});
+  expect(()=>sql(auth(other,read))).toThrow();
+ });
+ test('receipt discovery returns no invented result for an unrolled save',()=>{expect(sql(auth(owner,`select get_condition_turn_save('${part}','${turn}','Poisoned')`))).toBe('');});
+
 });

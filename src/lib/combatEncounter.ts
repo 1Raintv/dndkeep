@@ -757,6 +757,7 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
       const { processEndOfTurnConditions } = await import('./endOfTurnConditions');
       await processEndOfTurnConditions({
         participantId: outgoingForConditions.id,
+        turnId: enc.psionic_turn_id,
         campaignId: outgoingForConditions.campaign_id as string,
         encounterId,
         currentRound: encounter.round_number,
@@ -765,10 +766,9 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
         hiddenFromPlayers: !!outgoingForConditions.hidden_from_players,
       });
     } catch (err) {
-      // Defensive: a failure here shouldn't block turn advance.
-      // The condition will simply persist into next turn — DM can
-      // remove manually.
-      console.error('[advanceTurn] end-of-turn condition processing failed', err);
+      // Keep the outgoing turn active until its saved condition outcomes are
+      // confirmed. Retrying uses their receipts instead of rolling again.
+      return {ok:false,reason:err instanceof Error?err.message:'Condition save could not be confirmed'};
     }
 
     // v2.602.0 — automation arc ship 4b: END-OF-TURN buff ticks for

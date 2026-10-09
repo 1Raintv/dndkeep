@@ -6172,3 +6172,42 @@ broader branch based on these transaction tests alone. Migration applied only
 to the existing local Docker database.
 
 Condition-save foundation validation:32 database regression cases pass, including concurrency, rollback, shared-penalty consumption, Guards, disadvantage, permissions, immunity and replay after turn advance. Full gate passes3,200 unit tests, TypeScript197/197, hooks, RAW, coordinates, anchors, build and255.2KB entry. SQL error-level lint, changed-file ESLint and diff whitespace checks pass. No live UI or production behavior changed in this foundation batch.
+
+
+### Live turn-end condition-save recovery (unreleased)
+
+processEndOfTurnConditions now calls the atomic saved-save path with the exact
+outgoing turn token. Its former roll/log/remove/immunity sequence is removed.
+advanceTurn returns an explicit failure before advancing when a condition save
+cannot be confirmed; it no longer silently skips that save. Initial participant
+read errors also stop this step. Duration-only expiry remains the legacy path.
+
+api/conditionTurnSaves persists the request, d20 pool, compatible buff totals and
+penalty die before settlement. It discovers an authorized committed receipt
+before reading new context or rolling; stale/malformed storage and failed reads
+cannot silently generate replacement dice. Overlapping calls coalesce. Explicit
+review refreshes context while retaining compatible dice and buff rolls. Unknown
+base-bonus confidence blocks automation. The new read RPC permits owner/DM
+recovery after the turn changes or the condition ends, without exposing private
+tables. The migration is applied only to local Docker.
+
+The actual End Turn browser test injects lost acknowledgements after committed
+settlement. Desktop and mobile preserve the outgoing round on the first attempt,
+then advance after reload/retry with one original result and one log entry.
+The first attempt at this fixture lacked a required buff name and crashed the
+initiative strip before clicking; the corrected fixture exercises the intended
+save path successfully.
+
+Remaining: expose saved-condition review controls in the UI (the API is present),
+including uncertain/low-confidence modifiers. getTargetSaveBonus includes effective
+ability-score item overrides but does not yet add all flat equipment save bonuses;
+that shared calculation needs its own audit. Legendary Resistance choices,
+duration-only expiry, buff ticks and full clock-side-effect recovery remain open.
+Do not deploy or call complete based solely on this integration. Proposals remain
+local to the originating browser; cross-device durable dice are still separate work.
+
+Live condition-save verification:3,210 unit tests, TypeScript197/197, hooks, RAW,
+coordinates, anchors, build and255.2KB entry pass. Both live condition retry browser
+cases and44 condition/death-save database/browser regressions pass. SQL error-level
+lint and changed-file ESLint pass with the existing any-type warning. No production
+migration or deployment.
