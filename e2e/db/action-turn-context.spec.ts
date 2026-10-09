@@ -17,7 +17,8 @@ test.describe('Private action turn context' ,()=>{
    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaign}','active',1,0);
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values
    ('${participant}','${encounter}','${campaign}','character','${character}','Psion',0),
-   ('${enemy}','${encounter}','${campaign}','creature','${enemy}','Enemy',1);`);
+   ('${enemy}','${encounter}','${campaign}','creature','${enemy}','Enemy',1);
+   update combatants set definition_id=p.entity_id from combat_participants p where combatants.id=p.combatant_id and p.encounter_id='${encounter}';`);
  });
  test.afterEach(()=>{sql(`delete from campaigns where id='${campaign}';delete from characters where id='${character}';delete from auth.users where id in('${owner}','${other}');`);});
  const context=(user?:string)=>JSON.parse(sql(`begin;set local request.jwt.claims='{"sub":"${user??owner}","role":"authenticated"}';select dndkeep_private.action_turn_context('${character}');commit;`));
@@ -127,6 +128,8 @@ test.describe('Private action turn context' ,()=>{
  const powerSql=(id:string,mode='powered',movement='push',roll=4,target={participantId:enemy,legalTargetConfirmed:true})=>
   `select dndkeep_private.begin_propel('${character}','${id}','${context().turnId}','${mode}','${movement}',${roll},'${JSON.stringify(target)}')`;
  const finalizePower=(id:string)=>sql(auth(`select dndkeep_private.finalize_propel_roll('${character}','${id}')`));
+ const saveContext=(id:string)=>JSON.parse(sql(auth(`select get_propel_save_context('${character}','${id}')`)));
+ const recordedSave=(id:string,dice=[3],dc=15,bonus=2,expected=saveContext(id))=>`select settle_propel_save('${character}','${id}','${JSON.stringify(expected)}',${dc},array[${dice}]::integer[],${bonus},0,'[]',${expected.state.autoFail?'null':'3'})`;
  const finishPower=(id:string,outcome:string)=>`select dndkeep_private.finish_propel('${character}','${id}','${outcome}')`;
  const energy=()=>Number(sql(`select coalesce(class_resources->>'psionic-energy-dice','6') from characters where id='${character}'`));
  test('Propel commits its action before the save and spends the Energy Die only on failure',()=>{
@@ -216,7 +219,7 @@ test.describe('Private action turn context' ,()=>{
   const id=randomUUID();const begun=JSON.parse(sql(asUser(owner,'begin',{requestId:id,turnId:ctx.turnId,mode:'free',movement:'push',roll:0,target:{participantId:enemy,legalTargetConfirmed:true}})));
   expect(begun.request_id).toBe(id);expect(JSON.parse(sql(asUser(owner,'context'))).bonusAvailable).toBe(false);
   expect(JSON.parse(sql(asUser(owner,'list'))).items[0].request_id).toBe(id);
-  sql(asUser(owner,'finalize',{declarationId:id}));expect(JSON.parse(sql(asUser(owner,'finish',{declarationId:id,outcome:'passed'}))).result.energyCost).toBe(0);
+  sql(asUser(owner,'finalize',{declarationId:id}));expect(JSON.parse(sql(auth(recordedSave(id,[20],15,0)))).record.result.energyCost).toBe(0);
   expect(sql(`select has_function_privilege('anon','public.psionic_propel(uuid,text,jsonb)','EXECUTE')`)).toBe('f');
  });
  test('recovery reads paid Propel extras and Surge before finalization',()=>{
@@ -234,10 +237,9 @@ test.describe('Private action turn context' ,()=>{
  test('Propel resolution retains save evidence and exactly one history entry on replay',()=>{
   const id=randomUUID();sql(auth(powerSql(id,'powered','push',4)));finalizePower(id);
   const save={participantId:enemy,outcome:'failed',dc:15,d20:3,bonus:2,total:5,rolls:[3],advantage:false,naturalExtremes:false};
-  const resolve=`select public.psionic_propel('${character}','finish','${JSON.stringify({declarationId:id,outcome:'failed',save})}')`;
-  const first=JSON.parse(sql(auth(resolve)));expect(first.save_details).toEqual(save);expect(first.result.energyCost).toBe(1);
+  const first=JSON.parse(sql(auth(recordedSave(id)))).record;expect(first.save_details).toMatchObject(save);expect(first.result.energyCost).toBe(1);
   const remaining=sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`);
-  expect(JSON.parse(sql(auth(resolve))).replayed).toBe(true);
+  expect(JSON.parse(sql(auth(`select public.psionic_propel('${character}','finish','${JSON.stringify({declarationId:id,outcome:'failed',save:first.save_details})}')`))).replayed).toBe(true);
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe(remaining);
   expect(sql(`select count(*) from action_logs where id='${id}'`)).toBe('1');
   expect(sql(`select notes from action_logs where id='${id}'`)).toContain('kept 3 + bonus 2 = 5');
@@ -258,14 +260,14 @@ test.describe('Private action turn context' ,()=>{
   const id=randomUUID();sql(auth(powerSql(id,'powered','push',4)));finalizePower(id);
   const before=sql(`select class_resources from characters where id='${character}'`);
   sql(`insert into action_logs(id,character_id,action_name) values('${id}','${character}','Collision fixture')`);
-  expect(()=>sql(auth(`select public.psionic_propel('${character}','finish','{"declarationId":"${id}","outcome":"failed"}')`))).toThrow(/duplicate key/);
+  expect(()=>sql(auth(recordedSave(id)))).toThrow(/duplicate key/);
   expect(sql(`select class_resources from characters where id='${character}'`)).toBe(before);
   expect(sql(`select outcome is null from dndkeep_private.propel_declarations where request_id='${id}'`)).toBe('t');
   sql(`delete from action_logs where id='${id}'`);
  });
  test('concurrent Propel confirmations share one history entry and one die cost',async()=>{
   const id=randomUUID();sql(auth(powerSql(id,'powered','push',4)));finalizePower(id);
-  const query=auth(`select public.psionic_propel('${character}','finish','{"declarationId":"${id}","outcome":"failed"}')`);
+  const query=auth(recordedSave(id));
   const results=await Promise.all([parallel(query),parallel(query)]);expect(results.map(r=>r.code)).toEqual([0,0]);
   expect(sql(`select count(*) from action_logs where id='${id}'`)).toBe('1');
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('5');
@@ -496,12 +498,13 @@ test.describe('Private action turn context' ,()=>{
 
  test.describe('Declared Propel save context',()=>{
   const authenticated=(u:string,q:string)=>`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${u}","role":"authenticated"}';${q};commit;`;
+  const contexts=new Map<string,ReturnType<typeof saveContext>>();
   function declare(finalize=true){
    const id=randomUUID(),turn=context().turnId;
    sql(`update combatants set definition_id=p.entity_id from combat_participants p where combatants.id=p.combatant_id and p.id='${enemy}'`);
    const payload=JSON.stringify({requestId:id,turnId:turn,mode:'powered',movement:'push',roll:3,target:{participantId:enemy,name:'Enemy',legalTargetConfirmed:true}});
    sql(authenticated(owner,`select psionic_propel('${character}','begin','${payload}')`));
-   if(finalize)sql(authenticated(owner,`select psionic_propel('${character}','finalize','{"declarationId":"${id}"}')`));return id;
+   if(finalize){sql(authenticated(owner,`select psionic_propel('${character}','finalize','{"declarationId":"${id}"}')`));contexts.set(id,saveContext(id));}return id;
   }
   const read=(id:string,user=owner)=>JSON.parse(sql(authenticated(user,`select get_propel_save_context('${character}','${id}')`)));
   test('refreshes conditions without changing the declared use or spending resources',()=>{
@@ -529,14 +532,14 @@ test.describe('Private action turn context' ,()=>{
    const id=declare();sql(`update combat_encounters set status='ended' where id='${encounter}'`);expect(()=>read(id)).toThrow(/no longer active/);
   });
   test('completed declarations cannot generate another save',()=>{
-   const id=declare();sql(authenticated(owner,`select psionic_propel('${character}','finish','{"declarationId":"${id}","outcome":"passed","save":null}')`));expect(()=>read(id)).toThrow(/already resolved/);
+   const id=declare();sql(authenticated(owner,recordedSave(id,[20],15,0)));expect(()=>read(id)).toThrow(/already resolved/);
   });
   const saveEvidence=()=>({participantId:enemy,outcome:'failed',dc:15,d20:5,bonus:0,total:5,rolls:[5],advantage:false,naturalExtremes:false});
-  const finishSave=(id:string,save:ReturnType<typeof saveEvidence>)=>sql(authenticated(owner,`select psionic_propel('${character}','finish','${JSON.stringify({declarationId:id,outcome:save.outcome,save})}')`));
+  const finishSave=(id:string,save:ReturnType<typeof saveEvidence>)=>JSON.stringify(JSON.parse(sql(authenticated(owner,recordedSave(id,save.rolls,save.dc,save.bonus,contexts.get(id))))).record);
   test('condition changes after rolling reject payment and preserve the unresolved declaration',()=>{
    const id=declare(),save=saveEvidence();
    sql(`update combatants set active_conditions=array['Paralyzed'] where id=(select combatant_id from combat_participants where id='${enemy}')`);
-   expect(()=>finishSave(id,save)).toThrow(/Target save conditions changed/);
+   expect(()=>finishSave(id,save)).toThrow(/settings changed/);
    expect(sql(`select outcome is null from dndkeep_private.propel_declarations where request_id='${id}'`)).toBe('t');
    expect(sql(`select count(*) from psionic_energy_uses where request_id='${id}'`)).toBe('0');
    expect(sql(`select count(*) from action_logs where id='${id}'`)).toBe('0');
@@ -549,17 +552,21 @@ test.describe('Private action turn context' ,()=>{
   });
   test('removed automatic failure and newly applied disadvantage cannot use stale evidence',()=>{
    const id=declare();
+   sql(`update combatants set active_conditions=array['Paralyzed'] where id=(select combatant_id from combat_participants where id='${enemy}')`);
+   contexts.set(id,saveContext(id));
    const automatic={...saveEvidence(),d20:1,total:1,rolls:[],automaticFailure:true};
-   expect(()=>finishSave(id,automatic)).toThrow(/Target save conditions changed/);
+   sql(`update combatants set active_conditions='{}' where id=(select combatant_id from combat_participants where id='${enemy}')`);
+   expect(()=>finishSave(id,automatic)).toThrow(/settings changed/);
+   contexts.set(id,saveContext(id));
    sql(`update combatants set active_conditions=array['Encumbered'] where id=(select combatant_id from combat_participants where id='${enemy}')`);
-   expect(()=>finishSave(id,saveEvidence())).toThrow(/Target save conditions changed/);
+   expect(()=>finishSave(id,saveEvidence())).toThrow(/settings changed/);
    expect(sql(`select count(*) from psionic_energy_uses where request_id='${id}'`)).toBe('0');
   });
   test('waits for an in-flight condition change before charging',async()=>{
    const id=declare(),marker=parseInt(randomUUID().slice(0,7),16);
    const update=parallel(`begin;update combatants set active_conditions=array['Paralyzed'] where id=(select combatant_id from combat_participants where id='${enemy}');select pg_advisory_xact_lock(${marker});select pg_sleep(3);commit;`);
    await expect.poll(()=>sql(`select count(*) from pg_locks where locktype='advisory' and objid=${marker} and granted`)).toBe('1');
-   expect(()=>finishSave(id,saveEvidence())).toThrow(/Target save conditions changed/);
+   expect(()=>finishSave(id,saveEvidence())).toThrow(/settings changed/);
    expect(await update).toMatchObject({code:0,error:''});
    expect(sql(`select count(*) from psionic_energy_uses where request_id='${id}'`)).toBe('0');
    expect(sql(`select outcome is null from dndkeep_private.propel_declarations where request_id='${id}'`)).toBe('t');

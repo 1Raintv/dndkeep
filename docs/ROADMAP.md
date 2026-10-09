@@ -5794,3 +5794,47 @@ anchors, build and 255.2 KB entry. Twenty-two new API recovery/validation tests
 pass. Ten desktop/mobile save scenarios pass: six condition/completed-recovery
 cases and four pending-resistance/lost-response cases. Changed-file ESLint and
 diff whitespace checks pass. No production migration or deployment performed.
+
+
+### Combat Propel cannot bypass its recorded save (unreleased)
+
+`20261010000500_require_recorded_propel_saves.sql` closes the legacy completion
+path for unresolved combat declarations. Direct passed/failed submissions,
+including otherwise plausible rolled details, require the private save receipt.
+The modern settlement transaction supplies that receipt before payment. An old
+client receives a reload/Resolve combat save instruction instead of silently
+skipping Mind Sliver or Legendary Resistance. Existing completed receipts replay
+without retroactive saves or extra costs. Pre-save cancellation and solo/tabletop
+manual outcomes retain their prior behavior.
+
+The save-evidence, history rollback, concurrency and stale-context regressions
+now use the modern public transaction. Private payment-helper tests still test
+that internal primitive; its lack of authenticated/anonymous execute permission
+remains asserted. New regressions cover both forged outcomes with live Mind
+Sliver and resistance, unchanged effect/resources/history after rejection,
+subsequent modern resolution, cancellation, old completed receipts, and solo
+manual resolution. Local Docker only; unrelated migration ledger preserved.
+
+Next-save coverage inventory, traced to live importers: end-of-turn condition
+saves run from `combatEncounter.ts` through `endOfTurnConditions.ts` and currently
+roll/remove effects in separate client calls. Death saves have three writers:
+automatic turn-start in `combatEncounter.ts`, prompted saves through
+`deathSaves.ts`/`DeathSavePromptModal`, and sheet `DeathSaves.tsx`. These all need
+shared authoritative save/penalty handling; no pure death-save domain module
+currently unifies their outcome math. Other class, sheet and standalone save
+consumers/origins remain open. This branch is still not a complete Mind Sliver
+release and has not been deployed.
+
+Source check for the next integration: [2024 Playing the Game](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game#DeathSavingThrows)
+confirms death saves are not tied to an ability score; stabilization resets both
+counters, and natural 1/20 have their specific death-save effects. Current client
+writers do not consistently reset both counters on stabilization. The same
+source's Saving Throws section permits choosing failure without rolling: that
+option must return through an explicit authorized resolution path, not the old
+combat completion bypass. The new combat Propel dialog does not yet offer it.
+These are concrete accuracy items, not claims of completed support.
+
+Verification: all 101 database regressions pass (76 action/Propel/context cases
+and 25 settlement/compatibility cases). Full gate passes: 3,126 unit tests,
+TypeScript 197/197, hooks, RAW, coordinates, anchors, build and 255.2 KB entry.
+Private SQL error-level lint, changed-test ESLint and diff whitespace checks pass.

@@ -65,5 +65,29 @@ test.describe('Propel save settlement',()=>{
  test('ending the encounter prevents a resistance charge',()=>{sliver();legendary();settle();sql(`update combat_encounters set status='ended' where id='${encounter}'`);expect(()=>decide(true)).toThrow(/no longer active/);expect(sql(`select legendary_resistance_used from combat_participants where id='${target}'`)).toBe('3');});
  test('missing buff evidence rejects before consuming the penalty',()=>{const effect=sliver();sql(`update combatants set active_buffs='[{"key":"bless","saveBonus":"1d4"}]' where id=(select combatant_id from combat_participants where id='${target}')`);expect(()=>settle()).toThrow(/buff contributions changed/);expect(consumed(effect)).toBe('unused');expect(read()).toBeNull();});
  test('concurrent identical resistance decisions use only one charge',async()=>{sliver();legendary();settle();const q=auth(dm,`select decide_propel_resistance('${character}','${id}',true)`);const results=await Promise.all([parallel(q),parallel(q)]);expect(results.map(r=>r.code)).toEqual([0,0]);expect(JSON.parse(results[0].out)).toEqual(JSON.parse(results[1].out));expect(sql(`select legendary_resistance_used from combat_participants where id='${target}'`)).toBe('4');expect(energy()).toBe('2');});
+ for(const outcome of ['passed','failed'])test(`legacy ${outcome} cannot skip a combat save or its next-save effect`,()=>{
+  const effect=sliver();legendary();
+  const manual={participantId:target,outcome,dc:10};
+  const face=outcome==='passed'?20:1,rolled={...manual,d20:face,bonus:0,total:face,rolls:[face],advantage:false,naturalExtremes:false};
+  for(const save of [null,manual,rolled])expect(()=>sql(auth(owner,`select psionic_propel('${character}','finish','${JSON.stringify({declarationId:id,outcome,save})}')`))).toThrow(/requires its recorded saving throw/);
+  expect(consumed(effect)).toBe('unused');expect(energy()).toBe('2');expect(read()).toBeNull();
+  expect(sql(`select count(*) from action_logs where id='${id}'`)).toBe('0');expect(settle().pendingResistance).toBe(true);
+ });
+ test('cancel before recording a save keeps the action spent without consuming Mind Sliver',()=>{
+  const effect=sliver(),result=JSON.parse(sql(auth(owner,`select psionic_propel('${character}','finish','{"declarationId":"${id}","outcome":"cancelled"}')`)));
+  expect(result).toMatchObject({outcome:'cancelled',result:{energyCost:0}});expect(consumed(effect)).toBe('unused');expect(energy()).toBe('2');expect(sql(`select bonus_used from combat_participants where id='${caster}'`)).toBe('t');
+ });
+ test('completed older records replay without requiring a new save receipt',()=>{
+  const r=settle([1]);sql(`delete from dndkeep_private.propel_save_receipts where declaration_id='${id}'`);
+  const result=JSON.parse(sql(auth(owner,`select psionic_propel('${character}','finish','${JSON.stringify({declarationId:id,outcome:'failed',save:r.record.save_details})}')`)));
+  expect(result).toMatchObject({outcome:'failed',replayed:true});expect(energy()).toBe('1');expect(sql(`select count(*) from action_logs where id='${id}'`)).toBe('1');
+ });
+ test('solo tabletop saves retain explicit manual resolution',()=>{
+  sql(`update characters set campaign_id=null where id='${character}'`);
+  const solo=randomUUID(),turn=JSON.parse(sql(auth(owner,`select psionic_propel('${character}','context')`))).turnId;
+  const payload={requestId:solo,turnId:turn,mode:'powered',movement:'push',roll:3,target:{name:'Tabletop creature',legalTargetConfirmed:true}};
+  sql(auth(owner,`select psionic_propel('${character}','begin','${JSON.stringify(payload)}');select psionic_propel('${character}','finalize','{"declarationId":"${solo}"}')`));
+  expect(JSON.parse(sql(auth(owner,`select psionic_propel('${character}','finish','{"declarationId":"${solo}","outcome":"failed"}')`)))).toMatchObject({outcome:'failed',result:{energyCost:1}});expect(energy()).toBe('1');
+ });
  test('competing roll submissions return the first receipt and charge once',async()=>{sliver();const expected=context();const results=await Promise.all([parallel(auth(owner,command([12],3,expected))),parallel(auth(owner,command([1],4,expected)))]);expect(results.map(r=>r.code)).toEqual([0,0]);const [a,b]=results.map(r=>JSON.parse(r.out));expect(a.save).toEqual(b.save);expect(energy()).toBe('1');expect(sql(`select count(*) from psionic_energy_uses where request_id='${id}'`)).toBe('1');});
 });
