@@ -366,6 +366,8 @@ export interface Character {
 
   // Conditions
   active_conditions: ConditionName[];
+  /** Persisted provenance distinguishes derived incapacity from independent effects. */
+  condition_sources?: Record<string, {source?: string; [key: string]: unknown}>;
   exhaustion_level?: number;  // 0-6 per 2024 rules; 0 = no exhaustion, 6 = death
 
   // v2.474.0 — Cross-encounter condition immunity snapshot. JSONB

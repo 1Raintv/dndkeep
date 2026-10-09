@@ -6115,3 +6115,34 @@ protection instead of hiding the race with an artificial wait.
 
 Recovery final verification:3,196 unit tests, TypeScript197/197, hooks, RAW, coordinates, anchors, production build and255.2KB entry all pass. All28 offer database cases and8 final desktop/mobile dialog cases pass. Changed-file ESLint, SQL error-level lint and diff whitespace checks pass. No production migration or deployment.
 
+
+
+### Death-save waking condition lifecycle (unreleased)
+
+The turn audit found that natural20 settlement removed Unconscious by array
+filter while leaving its derived Incapacitated source behind. That could keep a
+revived Psion unable to act. Atomic death saves now use the existing server
+remove_conditions helper independently on locked combatant and character rows.
+The sheet's natural20 and Regain1HP controls use its canonical pure counterpart.
+Waking removes only the derived incapacity, preserves incapacity required by
+Stunned/Paralyzed or an independent effect, and retains Prone with fall provenance.
+Stabilization at0HP does not remove unconsciousness. Character's type now includes
+its already-persisted condition_sources field; the live read/patch path was traced
+and verified to retain it.
+
+Rules checked against official2024 Basic Rules:
+https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game
+https://www.dndbeyond.com/sources/dnd/br-2024/rules-glossary/
+
+Validation:3,200 unit tests;54 death-save database/browser cases plus2 stable-sheet
+browser cases; TypeScript197/197, hooks, RAW, coordinates, anchors, build and255.2KB
+entry all pass. SQL error-level lint and changed-file lint pass. New migration
+applied only to Docker; production unchanged.
+
+Turn-recovery audit remains open: live advanceTurn separately runs condition
+resaves, buff ticks, auras, movement-feature recovery, incoming budgets/recharge,
+mastery/once-per-turn sweeps and logs. End-of-turn condition resaves still roll,
+log, remove the condition and grant immunity in separate steps, and do not yet
+consume Mind Sliver. processTurnTicks also uses a multi-write client path. Those
+need durable effect identities and atomic outcomes before the clock journal can
+safely resume the complete sequence. The legacy clock has not been switched.

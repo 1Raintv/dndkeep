@@ -1,3 +1,4 @@
+import { removeConditions } from '../../rules/conditionRemoval';
 import { resolveDeathSave } from '../../rules/deathSaves';
 import type { Character } from '../../types';
 import { useDiceRoll } from '../../context/DiceRollContext';
@@ -38,8 +39,16 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
     onUpdate({ is_stable: false, death_saves_failures: Math.min(3, Math.max(0, n)) });
   }
 
+  // v2.869: waking must clear derived incapacity but preserve Prone and any
+  // independent condition. Use the same cascade rules as map condition changes.
+  function wakingConditions(): Partial<Character> {
+    if(!character.active_conditions?.includes('Unconscious'))return {};
+    const next=removeConditions(character.active_conditions,character.condition_sources??{},['Unconscious']);
+    return {active_conditions:next.conditions as Character['active_conditions'],condition_sources:next.sources as Character['condition_sources']};
+  }
+
   function stabilize() {
-    onUpdate({ is_stable: false, current_hp: 1, death_saves_successes: 0, death_saves_failures: 0 });
+    onUpdate({ ...wakingConditions(), is_stable: false, current_hp: 1, death_saves_successes: 0, death_saves_failures: 0 });
   }
 
   function reset() {
@@ -67,7 +76,7 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
       onResult: (_allDice, total) => {
         const d20 = total;
         const save = resolveDeathSave(d20, total, successes, failures);
-        onUpdate({ current_hp: save.currentHp, is_stable: save.isStable,
+        onUpdate({ ...(save.currentHp>0?wakingConditions():{}), current_hp: save.currentHp, is_stable: save.isStable,
           death_saves_successes: save.successes, death_saves_failures: save.failures });
         const outcome = save.result === 'crit_success' ? 'NAT 20 — REVIVED at 1 HP'
           : save.isStable ? 'SUCCESS — STABILIZED'

@@ -17,6 +17,7 @@ test.describe('Stable character sheet',()=>{
  });
  test.afterEach(()=>sql(`delete from characters where id='${id}';delete from auth.users where id='${user}';`));
  test('stable survives reload and healing removes the panel',async({page},info)=>{
+  sql(`update characters set active_conditions=array['Unconscious','Prone','Incapacitated'],condition_sources='{"Unconscious":{"source":"damage:fixture"},"Prone":{"source":"cascade:Unconscious"},"Incapacitated":{"source":"cascade:Unconscious"}}' where id='${id}'`);
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await signInAsSeedDm(page,email);await page.goto(`/character/${id}`);
   const recover=page.getByRole('button',{name:'Regain 1 HP',exact:true});
@@ -25,6 +26,9 @@ test.describe('Stable character sheet',()=>{
   await page.reload();await expect(recover).toBeVisible();await recover.click();
   await expect(recover).toHaveCount(0);
   await expect.poll(()=>sql(`select current_hp::text||':'||is_stable::text||':'||death_saves_successes||':'||death_saves_failures from characters where id='${id}'`)).toBe('1:false:0:0');
+  expect(JSON.parse(sql(`select to_jsonb(active_conditions) from characters where id='${id}'`))).toEqual(['Prone']);
+  expect(JSON.parse(sql(`select condition_sources from characters where id='${id}'`))).toEqual({Prone:{source:'fall:Unconscious'}});
+  await page.reload();await expect(recover).toHaveCount(0);
   expect(errors).toEqual([]);
  });
 });

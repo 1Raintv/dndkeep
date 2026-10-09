@@ -63,4 +63,26 @@ test.describe('Atomic prompted death saves',()=>{
  test('outsider cannot read or settle',()=>{expect(()=>sql(auth(outsider,`select get_death_save_context('${id}')`))).toThrow();const q=command();expect(()=>sql(auth(outsider,q))).toThrow();});
  test('DM can settle and private receipt table stays inaccessible',()=>{expect(JSON.parse(sql(auth(dm,command())))).toMatchObject({outcome:'success'});expect(()=>sql(auth(owner,'select * from dndkeep_private.death_save_receipts'))).toThrow();});
  test('invalid dice fail without writes',()=>{expect(()=>settle([21])).toThrow();expect(sql(`select state from pending_death_saves where id='${id}'`)).toBe('pending');});
+ for(const parent of ['', 'Stunned'])test(`natural twenty removes only unconscious-derived effects ${parent||'without another parent'}`,()=>{
+  const conditions=['Unconscious','Prone','Incapacitated',...(parent?[parent]:[])];
+  const sources={Unconscious:{source:'damage:fixture'},Prone:{source:'cascade:Unconscious',expires_at_round:2},Incapacitated:{source:'cascade:Unconscious'},...(parent?{[parent]:{source:'spell:stun'}}:{})};
+  const fields=`active_conditions=array[${conditions.map(c=>"'"+c+"'").join(',')}],condition_sources='${JSON.stringify(sources)}'`;
+  update(fields);sql(`update characters set ${fields} where id='${char}'`);
+  expect(settle([20])).toMatchObject({hp:1,outcome:'crit_success'});
+  for(const query of [`select to_jsonb(active_conditions),condition_sources from combatants where id=(select combatant_id from combat_participants where id='${part}')`,`select to_jsonb(active_conditions),condition_sources from characters where id='${char}'`]){
+   const [conditionsAfter,sourcesAfter]=sql(query).split('|').map(v=>JSON.parse(v));
+   expect(conditionsAfter).toEqual(['Prone',...(parent?['Incapacitated',parent]:[])]);
+   expect(sourcesAfter).toEqual({Prone:{source:'fall:Unconscious'},...(parent?{[parent]:{source:'spell:stun'},Incapacitated:{source:`cascade:${parent}`}}:{})});
+  }
+ });
+ test('natural twenty preserves an independent Incapacitated effect',()=>{
+  update(`active_conditions=array['Unconscious','Incapacitated'],condition_sources='{"Unconscious":{"source":"damage:fixture"},"Incapacitated":{"source":"spell:other"}}'`);
+  settle([20]);expect(sql(`select to_jsonb(active_conditions) from combatants where id=(select combatant_id from combat_participants where id='${part}')`)).toBe('["Incapacitated"]');
+ });
+ test('stabilization does not clear unconscious-derived effects',()=>{
+  update(`death_save_successes=2,active_conditions=array['Unconscious','Prone','Incapacitated'],condition_sources='{"Unconscious":{"source":"damage:fixture"},"Prone":{"source":"cascade:Unconscious"},"Incapacitated":{"source":"cascade:Unconscious"}}'`);
+  expect(settle([10])).toMatchObject({hp:0,stable:true});
+  expect(ctx().conditions).toEqual(['Unconscious','Prone','Incapacitated']);
+ });
+
 });
