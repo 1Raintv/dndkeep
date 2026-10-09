@@ -5295,3 +5295,38 @@ The daily continuous-improvement loop (once infra lands): keep-warm ping fires â
 RAW regression suite runs and posts status â†’ drift opens an issue with specifics.
 Human involvement drops to skimming status and doing the irreducible RAW judgment
 calls in gated sessions.
+
+### Mind Sliver timing foundation (not connected to live combat yet)
+
+`src/rules/mindSliver.ts` plans one-use penalty consumption and caster-owned
+end-of-next-turn expiry. It separates expired records from consumed records,
+rejects missing/ambiguous/stale clocks, and isolates encounters and targets.
+Overlapping instances produce one d4 penalty. Consuming all active instances
+on that save follows the interpretation that each instance refers to the same
+next saving throw; this is distinct from adding their penalties together.
+
+Sources: [licensed 2024 spell reference](https://roll20.net/compendium/dnd5e/Spells%3AMind%20Sliver?expansion=32231&iframe=true)
+and [2024 combining spell effects](https://www.dndbeyond.com/sources/dnd/br-2024/spells).
+No spell prose was copied into the planner. These tests establish the domain
+contract only; Mind Sliver's secondary effect remains unautomated in the app.
+
+Next integration must extend the existing turn observer (not add an independent
+clock), persist the spell's casting-time context, and attach the effect only
+after the failed save is final, including any Legendary Resistance decision.
+Save settlement must lock/consume applicable records together with the result
+and return the original receipt on retries. Spell saves, Propel/class saves,
+concentration, and sheet/death saves must use that same consumption boundary.
+Damage-triggered concentration must see the applied effect before it resolves.
+Solo/non-encounter duration needs an explicit supported turn boundary too.
+
+Integration evidence: `psionic_turn_starts` currently tracks characters only
+with UUID epochs; it has no completed-turn ordinal. The planner's ordinal
+inputs therefore require a verified adapter/extension, not invented client
+round arithmetic. Non-character casters also need coverage. `advanceTurn`
+currently runs end-of-turn ticks before advancing initiative, so their saves
+must settle before the outgoing caster's effect expires. Existing buff sweeps
+run at turn start and cannot express this boundary correctly.
+
+Verification: 23 focused timing/consumption cases and changed-file lint pass;
+full project verification passes with TypeScript 197/197 and 255.2 KB entry.
+No runtime or UI behavior changed in this foundation checkpoint.
