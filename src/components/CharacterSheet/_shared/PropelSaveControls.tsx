@@ -40,8 +40,8 @@ export default function PropelSaveControls({row,campaign,onRecorded,onClose}:{ro
  // The parent keys this dialog by declaration; retries call load explicitly.
  // eslint-disable-next-line react-hooks/exhaustive-deps
  useEffect(()=>{void run(load);},[]);
- async function roll(review=false){const r=await preparePropelSave(character,id,encounter,participant,dc,bonus,review);if(mounted.current)setSaved(r);}
- const changed=saved&&saved.baseBonus!==bonus;
+ async function roll(review=false,willing=false){const r=await preparePropelSave(character,id,encounter,participant,dc,willing?0:bonus,review,willing);if(mounted.current)setSaved(r);}
+ const changed=saved&&!saved.willing&&saved.baseBonus!==bonus;
  return <ModalPortal><div className="modal-overlay"><div className="modal" ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Propel saving throw" style={{width:520,maxWidth:'calc(100vw - 24px)',maxHeight:'85dvh',overflowY:'auto',padding:20}}>
   <h3>{row.source_feature} · Strength save</h3>
   <p>Target: {row.target.name??'Declared creature'} · DC {dc}</p>
@@ -49,22 +49,23 @@ export default function PropelSaveControls({row,campaign,onRecorded,onClose}:{ro
   {error&&<p role="alert">{error}</p>}
   {!ready&&<button className="btn-ghost" disabled={busy} onClick={()=>void run(load)}>{busy?'Loading save…':'Retry loading save'}</button>}
   {ready&&!receipt&&<>
-   <label>Base save bonus <input aria-label="Base save bonus" type="number" min={-1000} max={1000} step={1} value={Number.isNaN(bonus)?'':bonus} disabled={busy} onChange={e=>setBonus(e.target.value===''?NaN:Number(e.target.value))}/></label>
+   {!saved?.willing&&<><label>Base save bonus <input aria-label="Base save bonus" type="number" min={-1000} max={1000} step={1} value={Number.isNaN(bonus)?'':bonus} disabled={busy||saved?.willing} onChange={e=>setBonus(e.target.value===''?NaN:Number(e.target.value))}/></label>
    {hint&&<p style={{fontSize:12}}>{hint}</p>}
-   <p style={{fontSize:12}}>Current buffs, exhaustion and Mind Sliver are applied separately. Do not include them in the base bonus.</p>
+   <p style={{fontSize:12}}>Current buffs, exhaustion and Mind Sliver are applied separately. Do not include them in the base bonus.</p></>}
    {saved?<section aria-label="Saved saving dice">
-    <p>{saved.context.state.autoFail?'Automatic failure from condition · no dice.':`Saved d20 dice: ${saved.dice.join(', ')}${saved.context.state.disadvantage?' · disadvantage':''}`}</p>
+    <p>{saved.willing?'DM confirms the target chooses to fail · no dice.':saved.context.state.autoFail?'Automatic failure from condition · no dice.':`Saved d20 dice: ${saved.dice.join(', ')}${saved.context.state.disadvantage?' · disadvantage':''}`}</p>
     {saved.buffContributions.map(b=><p key={b.key}>{b.name}: {b.total}</p>)}
-    <p>Dice saved. Confirm to resolve the save and check any next-save penalty.</p>
+    <p>{saved.willing?'Choice saved. Confirm to record the failure and use any next-save effect.':'Dice saved. Confirm to resolve the save and check any next-save penalty.'}</p>
     {changed&&<p role="status">Review changed settings before confirming this bonus.</p>}
     <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-     <button className="btn-ghost" disabled={busy||!Number.isInteger(bonus)} onClick={()=>void run(()=>roll(true))}>Review changed settings</button>
-     <button className="btn-primary" disabled={busy||!!changed} onClick={()=>void run(async()=>accept(await confirmPropelSave(character,id)))}>Confirm save</button>
+     <button className="btn-ghost" disabled={busy||!Number.isInteger(bonus)} onClick={()=>void run(()=>roll(true,saved.willing))}>Review changed settings</button>
+     <button className="btn-primary" disabled={busy||!!changed||!!saved.willing&&!isDM} onClick={()=>void run(async()=>accept(await confirmPropelSave(character,id)))}>{saved.willing?'Confirm chosen failure':'Confirm save'}</button>
     </div>
-   </section>:<button className="btn-primary" disabled={busy||!Number.isInteger(bonus)} onClick={()=>void run(()=>roll())}>Roll Save</button>}
+   </section>:<div style={{display:'flex',gap:8,flexWrap:'wrap'}}><button className="btn-primary" disabled={busy||!Number.isInteger(bonus)} onClick={()=>void run(()=>roll())}>Roll Save</button>{isDM&&<button className="btn-ghost" disabled={busy} onClick={()=>void run(()=>roll(false,true))}>Target chooses failure</button>}</div>}
   </>}
   {receipt&&<section aria-label="Recorded saving throw">
-   <p>{receipt.save.automaticFailure?'Automatic failure from condition · no dice.':`Kept ${receipt.save.d20}; adjusted bonus ${receipt.save.bonus}; total ${receipt.save.total} vs DC ${receipt.save.dc}.`}</p>
+   <p>{receipt.save.outcome==='auto-failed'?'Target chose to fail · no dice.':receipt.save.automaticFailure?'Automatic failure from condition · no dice.':`Kept ${receipt.save.d20}; adjusted bonus ${receipt.save.bonus}; total ${receipt.save.total} vs DC ${receipt.save.dc}.`}</p>
+   {receipt.penalty.penalty===0&&receipt.penalty.consumedIds.length>0&&<p>Next-save effect used without rolling dice.</p>}
    {receipt.penalty.penalty>0&&<p>Mind Sliver: −{receipt.penalty.penalty} included in the total.</p>}
    {receipt.pendingResistance?<>
     <p role="status">Failed save recorded. Waiting for the DM’s Legendary Resistance decision. No Energy Die spent yet.</p>

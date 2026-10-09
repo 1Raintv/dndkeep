@@ -22,6 +22,10 @@ beforeEach(()=>{
  m.rpc.mockImplementation(async(name:string,p:any)=>{
   if(name==='get_propel_save_context')return structuredClone(context);
   if(name==='get_propel_save')return server;
+  if(name==='choose_propel_failure'){
+   if(fail)throw new Error('Offline');const r=receipt({...p,p_dice:[1],p_base_bonus:0,p_buff_total:0,p_buff_contributions:[],p_penalty_d4:0});
+   const save={participantId:'target',outcome:'auto-failed',dc:p.p_dc};return {...r,save,request:{...r.request,willing:true,confirmedBy:'dm',dice:[],penaltyD4:null},record:{...r.record,save_details:pending?null:save}};
+  }
   if(name==='settle_propel_save'){if(fail)throw new Error('Offline');return receipt(p);}
   if(name==='decide_propel_resistance'){const r=structuredClone(server);r.pendingResistance=false;r.accepted=p.p_accept;r.finalOutcome=p.p_accept?'passed':'failed';r.record.outcome=r.finalOutcome;r.record.save_details=p.p_accept?null:r.save;return r;}
   throw new Error('Unexpected RPC');
@@ -49,3 +53,10 @@ it('cannot accept a reply claiming a different resistance decision',async()=>{pe
 it('an opposite concurrent resistance decision is not silently substituted',async()=>{pending=true;context.legendaryResistanceRemaining=1;await prepare();server=await confirmPropelSave('hero','use');const accepting=decidePropelResistance('hero','use',true);await expect(decidePropelResistance('hero','use',false)).rejects.toThrow('Wait for the current');await accepting;});
 
 it('unconfirmed throws are discoverable after a completed use leaves the server list',async()=>{await prepare();expect(pendingPropelSaves('other')).toEqual([]);expect(pendingPropelSaves('hero')).toHaveLength(1);server=receipt({p_expected:context,p_dc:10,p_dice:[12],p_base_bonus:0,p_buff_total:0,p_buff_contributions:[],p_penalty_d4:3});await getPropelSave('hero','use');expect(pendingPropelSaves('hero')).toEqual([]);});
+
+const prepareChoice=(review=false)=>preparePropelSave('hero','use','enc','target',10,0,review,true);
+it('chosen failure saves and confirms without rolling any dice',async()=>{await prepareChoice();expect(savedPropelSave('hero','use')).toMatchObject({willing:true,dice:[],penaltyD4:null});expect(await confirmPropelSave('hero','use')).toMatchObject({save:{outcome:'auto-failed'},request:{willing:true}});expect(m.die).not.toHaveBeenCalled();});
+it('chosen failure survives offline confirmation and context review',async()=>{await prepareChoice();fail=true;await expect(confirmPropelSave('hero','use')).rejects.toThrow('Offline');context.state.exhaustion=2;await prepareChoice(true);fail=false;expect(await confirmPropelSave('hero','use')).toMatchObject({save:{outcome:'auto-failed'}});expect(m.die).not.toHaveBeenCalled();});
+it('saved rolls and chosen failures cannot silently replace each other',async()=>{await prepare();await expect(prepareChoice()).rejects.toThrow('different save method');localStorage.clear();await prepareChoice();await expect(prepare()).rejects.toThrow('different save method');});
+it('a chosen-failure receipt must not invent a d20',async()=>{await prepareChoice();const original=m.rpc.getMockImplementation()!;m.rpc.mockImplementation(async(name,p)=>{const r=await original(name,p);return name==='choose_propel_failure'?{...r,save:{...r.save,d20:1}}:r;});await expect(confirmPropelSave('hero','use')).rejects.toThrow('could not be verified');expect(savedPropelSave('hero','use')).not.toBeNull();});
+it('resistance acceptance preserves the no-roll choice',async()=>{pending=true;context.legendaryResistanceRemaining=1;await prepareChoice();server=await confirmPropelSave('hero','use');expect(await decidePropelResistance('hero','use',true)).toMatchObject({save:{outcome:'auto-failed'},finalOutcome:'passed'});expect(m.die).not.toHaveBeenCalled();});

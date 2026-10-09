@@ -5838,3 +5838,27 @@ Verification: all 101 database regressions pass (76 action/Propel/context cases
 and 25 settlement/compatibility cases). Full gate passes: 3,126 unit tests,
 TypeScript 197/197, hooks, RAW, coordinates, anchors, build and 255.2 KB entry.
 Private SQL error-level lint, changed-test ESLint and diff whitespace checks pass.
+
+### Combat Propel: choosing failure without a roll (unreleased)
+
+The combat save dialog now offers DM-confirmed voluntary failure. The choice is
+saved before confirmation and survives reload or a lost response. The caster
+cannot choose failure on another creature's behalf. Target-player self-approval
+is not implemented; this is an explicit DM adjudication path.
+
+`20261010003500_propel_chosen_failure.sql` records the no-roll result and consumes
+any next-save trigger without inventing a d20 or penalty d4. Legendary Resistance
+still requires its separate DM decision. Conditional energy payment, final outcome
+and history retain transaction/replay protection. An existing rolled save cannot
+be replaced by choosing failure, or vice versa. Stale context requires review.
+
+Verified locally: 34 database settlement cases, 27 API tests, and 12 desktop/mobile
+save/recovery scenarios. Screenshots inspected at both sizes; modal overflow checks
+pass. Full gate: 3,131 unit tests, TypeScript 197/197, hooks, RAW, coordinates,
+anchors, production build and 255.2 KB entry. SQL error-level lint, changed-file
+ESLint and whitespace checks pass. Local migration applied without changing the
+unrelated ledger entry. No production migration or deployment performed.
+
+Next: unify death-save outcome math and reset both counters on stabilization;
+then integrate the remaining save consumers before releasing the combined
+Mind Sliver work. The coverage limitations documented above remain open.

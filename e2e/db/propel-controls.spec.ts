@@ -69,7 +69,7 @@ test.describe('Saved Propel controls',()=>{
    await page.screenshot({path:info.outputPath(name.toLowerCase().replaceAll(' ','-')+'.png')});
   }
  });
- for(const condition of ['', 'Paralyzed','Encumbered'])test(`combat resolution stays on the declared target and settles its rolled save ${condition||'normal'}`,async({page},info)=>{
+ for(const condition of ['', 'Paralyzed','Encumbered','willing'])test(`combat resolution stays on the declared target and settles its rolled save ${condition||'normal'}`,async({page},info)=>{
   const encounter=randomUUID(),self=randomUUID(),enemy=randomUUID(),targetCharacter=randomUUID();
   sql(`insert into campaigns(id,owner_id,name) values('${campaignId}','${userId}','Propel Combat');
    update characters set campaign_id='${campaignId}' where id='${charId}';
@@ -77,7 +77,7 @@ test.describe('Saved Propel controls',()=>{
    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaignId}','active',1,0);
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values
    ('${self}','${encounter}','${campaignId}','character','${charId}','Psion',0),('${enemy}','${encounter}','${campaignId}','character','${targetCharacter}','Target Fighter',1);
-   update combatants set active_conditions=${condition&&condition!=='Paralyzed'?"array['"+condition+"']":"array[]::text[]"} where id=(select combatant_id from combat_participants where id='${enemy}');`);
+   update combatants set active_conditions=${condition&&condition!=='Paralyzed'&&condition!=='willing'?"array['"+condition+"']":"array[]::text[]"} where id=(select combatant_id from combat_participants where id='${enemy}');`);
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400&&!(condition===''&&r.status()===503&&r.url().endsWith('/rpc/settle_propel_save')))errors.push(`${r.status()} ${r.url()}`);});
   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
   const ability=page.locator('.arow-grid').filter({has:page.getByText('Telekinetic Propel',{exact:true})});await ability.getByRole('button',{name:'Use / resume'}).click();
@@ -94,8 +94,15 @@ test.describe('Saved Propel controls',()=>{
   if(condition==='Paralyzed')sql(`update combatants set active_conditions=array['Paralyzed'] where id=(select combatant_id from combat_participants where id='${enemy}')`);
   await page.evaluate(c=>{let n=0;Math.random=()=>c==='Encumbered'?(n++%2===0?0.99:0.01):0.01;},condition);
   if(condition==='Paralyzed')await saves.getByRole('spinbutton').fill('30');
-  await saves.getByRole('button',{name:'Roll Save'}).click();await page.screenshot({path:info.outputPath('propel-combat-save.png')});
-  if(condition){
+  if(condition==='willing'){
+   const effect=randomUUID(),clock=JSON.parse(sql(`select dndkeep_private.next_save_turn_context('${encounter}','${self}')`));
+   sql(`insert into dndkeep_private.mind_sliver_effects(cast_id,encounter_id,caster_id,target_id,cast_turn,cast_turn_ordinal,status) values('${effect}','${encounter}','${self}','${enemy}','${clock.turnId}',${clock.castTurnOrdinal},'active')`);
+   await saves.getByRole('button',{name:'Target chooses failure',exact:true}).click();await expect(saves.getByText('DM confirms the target chooses to fail · no dice.')).toBeVisible();
+   await page.reload();await ability.getByRole('button',{name:'Use / resume'}).click();await dialog.getByRole('button',{name:'Resume saved saving throw',exact:true}).click();
+   await expect(saves.getByText('DM confirms the target chooses to fail · no dice.')).toBeVisible();
+  }else await saves.getByRole('button',{name:'Roll Save'}).click();
+  await page.screenshot({path:info.outputPath('propel-combat-save.png')});
+  if(condition&&condition!=='willing'){
    const declaration=sql(`select request_id from dndkeep_private.propel_declarations where character_id='${charId}'`);
    const badSave={participantId:enemy,outcome:'failed',dc:100,d20:condition==='Paralyzed'?1:20,bonus:0,total:condition==='Paralyzed'?1:20,rolls:condition==='Paralyzed'?[1]:[20,1],advantage:false,naturalExtremes:false,...(condition==='Paralyzed'?{automaticFailure:true}:{disadvantage:true})};
    const payload=JSON.stringify({declarationId:declaration,outcome:'failed',save:badSave});
@@ -109,11 +116,21 @@ test.describe('Saved Propel controls',()=>{
    expect(sql(`select outcome from dndkeep_private.propel_declarations where character_id='${charId}'`)).toBe('failed');
    await page.reload();await ability.getByRole('button',{name:'Use / resume'}).click();await dialog.getByRole('button',{name:'Resume saved saving throw',exact:true}).click();
    await expect(saves.getByRole('status')).toContainText('Saved: failed.');expect(attempts).toBe(2);
-  }else{await saves.getByRole('button',{name:'Confirm save',exact:true}).click();await expect(saves.getByRole('status')).toContainText('Saved: failed.');}
+  }else{await saves.getByRole('button',{name:condition==='willing'?'Confirm chosen failure':'Confirm save',exact:true}).click();await expect(saves.getByRole('status')).toContainText('Saved: failed.');}
   await page.screenshot({path:info.outputPath('propel-save-confirmed.png')});
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('1');
   expect(sql(`select target->>'participantId' from dndkeep_private.propel_declarations where character_id='${charId}'`)).toBe(enemy);
-  expect(JSON.parse(sql(`select save_details from dndkeep_private.propel_declarations where character_id='${charId}'`))).toMatchObject({participantId:enemy,d20:1,rolls:condition==='Paralyzed'?[]:condition==='Encumbered'?[20,1]:[1],outcome:'failed',...(condition==='Paralyzed'?{automaticFailure:true}:condition==='Encumbered'?{disadvantage:true}:{})});
+  const evidence=JSON.parse(sql(`select save_details from dndkeep_private.propel_declarations where character_id='${charId}'`));
+  if(condition==='willing'){
+   expect(evidence).toEqual({participantId:enemy,dc:11,outcome:'auto-failed'});
+   await expect(saves.getByText('Target chose to fail · no dice.',{exact:true})).toBeVisible();await expect(saves.getByText('Next-save effect used without rolling dice.')).toBeVisible();
+   expect(sql(`select consumed_kind from dndkeep_private.mind_sliver_effects where encounter_id='${encounter}'`)).toBe('feature');
+   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
+    const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8'),body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
+    const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[aria-label=\"Propel saving throw\"], [aria-label=\"Propel saving throw\"] *')").replace(/const skip = \(el, cs\) =>[\s\S]*?;\n\n {4}const clipped/,"const skip = (_el, cs) => cs.filter !== 'none';\n\n    const clipped");
+    const report=await page.evaluate('('+scoped+'\n})()');expect(report.sideways,JSON.stringify(report)).toBe(false);expect(report.clipped).toEqual([]);expect(report.pastEdge).toEqual([]);
+   }
+  }else expect(evidence).toMatchObject({participantId:enemy,d20:1,rolls:condition==='Paralyzed'?[]:condition==='Encumbered'?[20,1]:[1],outcome:'failed',...(condition==='Paralyzed'?{automaticFailure:true}:condition==='Encumbered'?{disadvantage:true}:{})});
   expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Telekinetic Propel'`)).toBe('1');
   if(condition==='Paralyzed'){const notes=sql(`select notes from action_logs where character_id='${charId}' and action_name='Telekinetic Propel'`);expect(notes).toContain('automatic failure from condition (no dice)');expect(notes).not.toContain('cosmetic face');}
   expect(errors).toEqual([]);
