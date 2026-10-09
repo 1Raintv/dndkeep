@@ -47,4 +47,23 @@ test.describe('Saved death-save dialog',()=>{
   expect(sql(`select count(*) from combat_events where chain_id='${pending}'`)).toBe('1');expect(requests).toBe(1);
   await dialog.getByRole('button',{name:'Done',exact:true}).click();await expect(dialog).toHaveCount(0);expect(errors).toEqual([]);
  });
+ test('End Turn automatically settles incoming death save with Bless and equipped protection',async({page})=>{
+  const outgoing=randomUUID(),outgoingCharacter=randomUUID();sql(`delete from pending_death_saves where id='${pending}';
+   update campaigns set automation_defaults='{"death_save_on_turn_start":"auto"}' where id='${campaign}';
+   update characters set inventory='[{"name":"Ring of Protection","magical":true,"equipped":true,"attuned":true,"magic_item_id":"ring-protection","saveBonus":1}]' where id='${id}';
+   update combat_participants set turn_order=1 where id='${part}';
+   insert into characters(id,user_id,campaign_id,name,species,class_name,background,level,current_hp,max_hp) values('${outgoingCharacter}','${user}','${campaign}','Outgoing','Human','Fighter','Sage',1,10,10);
+   insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values('${outgoing}','${encounter}','${campaign}','character','${outgoingCharacter}','Outgoing',0);
+   update combatants set current_hp=10,max_hp=10 where id=(select combatant_id from combat_participants where id='${outgoing}');
+   update combatants set exhaustion_level=1,active_buffs='[{"key":"bless","name":"Bless","source":"Spell","saveBonus":"1d4"}]' where id=(select combatant_id from combat_participants where id='${part}');`);
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await signInAsSeedDm(page,email);await page.goto(`/character/${outgoingCharacter}`);
+  await page.getByRole('button',{name:/End Turn/}).locator('visible=true').first().click();
+  await expect.poll(()=>sql(`select state from pending_death_saves where character_id='${id}'`)).toBe('rolled');
+  const r=JSON.parse(sql(`select result from dndkeep_private.death_save_receipts where pending_id=(select id from pending_death_saves where character_id='${id}')`));
+  expect(r.bonus).toBeGreaterThanOrEqual(2);expect(r.bonus).toBeLessThanOrEqual(5);expect(r.total).toBe(r.d20+r.bonus-2);expect(r.exhaustion).toBe(1);
+  expect(sql(`select count(*) from combat_events where event_type='death_save_rolled' and encounter_id='${encounter}'`)).toBe('1');
+  await expect(page.getByRole('dialog',{name:'Death saving throw'})).toHaveCount(0);expect(errors).toEqual([]);
+ });
+
 });

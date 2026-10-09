@@ -1,4 +1,3 @@
-import { resolveDeathSave } from '../rules/deathSaves';
 import { attacksPerAction } from '../rules/extraAttack';
 import { recoverInitiativeResources } from './initiativeResources';
 // v2.96.0 — Phase D of the Combat Backbone
@@ -1124,56 +1123,12 @@ export async function advanceTurn(encounterId: string): Promise<CombatActionResu
           characterId: incomingParticipant.entity_id as string,
         });
       }
-    } else if (dsSetting !== 'off') {
-      // Shared RAW outcome math; persistence/eligibility remain caller responsibilities.
-      const d20 = rollDie(20);
-      const { successes, failures, isStable, isDead, currentHp, result } = resolveDeathSave(
-        d20, d20, incomingParticipant.death_save_successes ?? 0, incomingParticipant.death_save_failures ?? 0,
-      );
-
-      const updates: Record<string, any> = {
-        death_save_successes: successes,
-        death_save_failures: failures,
-        is_stable: isStable,
-        is_dead: isDead,
-      };
-      if (result === 'crit_success') updates.current_hp = currentHp;
-
-      // v2.318: writes go to combatants. All fields in `updates` are mirrored.
-      const combatantId = (incomingParticipant as any).combatant_id as string | null;
-      if (!combatantId) {
-        console.warn('[advanceTurn:deathSave] participant missing combatant_id; skipping write', incomingParticipant.id);
-      } else {
-        await checkedWrite('combatants.update auto-death-save', { combatantId }, (supabase as any)
-          .from('combatants')
-          .update(updates)
-          .eq('id', combatantId));
-      }
-
-      // Emit a structured event for the log
-      await emitCombatEvent({
-        campaignId: incomingParticipant.campaign_id,
-        encounterId,
-        chainId: newChainId(),
-        sequence: 0,
-        actorType: 'player',
-        actorName: incomingParticipant.name,
-        targetType: 'self',
-        targetName: incomingParticipant.name,
-        eventType: 'death_save_rolled',
-        payload: {
-          d20,
-          result,
-          successes,
-          failures,
-          became_stable: isStable,
-          became_dead: isDead,
-          woke_up: result === 'crit_success',
-          trigger: 'turn_start',
-          automation_setting: dsSetting,
-        },
-        visibility: incomingParticipant.hidden_from_players ? 'hidden_from_players' : 'public',
-      });
+    } else if (dsSetting !== 'off' && incomingParticipant.entity_id) {
+      // One immutable offer per turn; retries resolve the same saved dice/result.
+      const {resolveAutomaticDeathSave}=await import('./deathSaves');
+      await resolveAutomaticDeathSave({campaignId:incomingParticipant.campaign_id,encounterId,
+        participantId:incomingParticipant.id,characterId:incomingParticipant.entity_id as string,
+        turnId:advancedTurn!.psionic_turn_id});
     } else {
       // 'off' — log that we skipped so DMs can see the automation chose silence
       await emitCombatEvent({

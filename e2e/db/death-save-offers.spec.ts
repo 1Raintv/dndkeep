@@ -33,4 +33,25 @@ test.describe('Death-save offer identity',()=>{
  test('stable then damaged does not revive an old offer',()=>{const first=create();update('is_stable=true');update('is_stable=false,death_save_failures=1');expect(settle(first.id)).toMatchObject({outcome:'obsolete',d20:null});});
  test('manual revision writes cannot rewind the dying episode',()=>{update('current_hp=1');update('current_hp=0');update('death_state_revision=0');expect(sql(`select death_state_revision from combatants where id=(select combatant_id from combat_participants where id='${part}')`)).toBe('2');});
  test('a healthy current actor receives no offer',()=>{update('current_hp=1');expect(create()).toBeNull();});
+ test('automatic offer keeps its identity and can be exposed for owner review',()=>{
+  const first=JSON.parse(sql(auth(dm,`select create_death_save_offer('${char}','${part}','${turn}',true)`)));
+  expect(first.resolution_mode).toBe('auto');expect(create().id).toBe(first.id);
+  expect(()=>sql(auth(other,`select review_automatic_death_save('${first.id}')`))).toThrow();
+  expect(sql(`select resolution_mode from pending_death_saves where id='${first.id}'`)).toBe('auto');
+  sql(auth(owner,`select review_automatic_death_save('${first.id}')`));
+  expect(create()).toMatchObject({id:first.id,resolution_mode:'prompt'});
+  expect(settle(first.id).outcome).toBe('success');
+  sql(auth(dm,`select review_automatic_death_save('${first.id}')`));
+  expect(create().state).toBe('rolled');
+ });
+ test('equipment changes invalidate the saved context without recording a result',()=>{
+  const first=create(),context=JSON.parse(sql(auth(owner,`select get_death_save_context('${first.id}')`)));
+  expect(context.inventory).toEqual([]);
+  sql(`update characters set inventory='[{"name":"Ring of Protection","equipped":true,"attuned":true,"saveBonus":1}]' where id='${char}'`);
+  expect(()=>sql(auth(owner,`select settle_pending_death_save('${first.id}','${JSON.stringify(context)}',array[10],0,false,false,3)`))).toThrow();
+  expect(sql(`select count(*) from dndkeep_private.death_save_receipts where pending_id='${first.id}'`)).toBe('0');
+  expect(create().state).toBe('pending');
+  expect(settle(first.id).outcome).toBe('success');
+ });
+
 });

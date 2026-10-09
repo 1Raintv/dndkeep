@@ -1784,6 +1784,9 @@ export type Database = {
           encounter_id: string | null;
           participant_id: string;
           character_id: string;
+          resolution_mode: string;
+          turn_id: string | null;
+          life_revision: number | null;
           state: string;
           d20: number | null;
           result: string | null;
@@ -1798,6 +1801,9 @@ export type Database = {
           encounter_id?: string | null;
           participant_id: string;
           character_id: string;
+          resolution_mode?: string;
+          turn_id?: string | null;
+          life_revision?: number | null;
           state?: string;
           d20?: number | null;
           result?: string | null;
@@ -1812,6 +1818,9 @@ export type Database = {
           encounter_id?: string | null;
           participant_id?: string;
           character_id?: string;
+          resolution_mode?: string;
+          turn_id?: string | null;
+          life_revision?: number | null;
           state?: string;
           d20?: number | null;
           result?: string | null;

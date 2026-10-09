@@ -6051,3 +6051,35 @@ turn behavior changed in this foundation batch; production remains untouched.
 Recovery-foundation final gate:3,182 unit tests, TypeScript197/197, hooks, RAW,
 coordinates, anchors, build and255.2KB entry pass. Changed-file ESLint and diff
 whitespace checks pass. No schema/UI change in this batch.
+
+
+### Automatic turn-start death saves share saved settlement (unreleased)
+
+The live advanceTurn automatic death-save branch now creates the same unique
+per-turn offer as prompted saves and settles through the atomic save transaction.
+Combat buff saveBonus dice and equipped/attuned item save bonuses are captured
+before settlement; exhaustion and next-save penalties remain transaction-owned.
+Retries reuse persisted dice instead of rolling again. Equipment is now part of
+the expected context, so changing gear requires review before settlement.
+Automatic offers stay out of the manual prompt while running; failed attempts
+request owner/DM review and locally saved rolls remain recoverable. The new
+migration is applied only to Docker, not production.
+
+Live desktop/mobile tests cover End Turn into a dying character with Bless,
+Ring of Protection and exhaustion, as well as prompted-save reload/lost-response
+recovery. Database regressions cover automatic-offer identity, review permission,
+and stale equipment rejection without any result write. Existing Propel controls
+passed alongside the death-save transaction suite:84 desktop/mobile cases plus
+4 live death-save dialog/automatic-turn checks. The full gate passed3,191 unit
+tests, TypeScript197/197, hooks, RAW, coordinates, anchors, build and255.2KB entry.
+SQL error-level lint and diff whitespace checks passed. Changed-file ESLint has
+only the existing combatEncounter unused chainId error and standing warnings;
+new files have no lint errors.
+
+Remaining release gates: automatic advantage/disadvantage and sheet-level effects
+are not comprehensively derived; an interruption before dice persistence combined
+with failed review RPC can leave an automatic offer undiscoverable. Add durable
+recovery for that window. The live combat clock still needs ordered side-effect
+recovery and integration with its server ledger; direct sheet saves and other
+save callers still need full next-save penalty coverage. This is an unreleased
+checkpoint, not a claim of complete Mind Sliver or flawless Psion automation.

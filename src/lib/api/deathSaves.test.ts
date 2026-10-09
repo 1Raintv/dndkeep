@@ -1,10 +1,10 @@
 // @vitest-environment happy-dom
 import {beforeEach,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({rpc:vi.fn(),die:vi.fn()}));
+const m=vi.hoisted(()=>({rpc:vi.fn(),die:vi.fn(),groups:vi.fn()}));
 vi.mock('./psionicTurns',()=>({psionicRpc:m.rpc}));
 vi.mock('../supabase',()=>({supabase:{}}));
-vi.mock('../../rules/dice',()=>({rollDie:m.die}));
-import {prepareDeathSave,confirmDeathSave,savedDeathSave,pendingDeathSaveDrafts} from './deathSaves';
+vi.mock('../../rules/dice',()=>({rollDie:m.die,rollDiceGroups:m.groups}));
+import {prepareDeathSave,confirmDeathSave,savedDeathSave,pendingDeathSaveDrafts,resolveAutomaticDeathSaveRoll} from './deathSaves';
 const context={pendingId:'save',characterId:'hero',participantId:'part',combatantId:'cb',encounterId:'enc',state:'pending',encounterStatus:'active',hp:0,stable:false,dead:false,successes:0,failures:0,exhaustion:0,buffs:[],conditions:[]};
 const receipt={pendingId:'save',outcome:'failure',d20:12,total:9,dice:[12],bonus:0,exhaustion:0,successes:0,failures:1,stable:false,dead:false,hp:0,replayed:false,penalty:{saveId:'save',saveKind:'death',penalty:3,die:3,consumedIds:['effect'],expiredIds:[]}};
 const prepare=()=>prepareDeathSave('hero','save',0,false,false);
@@ -20,3 +20,15 @@ it('accepts obsolete receipts without invented dice',async()=>{await prepare();m
 it('coalesces simultaneous confirmation clicks',async()=>{await prepare();const a=confirmDeathSave('hero','save'),b=confirmDeathSave('hero','save');expect(a).toBe(b);await a;expect(m.rpc.mock.calls.filter(c=>c[0]==='settle_pending_death_save')).toHaveLength(1);});
 it('storage failure prevents settlement',async()=>{const spy=vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw new Error('storage blocked');});try{await expect(prepare()).rejects.toThrow('storage blocked');expect(m.rpc.mock.calls.some(c=>c[0]==='settle_pending_death_save')).toBe(false);}finally{spy.mockRestore();}});
 it('does not accept another pending save receipt',async()=>{await prepare();m.rpc.mockResolvedValue({...receipt,pendingId:'other'});await expect(confirmDeathSave('hero','save')).rejects.toThrow();expect(savedDeathSave('hero','save')).not.toBeNull();});
+
+it('automatic preparation retains buff dice and includes equipment-independent bonuses',async()=>{
+ m.rpc.mockResolvedValue({...context,inventory:[],buffs:[{name:'Bless',saveBonus:'1d4'}]});m.groups.mockReturnValue({dice:[{die:4,value:3}],modifier:0,total:3});
+ expect(await prepareDeathSave('hero','save',0,false,false,false,true)).toMatchObject({bonus:3,bonusRolls:[{name:'Bless',total:3,dice:[{die:4,value:3}]}]});
+ await prepareDeathSave('hero','save',0,false,false,false,true);expect(m.groups).toHaveBeenCalledTimes(1);
+});
+it('automatic failure exposes the existing offer for review',async()=>{
+ m.rpc.mockImplementation(async(name:string)=>{if(name==='get_death_save_context')return {...context,inventory:[],buffs:[{name:'Unknown',saveBonus:'special'}]};return null;});m.groups.mockReturnValue(null);
+ await expect(resolveAutomaticDeathSaveRoll('hero','save')).rejects.toThrow('cannot be rolled');
+ expect(m.rpc).toHaveBeenCalledWith('review_automatic_death_save',{p_pending:'save'},true);
+ expect(m.rpc.mock.calls.some(c=>c[0]==='settle_pending_death_save')).toBe(false);
+});

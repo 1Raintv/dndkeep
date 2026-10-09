@@ -1,6 +1,6 @@
 import {useCallback,useEffect,useRef,useState} from 'react';
 import {supabase} from '../../lib/supabase';
-import {nextDeathSave,deathSaveContext,savedDeathSave,prepareDeathSave,confirmDeathSave,type DeathSaveContext,type SavedDeathSave,type DeathSaveReceipt} from '../../lib/api/deathSaves';
+import {DEATH_SAVE_CHANGED,nextDeathSave,deathSaveContext,savedDeathSave,prepareDeathSave,confirmDeathSave,type DeathSaveContext,type SavedDeathSave,type DeathSaveReceipt} from '../../lib/api/deathSaves';
 import ModalPortal from '../shared/ModalPortal';
 
 /** v2.869 audit: local proposals remain discoverable after the server resolves an
@@ -8,7 +8,7 @@ import ModalPortal from '../shared/ModalPortal';
 export default function DeathSavePromptModal({characterId,campaignId}:{characterId:string;campaignId:string}){
  const [id,setId]=useState<string|null>(null),[error,setError]=useState('');
  const load=useCallback(async()=>{try{const next=await nextDeathSave(characterId);setId(current=>current??next);setError('');}catch(e){setError(e instanceof Error?e.message:'Death saves could not load.');}},[characterId]);
- useEffect(()=>{void load();const channel=supabase.channel(`death-save:${characterId}`).on('postgres_changes',{event:'*',schema:'public',table:'pending_death_saves',filter:`character_id=eq.${characterId}`},()=>{void load();}).subscribe();return()=>{void supabase.removeChannel(channel);};},[characterId,campaignId,load]);
+ useEffect(()=>{void load();const changed=()=>{void load();};window.addEventListener(DEATH_SAVE_CHANGED,changed);const channel=supabase.channel(`death-save:${characterId}`).on('postgres_changes',{event:'*',schema:'public',table:'pending_death_saves',filter:`character_id=eq.${characterId}`},()=>{void load();}).subscribe();return()=>{window.removeEventListener(DEATH_SAVE_CHANGED,changed);void supabase.removeChannel(channel);};},[characterId,campaignId,load]);
  if(id)return <DeathSaveDialog key={`${characterId}:${id}`} characterId={characterId} id={id} onDone={()=>{setId(null);void load();}}/>;
  return error?<div role="alert">{error} <button onClick={()=>void load()}>Retry death saves</button></div>:null;
 }
