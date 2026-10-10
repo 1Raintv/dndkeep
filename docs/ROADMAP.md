@@ -1,5 +1,14 @@
 # DNDKeep — Two-Track Roadmap
 
+### Propel player-view regression checkpoint (not released)
+
+Desktop/mobile checks now cover adjacent Telekinetic Propel / Warp Propel rows,
+both Bonus Action badges, the level-5 d8 option, and Warp's free / powered
+choices. Successful saves retain the Energy Die; failed powered saves spend
+one. Failed Warp uses retain the caster-relative, horizontal 30-foot destination.
+Opening the other variant after resolution cannot spend a second Bonus Action.
+These checks exercise disposable local characters; production is unchanged.
+
 ### Save-resolution audit checkpoint (local branch; not released)
 
 Canonical `creature` targets now receive the existing Legendary Resistance

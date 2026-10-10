@@ -51,6 +51,51 @@ test.describe('Saved Propel controls',()=>{
   await expect(page.getByRole('button',{name:'Bonus Action Available',exact:true})).toBeEnabled({timeout:10000});
   expect(errors).toEqual([]);
  });
+ // Guard the linked player choices as well as the server's conditional payment.
+ for(const [mode,outcome] of [['free','failed'],['powered','passed'],['powered','failed']] as const)
+ test(`Warp stays beside Propel and resolves ${mode} / ${outcome} as one Bonus Action`,async({page})=>{
+  const errors:string[]=[];
+  page.on('pageerror',e=>errors.push(e.message));
+  page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
+  await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+  const rows=page.locator('.arow-grid');
+  const propel=rows.filter({has:page.getByText('Telekinetic Propel',{exact:true})});
+  const warp=rows.filter({has:page.getByText('Warp Propel',{exact:true})});
+  await expect(warp).toBeVisible();
+  const order=await rows.allTextContents();
+  const index=order.findIndex(text=>text.includes('Telekinetic Propel'));
+  expect(index).toBeGreaterThanOrEqual(0);
+  expect(order[index+1]).toContain('Warp Propel');
+  for(const row of [propel,warp]){
+   await expect(row.locator('[title="Action type: bonus"]')).toBeVisible();
+   await expect(row.locator('[title="Action type: special"]')).toHaveCount(0);
+  }
+  await warp.getByRole('button',{name:'Use / resume'}).click();
+  const dialog=page.getByRole('dialog',{name:'Warp Propel',exact:true});
+  await expect(dialog.getByRole('heading')).toHaveText('Warp Propel · Bonus Action');
+  await dialog.getByLabel('Target',{exact:true}).fill('Tabletop goblin');
+  await dialog.getByRole('checkbox').check();
+  await expect(dialog.getByLabel('Movement',{exact:true}).locator('option[value="powered"]')).toHaveText('Roll Energy Die (d8)');
+  await dialog.getByLabel('Movement',{exact:true}).selectOption(mode);
+  await dialog.getByRole('button',{name:'Declare Bonus Action'}).click();
+  await expect(dialog).toContainText('Saved dice total:');
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('2');
+  const roll=Number(sql(`select base_roll from dndkeep_private.propel_declarations where character_id='${charId}'`));
+  if(mode==='free')expect(roll).toBe(0);else{expect(roll).toBeGreaterThanOrEqual(1);expect(roll).toBeLessThanOrEqual(8);}
+  await dialog.getByRole('button',{name:outcome==='failed'?'Save failed':'Save passed',exact:true}).click();
+  const cost=mode==='powered'&&outcome==='failed'?1:0;
+  await expect(dialog.getByRole('status')).toContainText(`Saved: ${outcome}. ${cost} Energy Dice spent.`);
+  if(outcome==='failed')await expect(dialog.getByTestId('propel-movement')).toHaveText('Teleport the target to an unoccupied space you can see within 30 ft of you, horizontal to you. Apply movement on the map.');
+  else await expect(dialog.getByTestId('propel-movement')).toHaveCount(0);
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe(String(2-cost));
+  expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${charId}'`)).toBe('1');
+  await dialog.getByRole('button',{name:'Close for later'}).click();
+  await propel.getByRole('button',{name:'Use / resume'}).click();
+  const base=page.getByRole('dialog',{name:'Telekinetic Propel',exact:true});
+  await expect(base).toContainText('Your Bonus Action is unavailable.');
+  await expect(base.getByRole('button',{name:'Declare Bonus Action'})).toBeDisabled();
+  expect(errors).toEqual([]);
+ });
  test('free Misty Step records the Bonus Action and retains it after reload',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
