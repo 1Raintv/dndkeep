@@ -1,5 +1,15 @@
 # DNDKeep — Two-Track Roadmap
 
+### Connection integration — shared rules foundation (not released)
+
+`telepathicConnection` now owns the validated base/extended range calculation;
+the current power resolver uses it. Regression cases cover secondary Psion
+levels, Telepath's level-six increase, Surge and Enkindled totals, exact one-hour
+expiry, backward/invalid clocks and one-minute meditation without immediate
+expiry. The duration helper accepts authoritative elapsed game time only.
+It is not yet connected to a saved effect or UI: linked server declarations,
+atomic settlement and range display remain the next implementation work.
+
 ### Next Psion integration: saved Telepathic Connection range
 
 Code audit on 2026-10-10 confirms the current extension saves its Energy Die

@@ -1,3 +1,4 @@
+import {telepathyBaseRange,telepathicConnectionRange} from './telepathicConnection';
 import {psionProgression,type PsionicClassState} from './psionProgression';
 import {validPsionicRoll,psionicRollNote,type PsionicRollEnhancement} from './psionicEnhancedRoll';
 import {psionicPoolRemaining,psionicDieSides} from './psionicRestoration';
@@ -17,7 +18,7 @@ export function psionicPowerState(c:PsionicPowerCharacter) {
   return {connectionValid,valid:!!progression&&remaining!==null,level,dice:remaining??0,
     sides:psionicDieSides(level),
     connectionFree:connectionValid&&(connectionUses===undefined||connectionUses===0),
-    telepathyRange:progression?.subclass==='Telepath'&&level>=6?60:30,
+    telepathyRange:telepathyBaseRange(c)??30,
     warp:progression?.subclass==='Psi Warper'&&level>=3,
     technique:progression?.subclass==='Psykinetic'&&level>=3};
 }
@@ -44,7 +45,7 @@ export function resolvePsionicPower(c:PsionicPowerCharacter,use:PsionicPowerUse,
   const cost=needsDie&&(use.kind==='connection'||failedSave)?1:0;
   const patch={class_resources:{...c.class_resources,'psionic-energy-dice':state.dice-cost},
     feature_uses:{...c.feature_uses,...(use.kind==='connection'?{[CONNECTION_USE]:(c.feature_uses?.[CONNECTION_USE]??0)+1}:{})}};
-  const feet=use.kind==='connection'?state.telepathyRange+10*use.roll:failedSave?(use.movement==='warp'?30:use.mode==='free'?5:5*use.roll):0;
+  const feet=use.kind==='connection'?telepathicConnectionRange(c,use.roll,use)!:failedSave?(use.movement==='warp'?30:use.mode==='free'?5:5*use.roll):0;
   const notes=use.kind==='connection'?`Telepathy range ${feet} ft for 1 hour. ${cost?'Spent 1 die.':'First extension after Long Rest: no die spent.'}`:
     `${failedSave?'Failed STR save':'Passed STR save'}: ${cost?'Spent 1 die.':'No die spent.'} ${use.movement==='warp'?(failedSave?'Teleport to an unoccupied space you can see within 30 ft of you, horizontal to you. Does not add Prone.':'No teleport.'):`${feet} ft movement straight toward or away from you.`} Target: one other Large or smaller creature you can see within 30 ft.`;
   return {patch,cost,feet,notes:notes+' '+psionicRollNote(use.roll,use)};
