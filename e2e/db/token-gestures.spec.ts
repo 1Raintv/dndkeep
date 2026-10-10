@@ -125,6 +125,25 @@ test.describe('token gestures (local stack)', () => {
       await page.screenshot({path:info.outputPath('deleted-token-stays-absent.png')});
     }finally{release();await page.unroute('**/rest/v1/scene_token*');}
   });
+  test('editing and modal arrows cannot nudge the selected map token',async({page})=>{
+    await openMap(page);const token=await ilyana(page);const point=await tokenPoint(page,token.id);await page.mouse.click(point.x,point.y);
+    await expect(page.getByRole('button',{name:'Find selection',exact:true})).toBeEnabled();
+    let writes=0;await page.route('**/rest/v1/scene*',async route=>{
+      if(route.request().method()==='PATCH'){writes++;await route.fulfill({status:200,contentType:'application/json',body:'[]'});}else await route.continue();
+    });
+    // Positive control: a canvas arrow reaches the actual nudge handler. The
+    // rejected write keeps the shared fixture intact and restores its position.
+    await page.keyboard.press('ArrowRight');await expect.poll(()=>writes).toBe(1);
+    await expect.poll(()=>pendingOn(page,token.id)).toBe(false);
+    await expect.poll(async()=>(await state(page)).tokens[token.id].x).toBe(token.x);
+    for(const attributes of [{contenteditable:''},{contenteditable:'plaintext-only'},{role:'textbox'},{role:'dialog'}]){
+      await page.evaluate(attributes=>{const el=document.createElement('div');el.id='keyboard-owner';el.tabIndex=0;el.textContent='Map editing fixture';for(const [key,value] of Object.entries(attributes))el.setAttribute(key,value);document.body.append(el);el.focus();},attributes);
+      await page.keyboard.press('ArrowRight');await page.locator('#keyboard-owner').evaluate(el=>el.remove());
+    }
+    await page.evaluate(()=>{const modal=document.createElement('div');modal.id='keyboard-owner';modal.setAttribute('aria-modal','true');modal.style.cssText='position:fixed;top:0;left:0;width:100px;height:100px';document.body.append(modal);window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));});
+    await page.locator('#keyboard-owner').evaluate(el=>el.remove());
+    expect(writes).toBe(1);expect((await state(page)).tokens[token.id]).toMatchObject({x:token.x,y:token.y});
+  });
   test('map help uses the roomier side of a raised navigation dock',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
     await openMap(page);

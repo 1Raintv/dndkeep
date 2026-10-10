@@ -8769,3 +8769,20 @@ in both state and Pixi. Shared database fixture rows remain untouched. Screensho
 inspected. Removing the guard resurrects the token and fails the browser test;
 restored code passes. This does not certify all creation/deletion/reconnect races
 or replace actual multiplayer delivery tests. No production deployment.
+
+
+### Map arrow-key ownership (2026-10-10, unreleased)
+
+Token nudging now honors editable elements (including empty/plaintext-only
+contenteditable and role=textbox), dialog ancestors, interactive controls,
+claimed keyboard events and IME composition. A visible modal blocks nudging even
+before focus moves into it, matching the existing camera/space-pan safeguards.
+Canvas nudging remains available; no root-component growth or visual redesign.
+
+Eight added hook cases and desktop/mobile actual-map checks pass. The browser
+positive control reaches the nudge handler with a rejected fixture-preserving
+write; subsequent editor/dialog arrows produce no writes or position changes.
+Restoring the old handler makes six writes instead of one and fails the browser
+regression. Full gate passes 4,051 units, TS 194/194, entry 255.7 KB. No database
+migration or production deployment. Further map polish and release verification
+remain active.
