@@ -7051,3 +7051,36 @@ still reserved before the other writes and can outlive a failure; this change
 does not claim to solve that transaction gap. The durable controller must not
 be released with that gap hidden.
 Final complete unit suite:3,433 tests pass, including the creature tick regression.
+
+### Live aura save modifiers and preparation failures (unreleased)
+
+Aura saves now read canonical combatant conditions, buffs and exhaustion before
+rolling. The existing condition helpers determine automatic failures and save
+disadvantage; the canonical saving-throw roller retains both physical dice when
+needed. Bless/Bane use the shared signed bonus roller (including legacy named
+presets and de-duplication), other supported buff bonuses add normally, and
+2024 exhaustion subtracts twice its level. Existing equipment/proficiency and
+natural-extremes preferences remain in the target base-bonus reader.
+Source: [2024 Rules Glossary](https://www.dndbeyond.com/sources/dnd/br-2024/rules-glossary/).
+
+Automatic failures roll neither d20s nor bonus dice, log null face/total and an
+explicit automatic-failure flag, and cannot be rescued by natural extremes.
+Restrained Dexterity saves retain the lower face. Logs include effect dice and
+exhaustion so the arithmetic can be reviewed. Missing target/effect/marker data
+and low-confidence base bonuses stop before reserving the once-per-turn marker.
+Preparation reads and dice precede that reservation; its later write sequence
+is still not atomic across clients or failures.
+
+Ten actual browser cases pass on desktop/mobile through the live aura handler:
+existing damage/death handling plus Bless/Bane/exhaustion, Restrained and forced
+failure. Unit cases cover the actual resolver and failed/malformed/mismatched
+state reads, including a failed once-per-turn lookup that must not reroll.
+Generated database types lack the existing marker column/dynamic joined query;
+the readers use explicit boundary types plus runtime checks, not a raised TS
+baseline. No migration, visual layout change or production deployment.
+
+Remaining save work: Psionic Guards and other specialized advantage sources,
+one-use save penalties, Legendary Resistance/reaction choices, and server-side
+snapshot validation with an atomic aura receipt/HP/event/marker transaction.
+Do not connect the new durable turn controller while those gaps can be hidden.
+Final gate:3,449 units pass;195/195 TypeScript;255.2 KB entry;changed-file ESLint has zero errors (15 existing aura warnings).

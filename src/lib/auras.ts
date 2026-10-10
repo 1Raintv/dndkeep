@@ -1,4 +1,6 @@
-import { savingThrowPassed } from '../rules/savingThrows';
+import {rollSavingThrow,exhaustionPenalty} from '../rules/savingThrows';
+import {rollSaveBonuses} from '../rules/saveBonuses';
+import {readAuraSaveState} from './api/auraSaveState';
 // v2.634.0 — Aura / proximity engine (2024 Emanation rules).
 //
 // RAW basis, verified against the 2024 rules glossary and the 2024
@@ -43,7 +45,6 @@ import { savingThrowPassed } from '../rules/savingThrows';
 // payload, so it inherits buff removal, the caster-died sweep, and
 // concentration cleanup for free rather than needing its own table.
 
-import { rollDie } from '../rules/dice';
 import { resolveNonAttackDamage } from '../rules/deathSaves';
 import { supabase } from './supabase';
 import { checkedWrite } from './api/checked';
@@ -237,12 +238,11 @@ export async function listActiveAuras(
 // ─── Save + damage resolution ────────────────────────────────────
 
 async function alreadySavedThisTurn(participantId: string, marker: string): Promise<boolean> {
-  const { data } = await (supabase as any)
-    .from('combat_participants')
-    .select('once_per_turn_used')
-    .eq('id', participantId)
-    .maybeSingle();
-  return (((data?.once_per_turn_used ?? []) as string[])).includes(marker);
+  const {data,error}=await supabase.from('combat_participants').select('once_per_turn_used').eq('id',participantId).maybeSingle();
+  if(error||!data)throw new Error('The aura’s previous use could not be checked. Retry before resolving.');
+  const used=(data as unknown as {once_per_turn_used?:unknown}).once_per_turn_used??[];
+  if(!Array.isArray(used)||!used.every(k=>typeof k==='string'))throw new Error('Review the aura’s turn markers.');
+  return used.includes(marker);
 }
 
 /**
@@ -263,23 +263,31 @@ export async function resolveAuraSave(input: {
   const marker = auraSaveMarkerKey(aura.originParticipantId, aura.spec.key);
   if (await alreadySavedThisTurn(input.targetParticipantId, marker)) return false;
 
-  const { markUsedThisTurn } = await import('./cleave');
-  await markUsedThisTurn(input.targetParticipantId, marker);
-
-  const { getTargetSaveBonus, rollDiceExpr } = await import('./pendingAttack');
-  const { bonus, breakdown, naturalExtremes } = await getTargetSaveBonus(
-    input.targetParticipantId,
-    aura.spec.saveAbility,
-  );
-  const d20 = rollDie(20);
-  const total = d20 + bonus;
-  const passed = savingThrowPassed(d20, total, aura.spec.saveDC, { naturalExtremes });
+  const state=await readAuraSaveState(input.campaignId,input.encounterId,input.targetParticipantId);
+  const {conditionsAutoFailSave,conditionsDisadvantageSave}=await import('./conditions');
+  const automaticFailure=conditionsAutoFailSave(state.conditions,aura.spec.saveAbility);
+  const disadvantage=conditionsDisadvantageSave(state.conditions,aura.spec.saveAbility);
+  const {getTargetSaveBonus,rollDiceExpr}=await import('./pendingAttack');
+  const base=automaticFailure?{bonus:0,breakdown:'Automatic failure from condition',naturalExtremes:false,confidence:'high'}:
+    await getTargetSaveBonus(input.targetParticipantId,aura.spec.saveAbility);
+  if(base.confidence!=='high')throw new Error('Review the aura target’s saving throw bonus before resolving.');
+  const effects=automaticFailure?{bonus:0,rolls:[]}:rollSaveBonuses(state.buffs,0);
+  const penalty=automaticFailure?0:exhaustionPenalty(state.exhaustion);
+  const bonus=base.bonus+effects.bonus-penalty;
+  const breakdown=[base.breakdown,...effects.rolls.map(r=>`${r.name} ${r.total>=0?'+':''}${r.total}`),...(penalty?[`Exhaustion -${penalty}`]:[])].join('; ');
+  const save=rollSavingThrow(bonus,aura.spec.saveDC,{disadvantage,naturalExtremes:base.naturalExtremes,forceFailure:automaticFailure});
+  const {d20,total,passed}=save;
 
   let damage = 0;
   if (aura.spec.damageDice) {
     const rolled = rollDiceExpr(aura.spec.damageDice).total;
     damage = passed ? (aura.spec.halfOnSave ? Math.floor(rolled / 2) : 0) : rolled;
   }
+
+  // Prepare all reads/dice before reserving the marker. A read failure must not
+  // spend the aura use. Cross-client reservation/HP atomicity is still pending.
+  const {markUsedThisTurn}=await import('./cleave');
+  await markUsedThisTurn(input.targetParticipantId,marker);
 
   const chainId = newChainId();
   const triggerLabel =
@@ -305,13 +313,14 @@ export async function resolveAuraSave(input: {
       trigger: input.trigger,
       ability: aura.spec.saveAbility,
       dc: aura.spec.saveDC,
-      d20,
+      d20: automaticFailure ? null : d20,
+      rolls:save.rolls,disadvantage,automatic_failure:automaticFailure,effect_rolls:effects.rolls,exhaustion:state.exhaustion,
       bonus,
       breakdown,
-      total,
+      total: automaticFailure ? null : total,
       success: passed,
       damage,
-      label: `${aura.spec.name} (${aura.originName}): ${input.targetName} ${triggerLabel} — ${aura.spec.saveAbility} save ${total} vs DC ${aura.spec.saveDC}, ${passed ? 'passed' : 'failed'}${damage > 0 ? `, ${damage} ${aura.spec.damageType ?? ''} damage`.trimEnd() : ''}`,
+      label: `${aura.spec.name} (${aura.originName}): ${input.targetName} ${triggerLabel} — ${aura.spec.saveAbility} ${automaticFailure?'save automatically failed':`save ${total} vs DC ${aura.spec.saveDC}, ${passed?'passed':'failed'}`}${damage > 0 ? `, ${damage} ${aura.spec.damageType ?? ''} damage`.trimEnd() : ''}`,
     },
   });
 

@@ -279,6 +279,22 @@ test.describe('Atomic combat clock transitions',()=>{
   expect(JSON.parse(sql(`select jsonb_build_object('hp',current_hp,'temp',temp_hp,'stable',is_stable,'dead',is_dead,'failures',death_save_failures) from combatants where id='${ca}'`))).toEqual({hp:0,temp:massive?0:2,stable:false,dead:massive,failures:massive?3:1});
   await expect.poll(()=>sql(`select count(*) from combat_events where encounter_id='${enc}' and event_type='${massive?'died':'damage_at_0_hp_failure_added'}'`)).toBe('1');
  });
+ for(const mode of ['buffs','restrained','automatic'] as const)test(`live aura save applies ${mode} rules`,async({page})=>{
+  const conditions=mode==='automatic'?['Unconscious']:mode==='restrained'?['Restrained']:[];
+  sql(`update characters set nat_1_20_saves=false,wisdom=10,dexterity=10,strength=10,saving_throw_proficiencies='{}',inventory='[]' where id='${a}';
+   update combatants set active_conditions=ARRAY[${conditions.map(c=>"'"+c+"'").join(',')}]::text[],exhaustion_level=2,active_buffs='[{"key":"bless","name":"Bless"},{"key":"bane","name":"Bane"}]' where id='${ca}'`);
+  await signInFixtureDm(page);
+  await page.evaluate(async({campaign,enc,pa,pb,mode})=>{
+   const api=await import('/src/lib/auras.ts');await api.resolveAuraSave({campaignId:campaign,encounterId:enc,targetParticipantId:pa,targetName:'A',targetType:'character',trigger:'turn_end',
+    aura:{originParticipantId:pb,originName:'B',originSize:1,originRow:0,originCol:0,spec:{key:'save-fixture',name:'Save fixture',radiusFt:15,saveAbility:mode==='automatic'?'STR':mode==='restrained'?'DEX':'WIS',saveDC:15,damageDice:null,damageType:null,halfOnSave:true,triggers:['turn_end'],exemptParticipantIds:[],speedInside:null,affects:'all'}}});
+  },{campaign,enc,pa,pb,mode});
+  await expect.poll(()=>sql(`select count(*) from combat_events where encounter_id='${enc}' and event_type='save_rolled'`)).toBe('1');
+  const result=JSON.parse(sql(`select payload from combat_events where encounter_id='${enc}' and event_type='save_rolled'`));
+  if(mode==='automatic')expect(result).toMatchObject({rolls:[],d20:null,total:null,automatic_failure:true,success:false,effect_rolls:[]});
+  else{expect(result.rolls).toHaveLength(mode==='restrained'?2:1);expect(result.effect_rolls).toHaveLength(2);
+   expect(result.bonus).toBe(result.effect_rolls[0].total+result.effect_rolls[1].total-4);expect(result.total).toBe(result.d20+result.bonus);
+   expect(result.success).toBe(result.total>=15);if(mode==='restrained')expect(result.d20).toBe(Math.min(...result.rolls));}
+ });
  const recoverMovement=()=>`select recover_turn_movement_features('${pa}','${turn}')`;
  const featureUses=()=>JSON.parse(sql(`select feature_uses from characters where id='${a}'`));
  const movementFixture=()=>{sql(`update characters set feature_uses='{"Feline Agility":1,"species:Feline Agility":1,"Psionic Restoration":1,"custom":4}' where id='${a}'`);endEffects(pa,ca,false);};

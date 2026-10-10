@@ -1,0 +1,10 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const m=vi.hoisted(()=>({single:vi.fn()}));
+vi.mock('../supabase',()=>({supabase:{from:()=>({select:()=>({eq:()=>({single:m.single})})})}}));
+import {readAuraSaveState} from './auraSaveState';
+const row={campaign_id:'camp',encounter_id:'enc',combatants:{active_conditions:['Restrained'],active_buffs:[{name:'Bless'}],exhaustion_level:2}};
+beforeEach(()=>{m.single.mockReset().mockResolvedValue({data:row,error:null});});
+it('reads canonical combatant effects',async()=>{expect(await readAuraSaveState('camp','enc','actor')).toEqual({conditions:['Restrained'],buffs:[{name:'Bless'}],exhaustion:2});});
+it.each([{data:null,error:null},{data:row,error:{message:'denied'}}])('rejects failed or missing reads %#',async r=>{m.single.mockResolvedValue(r);await expect(readAuraSaveState('camp','enc','actor')).rejects.toThrow('could not be read');});
+it.each([{...row,campaign_id:'other'},{...row,encounter_id:'other'},{...row,combatants:null}])('rejects changed or unlinked targets %#',async data=>{m.single.mockResolvedValue({data,error:null});await expect(readAuraSaveState('camp','enc','actor')).rejects.toThrow('changed');});
+it.each([{exhaustion_level:7},{active_conditions:[4]},{active_buffs:{}}])('rejects malformed effects %#',async patch=>{m.single.mockResolvedValue({data:{...row,combatants:{...row.combatants,...patch}},error:null});await expect(readAuraSaveState('camp','enc','actor')).rejects.toThrow('Review');});
