@@ -1,10 +1,14 @@
 import {psionicRpc} from './psionicTurns';
 import {rollDie,rollDiceGroups} from '../../rules/dice';
-interface Identity {participantId:string;turnId:string;condition:string}
+export interface Identity {participantId:string;turnId:string;condition:string}
 export interface ConditionTurnContext extends Identity {ability:string;dc:number;state:{autoFail:boolean;advantage:boolean;disadvantage:boolean;naturalExtremes:boolean;exhaustion:number;buffs:unknown[]}}
 export interface ConditionTurnReceipt extends Identity {requestId:string;passed:boolean;d20:number|null;total:number|null;bonus:number;reviewedBonus:number;exhaustion:number;dc:number;dice:number[];advantage:boolean;disadvantage:boolean;automaticFailure:boolean;removed:string[];replayed:boolean;penalty:{saveId:string;saveKind:string;penalty:number;die:number|null;consumedIds:string[];expiredIds:string[]}}
 interface BuffRoll {identity:string;total:number}
 export interface SavedConditionTurnSave extends Identity {version:1;requestId:string;context:ConditionTurnContext;pool:number[];dice:number[];baseBonus:number;bonus:number;buffPool:BuffRoll[];penaltyPool:number|null;penaltyD4:number|null}
+export const CONDITION_SAVE_CHANGED='dndkeep:condition-save-changed';
+const changed=()=>window.dispatchEvent(new Event(CONDITION_SAVE_CHANGED));
+// v2.869 audit: cleanup must not hide a verified, committed result.
+function forget(i:Identity){try{localStorage.removeItem(key(i));}catch{/* Receipt remains authoritative on retry. */}changed();}
 const preparing=new Set<string>();
 const active=new Map<string,Promise<ConditionTurnReceipt>>();
 const key=(i:Identity)=>`dndkeep:condition-save:${i.participantId}:${i.turnId}:${encodeURIComponent(i.condition)}`;
@@ -57,23 +61,32 @@ async function buildProposal(i:Identity,old:SavedConditionTurnSave|null,reviewed
  while(pool.length<count)pool.push(rollDie(20));
  const penaltyPool=old?.penaltyPool??(s.autoFail?null:rollDie(4));
  const r:SavedConditionTurnSave={...i,version:1,requestId:old?.requestId??crypto.randomUUID(),context,pool,dice:pool.slice(0,count),baseBonus,bonus,buffPool,penaltyPool,penaltyD4:s.autoFail?null:penaltyPool};
- verifySaved(r,i);localStorage.setItem(key(i),JSON.stringify(r));return r;
+ verifySaved(r,i);localStorage.setItem(key(i),JSON.stringify(r));changed();return r;
 }
 async function prepare(i:Identity,old:SavedConditionTurnSave|null,baseBonus?:number):Promise<SavedConditionTurnSave>{
  if(preparing.has(key(i)))throw new Error('Wait for the condition dice.');preparing.add(key(i));
  try{return await buildProposal(i,old,baseBonus);}finally{preparing.delete(key(i));}
 }
-/** Explicit review keeps every compatible die; it never confirms the result. */
-export async function reviewConditionTurnSave(i:Identity,baseBonus:number):Promise<void>{
- if(active.has(key(i)))throw new Error('Wait for the condition save.');const old=savedConditionTurnSave(i);if(!old)throw new Error('No saved condition roll to review.');
- await prepare(i,old,baseBonus);
+/** Read committed results before touching local dice, including during explicit review. */
+export async function recoverConditionTurnSave(i:Identity):Promise<ConditionTurnReceipt|null>{
+ const receipt=await recorded(i);if(receipt)forget(i);return receipt;
+}
+/** Explicit review keeps compatible dice and never settles an uncommitted result. */
+export async function reviewConditionTurnSave(i:Identity,baseBonus:number):Promise<ConditionTurnReceipt|null>{
+ if(active.has(key(i))||preparing.has(key(i)))throw new Error('Wait for the condition save.');
+ preparing.add(key(i));
+ try{
+  const receipt=await recoverConditionTurnSave(i);if(receipt)return receipt;
+  const old=savedConditionTurnSave(i);if(!old)throw new Error('No saved condition roll to review.');
+  await buildProposal(i,old,baseBonus);return null;
+ }finally{preparing.delete(key(i));}
 }
 async function resolve(i:Identity):Promise<ConditionTurnReceipt>{
  // Read the receipt first, even when local storage is corrupt or the condition has ended.
- const prior=await recorded(i);if(prior){localStorage.removeItem(key(i));return prior;}
+ const prior=await recoverConditionTurnSave(i);if(prior)return prior;
  const r=savedConditionTurnSave(i)??await prepare(i,null);
  const result=await psionicRpc('settle_condition_turn_save',{...args(i),p_request:r.requestId,p_expected:r.context,p_dice:r.dice,p_bonus:r.bonus,p_penalty_d4:r.penaltyD4},true);
- verifyReceipt(result,i);localStorage.removeItem(key(i));return result;
+ verifyReceipt(result,i);forget(i);return result;
 }
 export function resolveConditionTurnSave(i:Identity):Promise<ConditionTurnReceipt>{
  const existing=active.get(key(i));if(existing)return existing;

@@ -4436,7 +4436,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
 
  </div>
  {/* v2.96.0 — Phase D: initiative strip for players on their sheet */}
- <InitiativeStrip isDM={false} />
+ <InitiativeStrip isDM={false} characterId={character.id} />
  {/* v2.443.0 — Suspense boundary for lazy modals. They self-open
      based on state, so fallback={null} doesn't flicker. */}
  <Suspense fallback={null}>

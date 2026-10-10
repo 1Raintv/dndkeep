@@ -51,3 +51,26 @@ it('advantage persists both d20s before settlement',async()=>{
  await resolveConditionTurnSave(id);expect(m.die).toHaveBeenCalledTimes(3);
  expect(m.rpc.mock.calls.find(c=>c[0]==='settle_condition_turn_save')?.[1]).toMatchObject({p_dice:[12,12]});
 });
+
+it('review recovers a committed result before reading corrupt dice or changed context',async()=>{
+ localStorage.setItem('dndkeep:condition-save:part:turn:Poisoned','{}');committed=true;
+ expect(await reviewConditionTurnSave(id,4)).toEqual(receipt);
+ expect(m.die).not.toHaveBeenCalled();expect(m.rpc.mock.calls.map(c=>c[0])).toEqual(['get_condition_turn_save']);
+ expect(savedConditionTurnSave(id)).toBeNull();
+});
+it('failed receipt lookup during review preserves original dice',async()=>{
+ m.rpc.mockImplementation(async(name:string)=>name==='get_condition_turn_save'?null:name==='get_condition_turn_save_context'?context:Promise.reject(new Error('offline')));
+ await expect(resolveConditionTurnSave(id)).rejects.toThrow();const original=savedConditionTurnSave(id);
+ m.rpc.mockRejectedValue(new Error('offline'));await expect(reviewConditionTurnSave(id,4)).rejects.toThrow('offline');
+ expect(savedConditionTurnSave(id)).toEqual(original);expect(m.die).toHaveBeenCalledTimes(2);
+});
+it('review blocks competing settlement while checking its receipt',async()=>{
+ let finish!:(value:unknown)=>void;m.rpc.mockImplementation(()=>new Promise(r=>{finish=r;}));
+ const review=reviewConditionTurnSave(id,4);await expect(resolveConditionTurnSave(id)).rejects.toThrow('Wait');
+ await expect(reviewConditionTurnSave(id,4)).rejects.toThrow('Wait');finish(receipt);await review;
+ expect(m.rpc).toHaveBeenCalledTimes(1);
+});
+it('storage cleanup failure does not hide a verified committed result',async()=>{
+ committed=true;const spy=vi.spyOn(localStorage,'removeItem').mockImplementation(()=>{throw new Error('storage');});
+ try{expect(await resolveConditionTurnSave(id)).toEqual(receipt);expect(m.die).not.toHaveBeenCalled();}finally{spy.mockRestore();}
+});

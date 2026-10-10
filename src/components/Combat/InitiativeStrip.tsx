@@ -8,6 +8,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import './InitiativeStrip.css';
+import ConditionSaveRecovery from './ConditionSaveRecovery';
 import {useBottomOverlayInset} from '../../lib/hooks/useBottomOverlayInset';
 import { useCombat } from '../../context/CombatContext';
 // v2.620.0 — B3b: owned-minion sub-entries. Direct combatants fetch
@@ -49,6 +50,7 @@ import type { CombatParticipant } from '../../types';
 
 interface Props {
   isDM: boolean;
+  characterId?: string;
 }
 
 const ACTOR_COLORS: Record<CombatParticipant['participant_type'], string> = {
@@ -61,7 +63,7 @@ const ACTOR_COLORS: Record<CombatParticipant['participant_type'], string> = {
   npc: '#60a5fa',
 };
 
-export default function InitiativeStrip({ isDM }: Props) {
+export default function InitiativeStrip({ isDM, characterId }: Props) {
   const { encounter, participants, currentActor } = useCombat();
   const stripRef=useRef<HTMLDivElement>(null);
   useBottomOverlayInset(stripRef,encounter?.status==='active');
@@ -274,6 +276,7 @@ export default function InitiativeStrip({ isDM }: Props) {
         boxShadow: '0 -4px 16px rgba(0,0,0,0.4)',
       }}
     >
+      {currentActor && encounter.psionic_turn_id && (isDM || (currentActor.participant_type === 'character' && currentActor.entity_id === characterId)) && <ConditionSaveRecovery key={`${currentActor.id}:${encounter.psionic_turn_id}`} participant={currentActor} turnId={encounter.psionic_turn_id} />}
       <div className="initiative-summary" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {/* v2.285.0 — Round badge is clickable for the DM. Click
             opens a per-participant action-status popover anchored

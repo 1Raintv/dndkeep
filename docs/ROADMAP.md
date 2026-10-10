@@ -6236,11 +6236,36 @@ read and verifies rejection without a result or inventory disclosure.
 
 This does not finish all save automation: standaloneDamage/standaloneConcentration
 use a separate caller-supplied modifier contract and require an equipment-bonus
-audit too. Saved-condition review UI remains needed to recover changed settings;
-the underlying review API preserves dice. No production deployment yet.
+audit too. Saved-condition review UI is now added below; the underlying review
+API preserves dice. No production deployment yet.
 
 Equipment-save verification:3,218 unit tests and108 database/browser regressions
 pass. TypeScript197/197, hooks, RAW, coordinates, anchors, build and255.2KB entry
 pass. SQL error-level lint is clean. Changed test-file lint passes; pendingAttack
 retains its pre-existing prefer-const error for rolledDamageRiders and standing
 warnings, with no new lint findings from this patch.
+
+
+### Saved condition-roll review controls (unreleased)
+
+The shared initiative strip now discovers saved condition rolls for the current
+actor and turn. DMs can review their current actor; a character sheet exposes
+only its own actor's recovery controls. Opening a review checks the authoritative
+receipt first, so a lost acknowledgement displays the completed result without
+rerolling. Equipment/effect changes can be explicitly reviewed with the base
+save bonus; compatible d20, buff and penalty dice and request identity survive.
+Confirmation remains separate, with changed inputs disabling confirmation until
+review. Closing leaves the saved roll intact. Reloading rediscovers it.
+
+Review and settlement exclude each other while a receipt is loading. A receipt
+read failure preserves the proposal. Local storage cleanup errors no longer hide
+an already verified result. The dialog traps keyboard focus, restores it on close,
+and fits desktop/mobile. Unknown bonuses that prevented the original proposal,
+cross-device dice, and the broader combat-clock integration remain open; this UI
+recovers existing proposals only. No production migration or deployment.
+
+Verification:3,222 unit tests; required type/hooks/RAW/coordinate/anchor/build/budget
+gates green (TypeScript197/197, entry255.2KB). Four local desktop/mobile browser
+cases pass, including receipt recovery, changed equipment with preserved dice,
+one recorded event, resumed turn advancement, keyboard focus and the standard
+overflow probe. Desktop/mobile screenshots reviewed. Changed-file lint clean.
