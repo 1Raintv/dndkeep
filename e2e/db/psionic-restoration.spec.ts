@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
@@ -155,6 +156,27 @@ test.describe('Psionic Restoration (local stack)', () => {
     await expect.poll(resources).toBe('3:1');
     await page.reload();await expect(button('Powered (1 die)')).toBeVisible();expect(resources()).toBe('3:1');
     } finally {release();}
+  });
+
+  test('invalid Restoration uses block meditation without changing the saved pool',async({page},info)=>{
+    sql(`update characters set class_resources=class_resources || '{"psionic-restoration":"1"}'::jsonb where id='${charId}'`);
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+    const payments:string[]=[];page.on('request',r=>{if(r.url().includes('/rpc/settle_psionic_energy'))payments.push(r.url());});
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    const warning=page.getByRole('button',{name:'Check Psionic Restoration uses',exact:true}).locator('visible=true').first();
+    await expect(warning).toBeDisabled({timeout:20_000});
+    await warning.evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));
+    await page.screenshot({path:`.tmp/restoration-guard-${info.project.name}.png`});
+    if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
+      const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');
+      const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
+      await warning.evaluate(el=>el.setAttribute('data-restoration-check','true'));
+      const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[data-restoration-check]')");
+      const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);
+    }
+    expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('2');
+    expect(sql(`select count(*) from psionic_energy_uses where character_id='${charId}'`)).toBe('0');
+    expect(payments).toEqual([]);expect(errors).toEqual([]);
   });
 
 });

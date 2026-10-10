@@ -59,3 +59,18 @@ it('restores a secondary Psion pool at its own level and preserves the other cla
  expect(restorePsionicDice({...c,...result})).toBeNull();
  expect(restorePsionicDice({...c,secondary_level:4})).toBeNull();
 });
+
+
+it.each([null,'1',-1,2,0.5,NaN,Infinity])('rejects malformed remaining Restoration uses (%s)',value=>{
+ const c={...character,class_resources:{...character.class_resources,'psionic-restoration':value}};
+ expect(psionicRestorationStatus(c).reason).toBe('Check Psionic Restoration uses');
+ expect(restorePsionicDice(c)).toBeNull();
+});
+it.each([null,'0',-1,0.5,NaN,Infinity])('rejects malformed spent Restoration uses (%s)',value=>{
+ const c={...character,feature_uses:{'Psionic Restoration':value}} as unknown as typeof character;
+ expect(psionicRestorationStatus(c).reason).toBe('Check Psionic Restoration uses');
+ expect(restorePsionicDice(c)).toBeNull();
+});
+it('preserves legacy nonnegative spent counts as unavailable',()=>{
+ expect(psionicRestorationStatus({...character,feature_uses:{'Psionic Restoration':2}}).reason).toBe('Used · Long Rest');
+});

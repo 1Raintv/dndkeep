@@ -8674,3 +8674,25 @@ No database migration or production deployment in this change.
 
 Next: target-save resolution with attack spending and feature-aware DCs; legacy
 unarmed damage hit confirmation; continue Psion and map release integration.
+
+
+### Restoration saved-use preflight (2026-10-10, unreleased)
+
+The server already rejected malformed Restoration trackers, but the sheet could
+still offer meditation for them. The shared rules now block null, string,
+fractional, negative and out-of-range remaining-use values before confirmation,
+and recheck after confirmation. Missing legacy counters remain accepted; positive
+legacy spent counts remain unavailable until Long Rest. No resource value is
+silently repaired. The warning button wraps in narrow desktop columns.
+
+Fourteen added pure cases and two component cases cover both tracker forms and
+updates while the confirmation is open. Desktop/mobile real-sheet checks use
+isolated local Docker accounts, verify the warning, no payment RPC, unchanged
+dice and no ledger entry. Screenshots inspected; overflow checks pass after
+fixing the desktop warning width. Removing the guard fails the new regressions;
+restored code passes. Full gate: 4,041 unit tests, TS 194/194, entry 255.7 KB.
+No migration or production deployment.
+
+Remaining release work includes broader Psion automation, generic damage
+settlement, map improvements and branch integration. This preflight does not
+change or independently recertify server transaction recovery or rest behavior.
