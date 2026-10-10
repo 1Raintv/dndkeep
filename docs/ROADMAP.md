@@ -8386,3 +8386,35 @@ implement receipt-backed settlement from the final save, recheck live immunity,
 preserve condition provenance/cascades/concentration behavior, and integrate
 continuation without repeating existing effects or spending the batch again.
 Single-target monster actions and legacy declarations still lack this metadata.
+
+
+### 2026-10-10 — resistance resumes captured conditions atomically (unreleased)
+
+Migration 20261010070038 captures backing entity identities and settles captured
+riders through a DM-only operation with immutable receipts. It checks the final
+save, pending resistance, current turn, identity, live source/catalog/custom
+immunity and existing condition provenance. The shared condition operation
+preserves cascades and ends character concentration when required; saved duration
+and repeat-save metadata are attached only to newly applied primary conditions.
+A replay returns its receipt without resurrecting a condition later removed.
+
+Legendary Resistance decisions now settle captured riders in the same transaction:
+accepting records the successful save without applying its failed-save condition;
+declining applies the condition. Failure rolls back the decision, charge and
+condition. Logs retain hidden-target visibility and the encounter association.
+The live desktop/mobile Wing Attack flow confirms Prone resumes after Decline,
+with no second legendary-action spend. Eight direct settlement cases passed;
+the resistance run had 12 passes and one old cancellation fixture invalidated by
+the earlier guard. Corrected fixture plus live continuation passed four desktop/
+mobile checks; a separate injected-failure/hidden-log case passed afterward.
+
+Full project gate passed: 3,936 units, TS 194/194, entry 255.7 KB. SQL lint clean;
+existing keep_warm/client_errors advisor findings unchanged. Exact local ledger
+verified, foreign history retained, no repo migrations pending. Not deployed.
+
+Remaining: Exhaustion needs its own increment/death settlement; missing/legacy
+identity metadata and changed turns require review. Single-target declarations
+still lack captured rider intent. Non-resistance batch condition application and
+batch payment still use legacy paths. Damage remains in the existing attack
+resolution flow; this does not auto-finish all attacks or claim all immunity
+sources/riders are covered. Continue consolidating those paths before release.

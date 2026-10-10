@@ -176,6 +176,70 @@ test.describe('Atomic encounter completion',()=>{
   expect(()=>sql(auth(dm,effectBatch({...recipe(),...invalid})))).toThrow(/Review/);
   expect(sql(`select count(*) from pending_attacks where encounter_id='${enc}'`)).toBe('0');expect(sql(`select count(*) from dndkeep_private.attack_condition_intents where encounter_id='${enc}'`)).toBe('0');
  });
+
+ const declaredRider=()=>JSON.parse(sql(auth(dm,effectBatch(recipe())))).pending_attack_id as string;
+ const settleRider=(id:string,user=dm)=>JSON.parse(sql(auth(user,`select settle_attack_condition('${id}')`)));
+ const failRider=(id:string)=>sql(`update pending_attacks set save_result='failed' where id='${id}'`);
+ test('saved condition applies its duration and repeat save once, without resurrecting removed effects',()=>{
+  const id=declaredRider();failRider(id);const first=settleRider(id);expect(first).toMatchObject({attackId:id,condition:'Frightened',outcome:'applied',replayed:false});
+  expect(JSON.parse(sql(`select condition_sources->'Frightened' from combatants where id='${cb}'`))).toMatchObject({source:`monster_action:Batch fixture:${pa}`,casterParticipantId:pa,duration_rounds:10,applied_at_round:1,expires_at_round:11,save_to_end:{ability:'WIS',dc:15},source_kind:'frightful_presence',source_attacker_id:pa});
+  sql(`update combatants set active_conditions='{}',condition_sources='{}' where id='${cb}';update characters set active_conditions='{}',condition_sources='{}' where id='${b}'`);
+  expect(settleRider(id)).toEqual({...first,replayed:true});expect(sql(`select cardinality(active_conditions) from combatants where id='${cb}'`)).toBe('0');
+ });
+ test('saved condition waits for resistance and respects the final successful save',()=>{
+  const id=declaredRider();sql(`update pending_attacks set save_result='failed',pending_lr_decision=true where id='${id}'`);expect(()=>settleRider(id)).toThrow(/Legendary Resistance choice/);
+  sql(`update pending_attacks set save_result='passed',pending_lr_decision=false where id='${id}'`);expect(settleRider(id).outcome).toBe('saved');expect(sql(`select coalesce(active_conditions,'{}'::text[]) @> array['Frightened'] from combatants where id='${cb}'`)).toBe('f');
+ });
+ test('saved condition rechecks active source immunity',()=>{
+  const id=declaredRider();failRider(id);sql(`insert into campaign_condition_immunities(campaign_id,target_type,target_id,source_kind,source_id,expires_at_rounds) values('${campaign}','character','${b}','frightful_presence','${a}',null)`);
+  expect(settleRider(id).outcome).toBe('immune');expect(sql(`select coalesce(active_conditions,'{}'::text[]) @> array['Frightened'] from combatants where id='${cb}'`)).toBe('f');
+ });
+ test('saved condition refuses changed identities and unauthorized users',()=>{
+  const id=declaredRider();failRider(id);expect(()=>settleRider(id,player)).toThrow(/Only the campaign DM/);
+  sql(`update combat_participants set entity_id='${randomUUID()}' where id='${pb}'`);expect(()=>settleRider(id)).toThrow(/participants changed/);
+ });
+ test('saved condition history failure rolls back conditions, provenance and receipts',()=>{
+  const id=declaredRider();failRider(id);const before=snapshot(),fn='reject_rider_'+randomUUID().replaceAll('-','');
+  sql(`create function public.${fn}() returns trigger language plpgsql as $$begin if new.id='${id}' then raise exception 'fixture rider history failure';end if;return new;end$$;create trigger ${fn} before insert on combat_events for each row execute function public.${fn}()`);
+  try{expect(()=>settleRider(id)).toThrow(/fixture rider history failure/);expect(snapshot()).toBe(before);expect(sql(`select count(*) from dndkeep_private.attack_condition_resolutions where attack_id='${id}'`)).toBe('0');expect(sql(`select coalesce(active_conditions,'{}'::text[]) @> array['Frightened'] from combatants where id='${cb}'`)).toBe('f');}
+  finally{sql(`drop trigger ${fn} on combat_events;drop function public.${fn}()`);}
+  expect(settleRider(id).outcome).toBe('applied');
+ });
+
+ test('saved condition honors live custom-creature immunity rather than its declaration snapshot',()=>{
+  sql(`update combat_participants set participant_type='creature' where id='${pb}';update combatants set definition_type='custom',stat_block_snapshot='{"condition_immunities":[]}' where id='${cb}'`);
+  const id=declaredRider();failRider(id);sql(`update combatants set stat_block_snapshot='{"condition_immunities":["Frightened"]}' where id='${cb}'`);expect(settleRider(id).outcome).toBe('immune');
+ });
+ test('saved condition keeps cascades and ends concentration through the shared condition operation',()=>{
+  const intent={...recipe(),conditionName:'Stunned'};const id=JSON.parse(sql(auth(dm,effectBatch(intent).replace("'frightened'","'stunned'")))).pending_attack_id;
+  sql(`update characters set concentration_spell='detect-magic' where id='${b}'`);failRider(id);expect(settleRider(id).outcome).toBe('applied');
+  expect(sql(`select concentration_spell from characters where id='${b}'`)).toBe('');expect(JSON.parse(sql(`select to_jsonb(active_conditions) from combatants where id='${cb}'`))).toEqual(expect.arrayContaining(['Stunned','Incapacitated']));
+  expect(JSON.parse(sql(`select condition_sources->'Incapacitated' from combatants where id='${cb}'`))).toEqual({source:'cascade:Stunned'});
+ });
+ test('saved condition preserves independent provenance and refuses an unreviewed later turn',()=>{
+  const id=declaredRider();failRider(id);sql(`update combatants set active_conditions=array['Frightened'],condition_sources='{"Frightened":{"source":"manual"}}' where id='${cb}'`);
+  expect(settleRider(id).outcome).toBe('already_present');expect(JSON.parse(sql(`select condition_sources->'Frightened' from combatants where id='${cb}'`))).toEqual({source:'manual'});
+  const another=declaredRider();failRider(another);sql(`update combat_encounters set current_turn_index=1 where id='${enc}'`);expect(()=>settleRider(another)).toThrow(/turn changed/);
+ });
+
+ for(const accept of [true,false])test(`resistance decision ${accept} settles the saved condition in the same transaction`,()=>{
+  sql(`update combat_participants set participant_type='creature',legendary_resistance=1,legendary_resistance_used=0 where id='${pb}';update combatants set definition_type='custom',stat_block_snapshot='{"condition_immunities":[]}' where id='${cb}'`);
+  const id=declaredRider();sql(`update pending_attacks set save_result='failed',pending_lr_decision=true where id='${id}'`);
+  const decide=()=>JSON.parse(sql(auth(dm,`select decide_legendary_resistance('${id}',${accept})`)));
+  expect(decide()).toMatchObject({pending_lr_decision:false,save_result:accept?'passed':'failed'});expect(settleRider(id).outcome).toBe(accept?'saved':'applied');
+  expect(sql(`select coalesce(active_conditions,'{}'::text[]) @> array['Frightened'] from combatants where id='${cb}'`)).toBe(accept?'f':'t');
+  sql(`update combatants set active_conditions='{}',condition_sources='{}' where id='${cb}'`);decide();expect(sql(`select cardinality(active_conditions) from combatants where id='${cb}'`)).toBe('0');
+  expect(sql(`select legendary_resistance_used from combat_participants where id='${pb}'`)).toBe(accept?'1':'0');
+ });
+
+ test('condition failure rolls back the resistance decision and hidden effects keep their visibility',()=>{
+  sql(`update combat_participants set participant_type='creature',hidden_from_players=true,legendary_resistance=1,legendary_resistance_used=0 where id='${pb}';update combatants set definition_type='custom',stat_block_snapshot='{"condition_immunities":[]}' where id='${cb}'`);
+  const id=declaredRider();sql(`update pending_attacks set save_result='failed',pending_lr_decision=true where id='${id}'`);
+  const fn='reject_rider_decision_'+randomUUID().replaceAll('-','');sql(`create function public.${fn}() returns trigger language plpgsql as $$begin if new.id='${id}' then raise exception 'fixture rider decision failure';end if;return new;end$$;create trigger ${fn} before insert on combat_events for each row execute function public.${fn}()`);
+  try{expect(()=>sql(auth(dm,`select decide_legendary_resistance('${id}',false)`))).toThrow(/fixture rider decision failure/);expect(sql(`select pending_lr_decision from pending_attacks where id='${id}'`)).toBe('t');expect(sql(`select count(*) from dndkeep_private.legendary_resistance_decisions where attack_id='${id}'`)).toBe('0');}
+  finally{sql(`drop trigger ${fn} on combat_events;drop function public.${fn}()`);}
+  sql(auth(dm,`select decide_legendary_resistance('${id}',false)`));expect(sql(`select visibility from combat_events where id='${id}' and encounter_id='${enc}'`)).toBe('hidden_from_players');
+ });
  async function login(page:Page){
   sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
    insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}',jsonb_build_object('sub','${dm}','email','${dm}@turn.local'),'email',now(),now(),now())`);

@@ -358,6 +358,14 @@ test.describe('Atomic aura resolution',()=>{
   expect(JSON.parse(sql(`select jsonb_build_object('state',state,'pending',pending_lr_decision,'damage',damage_final) from pending_attacks where encounter_id='${enc}'`))).toMatchObject({state:'declared',pending:true,damage:null});
   expect(JSON.parse(sql(`select recipe from dndkeep_private.attack_condition_intents where encounter_id='${enc}'`))).toMatchObject({conditionName:'Prone',sourcePrefix:'legendary_action',durationRounds:null,saveToEnd:null});
   expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe('20');expect(sql(`select coalesce(active_conditions,'{}'::text[]) @> array['Prone'] from combatants where id='${cb}'`)).toBe('f');expect(sql(`select legendary_actions_remaining from combat_participants where id='${pa}'`)).toBe('1');expect(errors).toEqual([]);
+  await page.evaluate(async campaign=>{
+   const r='/node_modules/.vite/deps/react.js',d='/node_modules/.vite/deps/react-dom_client.js',m='/src/components/Combat/LegendaryResistancePromptModal.tsx';
+   const [React,dom,modal]=await Promise.all([import(r),import(d),import(m)]);const host=document.createElement('div');document.body.appendChild(host);dom.default.createRoot(host).render(React.default.createElement(modal.default,{campaignId:campaign,isDM:true}));
+  },campaign);
+  await page.getByRole('button',{name:'Decline',exact:true}).click();
+  await expect.poll(()=>sql(`select coalesce(active_conditions,'{}'::text[]) @> array['Prone'] from combatants where id='${cb}'`)).toBe('t');
+  expect(sql(`select count(*) from dndkeep_private.attack_condition_resolutions r join pending_attacks a on a.id=r.attack_id where a.encounter_id='${enc}'`)).toBe('1');
+  expect(sql(`select legendary_actions_remaining from combat_participants where id='${pa}'`)).toBe('1');expect(errors).toEqual([]);
  });
 
  test('creature save summaries match live automation and mark unknown data',async({page},info)=>{

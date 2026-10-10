@@ -65,7 +65,7 @@ test.describe('Atomic Legendary Resistance decisions',()=>{
   expect(()=>run()).toThrow(/No Legendary Resistance/);expect(run(false).save_result).toBe('failed');expect(used()).toBe(0);
  });
  test('a cancelled attack cannot spend a charge',()=>{
-  sql(`update pending_attacks set state='canceled' where id='${attack}'`);
+  sql(`update pending_attacks set pending_lr_decision=false where id='${attack}';update pending_attacks set state='canceled' where id='${attack}'`);
   expect(()=>run()).toThrow(/no longer awaiting/);expect(used()).toBe(0);
  });
  test('hidden target resistance remains hidden in the combat log',()=>{
