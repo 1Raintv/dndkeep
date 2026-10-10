@@ -1,5 +1,18 @@
 # DNDKeep — Two-Track Roadmap
 
+### Interrupted technique closure (local; not released)
+
+An uncertain Boost/Disorient/Bolt choice can now be closed without adding an
+effect, including after its turn, subclass or target roster changes. Closure
+and technique selection share the declaration lock: an already committed effect
+wins, otherwise an immutable no-effect receipt blocks late effect requests.
+The browser saves closure intent before sending, so reloads never resume the
+old effect after the user requested closure. Failed closure confirmation remains
+recoverable. No extra action or Energy Die is spent.
+
+The new closure migration brings the repo to 318 migrations. The 317-migration
+rehearsals below predate this addition; production remains unchanged.
+
 ### Release rehearsal refresh — 317 migrations (not released)
 
 Both retained isolated rehearsal databases (fresh-chain origin and main-upgrade

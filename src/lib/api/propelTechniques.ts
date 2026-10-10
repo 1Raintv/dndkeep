@@ -58,3 +58,13 @@ export async function listPropelTechniques(character:string):Promise<PropelRecor
   ||new Set(result.map(row=>row.request_id)).size!==result.length)throw new PsionicRequestError('Pending technique choices could not be verified. Try loading them again.',false);
  return result;
 }
+
+/** Closure and effect selection serialize on the same declaration. A saved
+ * effect wins; closure never removes it or creates a replacement. */
+export async function closePropelTechnique(input:PropelRecord):Promise<PropelTechniqueReceipt>{
+ const row=structuredClone(input);
+ if(!availablePropelTechniques(row).length)throw new PsionicRequestError('This saved Propel has no eligible technique to close.',true);
+ const result=await psionicRpc('close_propel_technique',{p_character:row.character_id,p_declaration:row.request_id},true);
+ if(!validPropelTechniqueReceipt(result,row))throw new PsionicRequestError('Technique closure could not be verified. Confirm closing the saved choice.',false);
+ return result;
+}

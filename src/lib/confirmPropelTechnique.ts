@@ -1,6 +1,6 @@
 import type {PropelRecord} from './api/psionicPropel';
-import {availablePropelTechniques,choosePropelTechnique,type PropelTechniqueChoice,type PropelTechniqueReceipt} from './api/propelTechniques';
-import {forgetPropelTechnique,pendingPropelTechniques,rememberPropelTechnique} from './propelTechniqueRecovery';
+import {availablePropelTechniques,choosePropelTechnique,closePropelTechnique,type PropelTechniqueChoice,type PropelTechniqueReceipt} from './api/propelTechniques';
+import {forgetPropelTechnique,pendingPropelTechniques,rememberPropelTechnique,requestPropelTechniqueClosure} from './propelTechniqueRecovery';
 /** v2.869 — persistence precedes the network request. Any uncertain failure
  * keeps its choice; an authoritative server receipt alone clears recovery. */
 export async function confirmPropelTechnique(input:PropelRecord,choice:PropelTechniqueChoice):Promise<PropelTechniqueReceipt>{
@@ -17,5 +17,12 @@ export async function resumePropelTechnique(input:PropelRecord):Promise<PropelTe
  const row=structuredClone(input),pending=pendingPropelTechniques(row.character_id).find(p=>p.declarationId===row.request_id);
  const receipt=await choosePropelTechnique(row);
  if(receipt){if(pending)forgetPropelTechnique(row.character_id,pending);return receipt;}
+ if(pending?.closeRequested)return closePendingPropelTechnique(row);
  return pending?confirmPropelTechnique(row,pending.choice):null;
+}
+
+export async function closePendingPropelTechnique(input:PropelRecord):Promise<PropelTechniqueReceipt>{
+ const row=structuredClone(input),pending=requestPropelTechniqueClosure(row.character_id,row.request_id);
+ const receipt=await closePropelTechnique(row);
+ forgetPropelTechnique(row.character_id,pending);return receipt;
 }

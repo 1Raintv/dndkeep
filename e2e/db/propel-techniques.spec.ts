@@ -162,6 +162,54 @@ test.describe('Telekinetic Technique choices',()=>{
   expect(buffs()).toHaveLength(1);expect(read().choice).toBe(JSON.parse(results.find(r=>r.code===0)!.out).choice);
  });
 
+ for(const changed of ['turn','subclass','roster'])test(`technique closure seals an uncertain choice after changed ${changed}`,()=>{
+  settle();
+  if(changed==='turn')sql(`update combat_encounters set round_number=round_number+1 where id='${encounter}'`);
+  if(changed==='subclass')sql(`update characters set subclass='Telepath' where id='${character}'`);
+  if(changed==='roster')sql(`update combat_participants set entity_id='${randomUUID()}' where id='${target}'`);
+  const close=()=>JSON.parse(sql(auth(owner,`select close_propel_technique('${character}','${id}')`)));
+  expect(close()).toMatchObject({choice:'none',buff:null,attackId:null,damage:null,replayed:false});
+  expect(close()).toMatchObject({choice:'none',replayed:true});expect(()=>choose('boost')).toThrow(/already saved/);
+  expect(buffs()).toEqual([]);expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('1');
+ });
+ test('technique closure preserves an existing effect and rejects unauthorized or unresolved requests',()=>{
+  expect(()=>sql(auth(owner,`select close_propel_technique('${character}','${id}')`))).toThrow(/eligible technique/);
+  settle();const result=choose('boost');
+  expect(()=>sql(auth(outsider,`select close_propel_technique('${character}','${id}')`))).toThrow();
+  expect(JSON.parse(sql(auth(owner,`select close_propel_technique('${character}','${id}')`)))).toMatchObject({...result,replayed:true});expect(buffs()).toHaveLength(1);
+ });
+ test('technique closure and a late effect serialize to one winner',async()=>{
+  settle();
+  const send=(q:string)=>new Promise<{code:number|null;out:string;error:string}>(resolve=>{const child=spawn('docker',args);let out='',error='';child.stdout.on('data',d=>out+=d);child.stderr.on('data',d=>error+=d);child.on('close',code=>resolve({code,out,error}));child.stdin.end(auth(owner,q));});
+  const [closed,effect]=await Promise.all([send(`select close_propel_technique('${character}','${id}')`),send(`select choose_propel_technique('${character}','${id}','boost')`)]);
+  expect(closed.code).toBe(0);const winner=JSON.parse(closed.out);expect(read().choice).toBe(winner.choice);
+  if(winner.choice==='none'){expect(effect.code).not.toBe(0);expect(buffs()).toEqual([]);}else{expect(winner.choice).toBe('boost');expect(effect.code).toBe(0);expect(buffs()).toHaveLength(1);}
+ });
+ test('technique closure survives a lost reply after the original turn ends',async({page},info)=>{
+  settle();
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'&&!m.text().includes('net::ERR_FAILED'))errors.push(m.text());});page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${new URL(r.url()).pathname}`);});
+  sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${owner}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${owner}','${owner}',jsonb_build_object('sub','${owner}','email','${owner}@propelsave.local'),'email',now(),now(),now());
+   update profiles set show_ua_content=true where id='${owner}';update characters set current_hp=20,max_hp=20 where id='${character}';update combatants set current_hp=20,max_hp=20 where campaign_id='${campaign}';`);
+  await signInAsSeedDm(page,`${owner}@propelsave.local`);
+  await page.evaluate(async({character,id})=>{const path='/src/lib/propelTechniqueRecovery.ts';(await import(/* @vite-ignore */ path)).rememberPropelTechnique(character,{declarationId:id,choice:'boost'});},{character,id});
+  sql(`update combat_encounters set round_number=round_number+1 where id='${encounter}'`);
+  await page.goto(`/character/${character}`);
+  const ability=page.locator('.arow-grid').filter({has:page.getByText('Telekinetic Propel',{exact:true})}),dialog=page.getByRole('dialog',{name:'Telekinetic Propel',exact:true});
+  await ability.getByRole('button',{name:'Use / resume'}).click();await dialog.getByRole('button',{name:/Review technique/}).click();
+  const panel=dialog.getByRole('region',{name:'Telekinetic Technique'});
+  await expect(panel.getByRole('button',{name:'Close without a new effect'})).toBeEnabled();
+  await panel.screenshot({path:`.tmp/technique-close-${info.project.name}.png`});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[aria-label=\"Telekinetic Technique\"], [aria-label=\"Telekinetic Technique\"] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
+  let lost=0;await page.route('**/rest/v1/rpc/close_propel_technique',async route=>{const reply=await route.fetch();expect(reply.ok()).toBe(true);lost++;await route.abort();});
+  await panel.getByRole('button',{name:'Close without a new effect'}).click();await expect(panel.getByRole('button',{name:'Confirm closing technique'})).toBeEnabled();expect(lost).toBe(2);
+  expect(read().choice).toBe('none');expect(buffs()).toEqual([]);
+  await page.unroute('**/rest/v1/rpc/close_propel_technique');await page.reload();
+  await ability.getByRole('button',{name:'Use / resume'}).click();await dialog.getByRole('button',{name:/Review technique/}).click();
+  await expect(panel).toContainText('Saved: No technique.');
+  expect(await page.evaluate(character=>Object.keys(localStorage).filter(k=>k.startsWith(`dndkeep:propel-technique:${character}:`)),character)).toEqual([]);
+  expect(()=>choose('boost')).toThrow(/already saved/);expect(buffs()).toEqual([]);expect(errors).toEqual([]);
+ });
  test('discovers a failed current-turn technique without browser storage, then hides a saved choice',()=>{
   const list=(u=owner)=>JSON.parse(sql(auth(u,`select list_propel_techniques('${character}')`)));
   expect(list()).toEqual([]);settle();expect(list().map((r:{request_id:string})=>r.request_id)).toEqual([id]);expect(()=>list(outsider)).toThrow();

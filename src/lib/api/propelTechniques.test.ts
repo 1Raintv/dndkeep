@@ -1,5 +1,5 @@
 import {beforeEach,expect,it,vi} from 'vitest';
-import {availablePropelTechniques,choosePropelTechnique,listPropelTechniques,validPropelTechniqueReceipt,type PropelTechniqueReceipt} from './propelTechniques';
+import {closePropelTechnique,availablePropelTechniques,choosePropelTechnique,listPropelTechniques,validPropelTechniqueReceipt,type PropelTechniqueReceipt} from './propelTechniques';
 import {validPropelRecord,type PropelRecord} from './psionicPropel';
 import type {Character} from '../../types';
 const mock=vi.hoisted(()=>({rpc:vi.fn()}));
@@ -88,3 +88,9 @@ it('validates current-turn recovery rows and never accepts another character or 
   mock.rpc.mockResolvedValue(rows);await expect(listPropelTechniques(id(2))).rejects.toMatchObject({definitelyNotPaid:false});
  }
 });
+
+it.each(['none','boost','disorient','bolt'] as const)('closure accepts a validated server winner: %s',async choice=>{
+ const row=record();mock.rpc.mockResolvedValue(receipt(row,choice));await expect(closePropelTechnique(row)).resolves.toEqual(receipt(row,choice));
+ expect(mock.rpc).toHaveBeenCalledWith('close_propel_technique',{p_character:row.character_id,p_declaration:row.request_id},true);
+});
+it('closure rejects an unverified success',async()=>{mock.rpc.mockResolvedValue(null);await expect(closePropelTechnique(record())).rejects.toThrow(/could not be verified/);});

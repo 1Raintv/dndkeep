@@ -4,8 +4,8 @@ import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import PropelTechniqueControls from './PropelTechniqueControls';
 import type {PropelRecord} from '../../../lib/api/psionicPropel';
 import {pendingPropelTechniques,rememberPropelTechnique} from '../../../lib/propelTechniqueRecovery';
-const mock=vi.hoisted(()=>({options:vi.fn(),choose:vi.fn()}));
-vi.mock('../../../lib/api/propelTechniques',()=>({availablePropelTechniques:mock.options,choosePropelTechnique:mock.choose}));
+const mock=vi.hoisted(()=>({close:vi.fn(),options:vi.fn(),choose:vi.fn()}));
+vi.mock('../../../lib/api/propelTechniques',()=>({closePropelTechnique:mock.close,availablePropelTechniques:mock.options,choosePropelTechnique:mock.choose}));
 const row={character_id:'00000000-0000-4000-8000-000000000001',request_id:'00000000-0000-4000-8000-000000000002'} as PropelRecord;
 const options=[{kind:'boost',speedBonus:10},{kind:'disorient',preventsOpportunityAttacks:true},{kind:'bolt',damage:4}];
 beforeEach(()=>{localStorage.clear();vi.resetAllMocks();mock.options.mockReturnValue(options);mock.choose.mockResolvedValue(null);});afterEach(cleanup);
@@ -30,4 +30,12 @@ it('starts reading after a save becomes a settled failure in the same mounted us
 });
 it('does not show effects when the saved receipt cannot be read',async()=>{
  mock.choose.mockRejectedValue(new Error('Read unavailable'));render(<PropelTechniqueControls row={row}/>);await screen.findByRole('alert');expect(screen.queryByRole('button',{name:/Boost ·/})).toBeNull();expect(screen.getByRole('button',{name:'Check saved technique'})).toBeTruthy();
+});
+
+it('persists closure intent after failure and only retries closure',async()=>{
+ rememberPropelTechnique(row.character_id,{declarationId:row.request_id,choice:'boost'});mock.close.mockRejectedValueOnce(new Error('Interrupted'));
+ render(<PropelTechniqueControls row={row}/>);await waitFor(()=>expect((screen.getByRole('button',{name:'Close without a new effect'}) as HTMLButtonElement).disabled).toBe(false));
+ fireEvent.click(screen.getByRole('button',{name:'Close without a new effect'}));await screen.findByRole('button',{name:'Confirm closing technique'});
+ expect(screen.queryByRole('button',{name:'Confirm saved technique'})).toBeNull();mock.close.mockResolvedValue({choice:'none'});
+ fireEvent.click(screen.getByRole('button',{name:'Confirm closing technique'}));await screen.findByText('Saved: No technique.');expect(pendingPropelTechniques(row.character_id)).toEqual([]);
 });
