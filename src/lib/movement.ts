@@ -9,6 +9,7 @@ import {resetMovementAtomically} from './api/movementReset';
 // (v2.108) adds Dash, Disengage, and the Opportunity Attack reaction entry
 // that fires when a creature leaves a hostile's reach.
 
+import {hasTelekineticBoost} from '../rules/telekineticTechniques';
 import {combatMovementAllowance} from '../rules/combatMovement';
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
@@ -43,6 +44,7 @@ export function movementAllowanceForParticipant(row:{is_dead?:boolean|null;max_s
   exhaustionLevel:row.exhaustion_level??0,
   masterySlowed:Array.isArray(row.active_buffs)&&row.active_buffs.some(b=>b?.key==='mastery_slowed'),
   dashed:row.dash_used_this_turn===true,
+  telekineticBoost:hasTelekineticBoost(row.active_buffs),
  });
 }
 

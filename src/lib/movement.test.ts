@@ -35,3 +35,13 @@ it('reset delegates the rendered turn and surfaces a rejected movement snapshot'
  vi.mocked(resetMovementAtomically).mockResolvedValueOnce({} as never);expect(await resetMovement(input)).toEqual({ok:true});expect(resetMovementAtomically).toHaveBeenCalledWith('encounter','actor','rendered-turn');
  vi.mocked(resetMovementAtomically).mockRejectedValueOnce(new Error('Movement changed'));expect(await resetMovement(input)).toEqual({ok:false,reason:'Movement changed'});
 });
+
+it('joined Boost effects increase validated movement once and removal restores the original allowance',async()=>{
+ const boost=(id:string)=>({key:`telekinetic_boost:${id}`,technique:'boost',speedBonus:10});
+ m.row.combatants={active_conditions:[],exhaustion_level:0,active_buffs:[boost('one'),boost('two')]};
+ expect(await canMove('actor',35)).toMatchObject({allowed:true,maxSpeed:40,remaining:35});
+ expect(await canMove('actor',36)).toMatchObject({allowed:false,maxSpeed:40});
+ m.row.dash_used_this_turn=true;expect(await canMove('actor',75)).toMatchObject({allowed:true,maxSpeed:80,remaining:75});
+ m.row.combatants={active_conditions:[],exhaustion_level:0,active_buffs:[]};
+ expect(await canMove('actor',56)).toMatchObject({allowed:false,maxSpeed:60,remaining:55});
+});

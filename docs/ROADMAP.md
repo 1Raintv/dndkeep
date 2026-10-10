@@ -8985,3 +8985,25 @@ Disorient in Opportunity Attack eligibility/acceptance, and verify real Bolt
 resolution and timed expiry through the UI. No existing UI calls this new RPC.
 The pure technique planner still needs its production caller. Do not present
 this backend checkpoint as finished ability automation.
+
+### Telekinetic Boost — live movement checkpoint
+
+Saved Boost effects now feed the shared movement allowance used by map movement,
+initiative and the creature action rail. The +10 ft applies before halving and
+Dash; immobilization still wins. Multiple saved Boost entries grant one increase
+and retain their independent expiry times. The creature rail now uses the same
+allowance instead of displaying only base speed.
+
+18 additional unit cases cover reductions, Dash, immobilization, malformed buffs,
+independent expiry and the joined movement adapter. Full gate passes: 4,119 unit
+tests, TS 194/194, entry 255.7 KB. Desktop and mobile browser checks verify a saved
+Boost changes 30 to 40 ft, real Dash changes it to 80 ft, both combat displays
+agree, and advancing to the caster's next turn removes the effect. Scoped overflow
+and runtime-error checks pass; screenshots reviewed. Removing the Boost adapter
+connection makes the regression fail; restored checks pass.
+
+This test uses live combat controls without a scene; it does not certify token
+movement visually. Disorient offer/acceptance enforcement, validated client API,
+saved-choice recovery and controls, and real Bolt damage resolution remain open.
+The technique options planner still needs its production caller. No production
+deployment or database changes in this checkpoint.

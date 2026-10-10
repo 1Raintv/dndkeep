@@ -1,3 +1,4 @@
+import {movementAllowanceForParticipant} from '../../lib/movement';
 import {settleAttackCondition} from '../../lib/api/attackConditions';
 import {saveResolutionOutcome} from '../../rules/saveResolution';
 import {verifiedTargetSaves,UnverifiedSaveBonusError} from '../../lib/verifiedTargetSaves';
@@ -2548,7 +2549,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
             const bonusUsed = !!a.bonus_used;
             const reactionUsed = !!a.reaction_used;
             const moveUsed = a.movement_used_ft ?? 0;
-            const moveMax = a.max_speed_ft ?? 30;
+            const moveMax = movementAllowanceForParticipant(a);
             const pillBase: React.CSSProperties = {
               flex: 1,
               minWidth: 0,

@@ -1,7 +1,8 @@
+import {readFileSync} from 'node:fs';
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {expect,test} from '@playwright/test';
-import {gateDbSuite} from './helpers';
+import {gateDbSuite,signInAsSeedDm} from './helpers';
 const args=['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-q','-t','-A','-v','ON_ERROR_STOP=1'];
 const sql=(q:string)=>execFileSync('docker',args,{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 const auth=(u:string,q:string)=>`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${u}","role":"authenticated"}';${q};commit;`;
@@ -92,6 +93,29 @@ test.describe('Telekinetic Technique choices',()=>{
   const results=await Promise.all([send('boost'),send('disorient')]);
   expect(results.filter(r=>r.code===0)).toHaveLength(1);expect(results.find(r=>r.code!==0)?.error).toContain('already saved');
   expect(buffs()).toHaveLength(1);expect(read().choice).toBe(JSON.parse(results.find(r=>r.code===0)!.out).choice);
+ });
+ test('Boost changes the live movement display, Dash and next-caster-turn expiry',async({page},info)=>{
+  settle();choose('boost');
+  sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}',jsonb_build_object('sub','${dm}','email','${dm}@propelsave.local'),'email',now(),now(),now());
+   update combat_encounters set current_turn_index=1 where id='${encounter}';update combat_participants set max_speed_ft=30,movement_used_ft=0 where id='${target}';update combatants set current_hp=20,max_hp=20 where campaign_id='${campaign}';`);
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});page.on('response',response=>{if(response.status()>=400)errors.push(`${response.status()} ${new URL(response.url()).pathname}`);});
+  await signInAsSeedDm(page,`${dm}@propelsave.local`);await page.goto(`/campaigns/${campaign}`);
+  const strip=page.getByRole('region',{name:'Combat initiative'});
+  await expect(strip.getByText('40/40 ft',{exact:true})).toBeVisible();
+  const validate=()=>page.evaluate(async id=>{const path='/src/lib/movement.ts';return (await import(/* @vite-ignore */ path)).canMove(id,40);},target);
+  expect(await validate()).toMatchObject({allowed:true,maxSpeed:40});
+  await strip.getByRole('button',{name:'Dash',exact:true}).click();
+  await expect(strip.getByText('80/80 ft',{exact:true})).toBeVisible();
+  expect(await validate()).toMatchObject({allowed:true,maxSpeed:80});
+  const movePill=page.getByRole('region',{name:'Monster actions'}).getByTitle('Movement — 0/80 ft used');
+  await expect(movePill).toHaveText('Move80ft');await movePill.scrollIntoViewIfNeeded();await expect(movePill).toBeVisible();
+  await page.screenshot({path:`.tmp/boost-movement-${info.project.name}.png`});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('.initiative-strip, .initiative-strip *, .monster-action-rail, .monster-action-rail *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
+  await strip.getByRole('button',{name:'End Turn',exact:true}).click();
+  await expect.poll(()=>buffs()).toEqual([]);
+  await expect(strip.getByText('30/30 ft',{exact:true})).toBeVisible();
+  expect(errors).toEqual([]);
  });
  test('a late history failure rolls back the effect and its saved choice',()=>{
   settle();expect(()=>sql(`begin;create function pg_temp.reject_technique_history() returns trigger language plpgsql as $$begin raise exception 'injected history failure';end;$$;

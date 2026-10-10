@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {telekineticTechniqueOptions,type TelekineticTechniqueContext} from './telekineticTechniques';
+import {hasTelekineticBoost,telekineticTechniqueOptions,type TelekineticTechniqueContext} from './telekineticTechniques';
 import {advanceMasteryExpiry} from './masteryExpiry';
 const base:TelekineticTechniqueContext={caster:{class_name:'Psion',level:3,subclass:'Psykinetic'},outcome:'failed',mode:'technique',movement:'push',roll:3,casterParticipantId:'caster',targetParticipantId:'target'};
 it('gives one menu of optional effects, with saved Force damage and distinct expiry owners',()=>{
@@ -41,3 +41,12 @@ it.each(['caster','target'])('the existing turn handler removes only the effect 
  expect(result.next.map(e=>e.kind)).toEqual([actor==='caster'?'disorient':'boost']);
  expect(advanceMasteryExpiry(result.next,actor,'turn_start').removed).toEqual([]);
 });
+
+const boost=(caster:string)=>({key:`telekinetic_boost:${caster}`,technique:'boost',speedBonus:10,expiresAtStartOfTurnOf:caster});
+it('retains overlapping Boost until the last source expires, without stacking',()=>{
+ const buffs=[boost('first'),boost('second')];expect(hasTelekineticBoost(buffs)).toBe(true);
+ const afterFirst=advanceMasteryExpiry(buffs,'first','turn_start').next;
+ expect(hasTelekineticBoost(afterFirst)).toBe(true);
+ expect(hasTelekineticBoost(advanceMasteryExpiry(afterFirst,'second','turn_start').next)).toBe(false);
+});
+it.each([null,{},[],[null,4,'boost'],[{key:'other',technique:'boost',speedBonus:10}],[{...boost('a'),speedBonus:100}],[{...boost('a'),speedBonus:'10'}],[{...boost('a'),technique:'disorient'}]])('does not grant Boost from malformed or unrelated effects %j',buffs=>expect(hasTelekineticBoost(buffs)).toBe(false));

@@ -39,3 +39,11 @@ export function telekineticTechniqueOptions(context:TelekineticTechniqueContext)
   ...(context.mode==='free'?[]:[{kind:'bolt' as const,damageType:'Force' as const,damage:context.roll}]),
  ];
 }
+
+/** Saved effects can overlap across casters, but the same feature's Speed
+ * increase does not stack. Expiry removes entries through the turn pipeline. */
+export function hasTelekineticBoost(buffs:unknown):boolean {
+ return Array.isArray(buffs)&&buffs.some(buff=>buff&&typeof buff==='object'
+  &&typeof buff.key==='string'&&buff.key.startsWith('telekinetic_boost:')
+  &&buff.technique==='boost'&&buff.speedBonus===10);
+}
