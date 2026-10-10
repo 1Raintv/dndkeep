@@ -1,5 +1,31 @@
 # DNDKeep — Two-Track Roadmap
 
+### Connection integration — player controls (local; not released)
+
+The actual character-sheet row now opens saved Connection controls in its
+expanded detail area. A new extension persists its original roll before any
+request, then uses the shared Bonus Action/payment lifecycle and linked
+Surge/Enkindled. Interrupted declarations can be confirmed after reload;
+finishing recovery retains paid enhancements and never rerolls. Unknown
+payments stay in the existing payment recovery panel.
+
+The view shows the strongest active extension and its remaining game time,
+refreshes on relevant events/focus and periodically, and returns to base range
+at expiry. Overlapping bonuses do not add together; a weaker active extension
+can reappear after a stronger one expires. Invalid clocks/unfinished rolls are
+marked for review. Refreshing does not make the range flash or restart duration.
+The obsolete, now-unimported PsionicPowerButton and its obsolete UI tests were
+removed; current controls are covered by the saved-lifecycle browser tests.
+
+Desktop/mobile fixture and real-sheet checks cover lost begin replies, reload,
+exactly one free-use claim, range/time refresh, expiry and scoped overflow.
+Screenshots were inspected; a mutation removing the displayed bonus fails the
+regression. Existing power tests now advance the turn between Connection Bonus
+Actions and verify saved results instead of the retired client-only history
+insert. Final verification: 24 desktop database/browser cases and five mobile
+power/control cases passed, along with the full project gate. No new migration
+beyond the existing 320-file branch chain.
+
 ### Connection integration — durable enhancement recovery (not released)
 
 Surge/Enkindled requests now carry an exclusive `connectionId` through the

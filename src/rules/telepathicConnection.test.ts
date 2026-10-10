@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {telepathyBaseRange,telepathicConnectionRange,connectionSecondsRemaining} from './telepathicConnection';
+import {telepathyBaseRange,telepathicConnectionRange,connectionSecondsRemaining,connectionRangeDisplay} from './telepathicConnection';
 const psion={class_name:'Psion',level:5,subclass:'Telepath'};
 it('uses Psion levels for the Telepath base range in either class order',()=>{
  expect(telepathyBaseRange(psion)).toBe(30);
@@ -37,4 +37,15 @@ it('rejects a rewound clock and handles large elapsed values without overflow',(
  expect(connectionSecondsRemaining(100,99)).toBeNull();
  expect(connectionSecondsRemaining(0,Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER)).toBe(0);
  expect(connectionSecondsRemaining(Number.MAX_SAFE_INTEGER,Number.MAX_SAFE_INTEGER)).toBe(3600);
+});
+
+it('overlapping extensions use the strongest active bonus and reveal weaker ones after expiry',()=>{
+ expect(connectionRangeDisplay(60,[{total:8,remainingSeconds:1},{total:3,remainingSeconds:300}])).toEqual({range:140,remainingSeconds:1,needsReview:false});
+ expect(connectionRangeDisplay(60,[{total:8,remainingSeconds:0},{total:3,remainingSeconds:299}])).toEqual({range:90,remainingSeconds:299,needsReview:false});
+ expect(connectionRangeDisplay(30,[])).toEqual({range:30,remainingSeconds:null,needsReview:false});
+});
+it('unsettled rolls and missing clocks require review; ties keep the longest active duration',()=>{
+ expect(connectionRangeDisplay(30,[{total:null,remainingSeconds:60}]).needsReview).toBe(true);
+ expect(connectionRangeDisplay(30,[{total:4,remainingSeconds:null}]).needsReview).toBe(true);
+ expect(connectionRangeDisplay(30,[{total:4,remainingSeconds:10},{total:4,remainingSeconds:50}]).remainingSeconds).toBe(50);
 });

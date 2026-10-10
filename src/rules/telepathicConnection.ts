@@ -25,3 +25,16 @@ export function connectionSecondsRemaining(startSeconds:number,currentSeconds:nu
  if(elapsed>=CONNECTION_DURATION_SECONDS||extraElapsedSeconds>=CONNECTION_DURATION_SECONDS-elapsed)return 0;
  return CONNECTION_DURATION_SECONDS-elapsed-extraElapsedSeconds;
 }
+
+/** Same-feature extensions never add together. A stronger extension expiring
+ * can reveal a weaker one that still has time remaining. */
+export function connectionRangeDisplay(base:number,effects:readonly {total:number|null;remainingSeconds:number|null}[]){
+ let bonus=0,remainingSeconds:number|null=null,needsReview=![30,60].includes(base);
+ for(const effect of effects){
+  if(effect.remainingSeconds===0)continue;
+  if(effect.total===null||effect.remainingSeconds===null||!Number.isInteger(effect.total)||effect.total<1||effect.total>36
+   ||!Number.isInteger(effect.remainingSeconds)||effect.remainingSeconds<0||effect.remainingSeconds>3600){needsReview=true;continue;}
+  if(effect.total>bonus||(effect.total===bonus&&effect.remainingSeconds>(remainingSeconds??0))){bonus=effect.total;remainingSeconds=effect.remainingSeconds;}
+ }
+ return {range:base+10*bonus,remainingSeconds,needsReview};
+}

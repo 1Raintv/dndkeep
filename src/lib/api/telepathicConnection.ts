@@ -75,3 +75,8 @@ export async function listConnections(characterId:string):Promise<ConnectionReco
  requireIds(characterId);const rows=await psionicRpc('psionic_connection',{p_character:characterId,p_operation:'list',p_payload:{}});
  if(!Array.isArray(rows)||rows.some(r=>!validConnectionRecord(r,characterId))||new Set(rows.map(r=>r.request_id)).size!==rows.length)throw uncertain();return rows;
 }
+
+export async function getConnectionTurn(characterId:string):Promise<string>{
+ requireIds(characterId);const context=await psionicRpc('psionic_connection',{p_character:characterId,p_operation:'context',p_payload:{}}) as {actorId?:unknown;turnId?:unknown}|null;
+ if(!context||context.actorId!==characterId||!text(context.turnId))throw uncertain();return context.turnId;
+}

@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {expect,test} from '@playwright/test';
@@ -152,6 +153,47 @@ test.describe('saved Connection private lifecycle',()=>{
   },character);
   expect(recovered).toMatchObject({receipt:{total:4,hitDiceSpent:1,replayed:true},pending:[]});
   expect(sql(`select count(*) from psionic_surge_uses where request_id='${requestId}'`)).toBe('1');
+ });
+
+ test('Connection controls recover a lost declaration and display game-time range',async({page},info)=>{
+  sql(`update characters set level=5 where id='${character}';
+   update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${owner}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${owner}','${owner}',jsonb_build_object('sub','${owner}','email','${owner}@connection.local'),'email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${owner}@connection.local`);
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'&&!m.text().includes('net::ERR_FAILED'))errors.push(m.text());});page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
+  await page.goto(`/e2e/fixtures/connection.html?character=${character}`);
+  const panel=page.getByRole('region',{name:'Telepathic Connection controls'});
+  await expect(panel).toContainText('Telepathy · 30 ft');
+  let dropped=0;await page.route('**/rest/v1/rpc/psionic_connection',async route=>{
+   if(route.request().postDataJSON()?.p_operation!=='begin'){await route.continue();return;}
+   const response=await route.fetch();expect(response.ok()).toBe(true);dropped++;await route.abort('failed');
+  });
+  await panel.getByRole('button',{name:'Extend telepathy (free)',exact:true}).click();
+  await page.getByRole('button',{name:'Roll and extend',exact:true}).click();
+  await expect(panel.getByRole('button',{name:'Confirm saved extension'})).toBeEnabled();
+  expect(dropped).toBe(2);await page.unroute('**/rest/v1/rpc/psionic_connection');await page.reload();
+  await panel.getByRole('button',{name:'Confirm saved extension'}).click();
+  await expect(panel.getByRole('button',{name:'Confirm saved extension'})).toHaveCount(0);
+  const declaration=JSON.parse(sql(`select to_jsonb(d) from dndkeep_private.connection_declarations d where character_id='${character}'`));
+  await expect(panel).toContainText(`Telepathy · ${30+10*declaration.base_roll} ft`);
+  await expect(panel).toContainText('60m 0s remaining');
+  await expect(panel.getByRole('button',{name:'Extend telepathy (1 die)',exact:true})).toBeVisible();
+  expect(sql(`select count(*) from psionic_energy_uses where character_id='${character}' and request->>'operation'='connection'`)).toBe('1');
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('6');
+  sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+60 where character_id='${character}'`);
+  await panel.getByRole('button',{name:'Refresh range'}).click();await expect(panel).toContainText('59m 0s remaining');
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('.connection-controls, .connection-controls *')");const report=await page.evaluate('('+scoped+'\n})()');expect(report.sideways).toBe(false);expect(report.clipped).toEqual([]);expect(report.pastEdge).toEqual([]);}
+  await page.screenshot({path:`.tmp/connection-controls-${info.project.name}.png`});
+  sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+3540 where character_id='${character}'`);
+  await panel.getByRole('button',{name:'Refresh range'}).click();await expect(panel).toContainText('Telepathy · 30 ft');await expect(panel).toContainText('Base range · always available');
+  sql(`update profiles set show_ua_content=true where id='${owner}'`);
+  await page.goto(`/character/${character}`);
+  const ability=page.locator('.arow-grid').filter({has:page.getByText('Telepathic Connection',{exact:true})});
+  await ability.getByRole('button',{name:'Range / extend',exact:true}).click();
+  await expect(panel).toContainText('Telepathy · 30 ft');
+  await panel.screenshot({path:`.tmp/connection-sheet-${info.project.name}.png`});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('.connection-controls, .connection-controls *')");const report=await page.evaluate('('+scoped+'\n})()');expect(report.clipped).toEqual([]);expect(report.pastEdge).toEqual([]);}
+  expect(errors).toEqual([]);
  });
 
 });
