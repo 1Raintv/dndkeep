@@ -1,3 +1,4 @@
+import {attackReactionOffers} from './api/attackReactionOffers';
 import {hasTelekineticDisorient} from '../rules/telekineticTechniques';
 // v2.98.0 — Phase E of the Combat Backbone
 //
@@ -649,8 +650,11 @@ export async function offerReactionsFor(
   attack: PendingAttack,
   triggerPoint: 'post_attack_roll' | 'post_damage_roll' | 'pre_damage_applied',
 ): Promise<number> {
+  const saved=await attackReactionOffers(attack.id,triggerPoint,null,null);
+  if(saved!==null)return saved;
+  const finish=(keys:string[])=>attackReactionOffers(attack.id,triggerPoint,attack.updated_at,keys).then(n=>n!);
   // Load the target participant and — if character — its character row
-  if (!attack.target_participant_id) return 0;
+  if (!attack.target_participant_id) return finish([]);
   const { data: tgt, error: targetError } = await supabase
     .from('combat_participants')
     .select('id, name, participant_type, entity_id, reaction_used')
@@ -658,7 +662,7 @@ export async function offerReactionsFor(
     .single();
   // v2.869: an unreadable reactor is not proof that no reaction is eligible.
   if (targetError || !tgt) throw new Error('Reaction target could not be verified. Refresh the attack before continuing.');
-  if (tgt.reaction_used) return 0;              // already used reaction this round
+  if (tgt.reaction_used) return finish([]);              // already used reaction this round
 
   let reactorChar: Character | null = null;
   if (tgt.participant_type === 'character') {
@@ -699,36 +703,8 @@ export async function offerReactionsFor(
   }
 
   const candidates = REACTION_REGISTRY.filter(r => r.triggerPoint === triggerPoint);
-  const offers: Omit<PendingReaction, 'id' | 'created_at' | 'updated_at'>[] = [];
-
-  for (const entry of candidates) {
-    if (entry.isEligible({ attack, reactorCharacter: reactorChar, reactorToAttackerFt })) {
-      const offeredAt = new Date();
-      const expiresAt = new Date(offeredAt.getTime() + DEFAULT_TIMER_SECONDS * 1000);
-      offers.push({
-        campaign_id: attack.campaign_id,
-        pending_attack_id: attack.id,
-        reactor_participant_id: tgt.id,
-        reactor_name: tgt.name,
-        reactor_type: tgt.participant_type as 'character' | 'monster' | 'npc',
-        reaction_key: entry.key,
-        reaction_name: entry.name,
-        trigger_point: triggerPoint,
-        offered_at: offeredAt.toISOString(),
-        expires_at: expiresAt.toISOString(),
-        decided_at: null,
-        state: 'offered',
-        decision_payload: null,
-      });
-    }
-  }
-
-  if (offers.length > 0) {
-    const saved = await checkedWrite('pending_reactions.insert offers', { count: offers.length }, supabase.from('pending_reactions').insert(offers));
-    if (saved.error) throw new Error('Reaction offers could not be confirmed. Review this attack before continuing.');
-  }
-
-  return offers.length;
+  const keys=candidates.filter(entry=>entry.isEligible({attack,reactorCharacter:reactorChar,reactorToAttackerFt})).map(entry=>entry.key);
+  return finish(keys);
 }
 
 /**

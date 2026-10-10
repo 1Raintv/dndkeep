@@ -369,7 +369,10 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   if (!row) return null;
   const atk = row as PendingAttack;
 
-  if (atk.state !== 'declared') return atk;
+  if (atk.state !== 'declared') {
+    if(atk.state==='attack_rolled'&&atk.attack_kind==='attack_roll')await offerReactionsFor(atk,'post_attack_roll');
+    return atk;
+  }
   if (atk.attack_kind !== 'attack_roll') return atk;
 
   // v2.110.0 — Phase H: condition-aware advantage/disadvantage.
@@ -502,7 +505,10 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
     naturalOneAutoFails,criticalOnHit:autoCrit,automatic:coverLevel==='total'?'failure':'none',result:hitResult};
 
   const saved=await recordPendingAttackRoll(atk,snapshot,atk.attacker_participant_id?attackerBuffs:null);
-  if(saved.replayed)return saved.attack;
+  if(saved.replayed){
+    if(saved.attack.state==='attack_rolled')await offerReactionsFor(saved.attack,'post_attack_roll');
+    return saved.attack;
+  }
   const updated=saved.attack;
 
   // Emit a dedicated cover event first so the log reads naturally:
@@ -632,6 +638,8 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
   if (!row) return null;
   const atk = row as PendingAttack;
 
+  if(atk.attack_kind==='attack_roll'&&atk.state==='attack_rolled')await offerReactionsFor(atk,'post_attack_roll');
+  if(atk.state==='damage_rolled')await offerReactionsFor(atk,'post_damage_roll');
   if (!atk.damage_dice) return atk;
   if (atk.state === 'damage_rolled' || atk.state === 'applied' || atk.state === 'canceled') return atk;
 
@@ -815,7 +823,10 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
   const updated=recorded.attack;
   // A competing client or lost-response retry returns the winning record.
   // Never log our discarded local dice or consume the bonus again.
-  if(recorded.replayed)return updated;
+  if(recorded.replayed){
+    if(updated.state==='damage_rolled')await offerReactionsFor(updated,'post_damage_roll');
+    return updated;
+  }
 
   await emitCombatEvent({
     campaignId: atk.campaign_id,
@@ -897,6 +908,8 @@ export async function applyDamage(attackId: string, beforeLegacyApply?:()=>void)
     .single();
   if (!row) return null;
   const atk = row as PendingAttack;
+
+  if(atk.state==='damage_rolled')await offerReactionsFor(atk,'post_damage_roll');
 
   // Bolt's saved die is Force damage, so it must not use the legacy HP writes.
   if(atk.attack_kind==='auto_hit'&&atk.attack_name==='Telekinetic Bolt'){

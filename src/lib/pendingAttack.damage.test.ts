@@ -30,7 +30,7 @@ it('missing attacker bonuses stop recording instead of silently dropping damage'
  m.riderError={message:'Offline'};await expect(rollDamage('attack')).rejects.toThrow(/bonuses could not/);expect(m.patch).toBeNull();expect(m.event).not.toHaveBeenCalled();
 });
 it('failed or stale recording does not consume a single-use rider or emit a damage event',async()=>{
- m.riders=[{buff:{key:'once',name:'Once',source:'feature',singleUse:true},dice:'1d6'}];m.writeError={message:'stale'};await expect(rollDamage('attack')).rejects.toThrow(/not confirmed/);expect(m.remove).not.toHaveBeenCalled();expect(m.event).not.toHaveBeenCalled();expect(m.reactions).not.toHaveBeenCalled();
+ m.riders=[{buff:{key:'once',name:'Once',source:'feature',singleUse:true},dice:'1d6'}];m.writeError={message:'stale'};await expect(rollDamage('attack')).rejects.toThrow(/not confirmed/);expect(m.remove).not.toHaveBeenCalled();expect(m.event).not.toHaveBeenCalled();expect(m.reactions).toHaveBeenCalledTimes(1);expect(m.reactions).toHaveBeenCalledWith(m.attack,'post_attack_roll');
 });
 it('misses record zero components and no fresh dice',async()=>{
  m.attack.hit_result='miss';await rollDamage('attack');expect(m.patch?.damage_components).toEqual({version:1,components:[]});expect(m.roll).not.toHaveBeenCalled();
@@ -47,7 +47,7 @@ it('a stale miss cannot overwrite a completed attack or report success',async()=
 });
 
 it('a competing winning record is returned without logging discarded dice',async()=>{
- const winner={...m.attack,state:'damage_rolled',damage_raw:9,damage_final:9};m.record.mockResolvedValue({attack:winner,replayed:true});expect(await rollDamage('attack')).toEqual(winner);expect(m.event).not.toHaveBeenCalled();expect(m.remove).not.toHaveBeenCalled();expect(m.reactions).not.toHaveBeenCalled();
+ const winner={...m.attack,state:'damage_rolled',damage_raw:9,damage_final:9};m.record.mockResolvedValue({attack:winner,replayed:true});expect(await rollDamage('attack')).toEqual(winner);expect(m.event).not.toHaveBeenCalled();expect(m.remove).not.toHaveBeenCalled();expect(m.reactions).toHaveBeenCalledWith(winner,'post_damage_roll');
 });
 
 it('queued Psion dice become typed damage without another roll or modifier',async()=>{m.attack.attack_kind='auto_hit';m.attack.attack_name='Destructive Thoughts';m.attack.damage_dice='17';m.attack.psionic_damage_dice={version:1,sides:8,originalRolls:[1,5,3],rolls:[4,5,4],modifier:4};await rollDamage('attack');expect(m.roll).not.toHaveBeenCalled();expect(m.patch).toMatchObject({damage_raw:17,damage_final:17,damage_rolls:[4,5,4],damage_components:{version:1,components:[expect.objectContaining({expression:'3d8+4',modifier:4,dieKinds:['adjusted','rolled','adjusted']})]}});});
@@ -56,4 +56,12 @@ it('corrupt queued Psion dice stop before rolling or recording',async()=>{m.atta
 it.each(['melee','ranged'] as const)('damage bonuses use captured %s mode rather than generic spell source',async mode=>{
  m.attack.attack_source='spell';m.attack.attack_mode=mode;await rollDamage('attack');
  expect(m.riderOptions).toHaveBeenCalledWith(expect.objectContaining({isMelee:mode==='melee'}));
+});
+
+it('unconfirmed reaction recovery stops before rolling or recording damage',async()=>{
+ m.reactions.mockRejectedValueOnce(new Error('Offers not confirmed'));
+ await expect(rollDamage('attack')).rejects.toThrow('Offers not confirmed');expect(m.roll).not.toHaveBeenCalled();expect(m.record).not.toHaveBeenCalled();
+});
+it('already saved damage recovers its offers without rolling again',async()=>{
+ m.attack.state='damage_rolled';expect(await rollDamage('attack')).toEqual(m.attack);expect(m.roll).not.toHaveBeenCalled();expect(m.record).not.toHaveBeenCalled();expect(m.reactions).toHaveBeenCalledWith(m.attack,'post_damage_roll');
 });

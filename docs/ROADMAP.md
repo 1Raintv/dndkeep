@@ -1,5 +1,40 @@
 # DNDKeep — Two-Track Roadmap
 
+### Saved attack reaction offers and recovery (local; not released)
+
+Migration 20261010174241 adds a private, RLS-enabled receipt table keyed by
+attack and reaction window. The authenticated, scoped dispatcher serializes on
+the attack row; it owns offer identity, names and deadlines. A first empty batch
+is durable too. Replays return the original count, never reset a decision or
+extend a timer. Existing legacy offers are adopted without duplication. The
+existing eligibility registry supplies only whitelisted reaction keys; it does
+not supply writable offer rows. This does not add Telepath eligibility yet.
+
+Attack-roll retries recover offers without rolling again. Damage recording and
+application recover their preceding window before advancement; the existing SQL
+barrier holds damage when an unanswered offer is restored. No loose insert is
+used on this path. Read failures still surface, and an existing receipt bypasses
+fresh eligibility reads that could otherwise suppress or reopen an old choice.
+
+Validation: full gate passed (4,443 tests, TS 194/194, entry 255.7 KB). Twenty-seven
+combined database/browser cases passed, plus the additional attacking-player
+membership-revocation case. Coverage includes simultaneous requests, dropped
+responses after commit, zero-offer receipts, all terminal decisions, stale and
+foreign requests, private table access, and recovered offers blocking damage.
+Local SQL lint: no diagnostics for the new function, 20 other function warnings
+remain. Security advisor: only the existing keep_warm/client_errors warnings.
+The normal local migration ledger matches the file exactly. Artifacts:
+`.tmp/attack-offers-{gate,db-final,member}.log`, `.tmp/attack-offers-lint.json`,
+`.tmp/attack-offers-advisors.json`.
+
+Remaining: durable attack history, Graze deferral and actual ability-modifier
+capture, full Telepath controls/check triggers, and a server-level requirement
+that every new window be finalized before direct damage RPCs can advance it.
+The app restores offers before advancing, but this is not yet a missing-batch
+barrier against older clients or arbitrary direct writes. Fresh/main-upgrade
+rehearsals remain at 332; rerun through 333 before release. Production unchanged.
+
+
 ### Attack reaction failures are visible (local; not released)
 
 Attack-triggered reaction offers now reject failed/missing target, character,

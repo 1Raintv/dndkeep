@@ -1,13 +1,14 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 import type {PendingAttack} from '../types';
-const m=vi.hoisted(()=>({query:vi.fn(),insert:vi.fn(),map:vi.fn(),token:vi.fn(),distance:vi.fn(),target:{} as Record<string,unknown>|null,character:{} as Record<string,unknown>|null,attacker:{} as Record<string,unknown>|null,targetError:null as unknown,characterError:null as unknown,attackerError:null as unknown}));
+const m=vi.hoisted(()=>({query:vi.fn(),save:vi.fn(),insert:vi.fn(),map:vi.fn(),token:vi.fn(),distance:vi.fn(),target:{} as Record<string,unknown>|null,character:{} as Record<string,unknown>|null,attacker:{} as Record<string,unknown>|null,targetError:null as unknown,characterError:null as unknown,attackerError:null as unknown}));
+vi.mock('./api/attackReactionOffers',()=>({attackReactionOffers:m.save}));
 vi.mock('./log',()=>({log:{error:vi.fn()}}));
 vi.mock('./supabase',()=>({supabase:{from:m.query}}));
 vi.mock('./battleMapGeometry',()=>({loadActiveBattleMap:m.map,findTokenForParticipant:m.token,distanceBetweenTokensFt:m.distance}));
 import {offerReactionsFor} from './pendingReaction';
 const attack={id:'attack',campaign_id:'campaign',target_participant_id:'target',attacker_participant_id:'attacker',attack_kind:'attack_roll',hit_result:'hit'} as PendingAttack;
 beforeEach(()=>{
- vi.clearAllMocks();m.targetError=null;m.characterError=null;m.attackerError=null;
+ vi.clearAllMocks();m.save.mockImplementation(async (_id,_trigger,_time,keys)=>keys===null?null:keys.length);m.targetError=null;m.characterError=null;m.attackerError=null;
  m.target={id:'target',name:'Psion',participant_type:'character',entity_id:'hero',reaction_used:false};
  m.character={id:'hero',class_name:'Psion',level:5,known_spells:['shield'],spell_slots:{'1':{total:2,used:0}}};m.attacker={id:'attacker'};
  m.map.mockResolvedValue(null);m.insert.mockResolvedValue({error:null});
@@ -27,7 +28,7 @@ it.each(['error','missing'])('does not treat a %s attacker read as unknown range
  await expect(offerReactionsFor(attack,'post_attack_roll')).rejects.toThrow('Reaction range');expect(m.insert).not.toHaveBeenCalled();
 });
 it('still offers Shield when the character is readable and no map is active',async()=>{
- expect(await offerReactionsFor(attack,'post_attack_roll')).toBe(1);expect(m.insert).toHaveBeenCalledWith([expect.objectContaining({reaction_key:'shield',state:'offered'})]);
+ expect(await offerReactionsFor(attack,'post_attack_roll')).toBe(1);expect(m.save).toHaveBeenLastCalledWith('attack','post_attack_roll',undefined,['shield']);expect(m.insert).not.toHaveBeenCalled();
 });
 it('a used reaction is a verified reason to offer nothing',async()=>{
  m.target!.reaction_used=true;expect(await offerReactionsFor(attack,'post_attack_roll')).toBe(0);expect(m.insert).not.toHaveBeenCalled();expect(m.query).not.toHaveBeenCalledWith('characters');
@@ -42,8 +43,11 @@ it('requests strict map reads and surfaces a failed lookup before inserting offe
  expect(m.map).toHaveBeenCalledWith('campaign',{throwOnError:true});expect(m.insert).not.toHaveBeenCalled();
 });
 
-it.each(['returned','thrown'])('does not report offers created after a %s insert failure',async kind=>{
- if(kind==='returned')m.insert.mockResolvedValueOnce({error:{message:'offline'}});else m.insert.mockRejectedValueOnce(new Error('offline'));
- await expect(offerReactionsFor(attack,'post_attack_roll')).rejects.toThrow('Reaction offers could not be confirmed');
- expect(m.insert).toHaveBeenCalledTimes(1);
+it('propagates an unconfirmed batch without falling back to loose inserts',async()=>{
+ m.save.mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('Offers not confirmed'));
+ await expect(offerReactionsFor(attack,'post_attack_roll')).rejects.toThrow('Offers not confirmed');expect(m.insert).not.toHaveBeenCalled();
+});
+it.each([0,1])('a saved batch of %s bypasses fresh eligibility and never reopens it',async count=>{
+ m.save.mockResolvedValueOnce(count);m.targetError={message:'offline'};
+ expect(await offerReactionsFor(attack,'post_attack_roll')).toBe(count);expect(m.query).not.toHaveBeenCalled();expect(m.save).toHaveBeenCalledTimes(1);
 });
