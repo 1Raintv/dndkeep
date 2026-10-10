@@ -8946,3 +8946,42 @@ binding; this migration does not yet expose Boost, Disorient or Bolt controls.
 No production migration or deployment performed. Fresh/main-upgrade rehearsals
 from the previous checkpoint predate this new migration and need updating before
 release.
+
+### Telekinetic Techniques — saved server choice and delivery checkpoint
+
+Migration 20261010125125 adds an optional technique receipt to the original
+Propel declaration and a scoped choose/read function. Only the owning character
+(or authorized DM via existing Psion authorization) can use it. A new choice
+requires the original eligible Psykinetic progression, settled failed push,
+original current turn, no outgoing turn reservation, and unchanged captured
+participants. Legacy/tabletop declarations have no inferred target binding.
+
+Boost and Disorient store distinct timed effects on the target combatant. Each
+uses a declaration-specific key so different casters' expiry times can coexist;
+the upcoming movement reader must take the non-stacking +10 ft benefit, not sum
+these entries. Bolt queues one auto-hit ability with the finalized Force damage
+as a flat expression; it does not reroll or add Intelligence. HP, typed defenses
+and Concentration remain with the existing damage pipeline. The choice stores
+its original roll evidence. Choosing none also closes the optional choice.
+
+Effects/queued attack, history and saved choice commit together. Same-choice
+retries return the receipt; conflicting choices are rejected. Replays cannot
+resurrect removed buffs or deleted attacks. No second Action or Energy Die cost
+is introduced. A free d4 supports Bolt; a no-die 5-foot use cannot invent a Bolt
+roll. History uses the existing buff/attack payload format and preserves hidden
+participant visibility.
+
+18 isolated database checks pass: both durations, duplicate/conflicting choices,
+Bolt delivery, no-die/free-d4 behavior, secondary Psion, eligibility/turn/identity
+changes, ownership, removed effects, deleted attacks and late-history rollback.
+Full gate: 4,101 unit tests, TS 194/194, entry 255.7 KB. SQL lint has no errors;
+security advisors still show only prior keep_warm/client_errors findings. Exact
+local migration ledger verified; foreign local history retained. Local Docker
+only; no production migration or deployment.
+
+Not yet player-ready: connect a validated client API and saved-choice controls,
+include unresolved optional choices in recovery, consume Boost in movement and
+Disorient in Opportunity Attack eligibility/acceptance, and verify real Bolt
+resolution and timed expiry through the UI. No existing UI calls this new RPC.
+The pure technique planner still needs its production caller. Do not present
+this backend checkpoint as finished ability automation.
