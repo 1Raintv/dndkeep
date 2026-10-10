@@ -180,6 +180,13 @@ test.describe('saved Connection private lifecycle',()=>{
   await expect(panel.getByRole('button',{name:'Extend telepathy (1 die)',exact:true})).toBeVisible();
   expect(sql(`select count(*) from psionic_energy_uses where character_id='${character}' and request->>'operation'='connection'`)).toBe('1');
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('6');
+  // A second click in the same turn must stop before any saved roll or begin request.
+  let begins=0;page.on('request',r=>{if(r.url().endsWith('/rpc/psionic_connection')&&r.postDataJSON()?.p_operation==='begin')begins++;});
+  await panel.getByRole('button',{name:'Extend telepathy (1 die)',exact:true}).click();
+  await page.getByRole('button',{name:'Roll and extend',exact:true}).click();
+  await expect(panel.getByRole('alert')).toContainText('Bonus Action is already used');
+  expect(begins).toBe(0);
+  expect(await page.evaluate(id=>localStorage.getItem(`dndkeep:connection:${id}`),character)).toBeNull();
   sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+60 where character_id='${character}'`);
   await panel.getByRole('button',{name:'Refresh range'}).click();await expect(panel).toContainText('59m 0s remaining');
   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('.connection-controls, .connection-controls *')");const report=await page.evaluate('('+scoped+'\n})()');expect(report.sideways).toBe(false);expect(report.clipped).toEqual([]);expect(report.pastEdge).toEqual([]);}

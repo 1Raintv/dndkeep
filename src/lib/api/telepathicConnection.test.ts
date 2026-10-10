@@ -1,8 +1,8 @@
 import {beforeEach,expect,it,vi} from 'vitest';
-import {beginConnection,readConnection,finishConnection,listConnections,validConnectionRecord,type ConnectionRecord} from './telepathicConnection';
-const mock=vi.hoisted(()=>({rpc:vi.fn(),notify:vi.fn()}));
+import {getConnectionTurn,beginConnection,readConnection,finishConnection,listConnections,validConnectionRecord,type ConnectionRecord} from './telepathicConnection';
+const mock=vi.hoisted(()=>({rpc:vi.fn(),notify:vi.fn(),budget:vi.fn()}));
 vi.mock('../supabase',()=>({supabase:{}}));
-vi.mock('./actionBudget',()=>({notifyActionBudgetChanged:mock.notify}));
+vi.mock('./actionBudget',()=>({notifyActionBudgetChanged:mock.notify,getActionBudget:mock.budget}));
 vi.mock('./psionicTurns',()=>({psionicRpc:mock.rpc,PsionicRequestError:class extends Error {constructor(message:string,public definitelyNotPaid:boolean){super(message);}}}));
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 function saved():ConnectionRecord {
@@ -11,7 +11,7 @@ function saved():ConnectionRecord {
   energy_receipt:{requestId:id(1),remaining:6,energyRevision:1,connectionUsed:1,restorationResource:null,restorationUsed:null,rolls:[2],replayed:false},start_seconds:10,elapsed_adjustment:0,ended_by_rest:false,remainingSeconds:3600,
   roll_result:{declarationId:id(1),originalRolls:[2],enkindledRolls:[],usedSurge:false,rolls:[2],total:2},created_at:'2026-10-10T14:00:00Z'};
 }
-beforeEach(()=>{mock.rpc.mockReset();mock.notify.mockReset();});
+beforeEach(()=>{mock.budget.mockReset();mock.rpc.mockReset();mock.notify.mockReset();});
 it('accepts a complete saved effect and an unknown clock for explicit review',()=>{
  expect(validConnectionRecord(saved(),id(2))).toBe(true);
  expect(validConnectionRecord({...saved(),remainingSeconds:null},id(2))).toBe(true);
@@ -49,4 +49,20 @@ it('only read allows a missing record; finish requires a finalized roll',async()
 it('rejects duplicate list entries and invalid identities before a request',async()=>{
  mock.rpc.mockResolvedValue([saved(),saved()]);await expect(listConnections(id(2))).rejects.toThrow();
  mock.rpc.mockClear();await expect(readConnection('invalid',id(1))).rejects.toMatchObject({definitelyNotPaid:true});expect(mock.rpc).not.toHaveBeenCalled();
+});
+
+it('checks the current Bonus Action before allowing a fresh roll',async()=>{
+ const budget={context:{actorId:id(2),turnId:'saved-turn',isOwnTurn:true},spent:{bonusAction:false}};
+ mock.budget.mockResolvedValue(budget);
+ await expect(getConnectionTurn(id(2))).resolves.toBe('saved-turn');
+ budget.spent.bonusAction=true;
+ await expect(getConnectionTurn(id(2))).rejects.toThrow('Bonus Action is already used');
+ budget.spent.bonusAction=false;budget.context.isOwnTurn=false;
+ await expect(getConnectionTurn(id(2))).rejects.toThrow('Wait for your turn');
+ expect(mock.rpc).not.toHaveBeenCalled();
+});
+it('never permits a fresh roll when the saved action budget cannot be loaded',async()=>{
+ mock.budget.mockRejectedValue(new Error('Unavailable'));
+ await expect(getConnectionTurn(id(2))).rejects.toThrow('Unavailable');
+ expect(mock.rpc).not.toHaveBeenCalled();
 });

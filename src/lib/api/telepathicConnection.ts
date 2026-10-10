@@ -1,5 +1,5 @@
 import {psionicRpc,PsionicRequestError,type EnergyReceipt,type PsionicTurn} from './psionicTurns';
-import {notifyActionBudgetChanged} from './actionBudget';
+import {getActionBudget,notifyActionBudgetChanged} from './actionBudget';
 import {validPsionicTurn} from '../psionicDisciplineRequest';
 import {psionicDieCount,psionicDieSides} from '../../rules/psionicRestoration';
 import {validPsionicRoll} from '../../rules/psionicEnhancedRoll';
@@ -77,6 +77,11 @@ export async function listConnections(characterId:string):Promise<ConnectionReco
 }
 
 export async function getConnectionTurn(characterId:string):Promise<string>{
- requireIds(characterId);const context=await psionicRpc('psionic_connection',{p_character:characterId,p_operation:'context',p_payload:{}}) as {actorId?:unknown;turnId?:unknown}|null;
- if(!context||context.actorId!==characterId||!text(context.turnId))throw uncertain();return context.turnId;
+ requireIds(characterId);
+ // Check the saved budget before the caller rolls; begin still claims atomically
+ // so a competing tab cannot spend the same Bonus Action.
+ const {context,spent}=await getActionBudget(characterId);
+ if(!context.isOwnTurn)throw new PsionicRequestError('Wait for your turn before extending telepathy.',true);
+ if(spent.bonusAction)throw new PsionicRequestError('Your Bonus Action is already used. Advance to your next turn before extending telepathy.',true);
+ return context.turnId;
 }
