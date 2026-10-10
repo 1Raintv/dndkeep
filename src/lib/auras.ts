@@ -191,6 +191,8 @@ export function auraFromBuff(buff: ActiveBuff): AuraSpec | null {
 }
 
 /**
+ * v2.869 — retain combatant identity in every aura lookup: creatures can
+ * share both a definition and a name, but occupy different map positions.
  * Every aura currently active in the encounter, with its origin's map
  * position resolved. Auras whose origin has no token are skipped —
  * an Emanation without a position can't be evaluated geometrically.
@@ -201,7 +203,7 @@ export async function listActiveAuras(
 ): Promise<ActiveAura[]> {
   const { data: rowsRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, entity_id, ' + JOINED_COMBATANT_FIELDS)
+    .select('id, name, participant_type, entity_id, combatant_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('encounter_id', encounterId);
   const rows = ((rowsRaw ?? []) as any[]).map(normalizeParticipantRow);
 
@@ -210,7 +212,7 @@ export async function listActiveAuras(
   );
   if (withAuras.length === 0) return [];
 
-  const { loadActiveBattleMap, findTokenForParticipant } = await import('./battleMapGeometry');
+  const { loadActiveBattleMap, findTokenForParticipant, participantLookup } = await import('./battleMapGeometry');
   const bmap = await loadActiveBattleMap(campaignId);
   if (!bmap) return [];
 
@@ -218,7 +220,7 @@ export async function listActiveAuras(
   for (const r of withAuras) {
     if (r.is_dead) continue;
     const tok = findTokenForParticipant(
-      { id: r.id, name: r.name, participant_type: r.participant_type, entity_id: r.entity_id },
+      participantLookup(r),
       bmap.tokens,
     );
     if (!tok) continue;
@@ -470,19 +472,19 @@ export async function evaluateAurasOnMovement(input: {
 
   const { data: rowsRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, entity_id, ' + JOINED_COMBATANT_FIELDS)
+    .select('id, name, participant_type, entity_id, combatant_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('encounter_id', input.encounterId);
   const rows = ((rowsRaw ?? []) as any[]).map(normalizeParticipantRow);
   const byId = new Map<string, any>(rows.map((r: any) => [r.id, r]));
 
-  const { loadActiveBattleMap, findTokenForParticipant } = await import('./battleMapGeometry');
+  const { loadActiveBattleMap, findTokenForParticipant, participantLookup } = await import('./battleMapGeometry');
   const bmap = await loadActiveBattleMap(input.campaignId);
   if (!bmap) return;
 
   const mover = byId.get(input.moverParticipantId);
   if (!mover || mover.is_dead) return;
   const moverToken = findTokenForParticipant(
-    { id: mover.id, name: mover.name, participant_type: mover.participant_type, entity_id: mover.entity_id },
+    participantLookup(mover),
     bmap.tokens,
   );
   const moverSize = Math.max(1, (moverToken?.size as number) ?? 1);
@@ -504,7 +506,7 @@ export async function evaluateAurasOnMovement(input: {
         if (aura.spec.affects === 'enemies' &&
             (mover.participant_type === 'character') === (r.participant_type === 'character')) continue;
         const tok = findTokenForParticipant(
-          { id: r.id, name: r.name, participant_type: r.participant_type, entity_id: r.entity_id },
+          participantLookup(r),
           bmap.tokens,
         );
         if (!tok) continue;
@@ -566,18 +568,18 @@ export async function evaluateAurasOnTurnEnd(input: {
 
   const { data: rowRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, entity_id, ' + JOINED_COMBATANT_FIELDS)
+    .select('id, name, participant_type, entity_id, combatant_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .maybeSingle();
   if (!rowRaw) return;
   const row = normalizeParticipantRow(rowRaw);
   if (row.is_dead) return;
 
-  const { loadActiveBattleMap, findTokenForParticipant } = await import('./battleMapGeometry');
+  const { loadActiveBattleMap, findTokenForParticipant, participantLookup } = await import('./battleMapGeometry');
   const bmap = await loadActiveBattleMap(input.campaignId);
   if (!bmap) return;
   const tok = findTokenForParticipant(
-    { id: row.id, name: row.name, participant_type: row.participant_type, entity_id: row.entity_id },
+    participantLookup(row),
     bmap.tokens,
   );
   if (!tok) return;
@@ -618,17 +620,17 @@ export async function auraSpeedMultiplier(input: {
   const halving = auras.filter(a => a.spec.speedInside === 'half');
   if (halving.length === 0) return 1;
 
-  const { loadActiveBattleMap, findTokenForParticipant } = await import('./battleMapGeometry');
+  const { loadActiveBattleMap, findTokenForParticipant, participantLookup } = await import('./battleMapGeometry');
   const bmap = await loadActiveBattleMap(input.campaignId);
   if (!bmap) return 1;
 
   const { data: rowRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, entity_id')
+    .select('id, name, participant_type, entity_id, combatant_id')
     .eq('id', input.participantId)
     .maybeSingle();
   if (!rowRaw) return 1;
-  const tok = findTokenForParticipant(rowRaw, bmap.tokens);
+  const tok = findTokenForParticipant(participantLookup(rowRaw), bmap.tokens);
   if (!tok) return 1;
   const rect = footprintAt(tok.row, tok.col, Math.max(1, (tok.size as number) ?? 1));
 

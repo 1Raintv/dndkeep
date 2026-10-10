@@ -7723,3 +7723,18 @@ budget. Changed files lint clean; local SQL lint has no errors.
 Base/CON bonuses, defenses and geometry remain explicitly reviewed inputs.
 This adapter is tested through the live API; movement and turn orchestration
 still use the legacy resolver and must be migrated before release.
+
+
+### Aura token identity (2026-10-10, unreleased)
+
+Aura origin, movement, outgoing-turn and speed reads now select combatant_id
+and use the existing participantLookup helper. Previously, dropping this
+identity could miss or misidentify tokens sharing a creature definition/name.
+No new targeting fallback or game-rule behavior was introduced.
+
+Validation: five mocked-database regressions cover identical creatures,
+inside/outside positions, origin sweeps and a Large mover's footprint.
+Removing the selected identity makes the regression suite fail; restoring it
+passes. Full verify: 3,785 tests, TypeScript 194/194, hooks/RAW/coordinates/
+anchors, build and 255.7 KB entry budget. New test file lint clean.
+No production changes. Durable aura/turn orchestration remains unfinished.
