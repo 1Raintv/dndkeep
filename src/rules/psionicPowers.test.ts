@@ -126,3 +126,32 @@ it.each(['free','technique'] as const)('rejects Energy Die enhancements on %s Pr
 it.each([1,-1,NaN,Infinity])('rejects a fabricated roll on the no-die push (%s)',roll=>{
  expect(resolvePsionicPower(c,{kind:'propel',mode:'free',roll},true)).toBeNull();
 });
+
+// Independent UA progression table: exercise every legal class ordering so total
+// character level cannot silently upgrade a multiclass Psion's die or pool.
+const propelLevels = [
+ [1,6,4],[2,6,4],[3,6,4],[4,6,4],[5,8,6],
+ [6,8,6],[7,8,6],[8,8,6],[9,8,8],[10,8,8],
+ [11,10,8],[12,10,8],[13,10,10],[14,10,10],[15,10,10],
+ [16,10,10],[17,12,12],[18,12,12],[19,12,12],[20,12,12],
+] as const;
+for(const order of ['primary','secondary'] as const){
+ it.each(propelLevels.filter(([level])=>order==='primary'||level<20))(
+  `${order} Psion level %i: d%i, pool %i; every Propel roll and save outcome`,(level,sides,pool)=>{
+   const hero=order==='primary'
+    ?{class_name:'Psion',level,subclass:'Psi Warper'}
+    :{class_name:'Fighter',level:20-level,subclass:'Champion',secondary_class:'Psion',secondary_level:level,secondary_subclass:'Psi Warper'};
+   expect(psionicPowerState(hero)).toMatchObject({valid:true,level,sides,dice:pool,warp:level>=3,technique:false});
+   for(const failed of [true,false]){
+    expect(resolvePsionicPower(hero,{kind:'propel',mode:'free',roll:0},failed)).toMatchObject({feet:failed?5:0,cost:0});
+    for(let roll=1;roll<=sides;roll++){
+     const use={kind:'propel' as const,mode:'powered' as const,roll};
+     expect(resolvePsionicPower(hero,use,failed)).toMatchObject({feet:failed?5*roll:0,cost:failed?1:0,patch:{class_resources:{'psionic-energy-dice':pool-(failed?1:0)}}});
+     const warp=resolvePsionicPower(hero,{...use,movement:'warp'},failed);
+     if(level<3)expect(warp).toBeNull();
+     else expect(warp).toMatchObject({feet:failed?30:0,cost:failed?1:0});
+    }
+    expect(resolvePsionicPower(hero,{kind:'propel',mode:'powered',roll:sides+1},failed)).toBeNull();
+   }
+  });
+}

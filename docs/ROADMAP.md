@@ -1,5 +1,27 @@
 # DNDKeep — Two-Track Roadmap
 
+
+### Propel number audit — all class levels (unreleased)
+
+Rechecked the existing Bonus Action controls, optional Energy Die and adjacent
+Warp Propel row against the requested behavior. Added an independent progression
+matrix covering all 20 primary Psion levels and all 19 legal secondary Psion
+levels, every ordinary die face, both save outcomes and the level-three Warp
+unlock. Checks preserve the fixed caster-relative 30-foot Warp destination,
+conditional one-die cost and rejection of rolls above the class-level die size.
+Added component regressions proving both free choices remain usable with an
+empty Energy pool and never roll a die. Full gate: 4,389 unit tests; entry 255.7 KB.
+All 28 desktop/mobile Propel browser checks passed, including lost responses,
+reload recovery and Legendary Resistance. Desktop/mobile target screenshots
+reviewed. Logs: `.tmp/propel-review-gate.log`, `.tmp/propel-review-browser.log`.
+
+Remaining accuracy issue: the saved declaration currently locks push versus Warp
+before the save. The rule permits choosing Warp after failure. Follow up with a
+saved post-save movement choice (no second Bonus Action or reroll), including
+recovery and map destination validation. Current movement itself remains manual.
+Do not call Propel fully automated or this branch released.
+
+
 ### Telepath timing — original attack trigger context (local; not released)
 
 Migration 20261010163856 captures the original encounter turn token and both

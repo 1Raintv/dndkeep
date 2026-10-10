@@ -84,3 +84,16 @@ it('keeps a damaged saved declaration visible as an error and never rolls again'
  expect((screen.getByRole('button',{name:'Declare Bonus Action'}) as HTMLButtonElement).disabled).toBe(true);
  expect(m.roll).not.toHaveBeenCalled();expect(m.begin).not.toHaveBeenCalled();
 });
+
+it.each([false,true])('declares the no-die option with an empty pool (Warp=%s)',async warp=>{
+ const hero={...character,subclass:'Psi Warper',class_resources:{'psionic-energy-dice':0}};
+ render(<PropelControls character={hero} warp={warp}/>);await open();
+ fireEvent.change(screen.getByLabelText('Target'),{target:{value:'Goblin'}});
+ fireEvent.click(screen.getByRole('checkbox'));
+ expect(screen.getByRole('heading',{name:`${warp?'Warp Propel':'Telekinetic Propel'} · Bonus Action`})).toBeTruthy();
+ expect((screen.getByRole('option',{name:'Roll Energy Die (d8)'}) as HTMLOptionElement).disabled).toBe(true);
+ fireEvent.click(screen.getByRole('button',{name:'Declare Bonus Action'}));
+ await waitFor(()=>expect(m.begin).toHaveBeenCalledTimes(1));
+ expect(m.begin.mock.calls[0][1]).toMatchObject({mode:'free',movement:warp?'warp':'push',roll:0,target:{name:'Goblin',legalTargetConfirmed:true}});
+ expect(m.roll).not.toHaveBeenCalled();
+});
