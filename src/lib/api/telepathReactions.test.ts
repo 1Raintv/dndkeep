@@ -3,9 +3,9 @@ import {getTelepathAttackContext,validTelepathAttackContext,type TelepathAttackC
 const mock=vi.hoisted(()=>({rpc:vi.fn()}));vi.mock('./psionicTurns',()=>({psionicRpc:mock.rpc}));
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const saved=():TelepathAttackContext=>({characterId:id(1),feature:'distraction',psionLevel:10,energyRemaining:8,reactionAvailable:true,telepathyRange:60,rangeVerified:true,spatialReviewRequired:true,
- budget:{context:{actorId:id(1),turnId:'turn',ownerTurnId:'own',encounterId:id(2),participantId:id(3),isOwnTurn:false},spent:{action:false,bonusAction:false,reaction:false},claimed:{action:false,bonusAction:false,reaction:false}},
+ budget:{context:{actorId:id(1),turnId:id(8),ownerTurnId:'own',encounterId:id(2),participantId:id(3),isOwnTurn:false},spent:{action:false,bonusAction:false,reaction:false},claimed:{action:false,bonusAction:false,reaction:false}},
  subject:{participantId:id(4),combatantId:id(5),entityId:'enemy',participantType:'creature',self:false},
- attack:{id:id(6),updatedAt:'2026-10-10T16:00:00Z',total:17,targetAC:15,result:'hit',cover:null,snapshot:{version:1,attackId:id(6),campaignId:id(7),encounterId:id(2),attackerId:id(4),targetId:id(3),d20:12,total:17,targetAC:15,naturalOneAutoFails:true,criticalOnHit:false,automatic:'none',result:'hit'}}});
+ attack:{id:id(6),triggerTurnId:id(8),updatedAt:'2026-10-10T16:00:00Z',total:17,targetAC:15,result:'hit',cover:null,snapshot:{version:1,attackId:id(6),campaignId:id(7),encounterId:id(2),attackerId:id(4),targetId:id(3),d20:12,total:17,targetAC:15,naturalOneAutoFails:true,criticalOnHit:false,automatic:'none',result:'hit'}}});
 beforeEach(()=>{mock.rpc.mockReset();});
 it('reads a scoped context without inventing visibility approval',async()=>{
  mock.rpc.mockResolvedValue(saved());expect(await getTelepathAttackContext(id(1),id(6),'distraction')).toEqual(saved());
@@ -25,6 +25,8 @@ it.each([
  (c:TelepathAttackContext)=>{c.attack.total=14;},
  (c:TelepathAttackContext)=>{c.attack.updatedAt='bad';},
  (c:TelepathAttackContext)=>{c.attack.cover='total';},
+ (c:TelepathAttackContext)=>{c.attack.triggerTurnId=id(9);},
+ (c:TelepathAttackContext)=>{c.attack.triggerTurnId='';},
 ])('rejects inconsistent context %i',change=>{const c=saved();change(c);expect(validTelepathAttackContext(c,id(1),id(6),'distraction')).toBe(false);});
 it('supports unknown range as explicit review and a current miss after AC changes',()=>{
  const c=saved();c.rangeVerified=false;c.telepathyRange=null;expect(validTelepathAttackContext(c,id(1),id(6),'distraction')).toBe(true);

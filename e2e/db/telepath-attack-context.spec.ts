@@ -62,10 +62,27 @@ test.describe('Telepath attack context',()=>{
   expect(context()).toMatchObject({rangeVerified:true,telepathyRange:80});
   sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+3600 where character_id='${character}'`);expect(context().telepathyRange).toBe(60);
  });
- test('allows off-turn reactions but rejects an inactive encounter',()=>{
-  sql(`update combat_encounters set current_turn_index=1 where id='${encounter}'`);
-  expect(context()).toMatchObject({reactionAvailable:true,budget:{context:{isOwnTurn:false}}});
+ test('rejects an old unresolved attack after advancing, rewinding or leaving combat',()=>{
+  sql(`update combat_encounters set current_turn_index=1 where id='${encounter}'`);expect(()=>context()).toThrow();
+  sql(`update combat_encounters set current_turn_index=0 where id='${encounter}'`);expect(()=>context()).toThrow();
   sql(`update combat_encounters set status='setup' where id='${encounter}'`);expect(()=>context()).toThrow();
+ });
+ test('a fresh attack rolled on an enemy turn still permits the off-turn Reaction',()=>{
+  sql(`update combat_encounters set current_turn_index=1 where id='${encounter}';delete from pending_attacks where id='${attack}';
+   insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,attacker_name,attacker_type,target_participant_id,target_name,target_type,attack_name,attack_kind,attack_bonus,target_ac,chain_id)
+   values('${attack}','${campaign}','${encounter}','${enemy}','Enemy','monster','${participant}','Telepath','character','Strike','attack_roll',5,15,'${randomUUID()}')`);
+  const snapshot={version:1,attackId:attack,campaignId:campaign,encounterId:encounter,attackerId:enemy,targetId:participant,d20:12,total:17,targetAC:15,naturalOneAutoFails:true,criticalOnHit:false,automatic:'none',result:'hit'};
+  sql(`update pending_attacks set state='attack_rolled',attack_d20=12,attack_total=17,hit_result='hit',attack_roll_snapshot='${JSON.stringify(snapshot)}' where id='${attack}'`);
+  const ctx=context();expect(ctx).toMatchObject({reactionAvailable:true,budget:{context:{isOwnTurn:false}}});expect(ctx.attack.triggerTurnId).toBe(ctx.budget.context.turnId);
+  const d=beginSaved(3);expect(finishSaved(d.request_id)).toMatchObject({energyCost:1,result:'miss'});
+ });
+ test('original participant/combatant identities cannot be rebound before reaction preparation',()=>{
+  sql(`update combat_participants set entity_id='other' where id='${enemy}'`);expect(()=>context()).toThrow();
+  sql(`update combat_participants set entity_id='${enemy}' where id='${enemy}';update combatants set definition_id='different' where id=(select combatant_id from combat_participants where id='${participant}')`);expect(()=>context()).toThrow();
+ });
+ test('does not invent original context for a legacy roll',()=>{
+  sql(`delete from dndkeep_private.attack_reaction_origins where attack_id='${attack}'`);expect(()=>context()).toThrow();
+  sql(`update pending_attacks set target_ac=16 where id='${attack}'`);expect(()=>context()).toThrow();
  });
  const beginSaved=(roll:number,feature='distraction',review:unknown={distanceFeet:30,visible:true,confirmed:true},request=randomUUID())=>JSON.parse(sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';
   select dndkeep_private.begin_telepath_reaction('${character}','${request}','${attack}','${feature}',dndkeep_private.telepath_attack_context('${character}','${attack}','${feature}'),${roll},'${JSON.stringify(review)}');commit;`));
@@ -189,7 +206,7 @@ test.describe('Telepath attack context',()=>{
 
  test('the unfinished lifecycle is private and cannot be called by app roles',()=>{
   for(const role of ['anon','authenticated']){
-   expect(sql(`select has_function_privilege('${role}','dndkeep_private.begin_telepath_reaction(uuid,uuid,uuid,text,jsonb,integer,jsonb)','execute') or has_function_privilege('${role}','dndkeep_private.finish_telepath_reaction(uuid,uuid,boolean)','execute') or has_function_privilege('${role}','dndkeep_private.enhance_telepath_reaction(uuid,uuid,uuid,text,integer[],integer)','execute') or has_table_privilege('${role}','dndkeep_private.telepath_enhancements','select') or has_table_privilege('${role}','dndkeep_private.telepath_declarations','select')`)).toBe('f');
+   expect(sql(`select has_function_privilege('${role}','dndkeep_private.begin_telepath_reaction(uuid,uuid,uuid,text,jsonb,integer,jsonb)','execute') or has_function_privilege('${role}','dndkeep_private.finish_telepath_reaction(uuid,uuid,boolean)','execute') or has_function_privilege('${role}','dndkeep_private.enhance_telepath_reaction(uuid,uuid,uuid,text,integer[],integer)','execute') or has_table_privilege('${role}','dndkeep_private.telepath_enhancements','select') or has_table_privilege('${role}','dndkeep_private.telepath_declarations','select') or has_table_privilege('${role}','dndkeep_private.attack_reaction_origins','select')`)).toBe('f');
   }
  });
 

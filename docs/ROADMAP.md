@@ -1,5 +1,30 @@
 # DNDKeep — Two-Track Roadmap
 
+### Telepath timing — original attack trigger context (local; not released)
+
+Migration 20261010163856 captures the original encounter turn token and both
+participant/combatant identities when a new immutable attack roll is saved.
+Capture shares the attack transaction; existing/legacy rolls are not guessed
+or backfilled. Missing encounter or participant evidence remains unverified.
+
+Telepath preparation now requires the same original turn and identities.
+Advancing then rewinding initiative does not reopen an old attack; rebinding a
+participant or combatant definition also rejects preparation. Fresh attacks on
+an enemy turn still permit off-turn reactions. The client validates the returned
+trigger-turn identity against the shared action context before offering dice.
+
+This completes trigger-turn capture for attack-based preparation; it does not
+expose Telepath controls or address ability-check event capture. Next integration
+still includes durable offers/history, Graze deferral, authenticated dispatcher,
+payment recovery and the player/DM controls. Repo chain is 327; retained release
+rehearsals cover 321. Production remains unchanged.
+
+Validation: all 47 combined attack/Telepath database-browser cases passed.
+Full gate passed (4,348 unit tests; entry 255.7 KB). SQL lint reports no errors
+or new-function warnings; security findings remain keep_warm/client_errors.
+Exact local migration ledger verified.
+
+
 ### Telepath reactions — linked enhancements (local; not released)
 
 Migration 20261010163401 records the original Psion turn context and links
