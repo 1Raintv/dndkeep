@@ -1,3 +1,4 @@
+import MovementReviewButton from './MovementReviewButton';
 import {useAuraTurnReview} from './useAuraTurnReview';
 // v2.96.0 — Phase D of the Combat Backbone
 //
@@ -991,7 +992,7 @@ export default function InitiativeStrip({ isDM, characterId }: Props) {
               end-to-end via MonsterActionPanel, and PC attacks go
               through PlayerAttackButton on the character sheet).
               Removing the orphaned button + its modal mount + state. */}
-          <button className="btn-ghost" disabled={endingTurn} onClick={onReviewMovement} style={{fontSize:11,padding:'6px 10px'}}>Review movement</button>
+          <MovementReviewButton encounterId={encounter.id} busy={endingTurn} onReview={onReviewMovement}/>
           <button
             onClick={onEndTurn}
             disabled={endingTurn}

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 const rpc=vi.hoisted(()=>vi.fn());vi.mock('./psionicTurns',()=>({psionicRpc:rpc}));
-import {pendingMovementAuraReviews,finishMovementAuraReview,type MovementAuraReview,type MovementAuraDecision} from './movementAuraReviews';
+import {movementAuraReviewCount,pendingMovementAuraReviews,finishMovementAuraReview,type MovementAuraReview,type MovementAuraDecision} from './movementAuraReviews';
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const candidate={candidateId:`${id(6)}:${id(7)}:aura`,originId:id(6),targetId:id(7),auraKey:'aura',originName:'Origin',targetName:'Target',name:'Aura',trigger:'creature_entered' as const,spec:{key:'aura'}};
 const review:MovementAuraReview={event:{id:id(1),sequence:'9007199254740993',campaignId:id(2),encounterId:id(3),turnId:id(4),placementId:id(5),capturedAt:'2026-10-10T01:00:00+00:00',context:{version:1,geometryVerified:false,source:'scene_token_placements',tokens:[],moverParticipantIds:[id(7)],kind:'position',from:{x:35,y:35},to:{x:105,y:35},scenes:[],participants:[]}},plan:{candidates:[candidate],warnings:[]}};
@@ -53,3 +53,7 @@ it('corrupt saved decisions block new submissions',async()=>{
  localStorage.setItem(`dndkeep:movement-aura-review:${JSON.stringify([id(9),id(3),id(1)])}`,'{broken');
  await expect(finishMovementAuraReview(id(9),review,choice,note,guard)).rejects.toThrow();expect(localStorage.length).toBe(1);expect(rpc).toHaveBeenCalledTimes(1);
 });
+
+it('verifies pending count without rounding bigint values',async()=>{rpc.mockResolvedValue({encounterId:id(3),pendingCount:'9007199254740993'});expect(await movementAuraReviewCount(id(3))).toBe('9007199254740993');});
+it.each([null,-1,'-1','01','1.5','9223372036854775808'])('rejects an unverified count %s',async pendingCount=>{rpc.mockResolvedValue({encounterId:id(3),pendingCount});await expect(movementAuraReviewCount(id(3))).rejects.toThrow();});
+it('rejects a count for another encounter',async()=>{rpc.mockResolvedValue({encounterId:id(4),pendingCount:'0'});await expect(movementAuraReviewCount(id(3))).rejects.toThrow();});

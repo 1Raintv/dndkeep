@@ -71,3 +71,11 @@ export function finishMovementAuraReview(user:string,review:MovementAuraReview,c
  }));
  active.set(k,work);void work.finally(()=>{if(active.get(k)===work)active.delete(k);}).catch(()=>{});return work;
 }
+
+/** Lightweight DM-only status; a failed check is never a zero count. */
+export async function movementAuraReviewCount(encounterId:string):Promise<string>{
+ if(!uuid(encounterId))throw invalid();
+ const r:unknown=await psionicRpc('movement_aura_review_status',{p_encounter:encounterId},true);
+ if(!object(r)||r.encounterId!==encounterId||typeof r.pendingCount!=='string'||!/^(0|[1-9][0-9]{0,18})$/.test(r.pendingCount)||BigInt(r.pendingCount)>9223372036854775807n)throw invalid();
+ return r.pendingCount;
+}

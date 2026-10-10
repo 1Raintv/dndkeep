@@ -8020,3 +8020,39 @@ This closes the stale saved-clock-proposal gap noted above. Pending-effect
 indicators, irrelevant-move filtering, historical map preview/path/teleport
 intent, insertion/resize capture, legacy partial effects and other actions or
 combat ending while effects remain pending still need release work.
+
+### Actionable movement review badge (2026-10-10, unreleased)
+
+The map Review movement control now highlights pending reviews and shows their
+count (capped visually at 99+). A lightweight DM-only status endpoint returns
+only encounter identity and count, without hidden token/aura evidence. Failed
+checks display an unknown count instead of pretending the queue is empty.
+Visible tabs poll after each completed read; hidden tabs pause. Focus/online
+refresh and completion refresh are serialized, and stale encounter responses
+cannot replace the current view's count. This is advisory UI; the server still
+independently guards turn boundaries.
+
+Migration 20261010070026 uses one relevance rule for pending reads, completion
+ordering and the turn guard. Moves with neither possible movement candidates
+nor uncertainty no longer require a ruling or block later reviews. Their full
+journal evidence remains available. Malformed aura state and ambiguous moves
+still require review. Relevance is stored as a generated column and indexed, so
+polling does not repeatedly parse historical map frames. Future changes to the
+classifier must rebuild/recompute that stored column in a migration.
+
+Verified: full required gate, 3,882 unit cases, TypeScript 194/194, build and
+255.7 KB entry budget. Nineteen local database/browser review cases pass with
+the indexed classifier, including irrelevant moves before a later real effect,
+status privacy and uncertainty blocking. The real map badge updates after review
+and after another move. Desktop/mobile screenshots inspected; the official
+overflow probe and console/network checks pass. Removing the badge deliberately
+fails its browser regression, and the restored implementation passes. Changed
+modules lint cleanly; SQL lint has no errors.
+Security advisors retain only the existing keep_warm and client_errors warnings.
+Exact migration source is recorded locally, with no repository migrations
+pending and the database-only history preserved. No production deployment.
+
+Remaining: recorded map/path preview and teleport intent, insertion/resize
+capture, legacy partial effects and actions or combat ending while effects are
+pending. Counts refresh within the polling interval plus request time; this is
+not a realtime subscription or an automatic geometry decision.

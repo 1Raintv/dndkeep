@@ -76,11 +76,11 @@ test.describe('Movement aura review decisions',()=>{
   sql(auth(dm,`update scene_token_placements set x=175 where id='${origin}'`));
   const [entry]=queue();expect(entry.plan.candidates[0]).toMatchObject({originId:pa,targetId:pb,trigger:'emanation_entered'});finish(entry);
   sql(`update combatants set active_buffs=jsonb_set(active_buffs,'{0,aura,exemptParticipantIds}',${literal([pb])}) where id='${ca}'`);
-  move(245);expect(queue()[0].plan.candidates).toEqual([]);
+  move(245);expect(queue()).toEqual([]);expect(count()).toBe(2);
  });
  test('enemies-only auras do not invent hostility between character participants',()=>{
   sql(`update combatants set active_buffs=jsonb_set(active_buffs,'{0,aura,affects}','"enemies"') where id='${ca}'`);
-  move();expect(queue()[0].plan.candidates).toEqual([]);
+  move();expect(queue()).toEqual([]);expect(count()).toBe(1);
  });
  test('invalid trigger data requires manual review',()=>{
   sql(`update combatants set active_buffs=jsonb_set(active_buffs,'{0,aura,triggers}','[null]') where id='${ca}'`);
@@ -103,6 +103,18 @@ test.describe('Movement aura review decisions',()=>{
   expect(()=>sql(auth(dm,q))).toThrow(/pending movement/);expect(sql(`select psionic_turn_id from combat_encounters where id='${enc}'`)).toBe(turn);
   expect(sql(`select count(*) from dndkeep_private.combat_clock_transitions where request_id='${request}'`)).toBe('0');
   finish(entry);sql(auth(dm,q));expect(sql(`select psionic_turn_id from combat_encounters where id='${enc}'`)).not.toBe(turn);
+ });
+ test('status excludes irrelevant moves and exposes no hidden movement evidence',()=>{
+  sql(`update combatants set active_buffs=jsonb_set(active_buffs,'{0,aura,triggers}','["turn_end"]') where id='${ca}'`);move();
+  const status=()=>JSON.parse(sql(auth(dm,`select movement_aura_review_status('${enc}')`)));
+  expect(status()).toEqual({encounterId:enc,pendingCount:'0'});expect(queue()).toEqual([]);expect(count()).toBe(1);expect(sql(`select dndkeep_private.assert_movement_aura_reviews_complete('${enc}')`)).toBe('');
+  sql(`update combatants set active_buffs=jsonb_set(active_buffs,'{0,aura,triggers}','["creature_entered"]') where id='${ca}'`);move(245);
+  expect(status()).toEqual({encounterId:enc,pendingCount:'1'});expect(queue()).toHaveLength(1);finish(queue()[0]);expect(status().pendingCount).toBe('0');
+  expect(()=>sql(auth(player,`select movement_aura_review_status('${enc}')`))).toThrow(/only to its DM/);
+ });
+ test('unknown aura state still appears in the count and blocks the clock',()=>{
+  sql(`update combatants set active_buffs='{"unknown":true}' where id='${ca}'`);move();
+  expect(JSON.parse(sql(auth(dm,`select movement_aura_review_status('${enc}')`))).pendingCount).toBe('1');expect(()=>sql(`select dndkeep_private.assert_movement_aura_reviews_complete('${enc}')`)).toThrow(/pending movement/);
  });
  async function mountReview(page:Page){
   sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
@@ -145,12 +157,12 @@ test.describe('Movement aura review decisions',()=>{
  test('map DM controls can review movement without advancing combat',async({page},info)=>{
   move();await mountReview(page);const errors:string[]=[],bad:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});page.on('response',r=>{if(r.status()>=400)bad.push(`${r.status()} ${r.url()}`);});await page.goto('/campaigns');await page.getByText('Movement aura fixture',{exact:true}).locator('visible=true').first().click();
   const controls=page.getByRole('group',{name:'Combat controls'});await expect(controls).toBeVisible();
-  await controls.screenshot({path:`.tmp/movement-controls-${info.project.name}.png`});
+  await expect(controls.getByRole('button',{name:/^Review movement/})).toHaveText('Review movement (1)');await controls.screenshot({path:`.tmp/movement-controls-${info.project.name}.png`});
   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('.initiative-strip, .initiative-strip *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
-  await controls.getByRole('button',{name:'Review movement',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Review movement effects'});await expect(dialog).toBeVisible();
+  const reviewButton=controls.getByRole('button',{name:/^Review movement/});await expect(reviewButton).toHaveText('Review movement (1)');await reviewButton.click();const dialog=page.getByRole('dialog',{name:'Review movement effects'});await expect(dialog).toBeVisible();
   await dialog.getByLabel('Ruling for Target').selectOption('not_triggered');await dialog.getByLabel('Reason for Target').fill('Reviewed the route at the table.');await dialog.getByLabel('Movement review note').fill('No movement effect triggered.');await dialog.getByRole('button',{name:'Confirm movement review'}).scrollIntoViewIfNeeded();
   await dialog.screenshot({path:`.tmp/movement-review-footer-${info.project.name}.png`});
-  await dialog.getByRole('button',{name:'Confirm movement review'}).click();await expect(dialog).toBeHidden();await expect.poll(()=>queue().length).toBe(0);expect(sql(`select psionic_turn_id from combat_encounters where id='${enc}'`)).toBe(turn);expect(errors).toEqual([]);expect(bad).toEqual([]);
+  await dialog.getByRole('button',{name:'Confirm movement review'}).click();await expect(dialog).toBeHidden();await expect.poll(()=>queue().length).toBe(0);await expect(reviewButton).toHaveText('Review movement');move(245);await expect(reviewButton).toHaveText('Review movement (1)',{timeout:10000});expect(sql(`select psionic_turn_id from combat_encounters where id='${enc}'`)).toBe(turn);expect(errors).toEqual([]);expect(bad).toEqual([]);
  });
 
 });
