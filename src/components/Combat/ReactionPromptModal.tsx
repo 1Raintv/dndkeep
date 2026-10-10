@@ -1,3 +1,4 @@
+import {hasTelekineticDisorient} from '../../rules/telekineticTechniques';
 // v2.98.0 — Phase E of the Combat Backbone
 //
 // Player-facing reaction prompt. Subscribes to pending_reactions and auto-opens
@@ -186,69 +187,76 @@ export default function ReactionPromptModal({ campaignId }: Props) {
   // auto-rolls the attack roll. The DM's AttackResolutionModal picks up from
   // attack_rolled and walks through damage + apply as normal.
   async function onAcceptOA() {
-    if (!urgent) return;
+    if (!urgent || busy) return;
     setBusy(true);
-    const mover = urgent.decision_payload as any;
-    if (!mover || !mover.mover_participant_id) { setBusy(false); return; }
+    setAcceptError(null);
+    try {
+      const mover = urgent.decision_payload as any;
+      if (!mover || !mover.mover_participant_id) { setBusy(false); return; }
 
-    // Fetch encounter + participant details needed by declareAttack
-    const { data: reactorPartRaw } = await (supabase as any)
-      .from('combat_participants')
-      .select('encounter_id, participant_type, ' + JOINED_COMBATANT_FIELDS)
-      .eq('id', urgent.reactor_participant_id)
-      .single();
-  const reactorPart = reactorPartRaw ? normalizeParticipantRow(reactorPartRaw) : reactorPartRaw;
-    const { data: targetPart } = await supabase
-      .from('combat_participants')
-      .select('ac, participant_type')
-      .eq('id', mover.mover_participant_id)
-      .single();
-
-    const bonusNum = parseInt(oaBonus, 10) || 0;
-    const attack = await declareAttack({
-      campaignId,
-      encounterId: (reactorPart?.encounter_id as string | null) ?? null,
-      attackerParticipantId: urgent.reactor_participant_id,
-      attackerName: urgent.reactor_name,
-      attackerType: urgent.reactor_type,
-      targetParticipantId: mover.mover_participant_id,
-      targetName: mover.mover_name,
-      targetType: (targetPart?.participant_type as any) ?? null,
-      attackSource: 'weapon', attackMode:'melee',
-      attackName: `${oaName.trim() || 'Opportunity Attack'} (OA)`,
-      attackKind: 'attack_roll',
-      attackBonus: bonusNum,
-      targetAC: (targetPart?.ac as number | null) ?? null,
-      damageDice: oaDice.trim() || '1d6',
-      damageType: oaType.trim() || 'slashing',
-    });
-
-    if (attack) {
-      // Auto-roll to attack_rolled so the DM's AttackResolutionModal engages
-      await rollAttackRoll(attack.id);
-      // Mark the reactor's reaction as used + close out the offer
-      await checkedWrite('combat_participants.update reaction-used', { participantId: urgent.reactor_participant_id }, supabase
+      // Fetch encounter + participant details needed by declareAttack
+      const { data: reactorPartRaw, error: reactorError } = await (supabase as any)
         .from('combat_participants')
-        .update({ reaction_used: true })
-        .eq('id', urgent.reactor_participant_id));
-    }
+        .select('encounter_id, participant_type, ' + JOINED_COMBATANT_FIELDS)
+        .eq('id', urgent.reactor_participant_id)
+        .single();
+      const reactorPart = reactorPartRaw ? normalizeParticipantRow(reactorPartRaw) : reactorPartRaw;
+      if(reactorError || !reactorPart)throw new Error('Could not verify the reacting creature. Try again.');
+      // Re-read on acceptance: Disorient may have arrived after this prompt opened.
+      if(hasTelekineticDisorient(reactorPart.active_buffs))throw new Error('Telekinetic Disorient prevents Opportunity Attacks until the start of your next turn.');
+      const { data: targetPart } = await supabase
+        .from('combat_participants')
+        .select('ac, participant_type')
+        .eq('id', mover.mover_participant_id)
+        .single();
 
-    await checkedWrite('pending_reactions.update accept', { reactionId: urgent.id }, supabase
-      .from('pending_reactions')
-      .update({
-        state: 'accepted',
-        decided_at: new Date().toISOString(),
-        decision_payload: {
-          ...(urgent.decision_payload ?? {}),
-          attack_id: attack?.id ?? null,
-          attack_name: oaName,
-          attack_bonus: bonusNum,
-          damage_dice: oaDice,
-          damage_type: oaType,
-        },
-      })
-      .eq('id', urgent.id));
-    setBusy(false);
+      const bonusNum = parseInt(oaBonus, 10) || 0;
+      const attack = await declareAttack({
+        campaignId,
+        encounterId: (reactorPart?.encounter_id as string | null) ?? null,
+        attackerParticipantId: urgent.reactor_participant_id,
+        attackerName: urgent.reactor_name,
+        attackerType: urgent.reactor_type,
+        targetParticipantId: mover.mover_participant_id,
+        targetName: mover.mover_name,
+        targetType: (targetPart?.participant_type as any) ?? null,
+        attackSource: 'weapon', attackMode:'melee',
+        attackName: `${oaName.trim() || 'Opportunity Attack'} (OA)`,
+        attackKind: 'attack_roll',
+        attackBonus: bonusNum,
+        targetAC: (targetPart?.ac as number | null) ?? null,
+        damageDice: oaDice.trim() || '1d6',
+        damageType: oaType.trim() || 'slashing',
+      });
+
+      if (attack) {
+        // Auto-roll to attack_rolled so the DM's AttackResolutionModal engages
+        await rollAttackRoll(attack.id);
+        // Mark the reactor's reaction as used + close out the offer
+        await checkedWrite('combat_participants.update reaction-used', { participantId: urgent.reactor_participant_id }, supabase
+          .from('combat_participants')
+          .update({ reaction_used: true })
+          .eq('id', urgent.reactor_participant_id));
+      }
+
+      await checkedWrite('pending_reactions.update accept', { reactionId: urgent.id }, supabase
+        .from('pending_reactions')
+        .update({
+          state: 'accepted',
+          decided_at: new Date().toISOString(),
+          decision_payload: {
+            ...(urgent.decision_payload ?? {}),
+            attack_id: attack?.id ?? null,
+            attack_name: oaName,
+            attack_bonus: bonusNum,
+            damage_dice: oaDice,
+            damage_type: oaType,
+          },
+        })
+        .eq('id', urgent.id));
+    } catch(error) {
+      setAcceptError(error instanceof Error?error.message:'Could not accept this Opportunity Attack.');
+    } finally {setBusy(false);}
   }
 
   async function onDecline() {

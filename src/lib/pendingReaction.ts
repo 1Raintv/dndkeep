@@ -1,3 +1,4 @@
+import {hasTelekineticDisorient} from '../rules/telekineticTechniques';
 // v2.98.0 — Phase E of the Combat Backbone
 //
 // Reaction offer lifecycle + Shield (the reference implementation).
@@ -906,7 +907,7 @@ export async function offerOpportunityAttacks(
   const pdata = ((pdataRaw ?? []) as any[]).map(normalizeParticipantRow);
   const participants = (pdata ?? []) as Array<{
     id: string; name: string; participant_type: 'character' | 'monster' | 'npc';
-    entity_id: string; combatant_id: string | null; is_dead: boolean; reaction_used: boolean;
+    entity_id: string; combatant_id: string | null; is_dead: boolean; reaction_used: boolean; active_buffs?: unknown;
   }>;
 
   // Eligibility checks per candidate reactor:
@@ -923,6 +924,7 @@ export async function offerOpportunityAttacks(
     if (reactor.id === input.moverParticipantId) continue;
     if (reactor.is_dead) continue;
     if (reactor.reaction_used) continue;
+    if (hasTelekineticDisorient(reactor.active_buffs)) continue;
 
     // Hostility: characters are hostile to monsters/npcs and vice versa.
     // Future Phase H can expand with per-campaign factions if needed.

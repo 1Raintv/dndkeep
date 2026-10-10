@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {hasTelekineticBoost,telekineticTechniqueOptions,type TelekineticTechniqueContext} from './telekineticTechniques';
+import {hasTelekineticDisorient,hasTelekineticBoost,telekineticTechniqueOptions,type TelekineticTechniqueContext} from './telekineticTechniques';
 import {advanceMasteryExpiry} from './masteryExpiry';
 const base:TelekineticTechniqueContext={caster:{class_name:'Psion',level:3,subclass:'Psykinetic'},outcome:'failed',mode:'technique',movement:'push',roll:3,casterParticipantId:'caster',targetParticipantId:'target'};
 it('gives one menu of optional effects, with saved Force damage and distinct expiry owners',()=>{
@@ -50,3 +50,11 @@ it('retains overlapping Boost until the last source expires, without stacking',(
  expect(hasTelekineticBoost(advanceMasteryExpiry(afterFirst,'second','turn_start').next)).toBe(false);
 });
 it.each([null,{},[],[null,4,'boost'],[{key:'other',technique:'boost',speedBonus:10}],[{...boost('a'),speedBonus:100}],[{...boost('a'),speedBonus:'10'}],[{...boost('a'),technique:'disorient'}]])('does not grant Boost from malformed or unrelated effects %j',buffs=>expect(hasTelekineticBoost(buffs)).toBe(false));
+
+const disorient={key:'telekinetic_disorient:declaration',technique:'disorient',preventsOpportunityAttacks:true,expiresAtStartOfTurnOf:'target'};
+it('Disorient persists through other turns and target end, then clears at target start',()=>{
+ expect(hasTelekineticDisorient(advanceMasteryExpiry([disorient],'caster','turn_start').next)).toBe(true);
+ expect(hasTelekineticDisorient(advanceMasteryExpiry([disorient],'target','turn_end').next)).toBe(true);
+ expect(hasTelekineticDisorient(advanceMasteryExpiry([disorient],'target','turn_start').next)).toBe(false);
+});
+it.each([null,{},[],[null,4,'disorient'],[boost('a')],[{...disorient,preventsOpportunityAttacks:'true'}],[{...disorient,technique:'boost'}],[{...disorient,key:'other'}]])('ignores unrelated or malformed Disorient %j',buffs=>expect(hasTelekineticDisorient(buffs)).toBe(false));

@@ -47,3 +47,10 @@ export function hasTelekineticBoost(buffs:unknown):boolean {
   &&typeof buff.key==='string'&&buff.key.startsWith('telekinetic_boost:')
   &&buff.technique==='boost'&&buff.speedBonus===10);
 }
+
+/** Disorient blocks Opportunity Attacks only, not other reactions. */
+export function hasTelekineticDisorient(buffs:unknown):boolean {
+ return Array.isArray(buffs)&&buffs.some(buff=>buff&&typeof buff==='object'
+  &&typeof buff.key==='string'&&buff.key.startsWith('telekinetic_disorient:')
+  &&buff.technique==='disorient'&&buff.preventsOpportunityAttacks===true);
+}

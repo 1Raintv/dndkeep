@@ -9007,3 +9007,23 @@ movement visually. Disorient offer/acceptance enforcement, validated client API,
 saved-choice recovery and controls, and real Bolt damage resolution remain open.
 The technique options planner still needs its production caller. No production
 deployment or database changes in this checkpoint.
+
+### Telekinetic Disorient — client eligibility checkpoint
+
+Confirmed the private UA update p9: Disorient prevents Opportunity Attacks until
+start of the target's next turn. Offers now consult the joined combatant effect;
+accepting an already-open prompt rereads it before declaring or rolling. A blocked
+attempt preserves the reaction and offer, explains the restriction and permits
+retry after expiry. Failed reactor reads also block safely and release busy state.
+Other reaction types do not use this Disorient check.
+
+14 new regressions cover saved/malformed effects, exact expiry, joined offer
+filtering, Boost-only eligibility, effects received after prompt opening, retry
+and unavailable state. Full gate passes: 4,133 units, TS 194/194, entry 255.7 KB.
+No database changes or deployment. These are client checks, not atomic server
+validation: acceptance still performs separate attack/reaction/offer writes.
+Before release, replace that sequence with an authorized, replayable server
+transaction that locks current effect/reaction state and binds the original
+reactor/target; verify concurrent acceptance, effect arrival and rollback locally.
+The existing Counterspell transaction provides a shared-reaction-budget pattern.
+Technique-choice UI/recovery and live Bolt verification also remain open.
