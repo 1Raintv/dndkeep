@@ -20,3 +20,15 @@ it('keeps negative effect dice positive in evidence and rejects altered totals',
  vi.spyOn(Math,'random').mockReturnValue(.5);const r=rollSaveBonuses([{name:'Curse',saveBonus:'-1d4'}],0);
  expect(r.bonus).toBe(-3);expect(validSaveBonusRolls(r.rolls)).toBe(true);r.rolls[0].total=3;expect(validSaveBonusRolls(r.rolls)).toBe(false);
 });
+
+it.each([
+ {expression:'1d4',dice:[{die:20,value:3}],modifier:0,total:3},
+ {expression:'2d4',dice:[{die:4,value:3}],modifier:0,total:3},
+ {expression:'1d4+2',dice:[{die:4,value:3}],modifier:0,total:3},
+ {expression:'special',dice:[{die:4,value:3}],modifier:0,total:3},
+ {expression:'1d4',dice:[{die:4,value:3}],modifier:0,total:-3,multiplier:-1},
+ {expression:'-1d4',dice:[{die:4,value:3}],modifier:0,total:3},
+ {expression:'2',dice:[{die:4,value:2}],modifier:0,total:2},
+])('rejects saved arithmetic that does not match its expression: %j',evidence=>{
+ const random=vi.spyOn(Math,'random');expect(validSaveBonusRolls([{name:'Effect',...evidence}])).toBe(false);expect(random).not.toHaveBeenCalled();
+});

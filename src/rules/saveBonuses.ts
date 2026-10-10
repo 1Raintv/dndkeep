@@ -1,4 +1,4 @@
-import {rollDiceGroups} from './dice';
+import {rollDiceGroups,validDiceGroups} from './dice';
 export interface SaveBonusRoll {name:string;expression:string;total:number;dice:{die:number;value:number}[];modifier:number;multiplier?:-1}
 /** Combat buff save bonuses are independent of ability scores. Keep the actual
  * dice evidence so an automatic save can be resumed without rolling again. */
@@ -25,9 +25,15 @@ export function rollSaveBonuses(buffs:unknown[],equipmentBonus:number):{bonus:nu
  return {bonus,rolls};
 }
 
-/** Validate stored arithmetic without generating replacement dice. */
+/** v2.869 — matching totals alone do not prove the recorded dice were legal. */
 export function validSaveBonusRolls(value:unknown):value is SaveBonusRoll[]{
- return Array.isArray(value)&&value.every(r=>r&&typeof r.name==='string'&&typeof r.expression==='string'&&Number.isSafeInteger(r.total)&&Number.isSafeInteger(r.modifier)
-  &&(r.multiplier===undefined||r.multiplier===-1)&&Array.isArray(r.dice)&&r.dice.every((d:{die:number;value:number})=>d&&Number.isInteger(d.die)&&d.die>=1&&d.die<=1000&&Number.isInteger(d.value)&&d.value>=1&&d.value<=d.die)
-  &&r.total===(r.dice.reduce((sum:number,d:{value:number})=>sum+d.value,0)+r.modifier)*(r.multiplier??1));
+ return Array.isArray(value)&&value.every(r=>{
+  if(!r||typeof r.name!=='string'||typeof r.expression!=='string'||!Number.isSafeInteger(r.total)||!Number.isSafeInteger(r.modifier)
+   ||(r.multiplier!==undefined&&r.multiplier!==-1)||!Array.isArray(r.dice))return false;
+  const expression=r.expression.trim();
+  if(/^-?\d+$/.test(expression))return r.multiplier===undefined&&r.dice.length===0&&r.modifier===Number(expression)&&r.total===r.modifier;
+  const negative=/^-\d+d\d+$/i.test(expression);
+  if(negative?(r.multiplier!==-1):(r.multiplier!==undefined))return false;
+  return validDiceGroups(negative?expression.slice(1):expression,{...r,total:negative?-r.total:r.total});
+ });
 }

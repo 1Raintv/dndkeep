@@ -1,4 +1,5 @@
 import {rollSavingThrow,exhaustionPenalty} from '../rules/savingThrows';
+import {parseDiceGroups,rollDiceGroups} from '../rules/dice';
 import {rollSaveBonuses} from '../rules/saveBonuses';
 import {readAuraSaveState} from './api/auraSaveState';
 import {readAuraDamageDefenses} from './api/auraDamageDefenses';
@@ -265,13 +266,14 @@ export async function resolveAuraSave(input: {
   const marker = auraSaveMarkerKey(aura.originParticipantId, aura.spec.key);
   if (await alreadySavedThisTurn(input.targetParticipantId, marker)) return false;
 
+  if(aura.spec.damageDice!==null&&!parseDiceGroups(aura.spec.damageDice))throw new Error('Review the aura damage expression before resolving.');
   const state=await readAuraSaveState(input.campaignId,input.encounterId,input.targetParticipantId,aura.spec.saveAbility);
   const {conditionsAutoFailSave,conditionsDisadvantageSave,conditionsResistAll}=await import('./conditions');
   const defenses=aura.spec.damageDice?await readAuraDamageDefenses(input.campaignId,input.encounterId,input.targetParticipantId,aura.spec.damageType):{immune:false,resistant:false,vulnerable:false};
   defenses.resistant ||= conditionsResistAll(state.conditions);
   const automaticFailure=conditionsAutoFailSave(state.conditions,aura.spec.saveAbility);
   const disadvantage=conditionsDisadvantageSave(state.conditions,aura.spec.saveAbility);
-  const {getTargetSaveBonus,rollDiceExpr}=await import('./pendingAttack');
+  const {getTargetSaveBonus}=await import('./pendingAttack');
   const base=automaticFailure?{bonus:0,breakdown:'Automatic failure from condition',naturalExtremes:false,confidence:'high'}:
     await getTargetSaveBonus(input.targetParticipantId,aura.spec.saveAbility);
   if(base.confidence!=='high')throw new Error('Review the aura target’s saving throw bonus before resolving.');
@@ -283,9 +285,12 @@ export async function resolveAuraSave(input: {
   const {d20,total,passed}=save;
 
   let damage=0,damageRolled=0,damageAfterSave=0,damageModifier='none';
+  let damageRoll:ReturnType<typeof rollDiceGroups>=null;
   if(aura.spec.damageDice){
-    damageRolled=rollDiceExpr(aura.spec.damageDice).total;
-    damageAfterSave=passed?(aura.spec.halfOnSave?Math.floor(damageRolled/2):0):damageRolled;
+    damageRoll=rollDiceGroups(aura.spec.damageDice);
+    if(!damageRoll)throw new Error('Review the aura damage expression before resolving.');
+    damageRolled=damageRoll.total;
+    damageAfterSave=Math.max(0,passed?(aura.spec.halfOnSave?Math.floor(damageRolled/2):0):damageRolled);
     const applied=applyDamageAffinities(damageAfterSave,defenses);damage=applied.final;damageModifier=applied.modifier;
   }
 
@@ -324,7 +329,7 @@ export async function resolveAuraSave(input: {
       breakdown,
       total: automaticFailure ? null : total,
       success: passed,
-      damage,damage_rolled:damageRolled,damage_after_save:damageAfterSave,damage_modifier:damageModifier,
+      damage,damage_rolls:damageRoll?.dice??[],damage_flat_modifier:damageRoll?.modifier??0,damage_rolled:damageRolled,damage_after_save:damageAfterSave,damage_modifier:damageModifier,
       label: `${aura.spec.name} (${aura.originName}): ${input.targetName} ${triggerLabel} — ${aura.spec.saveAbility} ${automaticFailure?'save automatically failed':`save ${total} vs DC ${aura.spec.saveDC}, ${passed?'passed':'failed'}`}${damage > 0 ? `, ${damage} ${aura.spec.damageType ?? ''} damage`.trimEnd() : ''}`,
     },
   });

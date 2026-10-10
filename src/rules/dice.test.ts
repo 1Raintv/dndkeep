@@ -2,8 +2,8 @@
 // These lock in the parser grammar that five call-site families depend on:
 // pendingAttack damage, buff riders/ticks, monster browser, bestiary
 // bare-integer damage (v2.448), and crit doubling (2024 PHB).
-import { describe, expect, it } from 'vitest';
-import { physicalDiceList, physicalDiceOutcome, addDiceModifier, rollDiceGroups, doubleDice, rollDiceExpr, rollDie } from './dice';
+import { describe, expect, it, vi } from 'vitest';
+import { parseDiceGroups, validDiceGroups, physicalDiceList, physicalDiceOutcome, addDiceModifier, rollDiceGroups, doubleDice, rollDiceExpr, rollDie } from './dice';
 
 describe('rollDie', () => {
   it('stays in [1, sides] and hits every face over many rolls', () => {
@@ -113,4 +113,28 @@ describe('physical Advantage dice',()=>{
  it('does not duplicate an explicitly supplied second d20 or consume a bonus die',()=>{
   const list=[...dice,{die:4,value:2}];expect(physicalDiceList({...event,advantage:true,allDice:list})).toEqual(list);
  });
+});
+
+describe('saved dice evidence',()=>{
+ it('parses and verifies mixed groups without consuming random rolls',()=>{
+  const random=vi.spyOn(Math,'random');
+  try{
+   expect(parseDiceGroups('2d6 + 1d8 - 2')).toEqual({sides:[6,6,8],modifier:-2});
+   expect(validDiceGroups('2d6+1d8-2',{dice:[{die:6,value:1},{die:6,value:6},{die:8,value:8}],modifier:-2,total:13})).toBe(true);
+   expect(random).not.toHaveBeenCalled();
+  }finally{random.mockRestore();}
+ });
+ it.each(['1d6','2d6','1d8+2','1d8-2'])('rejects faces with a different expression %s',expression=>{
+  expect(validDiceGroups(expression,{dice:[{die:8,value:5}],modifier:0,total:5})).toBe(false);
+ });
+ it('rejects malformed faces, wrong totals and missing evidence',()=>{
+  for(const value of [null,{}, {dice:[{die:8,value:9}],modifier:0,total:9},{dice:[{die:8,value:2.5}],modifier:0,total:2.5},{dice:[{die:8,value:4}],modifier:0,total:5}])expect(validDiceGroups('1d8',value)).toBe(false);
+ });
+ it('rejects unsafe arithmetic before rolling',()=>{
+  const random=vi.spyOn(Math,'random');try{
+   for(const expression of ['9007199254740991+1','9007199254740991+1d4','0-9007199254740991-1'])expect(rollDiceGroups(expression)).toBeNull();
+   expect(random).not.toHaveBeenCalled();
+  }finally{random.mockRestore();}
+ });
+ it.each(['1d4','2d6+1d8-2','17','0','1D20 + 2'])('accepts the canonical roller output: %s',expression=>expect(validDiceGroups(expression,rollDiceGroups(expression))).toBe(true));
 });

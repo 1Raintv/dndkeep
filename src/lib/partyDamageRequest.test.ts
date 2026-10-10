@@ -69,3 +69,9 @@ it('does not roll save effects for zero HP, immunity or disabled automation',()=
  ctx.character.damage_immunities=['psychic'];expect(createPartyDamageRequest(ctx,5,'psychic',false).effectRolls).toEqual([]);
  ctx.campaign.automation_defaults={concentration_on_damage:'off'};expect(createPartyDamageRequest(ctx,5,null,false).effectRolls).toEqual([]);expect(random).not.toHaveBeenCalled();
 });
+
+it('rejects persisted concentration bonus dice changed without changing their total',()=>{
+ vi.spyOn(Math,'random').mockReturnValue(0);const ctx=context();ctx.character.active_buffs=[{name:'Bless'}];
+ const request=createPartyDamageRequest(ctx,5,null,false);expect(validPartyDamageRequest(request)).toBe(true);
+ request.effectRolls![0].dice[0].die=20;expect(validPartyDamageRequest(request)).toBe(false);
+});

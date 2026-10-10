@@ -7226,3 +7226,31 @@ Validation: all50 local database cases pass across the two test projects;
 Changed-file ESLint, SQL lint and security advisors pass. The migration is
 applied and recorded only locally; unrelated ledger history is preserved.
 No production deployment or live resolver switch in this checkpoint.
+
+
+### Dice evidence prerequisite for aura settlement (2026-10-09)
+
+Settlement review found that saved bonus arithmetic could be internally correct
+while disagreeing with the recorded expression: seven new regressions reproduced
+wrong die sizes/counts/modifiers, unsupported expressions and reversed signs.
+The canonical dice module now exposes its existing grouped grammar as a pure
+parser and validates saved faces against that same plan without generating dice.
+The roller uses the same parser; unsafe summed arithmetic fails before rolling.
+Saved Bless/Bane and concentration bonus evidence now checks the actual expression,
+not only the sum. A party-damage request regression confirms this protects the
+persisted concentration path too.
+
+The live aura resolver previously used the legacy single-group roller, whose
+unsupported-expression fallback was zero damage. It now validates damage before
+rolling saves or spending the marker, supports mixed groups through the canonical
+roller, clamps damage below zero, and logs each damage face plus its flat modifier.
+Malformed expressions leave HP, history and the per-turn marker unchanged.
+
+This repairs dice preparation/evidence; it does not complete atomic aura settlement.
+Save, next-save penalties, Legendary Resistance, damage, concentration and logs
+still need the transaction/recovery integration described above before release.
+
+Validation:18 live aura browser cases pass across desktop/mobile; full gate
+passes with3,502 units, TypeScript195/195 and255.7KB entry. Changed-file lint
+has zero errors (the aura file retains15 existing any warnings). No production
+deployment; no database migration in this checkpoint.

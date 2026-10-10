@@ -6,8 +6,8 @@ vi.mock('./combatEvents',()=>({emitCombatEvent:m.event,newChainId:()=> 'chain'})
 vi.mock('./cleave',()=>({markUsedThisTurn:m.mark}));
 vi.mock('./api/auraDamageDefenses',()=>({readAuraDamageDefenses:m.defenses}));
 vi.mock('./api/auraSaveState',()=>({readAuraSaveState:m.saveState}));
-vi.mock('./pendingAttack',()=>({getTargetSaveBonus:m.saveBonus,rollDiceExpr:()=>({total:m.damage}),runConcentrationSave:m.concentration}));
-vi.mock('../rules/dice',async importOriginal=>({...await importOriginal<typeof import('../rules/dice')>(),rollDie:m.die}));
+vi.mock('./pendingAttack',()=>({getTargetSaveBonus:m.saveBonus,runConcentrationSave:m.concentration}));
+vi.mock('../rules/dice',async importOriginal=>{const actual=await importOriginal<typeof import('../rules/dice')>();return {...actual,rollDie:m.die,rollDiceGroups:(expression:string)=>expression==='1d6'?{total:m.damage,dice:[],modifier:m.damage}:actual.rollDiceGroups(expression)};});
 import {resolveAuraSave,type ActiveAura} from './auras';
 const aura:ActiveAura={originParticipantId:'origin',originName:'Caster',originSize:1,originRow:0,originCol:0,spec:{key:'test',name:'Test aura',radiusFt:15,saveAbility:'WIS',saveDC:15,damageDice:'1d6',damageType:'radiant',halfOnSave:true,triggers:['turn_end'],exemptParticipantIds:[],speedInside:'half',affects:'all'}};
 const run=()=>resolveAuraSave({campaignId:'campaign',encounterId:'encounter',aura,targetParticipantId:'target',targetName:'Target',targetType:'character',trigger:'turn_end'});
@@ -85,4 +85,16 @@ it('Petrified grants blanket resistance without stacking it twice',async()=>{
 });
 it('unverified defenses stop before dice or reserving the marker',async()=>{
  m.defenses.mockRejectedValue(new Error('Review defenses'));await expect(run()).rejects.toThrow('Review defenses');expect(m.mark).not.toHaveBeenCalled();expect(m.die).not.toHaveBeenCalled();
+});
+
+it.each(['special','1d6+','0d8','1d0',''])('invalid aura expression %s stops before dice, events or marker',async expression=>{
+ await expect(resolveAuraSave({campaignId:'campaign',encounterId:'encounter',aura:{...aura,spec:{...aura.spec,damageDice:expression}},targetParticipantId:'target',targetName:'Target',targetType:'character',trigger:'turn_end'})).rejects.toThrow('damage expression');
+ expect(m.die).not.toHaveBeenCalled();expect(m.mark).not.toHaveBeenCalled();expect(m.event).not.toHaveBeenCalled();expect(m.update).not.toHaveBeenCalled();
+});
+it('mixed damage dice retain their faces and flat modifier in the saved event',async()=>{
+ m.target.combatants={current_hp:20,max_hp:20,temp_hp:0,is_dead:false};
+ await resolveAuraSave({campaignId:'campaign',encounterId:'encounter',aura:{...aura,spec:{...aura.spec,damageDice:'1d4+1d6+2'}},targetParticipantId:'target',targetName:'Target',targetType:'character',trigger:'turn_end'});
+ const evidence=m.event.mock.calls[0][0].payload;
+ expect(evidence.damage_rolls.map((d:{die:number})=>d.die)).toEqual([4,6]);expect(evidence.damage_flat_modifier).toBe(2);
+ expect(evidence.damage_rolled).toBe(evidence.damage_rolls.reduce((n:number,d:{value:number})=>n+d.value,2));expect(evidence.damage).toBeGreaterThanOrEqual(4);
 });

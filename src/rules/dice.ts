@@ -59,27 +59,41 @@ export function doubleDice(expr: string): string {
   return `${count}d${sides}${mod}`;
 }
 
-/** v2.789 — retain each die's size and every flat modifier for spell animations.
- * Reject the entire expression before rolling when any component is invalid. */
-export function rollDiceGroups(expression:string):{dice:{die:number;value:number}[];modifier:number;total:number}|null {
+export interface DiceGroupPlan {sides:number[];modifier:number}
+export interface DiceGroupResult {dice:{die:number;value:number}[];modifier:number;total:number}
+/** v2.869 — one parser for rolling and validating saved evidence. Parsing never
+ * consumes random dice, so invalid expressions fail before a save is rolled. */
+export function parseDiceGroups(expression:string):DiceGroupPlan|null {
  const text=expression.replace(/\s+/g,'');
  if(!/^(?:\d+d\d+|\d+)(?:[+](?:\d+d\d+|\d+)|-\d+)*$/i.test(text))return null;
  const parts=text.match(/[+-]?[^+-]+/g)!;
- const dice:{die:number;value:number}[]=[];
- let modifier=0;
+ const sides:number[]=[];let modifier=0;
  for(const part of parts){
   const m=/^\+?(\d+)d(\d+)$/i.exec(part);
   if(m){
-   const count=Number(m[1]),sides=Number(m[2]);
-   if(count<1||count>100||sides<1||sides>1000)return null;
-  }else if(!Number.isSafeInteger(Number(part)))return null;
+   const count=Number(m[1]),die=Number(m[2]);
+   if(count<1||count>100||die<1||die>1000)return null;
+   sides.push(...Array<number>(count).fill(die));
+  }else{
+   const flat=Number(part);if(!Number.isSafeInteger(flat))return null;
+   modifier+=flat;if(!Number.isSafeInteger(modifier))return null;
+  }
  }
- for(const part of parts){
-  const m=/^\+?(\d+)d(\d+)$/i.exec(part);
-  if(m){for(let i=0;i<Number(m[1]);i++)dice.push({die:Number(m[2]),value:rollDie(Number(m[2]))});}
-  else modifier+=Number(part);
- }
- return {dice,modifier,total:dice.reduce((sum,d)=>sum+d.value,modifier)};
+ if(!Number.isSafeInteger(modifier+sides.length)||!Number.isSafeInteger(sides.reduce((sum,die)=>sum+die,modifier)))return null;
+ return {sides,modifier};
+}
+/** Retain each die's size and every flat modifier for spell animations. */
+export function rollDiceGroups(expression:string):DiceGroupResult|null {
+ const plan=parseDiceGroups(expression);if(!plan)return null;
+ const dice=plan.sides.map(die=>({die,value:rollDie(die)}));
+ return {dice,modifier:plan.modifier,total:dice.reduce((sum,d)=>sum+d.value,plan.modifier)};
+}
+/** Validate a saved roll against its expression without rolling replacements. */
+export function validDiceGroups(expression:string,value:unknown):value is DiceGroupResult {
+ const plan=parseDiceGroups(expression),r=value as DiceGroupResult|null;
+ return !!plan&&!!r&&r.modifier===plan.modifier&&Number.isSafeInteger(r.total)&&Array.isArray(r.dice)
+  &&r.dice.length===plan.sides.length&&r.dice.every((d,i)=>d&&d.die===plan.sides[i]&&Number.isInteger(d.value)&&d.value>=1&&d.value<=d.die)
+  &&r.total===r.dice.reduce((sum,d)=>sum+d.value,plan.modifier);
 }
 /** Fold the bonus into an existing flat modifier so combat's NdX parser agrees. */
 export function addDiceModifier(expression:string,bonus:number):string {
