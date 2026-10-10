@@ -1,3 +1,5 @@
+import PropelMovementControls from './PropelMovementControls';
+import PropelMovementRecoveryList from './PropelMovementRecoveryList';
 import PropelTechniqueControls from './PropelTechniqueControls';
 import PropelTechniqueRecoveryList from './PropelTechniqueRecoveryList';
 import {pendingPropelSaves,type SavedPropelSave} from '../../../lib/api/propelSaves';
@@ -95,7 +97,7 @@ export default function PropelControls({character,persistence,warp=false,campaig
   if(pendingPropel(id).length||pendingPropelSaves(id).length)throw new Error('Confirm the saved Propel request before starting another use.');
   if(!fresh.bonusAvailable||fresh.turnId!==context.turnId||fresh.encounterId!==context.encounterId||fresh.participantId!==context.participantId||fresh.actorId!==context.actorId||fresh.ownerTurnId!==context.ownerTurnId)
    throw new Error('Your turn or Bonus Action changed. Reopen Propel before declaring.');
-  const request:Omit<PropelRequest,'roll'>={requestId:crypto.randomUUID(),turnId:fresh.turnId,mode,movement:warp?'warp':'push',
+  const request:Omit<PropelRequest,'roll'>={requestId:crypto.randomUUID(),turnId:fresh.turnId,mode,movement:'push',deferred:true,
    target:fresh.encounterId?{participantId:target,legalTargetConfirmed:true}:{name:target.trim(),legalTargetConfirmed:true}};
   await send(preparePropel(id,request,()=>rollDie(mode==='technique'?4:state.sides)),active,id);
  });}
@@ -114,7 +116,7 @@ export default function PropelControls({character,persistence,warp=false,campaig
  <p>{row.roll_result?`Saved dice total: ${row.roll_result.total}.`:'Roll not finalized.'} Bonus Action spent.</p>
  {/* v2.869 follow-up — Movement follows the settled receipt, including any Legendary Resistance
      decision. A declaration or provisional roll never authorizes movement. */}
- {row.outcome==='failed'&&row.result?<p data-testid="propel-movement">{row.movement==='warp'
+ {row.movement_choice_required&&row.outcome==='failed'?<PropelMovementControls key={row.request_id} characterId={character.id} declarationId={row.request_id} disabled={busy}/>:row.outcome==='failed'&&row.result?<p data-testid="propel-movement">{row.movement==='warp'
   ?'Teleport the target to an unoccupied space you can see within 30 ft of you, horizontal to you.'
   :`Move the target ${row.result.feet} ft straight toward or away from you.`} Apply movement on the map.</p>
   :<p>{row.outcome==='passed'?'Save succeeded. Do not move the target.':row.outcome==='cancelled'?'Use cancelled. Do not move the target.':'Resolve and confirm the saving throw before moving the target.'}</p>}
@@ -131,13 +133,14 @@ export default function PropelControls({character,persistence,warp=false,campaig
  <p>Choose one other Large or smaller creature you can see within 30 ft.</p>
  <label>Target {context?.encounterId?<select aria-label="Target" value={target} disabled={busy} onChange={e=>{setTarget(e.target.value);setConfirmed(false);}}><option value="">Choose creature</option>{targets.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>:<input aria-label="Target" maxLength={120} value={target} disabled={busy} onChange={e=>{setTarget(e.target.value);setConfirmed(false);}} placeholder="Tabletop target name"/>}</label>
  <label style={{display:'flex',gap:8,alignItems:'center',margin:'12px 0'}}><input style={{width:18,height:18,flexShrink:0}} type="checkbox" checked={confirmed} disabled={busy} onChange={e=>setConfirmed(e.target.checked)}/> I confirm its size, sight and range are legal.</label>
- <label>Movement <select aria-label="Movement" disabled={busy} value={mode} onChange={e=>setMode(e.target.value as PropelRequest['mode'])}><option value="free">{warp?'Teleport · no die':'5 ft · no die'}</option>{state.technique&&!warp&&<option value="technique">Roll free d4</option>}<option value="powered" disabled={state.dice<1}>Roll Energy Die (d{state.sides})</option></select></label>
- <p>{mode==='powered'?'Roll one Energy Die now; spend it only if the target fails the save.':mode==='technique'?'Roll a free d4; no Energy Die is spent.':'No roll or Energy Die cost.'}{warp?' The teleport stays within 30 ft of you; rolling does not extend it.':mode!=='free'?' On failure, movement is 5 times the roll in feet.':' On failure, move the target 5 ft straight toward or away from you.'}</p>
+ <label>Movement <select aria-label="Movement" disabled={busy} value={mode} onChange={e=>setMode(e.target.value as PropelRequest['mode'])}><option value="free">5 ft · no die</option>{state.technique&&!warp&&<option value="technique">Roll free d4</option>}<option value="powered" disabled={state.dice<1}>Roll Energy Die (d{state.sides})</option></select></label>
+ <p>{mode==='powered'?'Roll one Energy Die now; spend it only if the target fails the save.':mode==='technique'?'Roll a free d4; no Energy Die is spent.':'No roll or Energy Die cost.'}{mode!=='free'?' On failure, movement is 5 times the roll in feet.':' On failure, move the target 5 ft straight toward or away from you.'}{state.warp?' After a failed save, you may choose Warp instead. Its destination stays within 30 ft of you; rolling does not extend it.':''}</p>
  <p>Declaring spends your Bonus Action, even if the save passes. Closing before declaration costs nothing.</p>
  <button className="btn-primary" disabled={busy||pending.length>0||saveDrafts.length>0||!context?.bonusAvailable||!target.trim()||!confirmed} onClick={declare}>Declare Bonus Action</button>
  {context&&!context.bonusAvailable&&<p>Your Bonus Action is unavailable. Saved uses can still be resumed.</p>}
  </section>}
  {saved.length>0&&<section aria-label="Unfinished Propel uses"><h4>Unfinished uses</h4>{saved.map(r=><button className="btn-ghost" style={{display:'block',margin:'6px 0',maxWidth:'100%',whiteSpace:'normal'}} key={r.request_id} disabled={busy||pending.length>0} onClick={()=>void run((active,id)=>resume(r.request_id,active,id))}>Resume {r.source_feature} · {r.target.name??'creature'} · {new Date(r.created_at).toLocaleString()}</button>)}{cursor&&<button className="btn-ghost" disabled={busy} onClick={()=>void run((active,id)=>refresh(active,id,cursor))}>Load older uses</button>}</section>}
+ <PropelMovementRecoveryList characterId={character.id} selectedId={row?.request_id} disabled={busy} onSelect={setRow}/>
  <PropelTechniqueRecoveryList selectedId={row?.request_id} characterId={character.id} disabled={busy} onSelect={saved=>setRow(saved)}/>
  <button className="btn-ghost" disabled={busy} style={{marginTop:16}} onClick={close}>Close for later</button>
  </div></div></ModalPortal>}

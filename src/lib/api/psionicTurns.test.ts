@@ -171,7 +171,7 @@ it('routes linked Propel enhancements through the scoped API with stable identit
  const propelId='00000000-0000-4000-8000-000000000077';
  mocks.rpc.mockResolvedValue({data:{requestId:'propel-extra',activationId:propelId,kind:'enkindled',extraRolls:[2],hitDiceSpent:1,hitDiceRevision:1,replayed:false},error:null});
  await spendEnkindledLifeForce('hero',{propelId,requestId:'propel-extra',turn:{soloTurn:0},count:1,baseRolls:[1],extraRolls:[2],sourceFeature:'Warp Propel'});
- expect(mocks.rpc).toHaveBeenCalledWith('psionic_propel',{p_character:'hero',p_operation:'enhance',p_payload:{declarationId:propelId,requestId:'propel-extra',kind:'enkindled',extraRolls:[2],hitDie:null}});
+ expect(mocks.rpc).toHaveBeenCalledWith('psionic_propel',{p_character:'hero',p_operation:'enhance',p_payload:{movementProtocol:1,declarationId:propelId,requestId:'propel-extra',kind:'enkindled',extraRolls:[2],hitDie:null}});
 });
 it('retries Propel Surge against the same declaration and rejects a substituted parent',async()=>{
  const propelId='00000000-0000-4000-8000-000000000077';
@@ -179,7 +179,7 @@ it('retries Propel Surge against the same declaration and rejects a substituted 
  const saved={requestId:input.requestId,activationId:propelId,kind:'surge',rolls:[4,6],total:10,hitDiceSpent:3,hitDiceRevision:2,hitDiceSpentByType:null,replayed:true};
  mocks.rpc.mockRejectedValueOnce(new Error('Lost reply')).mockResolvedValueOnce({data:saved,error:null});
  expect(await spendPsionicSurge('hero',input)).toEqual(saved);
- expect(mocks.rpc.mock.calls[0]).toEqual(['psionic_propel',{p_character:'hero',p_operation:'enhance',p_payload:{declarationId:propelId,requestId:input.requestId,kind:'surge',extraRolls:null,hitDie:8}}]);
+ expect(mocks.rpc.mock.calls[0]).toEqual(['psionic_propel',{p_character:'hero',p_operation:'enhance',p_payload:{movementProtocol:1,declarationId:propelId,requestId:input.requestId,kind:'surge',extraRolls:null,hitDie:8}}]);
  expect(mocks.rpc.mock.calls[1]).toEqual(mocks.rpc.mock.calls[0]);
  mocks.rpc.mockResolvedValue({data:{...saved,activationId:'00000000-0000-4000-8000-000000000078'},error:null});
  await expect(spendPsionicSurge('hero',input)).rejects.toMatchObject({definitelyNotPaid:false});

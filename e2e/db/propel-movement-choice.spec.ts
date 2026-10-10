@@ -10,7 +10,7 @@ test.describe('Deferred Propel movement (private lifecycle)',()=>{
  const auth=(q:string,user=owner)=>`begin;set local request.jwt.claims='{"sub":"${user}","role":"authenticated"}';${q};commit;`;
  const start=(mode='powered',roll=4)=>JSON.parse(sql(auth(`select dndkeep_private.begin_propel_movement_choice('${character}','${id}','solo:${character}:0','${mode}',${roll},'{"name":"Goblin","legalTargetConfirmed":true}')`)));
  const finish=(outcome='failed')=>{
-  sql(auth(`select public.psionic_propel('${character}','finalize','{"declarationId":"${id}"}');select public.psionic_propel('${character}','finish','{"declarationId":"${id}","outcome":"${outcome}"}')`));
+  sql(auth(`select public.psionic_propel('${character}','finalize','{"declarationId":"${id}","movementProtocol":1}');select public.psionic_propel('${character}','finish','{"declarationId":"${id}","outcome":"${outcome}","movementProtocol":1}')`));
  };
  const choiceSql=(choice='warp')=>`select dndkeep_private.choose_propel_movement('${character}','${id}','${choice}')`;
  const choose=(choice='warp',user=owner)=>JSON.parse(sql(auth(choiceSql(choice),user)));
@@ -58,7 +58,7 @@ test.describe('Deferred Propel movement (private lifecycle)',()=>{
   expect(()=>sql(`delete from psionic_solo_turns where character_id='${character}'`)).toThrow(/Choose or close pending Propel movement/);
   api('close',{declarationId:id});sql(`delete from psionic_solo_turns where character_id='${character}'`);
  });
- test('rejects another owner and keeps app execution disabled until UI recovery exists',()=>{
+ test('rejects another owner and keeps internal helpers private',()=>{
   start();finish();expect(()=>choose('warp',other)).toThrow();
   for(const signature of ['dndkeep_private.choose_propel_movement(uuid,uuid,text)','dndkeep_private.begin_propel_movement_choice(uuid,uuid,text,text,integer,jsonb)']){
    for(const role of ['anon','authenticated'])expect(sql(`select has_function_privilege('${role}','${signature}','execute')`)).toBe('f');
@@ -117,6 +117,14 @@ test.describe('Deferred Propel movement (private lifecycle)',()=>{
  });
  test('closure cannot bypass an unresolved save',()=>{
   start();expect(()=>api('close',{declarationId:id})).toThrow(/final save/);expect(api('list').items).toHaveLength(0);
+ });
+ test('older clients cannot read or finish deferred uses using legacy instructions',()=>{
+  start();
+  const legacy=(operation:string,payload:Record<string,unknown>)=>JSON.parse(sql(auth(`set local role authenticated;select public.psionic_propel('${character}','${operation}','${JSON.stringify(payload)}')`)));
+  expect(legacy('list',{}).items).toHaveLength(0);expect(legacy('list',{movementProtocol:1}).items).toHaveLength(1);
+  expect(()=>legacy('read',{declarationId:id})).toThrow(/Reload DNDKeep/);
+  expect(()=>legacy('finish',{declarationId:id,outcome:'failed'})).toThrow(/Reload DNDKeep/);
+  expect(legacy('read',{declarationId:id,movementProtocol:1}).request_id).toBe(id);
  });
  test('concurrent completion returns one saved choice without further spending',async()=>{
   start();finish();const before=state();

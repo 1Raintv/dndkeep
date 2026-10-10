@@ -39,6 +39,7 @@ test.describe('Saved Propel controls',()=>{
   await dialog.getByRole('button',{name:/Resume Telekinetic Propel/}).click();await expect(dialog).toContainText(`Saved dice total: ${roll}.`);
   await dialog.getByRole('button',{name:'Save failed',exact:true}).click();
   await expect(dialog.getByRole('status')).toContainText('Saved: failed. 1 Energy Dice spent.');
+  await dialog.getByRole('button',{name:/Push \/ pull ·/}).click();
   await expect(dialog.getByTestId('propel-movement')).toContainText(`Move the target ${5*Number(roll)} ft straight toward or away from you.`);
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('1');
   expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${charId}'`)).toBe('1');
@@ -85,6 +86,7 @@ test.describe('Saved Propel controls',()=>{
   await dialog.getByRole('button',{name:outcome==='failed'?'Save failed':'Save passed',exact:true}).click();
   const cost=mode==='powered'&&outcome==='failed'?1:0;
   await expect(dialog.getByRole('status')).toContainText(`Saved: ${outcome}. ${cost} Energy Dice spent.`);
+  if(outcome==='failed')await dialog.getByRole('button',{name:'Warp · within 30 ft of you'}).click();
   if(outcome==='failed')await expect(dialog.getByTestId('propel-movement')).toHaveText('Teleport the target to an unoccupied space you can see within 30 ft of you, horizontal to you. Apply movement on the map.');
   else await expect(dialog.getByTestId('propel-movement')).toHaveCount(0);
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe(String(2-cost));
@@ -95,6 +97,32 @@ test.describe('Saved Propel controls',()=>{
   await expect(base).toContainText('Your Bonus Action is unavailable.');
   await expect(base.getByRole('button',{name:'Declare Bonus Action'})).toBeDisabled();
   expect(errors).toEqual([]);
+ });
+ test('post-save Warp recovers a lost confirmation without another cost or history entry',async({page},info)=>{
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+  const ability=page.locator('.arow-grid').filter({has:page.getByText('Telekinetic Propel',{exact:true})});
+  const dialog=page.getByRole('dialog',{name:'Telekinetic Propel',exact:true});
+  await ability.getByRole('button',{name:'Use / resume'}).click();await dialog.getByLabel('Target',{exact:true}).fill('Tabletop goblin');await dialog.getByRole('checkbox').check();
+  await dialog.getByLabel('Movement',{exact:true}).selectOption('powered');await dialog.getByRole('button',{name:'Declare Bonus Action'}).click();
+  await dialog.getByRole('button',{name:'Save failed',exact:true}).click();
+  await expect(dialog.getByRole('button',{name:'Warp · within 30 ft of you'})).toBeVisible();await expect(dialog.getByTestId('propel-movement')).toHaveCount(0);
+  await page.screenshot({path:info.outputPath('propel-movement-choice.png')});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
+   const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8'),body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
+   const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[aria-label=\"Telekinetic Propel\"], [aria-label=\"Telekinetic Propel\"] *')").replace(/const skip = \(el, cs\) =>[\s\S]*?;\n\n {4}const clipped/,"const skip = (_el, cs) => cs.filter !== 'none';\n\n    const clipped");
+   const report=await page.evaluate('('+scoped+'\n})()');expect(report.sideways,JSON.stringify(report)).toBe(false);expect(report.clipped).toEqual([]);expect(report.pastEdge).toEqual([]);
+  }
+  const declaration=sql(`select request_id from dndkeep_private.propel_declarations where character_id='${charId}'`);
+  expect(sql(`select notes from action_logs where id='${declaration}'`)).toContain('Movement choice pending');
+  await page.reload();await ability.getByRole('button',{name:'Use / resume'}).click();await dialog.getByRole('button',{name:'Resume movement · Tabletop goblin'}).click();
+  let dropped=0;await page.route('**/rest/v1/rpc/propel_movement',async route=>{if(route.request().postDataJSON().p_operation==='choose'){await route.fetch();dropped++;await route.abort();}else await route.continue();});
+  await dialog.getByRole('button',{name:'Warp · within 30 ft of you'}).click();await expect(dialog.getByRole('button',{name:'Confirm saved movement'})).toBeVisible();expect(dropped).toBe(2);
+  await page.unroute('**/rest/v1/rpc/propel_movement');await page.reload();await ability.getByRole('button',{name:'Use / resume'}).click();await dialog.getByRole('button',{name:'Resume movement · Tabletop goblin'}).click();
+  await expect(dialog.getByTestId('propel-movement')).toContainText('horizontal to you');await page.screenshot({path:info.outputPath('propel-movement-recovered.png')});
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('1');
+  expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${charId}'`)).toBe('1');
+  expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Propel movement'`)).toBe('1');expect(errors).toEqual([]);
  });
  test('free Misty Step records the Bonus Action and retains it after reload',async({page})=>{
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));

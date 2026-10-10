@@ -4,6 +4,7 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import type {Character} from '../../../types';
 const m=vi.hoisted(()=>({begin:vi.fn(),finish:vi.fn(),context:vi.fn(),list:vi.fn(),resume:vi.fn(),roll:vi.fn(),combat:vi.fn()}));
 vi.mock('../../../lib/supabase',()=>({supabase:{}}));
+vi.mock('./PropelMovementRecoveryList',()=>({default:()=>null}));
 vi.mock('./PropelTechniqueRecoveryList',()=>({default:()=>null}));
 vi.mock('./PropelTechniqueControls',()=>({default:()=>null}));
 vi.mock('../../../lib/api/psionicPropel',async()=>({...await vi.importActual('../../../lib/api/psionicPropel'),beginPropel:m.begin,finishPropel:m.finish,getPropelContext:m.context,listPropel:m.list}));
@@ -94,6 +95,6 @@ it.each([false,true])('declares the no-die option with an empty pool (Warp=%s)',
  expect((screen.getByRole('option',{name:'Roll Energy Die (d8)'}) as HTMLOptionElement).disabled).toBe(true);
  fireEvent.click(screen.getByRole('button',{name:'Declare Bonus Action'}));
  await waitFor(()=>expect(m.begin).toHaveBeenCalledTimes(1));
- expect(m.begin.mock.calls[0][1]).toMatchObject({mode:'free',movement:warp?'warp':'push',roll:0,target:{name:'Goblin',legalTargetConfirmed:true}});
+ expect(m.begin.mock.calls[0][1]).toMatchObject({mode:'free',movement:'push',deferred:true,roll:0,target:{name:'Goblin',legalTargetConfirmed:true}});
  expect(m.roll).not.toHaveBeenCalled();
 });

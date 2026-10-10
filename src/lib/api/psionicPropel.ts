@@ -6,12 +6,13 @@ import {psionProgression} from '../../rules/psionProgression';
 import {psionicDieSides} from '../../rules/psionicRestoration';
 import {psionicRpc,PsionicRequestError,type EnergyReceipt,type PsionicTurn} from './psionicTurns';
 export interface PropelTarget {participantId?:string|null;name?:string;legalTargetConfirmed:true}
-export interface PropelRequest {requestId:string;turnId:string;mode:'free'|'powered'|'technique';movement:'push'|'warp';roll:number;target:PropelTarget}
+export interface PropelRequest {deferred?:true;requestId:string;turnId:string;mode:'free'|'powered'|'technique';movement:'push'|'warp';roll:number;target:PropelTarget}
 export interface PropelRoll {declarationId:string;originalRolls:number[];enkindledRolls:number[];usedSurge:boolean;rolls:number[];total:number}
 export type PropelOutcome='passed'|'failed'|'cancelled';
 export interface PropelParticipantBinding {id:string;participantType:string;entityId:string;combatantId:string;definitionType:string;definitionId:string}
 export interface PropelParticipantBindings {campaignId:string;encounterId:string;actor:PropelParticipantBinding;target:PropelParticipantBinding}
 export interface PropelRecord {
+ movement_choice_required?:boolean;movement_choice?:unknown;
  participant_bindings?:PropelParticipantBindings|null;
  technique_result?:unknown;
  request_id:string;character_id:string;request:Omit<PropelRequest,'requestId'>&{roll:number};
@@ -37,7 +38,7 @@ const older=(r:PropelRecord,c:PropelCursor)=>timeOrder(r.created_at,c.createdAt)
 const invalid=()=>new PsionicRequestError('The saved Propel result could not be verified. Keep its request; do not roll or spend again.',false);
 function validateIds(character:string,id?:string){if(!uuid(character)||(id!==undefined&&!uuid(id)))throw new PsionicRequestError('Invalid Propel identity. No request was sent.',true);}
 function validTarget(t:PropelTarget|null|undefined){return !!t&&t.legalTargetConfirmed===true&&(t.participantId!=null?uuid(t.participantId):text(t.name)&&t.name.length<=120);}
-export function validPropelRequest(r:PropelRequest){return uuid(r.requestId)&&text(r.turnId)&&['free','powered','technique'].includes(r.mode)&&['push','warp'].includes(r.movement)&&integer(r.roll,r.mode==='free'?0:1,r.mode==='free'?0:r.mode==='technique'?4:12)&&validTarget(r.target);}
+export function validPropelRequest(r:PropelRequest){return (r.deferred===undefined||r.deferred===true&&r.movement==='push')&&uuid(r.requestId)&&text(r.turnId)&&['free','powered','technique'].includes(r.mode)&&['push','warp'].includes(r.movement)&&integer(r.roll,r.mode==='free'?0:1,r.mode==='free'?0:r.mode==='technique'?4:12)&&validTarget(r.target);}
 function validRoll(v:PropelRoll|null,record:PropelRecord):boolean{
  if(!v||v.declarationId!==record.request_id||typeof v.usedSurge!=='boolean'||!Array.isArray(v.enkindledRolls)||!Array.isArray(v.originalRolls)||!Array.isArray(v.rolls))return false;
  const sides=psionicDieSides(record.psion_level),base=record.mode==='free'?[]:[record.base_roll];
@@ -81,7 +82,7 @@ export function validPropelRecord(value:unknown,characterId:string):value is Pro
  return !!e&&e.requestId===r.request_id&&integer(e.remaining,0,12)&&integer(e.energyRevision,0,Number.MAX_SAFE_INTEGER)&&typeof e.replayed==='boolean'
   &&JSON.stringify(e.rolls)===JSON.stringify([r.base_roll])&&[e.restorationResource,e.restorationUsed].every(n=>n===null||integer(n,0,Number.MAX_SAFE_INTEGER));
 }
-async function call(characterId:string,operation:string,payload:Record<string,unknown>={}){validateIds(characterId);return psionicRpc('psionic_propel',{p_character:characterId,p_operation:operation,p_payload:structuredClone(payload)},true);}
+async function call(characterId:string,operation:string,payload:Record<string,unknown>={}){validateIds(characterId);return psionicRpc('psionic_propel',{p_character:characterId,p_operation:operation,p_payload:{...structuredClone(payload),movementProtocol:1}},true);}
 async function readResult(character:string,id:string,operation:string,payload:Record<string,unknown>){validateIds(character,id);const data=await call(character,operation,payload);if(!validPropelRecord(data,character)||data.request_id!==id)throw invalid();return data;}
 export async function getPropelContext(characterId:string):Promise<PropelContext>{
  const data=await call(characterId,'context') as PropelContext;
@@ -90,7 +91,8 @@ export async function getPropelContext(characterId:string):Promise<PropelContext
 }
 export async function beginPropel(character:string,input:PropelRequest){
  const request=structuredClone(input);if(!validPropelRequest(request))throw new PsionicRequestError('Choose a valid Propel roll and confirm its target.',true);
- const result=await readResult(character,request.requestId,'begin',{...request});
+ const result=await readResult(character,request.requestId,request.deferred?'begin_deferred':'begin',{...request});
+ if(request.deferred&&result.movement_choice_required!==true)throw invalid();
  const {requestId:_id,...expected}=request;
  if(JSON.stringify(result.request)!==JSON.stringify(expected)){
   // JSONB sorts object keys. Compare the actual request fields, not key order.

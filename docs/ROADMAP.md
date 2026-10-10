@@ -1,6 +1,45 @@
 # DNDKeep — Two-Track Roadmap
 
 
+### Propel post-save movement — player flow connected (unreleased)
+
+New declarations now defer movement until the final failed save. The player
+chooses push/pull or eligible Warp in the same Propel dialog, with no second
+Bonus Action, roll or Energy Die charge. Both adjacent ability rows use this
+shared flow. Successful saves never offer movement. The Warp instruction keeps
+the destination visible, unoccupied, horizontal and within 30 feet of the caster;
+no Prone effect is invented. Map placement is still manual.
+
+Movement requests persist before sending. Lost replies recover the same server
+choice; reload discovery also finds failed-save choices without browser storage.
+An explicit close preserves an earlier concurrent choice, otherwise records no
+movement. Turn guards require choosing or closing before advancement.
+
+Migration 20261010170730 adds truthful history: save settlement records movement
+pending, and the first choice/closure adds exactly one separate history entry.
+A distinct begin_deferred operation prevents older databases from spending a
+Bonus Action on an unrecognized new flow. Movement-aware protocol markers cover
+reads, completion and linked enhancements; old tabs cannot list/read/finish new
+deferred uses with their obsolete movement instructions. Legacy uses still work.
+
+Validation: full gate passes with 4,415 unit tests, TS 194/194 and entry 255.7 KB.
+All 30 desktop/mobile Propel browser cases passed. The new post-save/reload/lost-
+reply case passed with the official overflow probe at both viewports; screenshots
+reviewed. Disabling deferred declaration made that regression fail at the missing
+Warp choice; restoring passed. Follow-up checks cover the distinct operation and
+old-client protocol (8 flow cases and 4 protocol cases across both viewports).
+All 22 movement database cases also passed against the final migration.
+SQL lint has no changed-function diagnostics; security findings remain
+keep_warm/client_errors. Exact local ledger verified. Repo chain: 331; retained
+release rehearsals: 321. Logs: `.tmp/propel-ui-*`.
+
+Next: refresh both release rehearsals, inspect hosted checks and review deployment
+readiness. Broader Psion work remains: Telepath UI/ability-check triggers, Graze
+reaction timing and full ability audit. Map destination automation/polish remains
+open. Nothing in this entry claims production deployment or complete automation.
+
+
+
 ### Deferred Propel movement — turn boundaries (not released)
 
 Migration 20261010170333 extends the shared combat assertion to unresolved

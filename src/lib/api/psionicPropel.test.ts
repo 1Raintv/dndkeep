@@ -14,7 +14,7 @@ const finished=()=>{const r={...record(),roll_result:roll(),outcome:'failed'};re
 beforeEach(()=>vi.resetAllMocks());
 it('submits a frozen declaration and validates its captured action',async()=>{
  mocks.rpc.mockResolvedValue(record());expect(await beginPropel(character,request)).toEqual(record());
- expect(mocks.rpc).toHaveBeenCalledWith('psionic_propel',{p_character:character,p_operation:'begin',p_payload:request},true);
+ expect(mocks.rpc).toHaveBeenCalledWith('psionic_propel',{p_character:character,p_operation:'begin',p_payload:{...request,movementProtocol:1}},true);
 });
 it.each([{character_id:id},{base_roll:7},{psion_level:11},{source_feature:'Warp Propel'},{target:{name:'Other',legalTargetConfirmed:true}},{action_receipt:null},{roll_result:{...roll(),total:5}},{outcome:'failed'}])('keeps recovery for inconsistent records: %j',async patch=>{
  mocks.rpc.mockResolvedValue({...record(),...patch});await expect(readPropel(character,id)).rejects.toMatchObject({definitelyNotPaid:false});
@@ -79,7 +79,14 @@ it('sends frozen save evidence and rejects a substituted confirmed save',async()
  const save={participantId:'manual',outcome:'failed' as const,dc:15,d20:3,bonus:2,total:5,rolls:[3],advantage:false,naturalExtremes:false};
  const good={...finished(),save_details:save};mocks.rpc.mockResolvedValue(good);
  expect(await finishPropel(character,id,'failed',save)).toEqual(good);
- expect(mocks.rpc).toHaveBeenCalledWith('psionic_propel',{p_character:character,p_operation:'finish',p_payload:{declarationId:id,outcome:'failed',save}},true);
+ expect(mocks.rpc).toHaveBeenCalledWith('psionic_propel',{p_character:character,p_operation:'finish',p_payload:{declarationId:id,outcome:'failed',save,movementProtocol:1}},true);
  mocks.rpc.mockResolvedValue({...good,save_details:{...save,dc:16}});
  await expect(finishPropel(character,id,'failed',save)).rejects.toMatchObject({definitelyNotPaid:false});
+});
+
+it('requires deferred acknowledgement before accepting a new declaration',async()=>{
+ mocks.rpc.mockResolvedValue(record());await expect(beginPropel(character,{...request,deferred:true})).rejects.toMatchObject({definitelyNotPaid:false});
+ mocks.rpc.mockResolvedValue({...record(),movement_choice_required:true,movement_choice:null});
+ expect(await beginPropel(character,{...request,deferred:true})).toMatchObject({movement_choice_required:true});
+ expect(mocks.rpc.mock.calls[mocks.rpc.mock.calls.length-1][1].p_operation).toBe('begin_deferred');
 });
