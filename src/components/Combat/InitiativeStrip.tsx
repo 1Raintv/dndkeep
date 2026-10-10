@@ -254,6 +254,7 @@ export default function InitiativeStrip({ isDM, characterId }: Props) {
     if (!encounter || !currentActor) return;
     if (currentActor.dash_used_this_turn) return;
     const result = await takeDash({
+      turnId: encounter.psionic_turn_id,
       campaignId: encounter.campaign_id,
       encounterId: encounter.id,
       participantId: currentActor.id,
@@ -269,6 +270,7 @@ export default function InitiativeStrip({ isDM, characterId }: Props) {
     if (!encounter || !currentActor) return;
     if (currentActor.disengaged_this_turn) return;
     const result = await takeDisengage({
+      turnId: encounter.psionic_turn_id,
       campaignId: encounter.campaign_id,
       encounterId: encounter.id,
       participantId: currentActor.id,

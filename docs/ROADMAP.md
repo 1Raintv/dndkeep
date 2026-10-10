@@ -8217,3 +8217,35 @@ flag guard: rejecting a late flag write after damage would create partial saves.
 Also audit pending spells/reactions before turn/combat completion, and expose
 closing-turn availability in player controls. This guard covers shared claims,
 not every legacy action writer or already-declared unresolved effect.
+
+
+### Atomic ordinary Dash / Disengage (2026-10-10, unreleased)
+
+Both live controls now send the rendered turn identity to one checked transaction.
+It verifies the current actor, owner/DM authority, combatant link, incapacitation,
+normal Action budget and closing reservation, then saves flags, a shared character
+claim, the log and a private receipt together. Previously these helpers read but
+ignored action_used, and saved the log separately. The old write loops are removed.
+Creatures use the same normal-Action checks and remain DM-controlled; hidden
+creature events remain hidden. Existing movement allowance math is unchanged.
+
+The server deduplicates participant/turn/action, so overlapping clicks cannot
+spend two actions. Exact old-turn replay never reapplies flags in a newer turn.
+A lost reply retries the original displayed turn rather than reading and spending
+a newer one. Reset Movement still explicitly removes movement benefits without
+refunding its Action; retrying that reset action reports the spent state instead
+of falsely claiming to restore it. These are ordinary Action buttons; bonus-action
+class features and extra-grant movement are not added by this change.
+
+Migration 20261010070032 verified with 15 local database/browser cases covering
+both actions, concurrent competing/identical requests, wrong owner/turn, closing,
+incapacitation, hidden creatures, rollback, reset, broken identity and a lost reply
+followed by another turn. Required gate: 3,908 units, TS 194/194, 255.7 KB entry.
+New API tests and focused lint pass. SQL lint clean; existing keep_warm and
+client_errors advisor findings unchanged. Exact local ledger recorded, foreign
+history preserved. Not deployed.
+
+Remaining: legacy direct participant-flag writes and Reset Movement still need
+server-side transaction consolidation; pending attack declaration/payment and
+reaction completion need the same audit. The new endpoint does not revoke all
+older participant UPDATE permissions or claim those paths are now atomic.

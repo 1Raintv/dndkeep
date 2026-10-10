@@ -1,9 +1,11 @@
+vi.mock('./api/movementActions',()=>({commitMovementAction:vi.fn()}));
+import {commitMovementAction} from './api/movementActions';
 import {beforeEach,expect,it,vi} from 'vitest';
 const m=vi.hoisted(()=>({row:{} as Record<string,unknown>}));
 vi.mock('./supabase',()=>({supabase:{from:()=>({select:()=>({eq:()=>({single:async()=>({data:m.row,error:null})})})})}}));
 vi.mock('./pendingReaction',()=>({offerOpportunityAttacks:vi.fn()}));
 vi.mock('./combatEvents',()=>({emitCombatEvent:vi.fn(),newChainId:()=>''}));
-import {canMove} from './movement';
+import {canMove,takeDash,takeDisengage} from './movement';
 beforeEach(()=>{m.row={movement_used_ft:5,max_speed_ft:30,dash_used_this_turn:false,combatants:{active_conditions:['Stunned','Incapacitated'],exhaustion_level:0,active_buffs:[]}};});
 it('a Stunned actor can spend its remaining movement without gaining extra movement',async()=>{
  expect(await canMove('actor',25)).toMatchObject({allowed:true,maxSpeed:30,remaining:25});expect(await canMove('actor',26)).toMatchObject({allowed:false,maxSpeed:30});
@@ -18,4 +20,10 @@ it('uses joined combatant conditions and reductions before Dash',async()=>{
 
 it('dead actors have no voluntary movement even with missing condition tags',async()=>{
  m.row.combatants={is_dead:true,active_conditions:[]};expect(await canMove('actor',1)).toMatchObject({allowed:false,maxSpeed:0});
+});
+
+it.each([['dash',takeDash],['disengage',takeDisengage]] as const)('delegates %s as one atomic operation and reports failure',async(kind,action)=>{
+ const input={campaignId:'campaign',encounterId:'encounter',participantId:'actor',turnId:'rendered-turn',participantName:'Hero',participantType:'character' as const};
+ vi.mocked(commitMovementAction).mockResolvedValueOnce({} as never);expect(await action(input)).toEqual({ok:true});expect(commitMovementAction).toHaveBeenCalledWith('encounter','actor','rendered-turn',kind);
+ vi.mocked(commitMovementAction).mockRejectedValueOnce(new Error('Your normal Action is already spent'));expect(await action(input)).toEqual({ok:false,reason:'Your normal Action is already spent'});
 });

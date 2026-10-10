@@ -90,6 +90,7 @@ export async function canMove(
 // per-turn movement budget for the remainder of the turn).
 
 export interface TakeDashInput {
+  turnId: string | undefined;
   campaignId: string;
   encounterId: string | null;
   participantId: string;
@@ -110,107 +111,19 @@ export type MovementActionResult =
   | { ok: true }
   | { ok: false; reason: string };
 
-export async function takeDash(input: TakeDashInput): Promise<MovementActionResult> {
-  const { data: cur, error: curErr } = await supabase
-    .from('combat_participants')
-    .select('dash_used_this_turn, action_used, max_speed_ft')
-    .eq('id', input.participantId)
-    .single();
-  if (curErr) {
-    console.error('[takeDash] fetch failed:', curErr);
-    return { ok: false, reason: curErr.message ?? 'Failed to load participant' };
-  }
-  if (!cur) return { ok: false, reason: 'Participant not found' };
-  if (cur.dash_used_this_turn) return { ok: false, reason: 'Already dashed this turn' };
-
-  const { error: updErr } = await supabase
-    .from('combat_participants')
-    .update({
-      dash_used_this_turn: true,
-      action_used: true,
-    })
-    .eq('id', input.participantId);
-  if (updErr) {
-    console.error('[takeDash] update failed:', updErr);
-    return { ok: false, reason: updErr.message ?? 'Failed to apply Dash' };
-  }
-
-  const chainId = newChainId();
-  await emitCombatEvent({
-    campaignId: input.campaignId,
-    encounterId: input.encounterId,
-    chainId,
-    sequence: 0,
-    actorType:
-      input.participantType === 'character' ? 'player'
-      : isCreatureParticipantType(input.participantType) ? 'creature'
-      : 'system',
-    actorName: input.participantName,
-    targetType: null,
-    targetName: null,
-    eventType: 'dash',
-    payload: {
-      bonus_ft: cur.max_speed_ft ?? 30,
-    },
-  });
-  return { ok: true };
+export function takeDash(input: TakeDashInput): Promise<MovementActionResult> {
+  return takeMovementAction(input,'dash');
 }
-
-// ─── Disengage ───────────────────────────────────────────────────
-// v2.108.0 — Phase G: take the Disengage action. Costs an action. Suppresses
-// Opportunity Attack offers for the rest of this turn.
-
-export interface TakeDisengageInput {
-  campaignId: string;
-  encounterId: string | null;
-  participantId: string;
-  participantName: string;
-  // v2.363.0 — see TakeDashInput note.
-  participantType: 'character' | 'creature' | 'monster' | 'npc';
+export type TakeDisengageInput=TakeDashInput;
+export function takeDisengage(input: TakeDisengageInput): Promise<MovementActionResult> {
+  return takeMovementAction(input,'disengage');
 }
-
-export async function takeDisengage(input: TakeDisengageInput): Promise<MovementActionResult> {
-  const { data: cur, error: curErr } = await supabase
-    .from('combat_participants')
-    .select('disengaged_this_turn, action_used')
-    .eq('id', input.participantId)
-    .single();
-  if (curErr) {
-    console.error('[takeDisengage] fetch failed:', curErr);
-    return { ok: false, reason: curErr.message ?? 'Failed to load participant' };
-  }
-  if (!cur) return { ok: false, reason: 'Participant not found' };
-  if (cur.disengaged_this_turn) return { ok: false, reason: 'Already disengaged this turn' };
-
-  const { error: updErr } = await supabase
-    .from('combat_participants')
-    .update({
-      disengaged_this_turn: true,
-      action_used: true,
-    })
-    .eq('id', input.participantId);
-  if (updErr) {
-    console.error('[takeDisengage] update failed:', updErr);
-    return { ok: false, reason: updErr.message ?? 'Failed to apply Disengage' };
-  }
-
-  const chainId = newChainId();
-  await emitCombatEvent({
-    campaignId: input.campaignId,
-    encounterId: input.encounterId,
-    chainId,
-    sequence: 0,
-    actorType:
-      input.participantType === 'character' ? 'player'
-      : isCreatureParticipantType(input.participantType) ? 'creature'
-      : 'system',
-    actorName: input.participantName,
-    targetType: null,
-    targetName: null,
-    eventType: 'disengage',
-    payload: {},
-  });
-  return { ok: true };
+async function takeMovementAction(input:TakeDashInput,kind:'dash'|'disengage'):Promise<MovementActionResult>{
+  try{
+    const {commitMovementAction}=await import('./api/movementActions');
+    await commitMovementAction(input.encounterId,input.participantId,input.turnId,kind);
+    return {ok:true};
+  }catch(error){return {ok:false,reason:error instanceof Error?error.message:'Movement action could not be confirmed.'};}
 }
 
 /**
