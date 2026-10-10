@@ -1,5 +1,34 @@
 # DNDKeep — Two-Track Roadmap
 
+### Mutable Form rules foundation (not yet wired to activation)
+
+The owner-provided UA update pp.7–8 is now represented by pure rules in
+`src/rules/mutableForm.ts`: Metamorph/Psion-level eligibility, one-die activation,
+optional level-6 Flesh Weaver second die, one temporary-HP roll with INT and
+minimum 1, 60/600-second duration, and mandatory level-10 choice. All nine Stony
+Epidermis resistances are explicit; its advantage is concentration-only. Flesh
+Weaver and Unnatural Flexibility stack to +3 AC. Superior Stride reads current
+armor state, retaining the base +5 Speed/reach while suppressing its own movement
+benefits in armor. Touch range is optional per Action casting and source-agnostic.
+Enhanced rolls use the existing canonical validator; the function makes no writes.
+
+46 focused cases cover boundaries, multiclass order, resource/roll validation,
+all improvement choices, armor changes, separate costs and untouched input.
+Full `npm run verify` passes (4,730 tests, TS 193/193, 256.1 KB entry).
+Evidence: `.tmp/mutable-form-{unit,gate}.log`. No schema or UI change.
+This is preparation for the complete feature, not a playable activation. Remaining:
+- Saved idempotent activation must atomically claim the Bonus Action, pay Energy
+  Dice, bind the original roll/paid enhancements and log the result.
+- Use the existing private `psionic_duration_clocks` game-time source (also used
+  by Connection), not wall-clock timers; test turn/time/rest and expiry behavior.
+- Resolve temporary-HP replacement separately from timed modifiers. Expiry must
+  not subtract the original grant from whatever HP remain.
+- Wire active reach/Speed, AC, resistance, concentration saves and per-cast Touch
+  range. Flexibility escape applies to nonmagical restraints or Grappled only.
+- Flesh Weaver healing remains a separately paid, slot-casting-only effect.
+- Add actual player controls, durable retry/reload recovery, database concurrency
+  tests and desktop/mobile verification before claiming automation is complete.
+
 ### Psykinetic Mage Hand range and carrying guidance (local; not released)
 
 Stronger Telekinesis now adds 30 feet to Mage Hand's casting range in Actions,
