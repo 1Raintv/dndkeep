@@ -1,6 +1,7 @@
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {test,expect,type Page} from '@playwright/test';
+import {auraReviewPreview} from '../../src/rules/auraReviewPreview';
 import {verifyAuraResolutionReceipt} from '../../src/lib/auraResolutionReceipt';
 import {validAuraDamagePools} from '../../src/rules/auraDamageEvidence';
 import {validAuraSaveEvidence} from '../../src/rules/auraSaveEvidence';
@@ -198,6 +199,24 @@ test.describe('Atomic aura resolution',()=>{
   expect(run(lookup()).request.proposal.damageRoll).toEqual(pending.saved.proposal.damageRoll);
   expect(sql(`select legendary_resistance_used from combat_participants where id='${pb}'`)).toBe('1');
   expect(counts()).toEqual({receipt:1,penalty:1,events:3,marker:1});
+ });
+
+ test('review expiry matches atomic settlement after the caster next turn ends',()=>{
+  const expired=seedPenalty();
+  let moved=run(`select commit_combat_clock_transition('${enc}','${randomUUID()}','${turn}','${pa}',0,2)`);turn=moved.turnId;
+  moved=run(`select commit_combat_clock_transition('${enc}','${randomUUID()}','${turn}','${pb}',1,2)`);turn=moved.turnId;
+  const expected=read(),p=proposal();p.save.dice=[15];
+  expect(expected.nextSaveEffects).toEqual([expect.objectContaining({id:expired,expired:true})]);
+  expect(auraReviewPreview(expected,p)).toMatchObject({penalty:0,normal:{save:{passed:true},damage:7}});
+  const result=run(commit(expected,p));expect(result).toMatchObject({penalty:{expiredIds:[expired],consumedIds:[],penalty:0},save:{passed:true},damage:7});
+ });
+ test('mixed expired and active effects preview the same single penalty as settlement',()=>{
+  const expired=seedPenalty();
+  let moved=run(`select commit_combat_clock_transition('${enc}','${randomUUID()}','${turn}','${pa}',0,2)`);turn=moved.turnId;
+  moved=run(`select commit_combat_clock_transition('${enc}','${randomUUID()}','${turn}','${pb}',1,2)`);turn=moved.turnId;
+  const active=seedPenalty(),expected=read(),p=proposal();p.save.dice=[15];
+  expect(auraReviewPreview(expected,p)).toMatchObject({penalty:2,normal:{save:{passed:false},damage:15}});
+  expect(run(commit(expected,p))).toMatchObject({penalty:{expiredIds:[expired],consumedIds:[active],penalty:2},save:{passed:false},damage:15});
  });
 
 });

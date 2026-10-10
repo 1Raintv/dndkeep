@@ -7494,3 +7494,31 @@ one damage application. Changed-file ESLint and diff checks pass.
 
 Full gate passes: 3,612 unit tests, TypeScript 195/195, clean hooks/RAW/coordinates/
 anchors, production build and 255.7 KB entry budget.
+
+
+### Exact aura penalty review snapshot (2026-10-10)
+
+Migration `20261010070017_aura_penalty_review_snapshot.sql` adds authoritative
+expiry flags to pending next-save effects in aura context. It reuses the same
+caster-owned combat-clock helper as consumption. The existing locked snapshot
+comparison now also catches a changed expiry before settlement. Historical
+receipts from before this field remain verifiable; new receipts must match
+the exact reviewed consumed/expired partition.
+
+The pure `auraReviewPreview` computes the original save and damage with the
+actual applicable penalty, and the optional Legendary Resistance outcome,
+without rolling, spending or writing. Expired effects add no penalty;
+overlapping active effects apply one saved d4; automatic failures use none.
+Unknown expiry requires review instead of guessing. This supplies accurate
+numbers for upcoming controls; the controls and live turn integration remain
+unfinished. No production deployment.
+
+The local migration was applied directly in a transaction because the preserved
+foreign local ledger entry prevents the normal migration-up path. No reset or
+production write. SQL lint and security advisor checks pass.
+
+Validation: all 98 local aura snapshot/transaction/browser cases pass, including
+real caster-turn expiry and mixed active/expired effects. All 3,620 unit tests
+and the full gate pass (TypeScript 195/195; hooks/RAW/coordinates/anchors; build
+and entry budget). Migration 20261010070017 is recorded locally with verified
+SQL contents; the unrelated ledger entry remains unchanged.

@@ -35,8 +35,13 @@ export function verifyAuraResolutionReceipt(expected:unknown,proposal:unknown,re
  if(typeof automatic!=='boolean'||(automatic?proposal.penaltyD4!==null:!integer(proposal.penaltyD4,1,4))
   ||p.saveId!==requestId||p.saveKind!=='feature'||p.replayed!==false||!ids(p.consumedIds)||!ids(p.expiredIds)
   ||!Array.isArray(expected.nextSaveEffects))throw invalid();
+ const consumedIds=p.consumedIds,expiredIds=p.expiredIds;
  const effectIds=expected.nextSaveEffects.map(e=>object(e)?e.id:null),resolved=[...p.consumedIds,...p.expiredIds];
  if(!ids(effectIds)||new Set(resolved).size!==resolved.length||resolved.length!==effectIds.length||resolved.some(id=>!effectIds.includes(id)))throw invalid();
+ // Older historical receipts predate expiry flags; new snapshots must match
+ // the exact consumed/expired partition used for the reviewed save.
+ if(expected.nextSaveEffects.some(e=>object(e)&&'expired' in e&&(typeof e.expired!=='boolean'||
+  (e.expired?!expiredIds.includes(e.id as string):!consumedIds.includes(e.id as string)))))throw invalid();
  const penalty=p.consumedIds.length&&!automatic?proposal.penaltyD4 as number:0;
  if(p.penalty!==penalty||p.die!==(penalty||null)||!validAuraSaveEvidence(expected,proposal.save,penalty,value.save)
   ||!validAuraDamagePools(expected,proposal,penalty,value))throw invalid();

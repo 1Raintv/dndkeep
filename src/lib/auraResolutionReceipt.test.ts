@@ -6,7 +6,7 @@ function fixture(character=false){
  const expected={encounterId:id(1),turnId:id(2),marker:`aura_save:${id(3)}:fixture`,origin:{participant:{id:id(3)}},
   target:{participant:{id:id(4),participant_type:character?'character':'monster',entity_id:id(5)},combatant:{current_hp:20,max_hp:20,temp_hp:0,active_conditions:[] as string[]}},
   aura:{aura:{key:'fixture',saveAbility:'WIS',saveDC:14,damageDice:'1d8',damageType:'radiant',halfOnSave:true}},
-  save:{autoFail:false,advantage:false,disadvantage:false,naturalExtremes:false,exhaustion:0,buffs:[]},legendaryResistance:{capacity:0,used:0},nextSaveEffects:[] as {id:string}[],
+  save:{autoFail:false,advantage:false,disadvantage:false,naturalExtremes:false,exhaustion:0,buffs:[]},legendaryResistance:{capacity:0,used:0},nextSaveEffects:[] as {id:string;expired?:boolean}[],
   partyDamage:{character:{id:id(5),concentration_spell:'Bless',advanced_automations_unlocked:false,automation_overrides:{}},campaign:{automation_defaults:{}},participant:{id:id(4)}}};
  const proposal={save:{baseBonus:0,dice:[1],effectRolls:[]},penaltyD4:2 as number|null,damageRoll:{dice:[{die:8,value:5}],modifier:0,total:5},affinity:'normal',useResistance:false,concentrationId:id(6),conModifier:0,geometryConfirmed:true,defensesReviewed:true};
  const requestId=id(7),d=auraDamageEvidence(expected,proposal,0);
@@ -62,4 +62,11 @@ it.each([false,true])('honors character overrides only when unlocked=%s',unlocke
  f.expected.partyDamage.character.automation_overrides={concentration_on_damage:'off'};
  f.result.damageResult.automation=unlocked?'off':'prompt';f.result.damageResult.checkId=unlocked?null:id(6);
  expect(verifyAuraResolutionReceipt(f.expected,f.proposal,f.requestId,f.result)).toEqual(f.result);
+});
+
+it('verifies known expiry flags against consumption rather than just their union',()=>{
+ const f=fixture();f.expected.nextSaveEffects=[{id:id(8),expired:true}];
+ f.result.penalty.expiredIds=[id(8)];expect(verifyAuraResolutionReceipt(f.expected,f.proposal,f.requestId,f.result)).toEqual(f.result);
+ f.result.penalty.expiredIds=[];f.result.penalty.consumedIds=[id(8)];f.result.penalty.penalty=2;f.result.penalty.die=2;f.result.save=auraDamageEvidence(f.expected,f.proposal,2).save;
+ expect(()=>verifyAuraResolutionReceipt(f.expected,f.proposal,f.requestId,f.result)).toThrow();
 });
