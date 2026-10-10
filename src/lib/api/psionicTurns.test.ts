@@ -184,3 +184,22 @@ it('retries Propel Surge against the same declaration and rejects a substituted 
  mocks.rpc.mockResolvedValue({data:{...saved,activationId:'00000000-0000-4000-8000-000000000078'},error:null});
  await expect(spendPsionicSurge('hero',input)).rejects.toMatchObject({definitelyNotPaid:false});
 });
+
+it('Connection Enkindled retries the identical linked declaration',async()=>{
+ const connectionId='00000000-0000-4000-8000-000000000011';
+ const input={...request,connectionId,sourceFeature:'Telepathic Connection'};
+ const receipt={requestId:'stable',declarationId:connectionId,kind:'enkindled',extraRolls:[2,3],hitDiceSpent:2,hitDiceRevision:1,replayed:true};
+ mocks.rpc.mockResolvedValueOnce({data:null,error:{message:'lost reply'}}).mockResolvedValueOnce({data:receipt,error:null});
+ expect(await spendEnkindledLifeForce('hero',input)).toEqual(receipt);
+ expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[1]);
+ expect(mocks.rpc.mock.calls[0]).toEqual(['psionic_connection',{p_character:'hero',p_operation:'enhance',p_payload:{declarationId:connectionId,requestId:'stable',kind:'enkindled',extraRolls:[2,3],hitDie:null}}]);
+});
+it('Connection Surge requires the matching declaration receipt',async()=>{
+ const connectionId='00000000-0000-4000-8000-000000000011';
+ const input={connectionId,requestId:'surge',sourceFeature:'Telepathic Connection',rolls:[2],hitDie:6 as const};
+ const receipt={requestId:'surge',declarationId:connectionId,kind:'surge',rolls:[4],total:4,hitDiceSpent:1,hitDiceRevision:1,hitDiceSpentByType:null,replayed:false};
+ mocks.rpc.mockResolvedValue({data:receipt,error:null});expect(await spendPsionicSurge('hero',input)).toEqual(receipt);
+ expect(mocks.rpc.mock.calls[0][0]).toBe('psionic_connection');
+ mocks.rpc.mockResolvedValue({data:{...receipt,declarationId:'other'},error:null});
+ await expect(spendPsionicSurge('hero',input)).rejects.toMatchObject({definitelyNotPaid:false});
+});

@@ -1,5 +1,19 @@
 # DNDKeep — Two-Track Roadmap
 
+### Connection integration — durable enhancement recovery (not released)
+
+Surge/Enkindled requests now carry an exclusive `connectionId` through the
+existing payment hooks, browser recovery store and authenticated dispatcher.
+The client verifies the returned declaration identity. Mixed parents, wrong
+feature names, changed saved identities, missing Surge die selection and
+multi-base-roll Connection enhancements are rejected before payment.
+
+A real local browser test drops both responses after Surge commits, reloads,
+then confirms the saved request through the production payment helper. The
+result stays four, exactly one Hit Die remains spent, and recovery clears only
+after the verified replay. Shared enhancement prompts preserve the parent link.
+No new migration. Player controls and active-range display remain to integrate.
+
 ### Connection integration — authenticated API (local; not released)
 
 Migration 20261010145806 exposes the owner-checked lifecycle through one

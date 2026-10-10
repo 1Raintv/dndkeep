@@ -47,3 +47,11 @@ it('accepts only one matching Propel enhancement parent',()=>{
  for(const patch of [{effectRollId:propelId},{activationId:propelId},{requestId:propelId},{sourceFeature:'Other'},{propelId:null}])
   expect(validPsionicEnhancementLink({propelId,sourceFeature:'Telekinetic Propel',requestId:'payment',...patch})).toBe(false);
 });
+
+it('Connection enhancement links cannot borrow a different feature or parent',()=>{
+ const connectionId='00000000-0000-4000-8000-000000000011';
+ const request={connectionId,sourceFeature:'Telepathic Connection',requestId:'payment'};
+ expect(validPsionicEnhancementLink(request)).toBe(true);
+ for(const patch of [{propelId:connectionId},{activationId:connectionId},{effectRollId:connectionId},{sourceFeature:'Warp Propel'},{requestId:connectionId},{connectionId:null}])
+  expect(validPsionicEnhancementLink({...request,...patch})).toBe(false);
+});

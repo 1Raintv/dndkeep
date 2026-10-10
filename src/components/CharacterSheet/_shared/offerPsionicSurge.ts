@@ -7,7 +7,7 @@ import type {useModal} from '../../shared/Modal';
 import {confirmPsionicPayment} from './confirmPsionicPayment';
 /** v2.782 — charge and recovery history share one server transaction. */
 export async function offerPsionicSurge(options:{
- propelId?:string;activationId?:string;effectRollId?:string;roll:number;rolls?:readonly number[];sides:number;feature:string;campaignId?:string|null;recoveryNote?:string;
+ connectionId?:string;propelId?:string;activationId?:string;effectRollId?:string;roll:number;rolls?:readonly number[];sides:number;feature:string;campaignId?:string|null;recoveryNote?:string;
  current:()=>Character;active:()=>boolean;eligible:(character:Character)=>boolean;
  persistence?:PsionicEnhancementPersistence;accept:(receipt:EnkindledReceipt|SurgeReceipt)=>void;
  confirm:ReturnType<typeof useModal>['confirm'];warn:(message:string)=>void;
@@ -32,7 +32,7 @@ export async function offerPsionicSurge(options:{
  if(hitDie===null)return unchanged;
  const latest=characterHitDice(current());
  if(!psionicSurge(current(),rolls)||!options.eligible(current())||latest.status!=='ready'||!latest.pools.some(pool=>pool.die===hitDie&&pool.available>0)){options.warn('Resources changed. Psionic Surge was not applied.');return null;}
- const request={...(options.propelId?{propelId:options.propelId}:{}),...(options.effectRollId?{effectRollId:options.effectRollId}:{}),...(options.activationId?{activationId:options.activationId}:{}),hitDie,requestId:crypto.randomUUID(),rolls:[...rolls],sourceFeature:feature,recoveryNote:options.recoveryNote};
+ const request={...(options.connectionId?{connectionId:options.connectionId}:{}),...(options.propelId?{propelId:options.propelId}:{}),...(options.effectRollId?{effectRollId:options.effectRollId}:{}),...(options.activationId?{activationId:options.activationId}:{}),hitDie,requestId:crypto.randomUUID(),rolls:[...rolls],sourceFeature:feature,recoveryNote:options.recoveryNote};
  const paid=await confirmPsionicPayment(()=>options.persistence!.surge(request),{...options,active:()=>active()&&current().id===id});
  if(paid.status==='unknown')return {...unchanged,unconfirmed:true};
  if(paid.status==='rejected')return unchanged;

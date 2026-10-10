@@ -75,3 +75,14 @@ it('retains a linked effect parent and cannot change it on recovery',()=>{
  rememberPsionicPayment('hero',linked);expect(pendingPsionicPayments('hero')).toEqual([linked]);
  expect(()=>rememberPsionicPayment('hero',{...linked,request:{...linked.request,effectRollId:'00000000-0000-4000-8000-000000000008'}})).toThrow(/original saved request/);
 });
+
+it('persists Connection parents and refuses parent changes or missing Hit Die selection',()=>{
+ const connectionId='00000000-0000-4000-8000-000000000011';
+ const linked={kind:'surge' as const,request:{requestId:'linked',connectionId,sourceFeature:'Telepathic Connection',rolls:[2],hitDie:6 as const}};
+ rememberPsionicPayment('hero',linked);expect(pendingPsionicPayments('hero')).toEqual([linked]);
+ expect(()=>rememberPsionicPayment('hero',{...linked,request:{...linked.request,connectionId:'00000000-0000-4000-8000-000000000012'}})).toThrow();
+ expect(()=>rememberPsionicPayment('hero',{...linked,request:{...linked.request,hitDie:undefined}})).toThrow();
+ const extra={kind:'enkindled' as const,request:{requestId:'extra',connectionId,sourceFeature:'Telepathic Connection',turn:{soloTurn:0},baseRolls:[2],extraRolls:[6,9],count:2}};
+ rememberPsionicPayment('hero',extra);expect(pendingPsionicPayments('hero')).toContainEqual(extra);
+ expect(()=>rememberPsionicPayment('hero',{...extra,request:{...extra.request,requestId:'invalid',baseRolls:[1,2]}})).toThrow();
+});

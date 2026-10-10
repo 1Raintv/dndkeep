@@ -1,7 +1,7 @@
 import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {expect,test} from '@playwright/test';
-import {gateDbSuite} from './helpers';
+import {gateDbSuite,signInAsSeedDm} from './helpers';
 const sql=(q:string)=>execFileSync('docker',['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-q','-t','-A','-v','ON_ERROR_STOP=1'],{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 // Private lifecycle is not exposed yet. Claims still exercise the real owner
 // check; separate tests prove authenticated/anonymous cannot call it directly.
@@ -119,6 +119,39 @@ test.describe('saved Connection private lifecycle',()=>{
   sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+3600 where character_id='${character}'`);
   expect(call('list','{}')).toEqual([]);
   expect(call('read',JSON.stringify({declarationId:id})).remainingSeconds).toBe(0);
+ });
+
+ test('lost Connection Surge replies recover after reload without a second Hit Die',async({page})=>{
+  begin();const requestId=randomUUID();
+  sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${owner}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${owner}','${owner}',jsonb_build_object('sub','${owner}','email','${owner}@connection.local'),'email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${owner}@connection.local`);
+  let dropped=0;
+  await page.route('**/rest/v1/rpc/psionic_connection',async route=>{
+   if(route.request().postDataJSON()?.p_operation!=='enhance'){await route.continue();return;}
+   const response=await route.fetch();expect(response.ok()).toBe(true);dropped++;await route.abort('failed');
+  });
+  const pending=await page.evaluate(async({characterId,connectionId,requestId})=>{
+   const {settleSavedPsionicPayment}=await import('/src/lib/settleSavedPsionicPayment.ts');
+   const {spendPsionicSurge}=await import('/src/lib/api/psionicTurns.ts');
+   const {pendingPsionicPayments}=await import('/src/lib/psionicPaymentRecovery.ts');
+   const payment={kind:'surge',request:{connectionId,requestId,sourceFeature:'Telepathic Connection',rolls:[2],hitDie:6}};
+   try{await settleSavedPsionicPayment(characterId,payment,()=>spendPsionicSurge(characterId,payment.request));}catch{/* expected lost replies */}
+   return pendingPsionicPayments(characterId);
+  },{characterId:character,connectionId:id,requestId});
+  expect(dropped).toBe(2);expect(pending).toHaveLength(1);expect(pending[0].request.connectionId).toBe(id);
+  expect(sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('1');
+  await page.unroute('**/rest/v1/rpc/psionic_connection');await page.reload();
+  const recovered=await page.evaluate(async characterId=>{
+   const {settleSavedPsionicPayment}=await import('/src/lib/settleSavedPsionicPayment.ts');
+   const {spendPsionicSurge}=await import('/src/lib/api/psionicTurns.ts');
+   const {pendingPsionicPayments}=await import('/src/lib/psionicPaymentRecovery.ts');
+   const payment=pendingPsionicPayments(characterId)[0];
+   const receipt=await settleSavedPsionicPayment(characterId,payment,()=>spendPsionicSurge(characterId,payment.request));
+   return {receipt,pending:pendingPsionicPayments(characterId)};
+  },character);
+  expect(recovered).toMatchObject({receipt:{total:4,hitDiceSpent:1,replayed:true},pending:[]});
+  expect(sql(`select count(*) from psionic_surge_uses where request_id='${requestId}'`)).toBe('1');
  });
 
 });
