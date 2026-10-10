@@ -1,5 +1,37 @@
 # DNDKeep — Two-Track Roadmap
 
+### Release rehearsals refreshed through 343 (production unchanged)
+
+Both retained databases (fresh-origin and main-upgrade-origin) resumed from 332
+and applied the same 11 pending files through 20261010213000. Existing migration
+copies matched repository bytes before the missing files were copied. Both full
+ordered ledgers exactly match all 343 repository versions. Public/private schema
+dumps, including owners and grants, are identical after CRLF normalization only:
+`6d62218d77cef7bcd966a74557c827665b35f012be6a90140fb077e8c51827bb`.
+
+Both SQL lint runs have the same 20 function diagnostics as their 332 baselines,
+with no errors or added diagnostics. Both security scans retain only the existing
+keep_warm mutable-search-path and client_errors permissive-insert findings. The
+Telepath dispatcher exists, authenticated can execute it, anon cannot, and
+authenticated cannot execute its private history helper. Both rehearsal stacks
+are stopped with volumes preserved; the normal local stack remains running.
+
+Read-only production preflight on October 10 returned zero for all seven checks.
+Production still has 233 migrations through 20261008211300; ordered version MD5
+`1a3de08c0a19ec990f1cd7716f389b13` matches the first 233 repository versions
+(110 pending). This is a point-in-time check; repeat immediately before merge.
+
+Both GitHub gates and Vercel deployment passed for b045edc0. Vercel accepted this
+build after the earlier rate-limit failures. Hosted preview still redirects to
+Vercel login in the in-app browser, so its running app remains unverified. PR214
+stays open/draft; no merge or production migration was performed. Release needs
+hosted preview access, final-head checks and fresh production preflight. Continue
+independent Psion ability review and map work while that access is unavailable.
+
+Evidence: .tmp/{release-rehearsal,main-upgrade-rehearsal}-343-{start,up,stop}.log,
+-schema.sql, -verification.json, -lint.json and -advisors.json. Previous code gate:
+4,611 unit tests, 63 desktop Telepath cases, six mobile cases, TS 193/193.
+
 ### Reload-safe Telepath dice preparation (local; not released)
 
 New preparations durably save a versioned random UUIDv4 and the reviewed request
