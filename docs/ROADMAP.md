@@ -6644,3 +6644,41 @@ when death changes the filtered roster. Add explicit stale-proposal review and
 complete clock/other turn-effect coordination before switching the live caller.
 The existing rules gaps (typed defenses, concentration, save-ends automation,
 temp-HP replacement choice) remain open.
+
+### Clock handoff after lethal turn effects (unreleased)
+
+Migration20261010070005 fixes atomic clock handoffs after an end-effect batch
+kills the outgoing actor. The saved end-effect participant anchors the successor
+selection instead of interpreting the old index against the shortened living
+roster. A first-actor death can correctly hand slot zero to its successor without
+advancing the round; a last-actor death wraps exactly once. Conflicting recorded
+outgoing actors and ambiguous initiative positions fail closed.
+
+Every atomic handoff now pre-records its new turn UUID in the private transition
+ledger before updating the encounter, in the same transaction. The turn trigger
+accepts that UUID only for a writer with private-ledger INSERT privilege and an
+exact matching recorded old turn/new turn/index/round. Ordinary authenticated
+writes retain their previous inability to choose or rewind turn IDs. This avoids
+reusing a turn ID when the successor takes the same numeric slot and round.
+Client receipt validation allows this valid non-wrapping slot-zero transition
+while continuing to reject a round wrap into a nonzero slot.
+
+A completed end-effect batch closes fresh effect preparation/application for
+that encounter turn, so the shifted successor cannot receive effects under the
+outgoing actor's old UUID. Original saved receipts remain recoverable. The new
+migration was applied only to local Docker with its ledger entry; unrelated
+history was preserved.
+
+The atomic clock is still not the live advanceTurn writer. This fixes an observed
+integration prerequisite, not the complete live controller. A durable outgoing
+identity before other turn work, incoming-phase recovery, stale-proposal review,
+and coordination of remaining non-atomic turn operations are still required.
+Deletion of an outgoing participant (which cascades its effect receipt) and
+manual roster edits need explicit controller handling before live rollout.
+
+Verification:114 clock/effect database and browser regressions pass across the
+two configured projects, including six new lethal-handoff/security scenarios
+per project, saved-request replay, rollback, next-save expiry, concurrency and
+lost replies. Full gate passes (3,320 units,196/196 TypeScript,entry255.2KB);
+changed-file ESLint, SQL lint, security advisors and diff checks pass. No UI
+layout change or production deployment.

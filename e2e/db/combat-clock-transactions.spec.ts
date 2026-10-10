@@ -25,6 +25,44 @@ test.describe('Atomic combat clock transitions',()=>{
  const run=(q=call(),user=dm)=>JSON.parse(sql(auth(user,q)));
  const buffs=()=>JSON.parse(sql(`select active_buffs from combatants where id='${ca}'`));
  function wrapCall(){run();return call(randomUUID(),state().turn,pa,0,2);}
+ function endEffects(actor:string,combatant:string,lethal=true){
+  const current=state().turn;
+  return sql(auth(dm,`select commit_turn_effect_batch('${actor}','${current}','turn_end','${randomUUID()}',
+   dndkeep_private.turn_effect_state('${combatant}'),
+   (dndkeep_private.turn_effect_state('${combatant}')-'max_hp')||'${JSON.stringify(lethal?{current_hp:0,is_dead:true,death_save_failures:3}:{})}'::jsonb,'[]')`)
+   .replaceAll(`dndkeep_private.turn_effect_state('${combatant}')`,
+    `'${sql(`select dndkeep_private.turn_effect_state('${combatant}')`).replaceAll("'","''")}'::jsonb`));
+ }
+ test('a lethal first-actor effect hands slot zero to the next actor without ticking a round',()=>{
+  endEffects(pa,ca);const first=run(call(request,turn,pb,0,1));
+  expect(first).toMatchObject({incomingId:pb,index:0,round:1,roundWrapped:false,campaignRounds:0});
+  expect(first.turnId).not.toBe(turn);expect(state().turn).toBe(first.turnId);expect(buffs()[0].duration).toBe(3);
+  expect(run(call(request,turn,pb,0,1))).toEqual({...first,replayed:true});
+ });
+ test('the same-slot handoff does not allow old-turn abilities',()=>{
+  endEffects(pa,ca);run(call(request,turn,pb,0,1));
+  expect(()=>sql(auth(dm,`select get_turn_effect_context('${pb}','${enc}','${turn}','turn_start')`))).toThrow(/Turn changed/);
+  expect(JSON.parse(sql(auth(dm,`select get_turn_effect_context('${pb}','${enc}','${state().turn}','turn_start')`))).participantId).toBe(pb);
+ });
+ test('a lethal last-actor effect wraps once using its saved outgoing identity',()=>{
+  run();const outgoingTurn=state().turn;endEffects(pb,cb);const q=call(randomUUID(),outgoingTurn,pa,0,2);
+  expect(run(q)).toMatchObject({incomingId:pa,index:0,round:2,roundWrapped:true,campaignRounds:1});
+  expect(buffs()[0].duration).toBe(2);expect(run(q).replayed).toBe(true);expect(state().clock).toBe(1);
+ });
+ test('a surviving end-effect actor retains normal initiative order',()=>{
+  endEffects(pa,ca,false);expect(run()).toMatchObject({incomingId:pb,index:1,round:1,roundWrapped:false});
+ });
+ test('completed end effects cannot be prepared or committed again for the shifted successor',()=>{
+  endEffects(pa,ca);
+  expect(()=>sql(auth(dm,`select get_turn_effect_context('${pb}','${enc}','${turn}','turn_start')`))).toThrow(/already ended/);
+  expect(()=>endEffects(pb,cb)).toThrow(/already ended/);expect(state().turn).toBe(turn);
+  expect(sql(`select is_dead from combatants where id='${cb}'`)).toBe('f');
+ });
+ test('ordinary authenticated writes cannot choose a new turn token',()=>{
+  const forged=randomUUID();sql(auth(dm,`update combat_encounters set psionic_turn_id='${forged}' where id='${enc}'`));expect(state().turn).toBe(turn);
+  sql(auth(dm,`update combat_encounters set round_number=2,psionic_turn_id='${forged}' where id='${enc}'`));
+  expect(state().turn).not.toBe(forged);expect(state().turn).not.toBe(turn);
+ });
  test('within-round transitions change actor identity without ticking time or buffs',()=>{
   const r=run();expect(r).toMatchObject({requestId:request,incomingId:pb,index:1,round:1,roundWrapped:false,campaignRounds:0,replayed:false});expect(r.turnId).not.toBe(turn);expect(state()).toMatchObject({index:1,round:1,clock:0,lair:true});expect(buffs()[0].duration).toBe(3);
  });

@@ -10,7 +10,7 @@ export function validCombatClockRequest(value:unknown):value is CombatClockReque
 export function validCombatClockReceipt(value:unknown,r:CombatClockRequest):value is CombatClockReceipt {
  const v=value as CombatClockReceipt|null;
  return !!v&&v.requestId===r.requestId&&v.encounterId===r.encounterId&&v.incomingId===r.incomingId&&uuid(v.turnId)&&v.turnId!==r.expectedTurn
-  &&v.index===r.nextIndex&&v.round===r.nextRound&&v.roundWrapped===(r.nextIndex===0)&&count(v.campaignRounds)&&typeof v.replayed==='boolean';
+  &&v.index===r.nextIndex&&v.round===r.nextRound&&typeof v.roundWrapped==='boolean'&&(r.nextIndex===0||!v.roundWrapped)&&count(v.campaignRounds)&&typeof v.replayed==='boolean';
 }
 /** v2.836: commits only the turn/clock/buff boundary. The caller must persist
  * its request and track surrounding effects separately from acknowledgement. */

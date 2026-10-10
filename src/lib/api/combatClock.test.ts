@@ -11,9 +11,18 @@ it('retries only the identical saved transition and verifies its receipt',async(
 it.each([{requestId:'bad'},{encounterId:'bad'},{expectedTurn:'bad'},{incomingId:'bad'},{nextIndex:-1},{nextIndex:0.5},{nextRound:0},{nextRound:2147483648}])('does not send invalid input %j',async bad=>{
  await expect(commitCombatClock({...request,...bad})).rejects.toMatchObject({definitelyNotPaid:true});expect(mocks.rpc).not.toHaveBeenCalled();
 });
-it.each([{requestId:id(9)},{encounterId:id(9)},{incomingId:id(9)},{turnId:'bad'},{turnId:request.expectedTurn},{index:1},{round:3},{roundWrapped:false},{campaignRounds:-1},{campaignRounds:0.5},{replayed:undefined}])('keeps recovery pending for inconsistent receipt %j',async bad=>{
+it.each([{requestId:id(9)},{encounterId:id(9)},{incomingId:id(9)},{turnId:'bad'},{turnId:request.expectedTurn},{index:1},{round:3},{roundWrapped:'false'},{campaignRounds:-1},{campaignRounds:0.5},{replayed:undefined}])('keeps recovery pending for inconsistent receipt %j',async bad=>{
  mocks.rpc.mockResolvedValue({data:{...receipt,...bad},error:null});await expect(commitCombatClock(request)).rejects.toMatchObject({definitelyNotPaid:false});
 });
 it('accepts a within-round replay without pretending the campaign clock ticked',async()=>{
  mocks.rpc.mockResolvedValue({data:{...receipt,index:1,round:1,roundWrapped:false,replayed:true},error:null});expect((await commitCombatClock({...request,nextIndex:1,nextRound:1})).roundWrapped).toBe(false);
+});
+
+it('accepts slot zero without a round wrap when the outgoing actor died',async()=>{
+ mocks.rpc.mockResolvedValue({data:{...receipt,round:1,roundWrapped:false},error:null});
+ expect((await commitCombatClock({...request,nextRound:1})).roundWrapped).toBe(false);
+});
+it('still rejects a claimed wrap into a nonzero slot',async()=>{
+ mocks.rpc.mockResolvedValue({data:{...receipt,index:1},error:null});
+ await expect(commitCombatClock({...request,nextIndex:1})).rejects.toMatchObject({definitelyNotPaid:false});
 });
