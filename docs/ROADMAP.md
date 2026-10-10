@@ -8249,3 +8249,23 @@ Remaining: legacy direct participant-flag writes and Reset Movement still need
 server-side transaction consolidation; pending attack declaration/payment and
 reaction completion need the same audit. The new endpoint does not revoke all
 older participant UPDATE permissions or claim those paths are now atomic.
+
+
+### 2026-10-10 — atomic movement reset (unreleased)
+
+Reset Movement now saves its flags and log in one transaction, with actor/owner,
+rendered-turn and outgoing-transition checks shared with Dash/Disengage. A server
+revision rejects intervening movement even when the visible values return to the
+same numbers. The browser persists an exact request before mutation and recovers
+its immutable receipt across reloads or turn changes, preserving newer movement.
+Spent actions, attacks, HP and token coordinates remain unchanged. No-op requests
+save a receipt without logging. Legacy direct participant updates remain open;
+this is not a claim that every movement writer is now transactional.
+
+Migration 20261010070033 applied locally; exact SQL ledger verified, no repository
+migrations pending, foreign history preserved. SQL lint clean; existing keep_warm
+and client_errors advisor warnings unchanged. Movement suite: 40 checks passed,
+then six additional desktop/mobile checks passed for reset reload recovery,
+authorization/stale turns and competing reset requests. Full project gate passed;
+new API and wrapper tests cover storage failures, uncertain responses and receipt
+validation. No rendered layout changes. Not deployed.

@@ -561,6 +561,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
     const result = await resetMovement({
       campaignId: encounter.campaign_id,
       encounterId: encounter.id,
+      turnId: encounter.psionic_turn_id,
       participantId: currentActor.id,
       participantName: currentActor.name,
       participantType: currentActor.participant_type,

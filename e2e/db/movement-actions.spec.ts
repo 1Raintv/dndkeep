@@ -80,5 +80,57 @@ test.describe('Atomic ordinary movement actions',()=>{
   sql(`update combat_encounters set current_turn_index=1 where id='${enc}';update combat_encounters set current_turn_index=0,round_number=2 where id='${enc}'`);
   await page.unroute('**/rest/v1/rpc/take_movement_action');expect((await click()).result).toMatchObject({replayed:true,turnId:turn});expect(flags().action).toBe(false);expect(count()).toBe('1');
  });
+ test('reset browser recovery after reload preserves newly used movement',async({page})=>{
+  sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}',jsonb_build_object('sub','${dm}','email','${dm}@turn.local'),'email',now(),now(),now())`);
+  sql(`update combat_participants set movement_used_ft=15 where id='${pa}'`);
+  await signInAsSeedDm(page,`${dm}@turn.local`);let replies=0;
+  await page.route('**/rest/v1/rpc/reset_movement_atomic',async route=>{await route.fetch();replies++;await route.abort('failed');});
+  const click=()=>page.evaluate(async({enc,pa,turn})=>{const path='/src/lib/api/movementReset.ts',api=await import(path);try{return {result:await api.resetMovementAtomically(enc,pa,turn)};}catch(error){return {error:String(error)};}},{enc,pa,turn});
+  expect((await click()).error).toBeTruthy();expect(replies).toBe(2);expect(sql(`select count(*) from combat_events where encounter_id='${enc}' and event_type='reset_movement'`)).toBe('1');
+  sql(`update combat_encounters set current_turn_index=1 where id='${enc}';update combat_encounters set current_turn_index=0,round_number=2 where id='${enc}'`);
+  sql(`update combat_participants set movement_used_ft=10 where id='${pa}'`);
+  await page.reload();
+  await page.unroute('**/rest/v1/rpc/reset_movement_atomic');expect((await click()).result).toMatchObject({replayed:true,turnId:turn});expect(sql(`select movement_used_ft from combat_participants where id='${pa}'`)).toBe('10');expect(sql(`select count(*) from combat_events where encounter_id='${enc}' and event_type='reset_movement'`)).toBe('1');
+ });
+
+ const resetContext=()=>JSON.parse(sql(auth(player,`select get_movement_reset_context('${enc}','${pa}','${turn}')`)));
+ const reset=(expected:unknown,id=request)=>JSON.parse(sql(auth(player,`select reset_movement_atomic('${id}','${enc}','${pa}','${turn}','${JSON.stringify(expected)}'::jsonb)`)));
+ test('reset preserves spent actions and historical replay preserves newer movement',()=>{
+  run();sql(`update combat_participants set movement_used_ft=15 where id='${pa}'`);
+  const before=resetContext(),first=reset(before);expect(first.changed).toBe(true);expect(flags()).toMatchObject({action:true,dash:false});
+  sql(`update combat_participants set movement_used_ft=10 where id='${pa}'`);
+  expect(reset(before)).toEqual({...first,replayed:true});expect(resetContext().used).toBe(10);
+  expect(sql(`select count(*) from combat_events where encounter_id='${enc}' and event_type='reset_movement'`)).toBe('1');
+ });
+ test('reset rejects ABA movement changes even when distance returns to the same value',()=>{
+  const before=resetContext();sql(`update combat_participants set movement_used_ft=5 where id='${pa}';update combat_participants set movement_used_ft=0 where id='${pa}'`);
+  expect(()=>reset(before)).toThrow(/Movement changed/);
+ });
+ test('reset no-op saves a receipt without emitting an event',()=>{
+  const before=resetContext();expect(reset(before).changed).toBe(false);expect(reset(before).replayed).toBe(true);
+  expect(sql(`select count(*) from combat_events where encounter_id='${enc}' and event_type='reset_movement'`)).toBe('0');
+ });
+ test('reset rejects closing turns',()=>{
+  const before=resetContext();sql(auth(dm,`select prepare_combat_turn_end('${enc}','${turn}')`));expect(()=>reset(before)).toThrow(/ending/);
+ });
+ test('reset late log failure rolls back movement and receipt',()=>{
+  sql(`update combat_participants set movement_used_ft=15 where id='${pa}'`);const before=resetContext();
+  const fn='reject_reset_'+randomUUID().replaceAll('-','');sql(`create function public.${fn}() returns trigger language plpgsql as $$begin if new.encounter_id='${enc}' and new.event_type='reset_movement' then raise exception 'fixture reset failure';end if;return new;end$$;create trigger ${fn} before insert on combat_events for each row execute function public.${fn}()`);
+  try{expect(()=>reset(before)).toThrow(/fixture reset failure/);expect(resetContext()).toEqual(before);expect(sql(`select count(*) from dndkeep_private.movement_reset_receipts where encounter_id='${enc}'`)).toBe('0');}
+  finally{sql(`drop trigger ${fn} on combat_events;drop function public.${fn}()`);}
+  expect(reset(before).changed).toBe(true);
+ });
+
+ test('reset rejects other owners, off-turn actors and stale turn IDs',()=>{
+  expect(()=>sql(auth(player,`select get_movement_reset_context('${enc}','${pb}','${turn}')`))).toThrow(/unavailable/);
+  expect(()=>sql(auth(dm,`select get_movement_reset_context('${enc}','${pb}','${turn}')`))).toThrow(/current actor/);
+  expect(()=>sql(auth(player,`select get_movement_reset_context('${enc}','${pa}','${randomUUID()}')`))).toThrow(/turn changed/);
+ });
+ test('concurrent reset requests cannot reset the same changed snapshot twice',async()=>{
+  sql(`update combat_participants set movement_used_ft=15 where id='${pa}'`);const before=resetContext();
+  const command=(id:string)=>auth(player,`select reset_movement_atomic('${id}','${enc}','${pa}','${turn}','${JSON.stringify(before)}'::jsonb)`);
+  const results=await Promise.all([parallel(command(request)),parallel(command(randomUUID()))]);expect(results.filter(r=>r.code===0)).toHaveLength(1);expect(results.find(r=>r.code!==0)?.error).toContain('Movement changed');
+ });
 
 });
