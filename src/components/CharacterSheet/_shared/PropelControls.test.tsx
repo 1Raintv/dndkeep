@@ -98,3 +98,13 @@ it.each([false,true])('declares the no-die option with an empty pool (Warp=%s)',
  expect(m.begin.mock.calls[0][1]).toMatchObject({mode:'free',movement:'push',deferred:true,roll:0,target:{name:'Goblin',legalTargetConfirmed:true}});
  expect(m.roll).not.toHaveBeenCalled();
 });
+
+it.each([false,true])('explains the shared Warp action from either entry (Warp=%s)',async warp=>{
+ render(<PropelControls character={{...character,subclass:'Psi Warper'}} warp={warp}/>);await open();
+ expect(screen.getByText('Warp Propel modifies Telekinetic Propel. Choose push/pull or teleport after a failed save; both use the same Bonus Action.')).toBeTruthy();
+ expect(m.begin).not.toHaveBeenCalled();expect(m.roll).not.toHaveBeenCalled();
+});
+it('does not offer the Warp modifier to another subclass',async()=>{
+ render(<PropelControls character={{...character,subclass:'Telepath'}}/>);await open();
+ expect(screen.queryByText(/Warp Propel modifies/)).toBeNull();
+});

@@ -464,6 +464,33 @@ test.describe('token gestures (local stack)', () => {
     }
     expect((await state(page)).tokens).toEqual(before);expect(errors).toEqual([]);
   });
+  test('map navigation fits narrow phone widths without overlapping controls',async({page},info)=>{
+    await page.setViewportSize({width:320,height:740});await openMap(page);
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
+    const selected=Object.values((await state(page)).tokens).filter((t:any)=>['Ilyana Vell','Nyx Quickfingers'].includes(t.name)) as any[];
+    expect(selected).toHaveLength(2);
+    for(const token of selected){const p=await tokenPoint(page,token.id);await page.keyboard.down('Shift');await page.mouse.click(p.x,p.y);await page.keyboard.up('Shift');}
+    const bar=page.getByRole('toolbar',{name:'Selected tokens'});await expect(bar).toBeVisible();await bar.getByTitle('More selection actions').click();
+    const nav=page.getByRole('toolbar',{name:'Map navigation'});
+    for(const width of [320,360,393]){
+      await page.setViewportSize({width,height:740});
+      await nav.getByRole('button',{name:'Fit map',exact:true}).click();
+      await page.screenshot({path:info.outputPath(`navigation-${width}.png`)});
+      const controls=page.locator('.map-navigation,.map-selection-actions').locator('button:enabled:visible,select:visible,summary:visible');
+      for(let i=0;i<await controls.count();i++)await controls.nth(i).click({trial:true,timeout:2500});
+      if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
+        const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8'),body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
+        const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('.map-navigation,.map-navigation *, .map-selection-actions,.map-selection-actions *')"),report=await page.evaluate('('+scoped+'\n})()');
+        expect(report.sideways).toBe(false);expect(report.clipped).toEqual([]);expect(report.pastEdge).toEqual([]);
+      }
+      const bounds=await controls.evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return {label:el.getAttribute('aria-label')??el.textContent,x:r.x,y:r.y,right:r.right,bottom:r.bottom};}));
+      for(let i=0;i<bounds.length;i++)for(let j=i+1;j<bounds.length;j++){
+        const a=bounds[i],b=bounds[j],overlap=Math.min(a.right,b.right)-Math.max(a.x,b.x)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.y,b.y)>1;
+        expect(overlap,`${a.label} overlaps ${b.label} at ${width}px`).toBe(false);
+      }
+    }
+    expect(errors).toEqual([]);
+  });
   test('camera keyboard shortcuts stay on the map and out of controls',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
     await openMap(page);

@@ -108,6 +108,7 @@ export default function PropelControls({character,persistence,warp=false,campaig
  <button className="btn-ghost" style={{fontSize:11,minHeight:36}} disabled={busy} onClick={launch}>Use / resume</button>
  {open&&!assisted&&<ModalPortal><div className="modal-overlay" onClick={event=>event.stopPropagation()}><div className="modal" ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-label={title} style={{width:520,maxWidth:'calc(100vw - 24px)',maxHeight:'85dvh',overflowY:'auto',padding:20}}>
  <h3>{title} · Bonus Action</h3>
+ {state.warp&&<p>Warp Propel modifies Telekinetic Propel. Choose push/pull or teleport after a failed save; both use the same Bonus Action.</p>}
  {error&&<p role="alert">{error}</p>}
  {pending.length>0&&<section aria-label="Unconfirmed Propel requests"><p>Confirm the saved request before rolling or choosing a different result.</p>{pending.map(p=><button key={p.kind+p.request.requestId} disabled={busy} onClick={()=>void run((active,id)=>send(p,active,id))}>Confirm saved {p.kind==='begin'?'use':p.request.outcome+' result'}</button>)}</section>}
  {saveDrafts.length>0&&<section aria-label="Unconfirmed saving throws"><p>A saved throw still needs confirmation. Resume it without rolling again.</p>{saveDrafts.map(d=><button key={d.declarationId} className="btn-ghost" disabled={busy} onClick={()=>void run(async(active,id)=>{const result=await readPropel(id,d.declarationId);if(active()){setRow(result);setAssisted(true);}})}>Resume saved saving throw</button>)}</section>}

@@ -54,7 +54,7 @@ test.describe('Saved Propel controls',()=>{
  });
  // Guard the linked player choices as well as the server's conditional payment.
  for(const [mode,outcome] of [['free','failed'],['powered','passed'],['powered','failed']] as const)
- test(`Warp stays beside Propel and resolves ${mode} / ${outcome} as one Bonus Action`,async({page})=>{
+ test(`Warp stays beside Propel and resolves ${mode} / ${outcome} as one Bonus Action`,async({page},info)=>{
   const errors:string[]=[];
   page.on('pageerror',e=>errors.push(e.message));
   page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
@@ -63,6 +63,9 @@ test.describe('Saved Propel controls',()=>{
   const propel=rows.filter({has:page.getByText('Telekinetic Propel',{exact:true})});
   const warp=rows.filter({has:page.getByText('Warp Propel',{exact:true})});
   await expect(warp).toBeVisible();
+  await expect(warp).toContainText('Propel modifier · same Bonus Action');
+  await warp.scrollIntoViewIfNeeded();
+  await page.screenshot({path:info.outputPath('propel-linked-rows.png')});
   const order=await rows.allTextContents();
   const index=order.findIndex(text=>text.includes('Telekinetic Propel'));
   expect(index).toBeGreaterThanOrEqual(0);
@@ -78,6 +81,13 @@ test.describe('Saved Propel controls',()=>{
   await dialog.getByRole('checkbox').check();
   await expect(dialog.getByLabel('Movement',{exact:true}).locator('option[value="powered"]')).toHaveText('Roll Energy Die (d8)');
   await dialog.getByLabel('Movement',{exact:true}).selectOption(mode);
+  await expect(dialog).toContainText('both use the same Bonus Action.');
+  await page.screenshot({path:info.outputPath('propel-linked-choice.png')});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
+   const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8'),body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
+   const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[data-propel], [data-propel] *, [aria-label=\"Warp Propel\"], [aria-label=\"Warp Propel\"] *')");
+   const report=await page.evaluate('('+scoped+'\n})()');expect(report.sideways,JSON.stringify(report)).toBe(false);expect(report.clipped).toEqual([]);expect(report.pastEdge).toEqual([]);
+  }
   await dialog.getByRole('button',{name:'Declare Bonus Action'}).click();
   await expect(dialog).toContainText('Saved dice total:');
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('2');

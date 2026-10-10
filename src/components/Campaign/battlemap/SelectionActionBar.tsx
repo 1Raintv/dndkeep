@@ -139,7 +139,7 @@ export function SelectionActionBar(props: {
       </span>
       <button ref={moreRef} style={btn} type="button" aria-expanded={expanded} aria-controls={actionsId}
         onClick={()=>setExpanded(v=>!v)} title="More selection actions">{expanded?'Less':'More'}</button>
-      <button style={{ ...btn, color: 'var(--t-3)' }} disabled={busy} onClick={onClear} title="Clear selection (Esc)">
+      <button style={btn} disabled={busy} onClick={onClear} title="Clear selection (Esc)">
         Clear
       </button>
       <div id={actionsId} className="map-selection-more" hidden={!expanded}>

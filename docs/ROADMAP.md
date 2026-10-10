@@ -1,5 +1,29 @@
 # DNDKeep — Two-Track Roadmap
 
+### Propel relationship and narrow map controls (local; not released)
+
+Warp remains immediately after Telekinetic Propel, now explicitly labelled
+"Propel modifier · same Bonus Action". Both entry dialogs explain that teleport
+replaces movement after a failed save and uses the same Bonus Action. Existing
+free / Energy Die choices, conditional payment, target restrictions and fixed
+Warp destination remain intact. No database or rules changes in this pass.
+
+Verified free failure, powered success/failure, reload recovery and exactly one
+Bonus Action on desktop and mobile. Three new component cases cover guidance
+from either entry and its absence for another subclass. Removing the shared-action
+label makes the browser regression fail at the intended assertion.
+
+Map navigation and expanded two-token selection controls pass the official
+overflow probe, hit testing and pairwise overlap checks at 320/360/393 px in both
+browser projects. No layout overlap was found. Clear selection now uses the same
+text contrast as adjacent enabled actions. An intentionally shifted zoom control
+fails the regression because it intercepts Pan clicks; mutation restored.
+
+Validation: full `npm run verify` passes, 4,630 unit tests, TS 193/193,
+256.1 KB entry; 10 local desktop/mobile browser cases pass. Screenshots inspected.
+Evidence: `.tmp/propel-linked-{gate,browser,mutation}.log`,
+`.tmp/map-narrow-mutation.log`. Production unchanged; release gates remain below.
+
 ### Camera shortcuts retain multi-pointer ownership (local; not released)
 
 Map zoom/Fit/Find/Previous shortcuts now track pressed pointer IDs independently.

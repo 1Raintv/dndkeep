@@ -665,6 +665,8 @@ function ClassAbilityRows({ persistence, character, combatFilter, onUpdate, user
  {ability.name}
  </span>
  </div>
+ {/* Warp modifies the failed-save movement; this row never grants another action. */}
+ {ability.name==='Warp Propel'&&<div style={{fontSize:11,color:'var(--t-2)',whiteSpace:'normal'}}>Propel modifier · same Bonus Action</div>}
  </div>
 
  {/* Col 3: TIME — v2.500.0 — Pre-v2.500 this column was empty
