@@ -1,4 +1,5 @@
 import {monsterRechargeRule,planMonsterRecharges,type RechargeAction,type RechargeRoll} from '../../rules/monsterRecharge';
+import {rollDie} from '../../rules/dice';
 import {psionicRpc} from './psionicTurns';
 export interface RechargeIdentity {participantId:string;encounterId:string;turnId:string}
 interface RechargeExpected {entityId:string|null;sourceId:string|null;expended:string[];actions:RechargeAction[]}
@@ -58,14 +59,27 @@ export function processSavedTurnRecharge(user:string,input:RechargeIdentity,asse
    // Another tab may have saved while context loaded; do not roll its dice again.
    request=savedTurnRecharge(user,i);
    if(!request){
-    const plan=planMonsterRecharges(c.expected.expended,c.expected.actions);
-    request={...i,version:1,userId:user,requestId:crypto.randomUUID(),expected:structuredClone(c.expected),
+    const requestId=crypto.randomUUID();let preparing=false;
+    const plan=planMonsterRecharges(c.expected.expended,c.expected.actions,()=>{
+     // v2.869: a successful storage probe does not guarantee the later plan
+     // fits. Persist an interruption marker BEFORE the first random result;
+     // a failed final write must never make retry generate replacement dice.
+     // The planner validates every action before invoking this callback.
+     if(!preparing){
+      assertCurrentScope();
+      localStorage.setItem(k,JSON.stringify({...i,version:1,userId:user,requestId,phase:'preparing'}));
+      preparing=true;
+     }
+     return rollDie(6);
+    });
+    request={...i,version:1,userId:user,requestId,expected:structuredClone(c.expected),
      rolls:plan.rolls.map(({name,min,max,roll})=>({name,min,max,roll}))};
     if(!validRequest(request))throw invalid();localStorage.setItem(k,JSON.stringify(request));
    }
   }
   assertCurrentScope();
   const r=receipt(await psionicRpc('commit_turn_recharge_batch',{...args,p_request:request.requestId,p_expected:request.expected,p_rolls:request.rolls},true),i);
+  assertCurrentScope();
   if(r.requestId!==request.requestId||r.rolls.length!==request.rolls.length||r.rolls.some((x,n)=>{
    const y=request!.rolls[n];return x.name!==y.name||x.min!==y.min||x.max!==y.max||x.roll!==y.roll;
   }))throw invalid();forget(user,i);return r;

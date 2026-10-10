@@ -65,4 +65,49 @@ describe('saved turn recharge',()=>{
  it('does not mistake receipt-read failure for no saved result',async()=>{
   h.rpc.mockRejectedValue(new Error('offline'));await expect(processSavedTurnRecharge(user,id,guard)).rejects.toThrow('offline');expect(h.roll).not.toHaveBeenCalled();expect(h.rpc).toHaveBeenCalledTimes(1);
  });
+ it('blocks replacement dice if saving the completed plan exceeds storage capacity',async()=>{
+  const original=localStorage.setItem.bind(localStorage);
+  const spy=vi.spyOn(localStorage,'setItem').mockImplementation((k,v)=>{
+   if(k.startsWith('dndkeep:turn-recharge:')&&JSON.parse(v).rolls)throw new Error('quota exceeded');
+   original(k,v);
+  });
+  try{await expect(processSavedTurnRecharge(user,id,guard)).rejects.toThrow('quota exceeded');}finally{spy.mockRestore();}
+  expect(h.roll).toHaveBeenCalledTimes(1);
+  await expect(processSavedTurnRecharge(user,id,guard)).rejects.toThrow(/could not be verified/);
+  expect(h.roll).toHaveBeenCalledTimes(1);
+  expect(h.rpc.mock.calls.filter(c=>c[0]==='commit_turn_recharge_batch')).toHaveLength(0);
+  expect(localStorage.getItem(`dndkeep:turn-recharge:${user}:${id.encounterId}:${id.participantId}:${id.turnId}`)).toContain('preparing');
+ });
+ it('does not roll if writing the preparation marker fails',async()=>{
+  const original=localStorage.setItem.bind(localStorage);
+  const spy=vi.spyOn(localStorage,'setItem').mockImplementation((k,v)=>{
+   if(k.startsWith('dndkeep:turn-recharge:'))throw new Error('storage full');original(k,v);
+  });
+  try{await expect(processSavedTurnRecharge(user,id,guard)).rejects.toThrow('storage full');}finally{spy.mockRestore();}
+  expect(h.roll).not.toHaveBeenCalled();expect(savedTurnRecharge(user,id)).toBeNull();
+ });
+ it('preserves an interrupted preparation when the dice provider fails',async()=>{
+  h.roll.mockImplementation(()=>{throw new Error('interrupted');});
+  await expect(processSavedTurnRecharge(user,id,guard)).rejects.toThrow('interrupted');
+  h.roll.mockReturnValue(5);
+  await expect(processSavedTurnRecharge(user,id,guard)).rejects.toThrow(/could not be verified/);
+  expect(h.roll).toHaveBeenCalledTimes(1);
+ });
+ it('recovers a server winner even when local preparation was interrupted',async()=>{
+  h.roll.mockImplementation(()=>{throw new Error('interrupted');});
+  await expect(processSavedTurnRecharge(user,id,guard)).rejects.toThrow('interrupted');
+  const result={...reply({p_request:user}),replayed:true};h.rpc.mockResolvedValue(result);
+  expect(await processSavedTurnRecharge(user,id,guard)).toEqual(result);
+  expect(localStorage.length).toBe(0);expect(h.roll).toHaveBeenCalledTimes(1);
+ });
+ it('keeps the saved request when the signed-in scope changes during commit',async()=>{
+  let changed=false;
+  h.rpc.mockImplementation(async(fn,args)=>{
+   if(fn==='read_turn_recharge_batch')return null;if(fn==='get_turn_recharge_context')return context();
+   changed=true;return reply(args);
+  });
+  await expect(processSavedTurnRecharge(user,id,()=>{if(changed)throw new Error('scope changed');})).rejects.toThrow('scope changed');
+  expect(savedTurnRecharge(user,id)).not.toBeNull();expect(h.roll).toHaveBeenCalledTimes(1);
+ });
+
 });

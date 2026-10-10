@@ -7327,3 +7327,25 @@ concentration, immunity, resistance rounding, massive damage and hidden events.
 Full gate passes (3,502 units, TypeScript195/195,255.7KB entry); ESLint, SQL lint
 and security advisors pass. Migration applied/recorded only locally, preserving
 unrelated history. No production deployment or live resolver switch.
+
+
+### Interrupted recharge preparation recovery (2026-10-09)
+
+Reviewing the upcoming aura recovery client exposed a gap in the existing
+recharge client: a storage probe could pass, dice could roll, and the larger
+final request could fail to save. A later retry then generated replacement dice.
+The recharge client now persists a preparation marker before its first random
+result. Failed final storage or interrupted dice generation preserves that
+marker and blocks automatic rerolling. Invalid recharge rules still fail before
+any marker or dice. An authorized server receipt is read first and can recover
+an interrupted local preparation. A changed signed-in scope during commit now
+keeps the saved request rather than returning the result to the old caller.
+
+This is a recovery prerequisite, not completed aura integration. Explicit review
+for interrupted preparations, cross-tab preparation coordination, the aura
+client and durable live turn-pipeline wiring remain outstanding. No production
+deployment in this checkpoint.
+
+Validation: all 17 focused recharge tests pass, changed-file ESLint is clean,
+and the full gate passes (3,507 unit tests; TypeScript 195/195; hooks, RAW,
+coordinates, anchors, production build and bundle budget).
