@@ -1,3 +1,4 @@
+import {advanceMasteryExpiry} from '../../src/rules/masteryExpiry';
 import {readFileSync} from 'node:fs';
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
@@ -267,6 +268,51 @@ test.describe('Atomic combat clock transitions',()=>{
   spendBudgets();expect(()=>run(call(request,turn,pa))).toThrow(/Initiative roster changed/);
   expect(()=>run(call(),player)).toThrow(/only to its DM/);
   expect(budgets(pa)).toEqual(spent);expect(budgets(pb)).toEqual(spent);
+ });
+ const setMastery=(items:unknown[])=>sql(`update combatants set active_buffs='${JSON.stringify(items).replaceAll("'","''")}' where id='${ca}'`);
+ const expiryEvents=()=>JSON.parse(sql(`select coalesce(jsonb_agg(jsonb_build_object('payload',payload,'visibility',visibility,'sequence',sequence) order by sequence),'[]') from combat_events where encounter_id='${enc}' and event_type='buff_removed'`));
+ test('saved mastery expiry matches the pure planner for start, end and legacy markers',()=>{
+  const items=[{key:'mastery_vexed',expiresAtEndOfTurnOf:pa,expiresAfterNextTurnStarts:true},
+   {key:'mastery_vexed',expiresAtEndOfTurnOf:pa,expiresAfterNextTurnStarts:false},
+   {key:'mastery_vexed',expiresAtStartOfTurnOf:pa,expiresSkipFirst:true},
+   {key:'mastery_vexed',expiresAtStartOfTurnOf:pa},
+   {key:'sap',expiresAtStartOfTurnOf:pa,expiresSkipFirst:true},
+   {key:'slow',expiresAtStartOfTurnOf:pa},{key:'other',expiresAtStartOfTurnOf:pb},
+   {key:'bless',duration:7,metadata:{note:"A's blessing"}}];
+  for(const timing of ['turn_start','turn_end'] as const){
+   const expected=advanceMasteryExpiry(items,pa,timing);
+   const actual=JSON.parse(sql(`select dndkeep_private.advance_mastery_expiry('${JSON.stringify(items).replaceAll("'","''")}', '${pa}', '${timing}')`));
+   expect(actual).toEqual({next:expected.next,removed:expected.removed});
+  }
+  expect(sql(`select dndkeep_private.advance_mastery_expiry(null,'${pa}','turn_start')->'next'`)).toBe('null');
+  expect(()=>sql(auth(dm,`select dndkeep_private.advance_mastery_expiry('[]','${pa}','turn_start')`))).toThrow(/permission denied/);
+ });
+ test('saved mastery expiry arms Vex at next start and removes it at next end without restoring it on wrap',()=>{
+  const vex={key:'mastery_vexed',name:'Vexed',expiresAtEndOfTurnOf:pa,expiresAfterNextTurnStarts:true};
+  setMastery([{key:'bless',duration:8},vex]);run();expect(buffs()[1]).toEqual(vex);
+  run(call(randomUUID(),state().turn,pa,0,2));expect(buffs()[1]).toMatchObject({expiresAfterNextTurnStarts:false});
+  run(call(randomUUID(),state().turn,pb,1,2));expect(buffs()).toEqual([{key:'bless',duration:7}]);expect(expiryEvents()).toHaveLength(1);
+  run(call(randomUUID(),state().turn,pa,0,3));expect(buffs()).toEqual([{key:'bless',duration:6}]);
+ });
+ test('saved mastery expiry handles same-actor end before start and replay preserves later buffs',()=>{
+  sql(`update combatants set is_dead=true where id='${cb}'`);
+  setMastery([{key:'mastery_vexed',name:'Vexed',expiresAtEndOfTurnOf:pa,expiresAfterNextTurnStarts:true}]);
+  run(call(request,turn,pa,0,2));expect(buffs()[0].expiresAfterNextTurnStarts).toBe(false);
+  const next=state().turn,id=randomUUID();run(call(id,next,pa,0,3));expect(buffs()).toEqual([]);
+  setMastery([{key:'later',duration:5}]);run(call(id,next,pa,0,3));expect(buffs()).toEqual([{key:'later',duration:5}]);expect(expiryEvents()).toHaveLength(1);
+ });
+ test('saved mastery expiry logs hidden effects with distinct sequences after a legendary refill',()=>{
+  sql(`update combat_participants set hidden_from_players=true where id='${pa}';update combat_participants set legendary_actions_total=3,legendary_actions_remaining=1 where id='${pb}'`);
+  setMastery([{key:'sap',name:'Sapped',expiresAtStartOfTurnOf:pb},{key:'slow',name:'Slowed',expiresAtStartOfTurnOf:pb}]);run();
+  expect(expiryEvents()).toEqual(['sap','slow'].map((key,i)=>({payload:{key,name:i?'Slowed':'Sapped',reason:'mastery_marker_expired'},visibility:'hidden_from_players',sequence:i+1})));
+ });
+ test('saved mastery expiry log failure rolls back buffs, budgets, clock and receipt',()=>{
+  setMastery([{key:'slow',name:'Slowed',expiresAtStartOfTurnOf:pb}]);spendBudgets();const before=state(),original=buffs(),fn='reject_expiry_'+request.replaceAll('-','');
+  sql(`create function public.${fn}() returns trigger language plpgsql as $$ begin if new.chain_id='${request}' and new.event_type='buff_removed' then raise exception 'fixture expiry failure';end if;return new;end $$;create trigger ${fn} before insert on combat_events for each row execute function public.${fn}()`);
+  try{expect(()=>run()).toThrow(/fixture expiry failure/);expect(state()).toEqual(before);expect(buffs()).toEqual(original);expect(budgets(pb)).toEqual(spent);expect(expiryEvents()).toEqual([]);
+   expect(sql(`select count(*) from dndkeep_private.combat_clock_transitions where request_id='${request}'`)).toBe('0');
+  }finally{sql(`drop trigger ${fn} on combat_events;drop function public.${fn}()`);}
+  run();expect(buffs()).toEqual([]);expect(expiryEvents()).toHaveLength(1);
  });
  const legendaryEvents=()=>JSON.parse(sql(`select coalesce(jsonb_agg(jsonb_build_object('payload',payload,'visibility',visibility)),'[]') from combat_events where encounter_id='${enc}' and event_type='legendary_actions_refilled'`));
  for(const inLair of [false,true])test(`clock refills and logs the incoming legendary pool (lair=${inLair})`,()=>{

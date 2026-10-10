@@ -6958,3 +6958,33 @@ state; restoring the fix passes all six cases again. Full gate passes (3,411
 units,195/195 TypeScript,255.2 KB entry), changed-file ESLint has no errors and
 diff checks pass. This is a live timing correction, not completion of the durable
 turn controller or a guarantee against all concurrent buff edits.
+
+### Atomic mastery expiry in the saved clock (unreleased)
+
+Migration20261010070011 brings the verified Vex/Sap/Slow boundary rules into
+commit_combat_clock_transition. It expires the outgoing end markers before
+arming/removing incoming start markers, then ticks round durations against
+that resulting list. Combatants are locked and processed once, including
+shared roster links and a one-actor encounter. Unrelated metadata is retained.
+The internal pure SQL helper is not callable by anon/authenticated clients;
+parity cases compare it with rules/masteryExpiry.ts, including legacy markers.
+
+Expiry events, legendary refill, action budgets, durations and turn identity
+commit or roll back together. Hidden targets retain hidden event visibility;
+event sequences remain distinct when a legendary refill precedes expiry.
+Receipt replay exits before effect writes, preserving subsequently added buffs.
+A forced event failure verifies that buffs, budgets, time and the receipt all
+roll back. The migration is applied/recorded only in local Docker, preserving
+the unrelated local migration ledger entry. No reset or production deployment.
+
+The live controller still uses its existing expiry sweeps. This transaction is
+a prerequisite for replacing that controller, not a second live sweep. Remaining
+integration includes movement-gated feature recovery, aura effects, incoming
+recharge/death-save/effect recovery, and reconciling another request's turn
+completion before allowing a further advance.
+
+Verification: full project gate passes (3,411 units,195/195 TypeScript,255.2 KB
+entry), changed-file ESLint and SQL lint/security advisors pass. One existing
+attack-dialog unit test failed in the initial gate, passed in isolation, then
+passed in the repeated complete gate; no attack-dialog code changed.
+All 146 clock regressions pass on desktop/mobile, including ten new expiry cases.
