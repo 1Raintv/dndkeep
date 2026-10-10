@@ -7192,3 +7192,37 @@ The real desktop/mobile flow verifies pending instructions, reload recovery,
 failed-save movement, one Bonus Action claim and one conditional Energy Die cost.
 Full verify gate and changed-file lint pass (TypeScript 195/195, entry 255.2 KB).
 No production deployment: durable turn/aura recovery integration remains pending.
+
+
+### Aura transaction preparation (2026-10-09)
+
+Migration20261010070014 adds a read-only DM-authorized aura context RPC and a
+private shared context builder for the forthcoming atomic settlement. It reads
+the actual origin buff, validates its identity/configuration, checks encounter,
+turn, source/target links, death, exemptions, trigger and per-turn marker, and
+uses the saved outgoing-actor selector for end-of-turn effects. Enemy-only
+filtering preserves the existing character/non-character grouping; it is not a
+new faction or hostility model.
+
+The snapshot includes authoritative save conditions/buffs/exhaustion/Guards,
+character damage and concentration context, and creature source revisions for
+homebrew, SRD and custom definitions. The latter captures stat changes missed
+by the older shared save helper. No preparation call changes HP, rolls dice,
+reserves an aura save or consumes effects. Geometry is explicitly unverified;
+map range/crossing evidence must be added before committing movement triggers.
+The API is not wired into live aura resolution yet.
+
+Next: one idempotent transaction must lock and re-read this context, verify
+save/damage evidence, consume next-save penalties, apply HP/concentration,
+write events and consume the marker atomically. Receipt uniqueness must cover
+encounter + turn + origin + aura key + target, not merely a request UUID.
+Character locks must precede encounter/participant/combatant locks to compose
+with the existing party damage transaction. Retries must read the historical
+receipt before checking changed current state; they must never roll again.
+Legendary Resistance decisions and durable turn recovery remain required.
+
+Validation: all50 local database cases pass across the two test projects;
+3,476 unit tests and the full project gate pass (TypeScript195/195, entry255.2KB).
+Changed-file ESLint, SQL lint and security advisors pass. The migration is
+applied and recorded only locally; unrelated ledger history is preserved.
+No production deployment or live resolver switch in this checkpoint.
