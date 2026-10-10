@@ -1,5 +1,15 @@
 # DNDKeep — Two-Track Roadmap
 
+### Compact-screen party panel (local; not released)
+
+The map party panel starts collapsed on viewports at most 600 px wide or
+500 px high unless a saved Show/Hide preference exists. Explicit expansion is
+now saved as well as collapse, so mobile users who want visible HP/AC retain
+that choice after reload. Desktop defaults remain expanded. Browser coverage
+checks first-load defaults, both persisted choices, portrait and landscape,
+plus the existing real player/DM movement sequence. Storage failure keeps the
+responsive default and does not block the controls.
+
 ### Zero-speed map preview (local; not released)
 
 Dragging the active token with a zero movement allowance now shows the red
