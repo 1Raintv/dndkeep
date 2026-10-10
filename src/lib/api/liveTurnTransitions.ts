@@ -57,10 +57,11 @@ async function begin(request:CombatClockRequest,guard:()=>void){
 }
 /** Recover before doing any new outgoing work, including on a different device.
  * Historical receipt pools must never be copied into current character stores. */
-export async function recoverLiveTurnTransition(user:string,encounter:string,guard:()=>void):Promise<boolean>{
+export async function recoverLiveTurnTransition(user:string,encounter:string,guard:()=>void,beforeBegin?:()=>Promise<void>):Promise<boolean>{
  guard();const request=saved(user,encounter);
  const found=await psionicRpc('read_live_turn_transition',{p_encounter:encounter,p_request:request?.requestId??null},true);guard();
  if(found===null&&!request)return false;
+ if(found===null&&request){await beforeBegin?.();guard();}
  const r=found===null?await begin(request!,guard):verify(found,encounter,request??undefined);
  await continueIncoming(user,r,guard);return true;
 }

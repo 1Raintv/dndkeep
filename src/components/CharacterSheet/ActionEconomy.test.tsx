@@ -64,5 +64,5 @@ it('cannot reset or advance before combat finishes loading',async()=>{
  expect(reset).not.toHaveBeenCalled();expect(mocks.advance).not.toHaveBeenCalled();expect(mocks.turn).not.toHaveBeenCalled();
  mocks.loading=false;mocks.encounter={id:'fight',status:'active'};mocks.actor={participant_type:'character',entity_id:'psion'};
  rerender(<ActionEconomy characterId="psion" speedFeet={30} actionUsedExternal onNewTurn={reset}/>);
- fireEvent.click(end());await waitFor(()=>expect(reset).toHaveBeenCalledTimes(1));expect(mocks.advance).toHaveBeenCalledWith('fight',expect.any(Function));
+ fireEvent.click(end());await waitFor(()=>expect(reset).toHaveBeenCalledTimes(1));expect(mocks.advance).toHaveBeenCalledWith('fight',expect.any(Function),expect.any(Function));
 });

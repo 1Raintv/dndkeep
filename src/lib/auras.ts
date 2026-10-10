@@ -28,7 +28,7 @@ import {applyDamageAffinities} from '../rules/damageAffinities';
 // spirit-guardians — the engine implements 2024; the spell text needs
 // its own SRD 5.2.1 pass (logged for chat 22).
 //
-// Three trigger points, all funnelling into resolveAuraSave():
+// Trigger identities shared with the atomic aura review pipeline:
 //   'creature_entered'  — a creature moved from outside to inside
 //   'emanation_entered' — the ORIGIN moved, sweeping the area over a
 //                         creature that was previously outside
@@ -452,113 +452,8 @@ async function applyAuraDamage(input: {
   }
 }
 
-// ─── Trigger: movement ───────────────────────────────────────────
-
-/**
- * Called after a token move is logged. Handles both movement triggers:
- *
- *   A) the mover walked into someone else's Emanation
- *      ("a creature enters the Emanation")
- *   B) the mover IS an origin, so its Emanation swept over creatures
- *      that were previously outside it
- *      ("the Emanation enters a creature's space")
- *
- * Both compare BEFORE vs AFTER: a creature already inside that merely
- * shuffles within the area does not save again, per RAW.
- */
-export async function evaluateAurasOnMovement(input: {
-  campaignId: string;
-  encounterId: string;
-  moverParticipantId: string;
-  fromRow: number;
-  fromCol: number;
-  toRow: number;
-  toCol: number;
-}): Promise<void> {
-  const auras = await listActiveAuras(input.campaignId, input.encounterId);
-  if (auras.length === 0) return;
-
-  const { data: rowsRaw } = await (supabase as any)
-    .from('combat_participants')
-    .select('id, name, participant_type, entity_id, combatant_id, ' + JOINED_COMBATANT_FIELDS)
-    .eq('encounter_id', input.encounterId);
-  const rows = ((rowsRaw ?? []) as any[]).map(normalizeParticipantRow);
-  const byId = new Map<string, any>(rows.map((r: any) => [r.id, r]));
-
-  const { loadActiveBattleMap, findTokenForParticipant, participantLookup } = await import('./battleMapGeometry');
-  const bmap = await loadActiveBattleMap(input.campaignId);
-  if (!bmap) return;
-
-  const mover = byId.get(input.moverParticipantId);
-  if (!mover || mover.is_dead) return;
-  const moverToken = findTokenForParticipant(
-    participantLookup(mover),
-    bmap.tokens,
-  );
-  const moverSize = Math.max(1, (moverToken?.size as number) ?? 1);
-  const moverBefore = footprintAt(input.fromRow, input.fromCol, moverSize);
-  const moverAfter = footprintAt(input.toRow, input.toCol, moverSize);
-
-  for (const aura of auras) {
-    const eligible = (participantId: string) =>
-      participantId !== aura.originParticipantId &&
-      !aura.spec.exemptParticipantIds.includes(participantId);
-
-    // ── Case B: the origin itself moved; the area swept.
-    if (aura.originParticipantId === input.moverParticipantId) {
-      if (!aura.spec.triggers.includes('emanation_entered')) continue;
-      const originBefore = footprintAt(input.fromRow, input.fromCol, aura.originSize);
-      const originAfter = footprintAt(input.toRow, input.toCol, aura.originSize);
-      for (const r of rows) {
-        if (!eligible(r.id) || r.is_dead) continue;
-        if (aura.spec.affects === 'enemies' &&
-            (mover.participant_type === 'character') === (r.participant_type === 'character')) continue;
-        const tok = findTokenForParticipant(
-          participantLookup(r),
-          bmap.tokens,
-        );
-        if (!tok) continue;
-        const rect = footprintAt(tok.row, tok.col, Math.max(1, (tok.size as number) ?? 1));
-        const was = isInsideEmanation(originBefore, rect, aura.spec.radiusFt);
-        const now = isInsideEmanation(originAfter, rect, aura.spec.radiusFt);
-        if (!was && now) {
-          await resolveAuraSave({
-            campaignId: input.campaignId,
-            encounterId: input.encounterId,
-            aura,
-            targetParticipantId: r.id as string,
-            targetName: r.name as string,
-            targetType: r.participant_type as string,
-            trigger: 'emanation_entered',
-          });
-        }
-      }
-      continue;
-    }
-
-    // ── Case A: someone walked into a stationary origin's area.
-    if (!aura.spec.triggers.includes('creature_entered')) continue;
-    if (!eligible(input.moverParticipantId)) continue;
-    if (aura.spec.affects === 'enemies') {
-      const origin = byId.get(aura.originParticipantId);
-      if (origin && (origin.participant_type === 'character') === (mover.participant_type === 'character')) continue;
-    }
-    const originRect = footprintAt(aura.originRow, aura.originCol, aura.originSize);
-    const was = isInsideEmanation(originRect, moverBefore, aura.spec.radiusFt);
-    const now = isInsideEmanation(originRect, moverAfter, aura.spec.radiusFt);
-    if (!was && now) {
-      await resolveAuraSave({
-        campaignId: input.campaignId,
-        encounterId: input.encounterId,
-        aura,
-        targetParticipantId: mover.id as string,
-        targetName: mover.name as string,
-        targetType: mover.participant_type as string,
-        trigger: 'creature_entered',
-      });
-    }
-  }
-}
+// v2.869: movement entries are journaled with the token transaction and
+// adjudicated through MovementAuraReview. Do not restore a second damage path.
 
 // ─── Trigger: end of turn ────────────────────────────────────────
 

@@ -82,7 +82,7 @@ export default function ActionEconomy({ savedUsed,savedError,trackPsionicTurns=f
   }
   if(stillHere())reset();return;
  }
- const result=await advanceTurn(encounter.id,auraReview.resolve);
+ const result=await advanceTurn(encounter.id,auraReview.resolve,auraReview.reviewMovement);
  if(!stillHere())return;
  if(result.ok)reset();
  else showToast(`Turn could not be completed: ${result.reason}. Your sheet trackers were kept. Check combat before trying again.`, 'error', {duration:0});

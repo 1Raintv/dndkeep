@@ -46,7 +46,7 @@ test.describe('Movement aura journal',()=>{
   sql(`update combatants set active_buffs='{"unreadable":"aura state"}' where id='${ca}'`);move();expect(read()[0].context.participants.find((p:any)=>p.participant.id===pa)).toMatchObject({auraStateValid:false,unverifiedAuraState:{unreadable:'aura state'}});
  });
  test('token deletion and later turn changes do not erase or rewrite evidence',()=>{
-  move();const [first]=read();sql(`update combat_encounters set current_turn_index=0 where id='${enc}'`);move(245);const events=read();expect(events).toHaveLength(2);expect(events[1]).toEqual(first);expect(events[0].turnId).not.toBe(turn);
+  move();const [first]=read();sql(auth(dm,`select finish_movement_aura_review('${enc}','${first.id}','${randomUUID()}','[]','Reviewed malformed fixture aura manually.')`));sql(`update combat_encounters set current_turn_index=0 where id='${enc}'`);move(245);const events=read();expect(events).toHaveLength(2);expect(events[1]).toEqual(first);expect(events[0].turnId).not.toBe(turn);
   sql(`delete from scene_token_placements where id='${target}'`);expect(read()).toEqual(events);
  });
  test('a late journal failure rolls back the token position too',()=>{
@@ -106,8 +106,8 @@ test.describe('Movement aura journal',()=>{
    clock=spawn('docker',args);clockFinished=new Promise(resolve=>clock!.on('close',resolve));clock.stderr!.on('data',data=>clockErrors+=data);
    clock.stdin!.end(`set application_name='${name}';update combat_encounters set current_turn_index=0 where id='${enc}';`);
    await expect.poll(()=>sql(`select coalesce(max(wait_event_type),'') from pg_stat_activity where application_name='${name}'`),{timeout:10_000}).toBe('Lock');
-   writer.stdin.end('commit;\n');expect(await finished,errors).toBe(0);expect(await clockFinished,clockErrors).toBe(0);
-   expect(read()[0].turnId).toBe(turn);expect(sql(`select psionic_turn_id from combat_encounters where id='${enc}'`)).not.toBe(turn);
+   writer.stdin.end('commit;\n');expect(await finished,errors).toBe(0);expect(await clockFinished).not.toBe(0);expect(clockErrors).toContain('pending movement');
+   expect(read()[0].turnId).toBe(turn);expect(sql(`select psionic_turn_id from combat_encounters where id='${enc}'`)).toBe(turn);
   }finally{
    if(!writer.stdin.writableEnded)writer.stdin.end('rollback;\n');await finished;if(clockFinished)await clockFinished;
   }

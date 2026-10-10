@@ -254,7 +254,7 @@ export default function DMScreen({ campaign }: DMScreenProps) {
     // happen via the realtime update from useCombat() flowing back
     // through the round-transition useEffect above.
     if (!encounter || encounter.status !== 'active') return;
-    const result = await advanceTurn(encounter.id,auraReview.resolve);
+    const result = await advanceTurn(encounter.id,auraReview.resolve,auraReview.reviewMovement);
     if (!result.ok) {
       showToast(`Turn completion needs review: ${result.reason}`, 'error', {duration:0});
     }

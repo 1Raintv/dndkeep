@@ -1,3 +1,4 @@
+import type {MovementTurnReviewer} from './api/movementAuraReviews';
 import type {AuraTurnResolver} from './auras';
 import { attacksPerAction } from '../rules/extraAttack';
 import { recoverInitiativeResources } from './initiativeResources';
@@ -699,12 +700,12 @@ export type CombatActionResult =
 // cannot stop another control from starting the same effects/advance in parallel.
 // This guard covers one tab only; durable cross-client recovery remains separate.
 const pendingTurnAdvances = new Map<string, Promise<CombatActionResult>>();
-export function advanceTurn(encounterId: string,resolveAura?:AuraTurnResolver): Promise<CombatActionResult> {
+export function advanceTurn(encounterId: string,resolveAura?:AuraTurnResolver,reviewMovement?:MovementTurnReviewer): Promise<CombatActionResult> {
   const pending = pendingTurnAdvances.get(encounterId);
   if (pending) return pending;
   const work = Promise.resolve().then(async () => {
     const {withCurrentTurnUser}=await import('./api/liveTurnTransitions');
-    return withCurrentTurnUser((user,guard)=>advanceTurnOnce(encounterId,user,guard,resolveAura));
+    return withCurrentTurnUser((user,guard)=>advanceTurnOnce(encounterId,user,guard,resolveAura,reviewMovement));
   })
     .catch((error: unknown): CombatActionResult => ({
       ok: false,
@@ -717,9 +718,15 @@ export function advanceTurn(encounterId: string,resolveAura?:AuraTurnResolver): 
   return work;
 }
 
-async function advanceTurnOnce(encounterId: string,userId:string,guard:()=>void,resolveAura?:AuraTurnResolver): Promise<CombatActionResult> {
+async function advanceTurnOnce(encounterId: string,userId:string,guard:()=>void,resolveAura?:AuraTurnResolver,reviewMovement?:MovementTurnReviewer): Promise<CombatActionResult> {
   const {recoverLiveTurnTransition,advanceLiveTurnTransition}=await import('./api/liveTurnTransitions');
-  if(await recoverLiveTurnTransition(userId,encounterId,guard))return {ok:true};
+  const reviewMoves=async()=>{
+    if(reviewMovement){await reviewMovement(encounterId,userId,guard);return;}
+    const {pendingMovementAuraReviews}=await import('./api/movementAuraReviews');
+    if((await pendingMovementAuraReviews(encounterId,1)).length)throw new Error('Review pending movement effects with the DM turn controls before advancing.');
+  };
+  if(await recoverLiveTurnTransition(userId,encounterId,guard,reviewMoves))return {ok:true};
+  await reviewMoves();
   guard();
   const { data: enc, error: encErr } = await supabase
     .from('combat_encounters')

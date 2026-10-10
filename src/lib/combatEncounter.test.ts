@@ -1,3 +1,4 @@
+vi.mock('./api/movementAuraReviews',()=>({pendingMovementAuraReviews:vi.fn(async()=>[])}));
 // Unit tests for the v2.746 identity changes in combatEncounter.ts:
 //   - seedToRow is the ONE seed → combat_participants row builder and
 //     writes combatant_id explicitly (per-instance participants);
@@ -246,6 +247,15 @@ describe('shared live turn advancement',()=>{
  it('recovers unfinished incoming work before reading or processing a fresh outgoing turn',async()=>{
   h.state.recoverLive.mockResolvedValue(true);expect(await advanceTurn('guard-enc')).toEqual({ok:true});
   expect(h.state.calls).toEqual([]);expect(h.state.endTicks).not.toHaveBeenCalled();expect(h.state.advanceLive).not.toHaveBeenCalled();
+ });
+ it('postponed movement review stops all new outgoing effects',async()=>{
+  const review=vi.fn(async()=>{throw new Error('Movement postponed');});
+  expect(await advanceTurn('guard-enc',undefined,review)).toEqual({ok:false,reason:'Movement postponed'});
+  expect(review).toHaveBeenCalledOnce();expect(h.state.calls).toEqual([]);expect(h.state.endTicks).not.toHaveBeenCalled();expect(h.state.advanceLive).not.toHaveBeenCalled();
+ });
+ it('committed incoming recovery does not start movement review for the new turn',async()=>{
+  const review=vi.fn();h.state.recoverLive.mockResolvedValue(true);
+  expect(await advanceTurn('guard-enc',undefined,review)).toEqual({ok:true});expect(review).not.toHaveBeenCalled();
  });
  it('uses the recorded outgoing actor after lethal tick damage compresses the roster',async()=>{
   h.state.respond=c=>c.table==='combat_encounters'?successful(c):{data:actors.map((a,n)=>({...a,is_dead:n===0})),error:null};

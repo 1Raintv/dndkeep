@@ -78,7 +78,7 @@ export default function InitiativeStrip({ isDM, characterId }: Props) {
   // every handler did `await fn(...)` and discarded the result, so an
   // RLS rejection / network error / stale state was completely silent.
   const { showToast } = useToast();
-  const [endingTurn,setEndingTurn]=useState(false);
+  const [endingTurn,setEndingTurn]=useState(false),[reviewingMovement,setReviewingMovement]=useState(false);
   const turnClick=useRef(false),mounted=useRef(false),latestEncounter=useRef(encounter?.id);
   latestEncounter.current=encounter?.id;
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
@@ -187,12 +187,22 @@ export default function InitiativeStrip({ isDM, characterId }: Props) {
   // legendary creatures while the encounter is flagged in_lair.
   const inLair = (encounter as { in_lair?: boolean }).in_lair === true;
 
+  async function onReviewMovement() {
+    if(!encounter||turnClick.current)return;
+    const started=encounter.id;turnClick.current=true;setEndingTurn(true);setReviewingMovement(true);
+    try{
+      const {withCurrentTurnUser}=await import('../../lib/api/liveTurnTransitions');
+      await withCurrentTurnUser((user,guard)=>auraReview.reviewMovement(started,user,guard));
+      if(mounted.current&&latestEncounter.current===started)showToast('Movement effects reviewed.','success');
+    }catch(error){if(mounted.current&&latestEncounter.current===started)showToast(error instanceof Error?error.message:'Movement review needs attention.','error');}
+    finally{turnClick.current=false;if(mounted.current){setEndingTurn(false);setReviewingMovement(false);}}
+  }
   async function onEndTurn() {
     if (!encounter || turnClick.current) return;
     const started=encounter.id;
     turnClick.current=true;setEndingTurn(true);
     try {
-      const result = await advanceTurn(started,auraReview.resolve);
+      const result = await advanceTurn(started,auraReview.resolve,auraReview.reviewMovement);
       if (mounted.current&&latestEncounter.current===started&&!result.ok) {
         // v2.869: a delayed/failed advance may have partially applied effects.
         // Keep the explanation until dismissed instead of inviting rapid retries.
@@ -981,6 +991,7 @@ export default function InitiativeStrip({ isDM, characterId }: Props) {
               end-to-end via MonsterActionPanel, and PC attacks go
               through PlayerAttackButton on the character sheet).
               Removing the orphaned button + its modal mount + state. */}
+          <button className="btn-ghost" disabled={endingTurn} onClick={onReviewMovement} style={{fontSize:11,padding:'6px 10px'}}>Review movement</button>
           <button
             onClick={onEndTurn}
             disabled={endingTurn}
@@ -995,7 +1006,7 @@ export default function InitiativeStrip({ isDM, characterId }: Props) {
               letterSpacing: '0.06em', textTransform: 'uppercase',
             }}
           >
-            {endingTurn ? 'Ending…' : 'End Turn'}
+            {endingTurn ? (reviewingMovement?'Reviewing…':'Ending…') : 'End Turn'}
           </button>
           <button
             onClick={onEndCombat}

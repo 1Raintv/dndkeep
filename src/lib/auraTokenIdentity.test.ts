@@ -9,7 +9,7 @@ vi.mock('./supabase',()=>({supabase:{from:()=>({select:(fields:string)=>{
  return query;
 }})}}));
 vi.mock('./battleMapGeometry',async original=>({...await original<typeof import('./battleMapGeometry')>(),loadActiveBattleMap:async()=>({tokens:m.tokens})}));
-import {listActiveAuras,evaluateAurasOnMovement,evaluateAurasOnTurnEnd,auraSpeedMultiplier} from './auras';
+import {listActiveAuras,evaluateAurasOnTurnEnd,auraSpeedMultiplier} from './auras';
 const token=(id:string,col:number)=>({id,combatant_id:id,name:'Goblin',creature_id:'species',row:0,col,size:1});
 beforeEach(()=>{
  m.markers=[];m.error=null;
@@ -31,14 +31,6 @@ it('applies the speed aura to the linked token',async()=>{
  m.tokens.find(t=>t.id==='victim')!.col=10;
  expect(await auraSpeedMultiplier({campaignId:'campaign',encounterId:'encounter',participantId:'target'})).toBe(1);
 });
-it('checks creatures swept by the moving origin',async()=>{
- await evaluateAurasOnMovement({campaignId:'campaign',encounterId:'encounter',moverParticipantId:'origin',fromRow:0,fromCol:10,toRow:0,toCol:0});expect(m.markers).toEqual(['target']);
-});
-it('uses the linked moving creature footprint when entering an aura',async()=>{
- m.tokens.find(t=>t.id==='victim')!.size=2;
- await evaluateAurasOnMovement({campaignId:'campaign',encounterId:'encounter',moverParticipantId:'target',fromRow:0,fromCol:-10,toRow:0,toCol:-2});expect(m.markers).toEqual(['target']);
-});
-
 it('passes the actual outgoing target to reviewed resolution without legacy writes',async()=>{
  const resolve=vi.fn(async()=>true);await evaluateAurasOnTurnEnd({campaignId:'campaign',encounterId:'encounter',participantId:'target',resolve});
  expect(resolve).toHaveBeenCalledWith(expect.objectContaining({targetParticipantId:'target',trigger:'turn_end'}));expect(m.markers).toEqual([]);

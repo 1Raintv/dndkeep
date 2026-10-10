@@ -7943,3 +7943,45 @@ review clock guard. The private guard is deliberately not wired into the clock
 until the DM can complete reviews. This backend milestone does not make the
 movement review queue visible or prevent End Turn yet. Previously documented
 path/teleport, insertion/resize, legacy marker and pending-turn gaps remain.
+
+### Movement review connected to live combat (2026-10-10, unreleased)
+
+All three live End Turn controls now review pending movement before processing
+new outgoing effects. The map initiative strip also offers Review movement,
+which resolves the queue without advancing combat. The DM sees each possible
+aura/target pair and explicitly resolves its saved save or records a reason for
+not triggering / manual handling. No default choice silently completes an
+uncertain effect. Manual rulings do not apply damage.
+
+The input/result review reuses the atomic aura pipeline. Postponement keeps the
+same dice, confirmed receipts satisfy once-per-turn outgoing aura checks, and
+scope changes/unmounts cancel pending UI promises. Committed incoming work still
+recovers before any new outgoing review. An uncommitted saved clock request
+reviews newly pending movement before retrying the boundary.
+
+The legacy logMovement aura damage call and its unused evaluator are removed,
+preventing a second writer
+from applying damage alongside the recorded review. Migration 20261010070024
+adds a private encounter-boundary trigger: a new active turn cannot commit while
+movement reviews remain. Capture/clock locks ensure a concurrent move is seen
+before the boundary can pass; a failed boundary rolls back its clock receipt.
+Historical receipt recovery remains available.
+
+Verification: full required gate passes (3,864 unit cases, TypeScript 194/194,
+build and 255.7 KB entry budget). Sixteen journal cases and sixteen movement
+review cases passed on desktop; the two interactive review cases and the real
+map standalone-review control passed on mobile. The real map control also passed
+on desktop. All 92 combat-clock database regressions passed. Desktop/mobile screenshots inspected, including the mobile scrolled
+footer; official overflow probe, console and network checks pass. Bypassing the
+review deliberately makes its browser regression fail, and restored code passes.
+SQL lint has no errors; advisors retain only the existing keep_warm and
+client_errors warnings. The exact migration source is recorded locally with no
+repository migrations pending; the existing database-only version is preserved.
+
+No production deployment. Release gaps remain: proactive pending indicators and
+avoiding unnecessary review for provably irrelevant moves; historical movement
+preview/path and teleport intent; insertions/size-only changes; legacy partial
+markers; typed buff-tick defenses/concentration and other actions racing pending
+work. A saved clock proposal whose roster changes during movement resolution may
+still require recovery handling. This milestone gates turns, not every combat
+action. The DM should review effects immediately using Review movement.

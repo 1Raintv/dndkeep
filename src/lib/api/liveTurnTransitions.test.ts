@@ -62,3 +62,13 @@ it('malformed non-character death work never calls the death-save API',async()=>
  server={...context(),deathRequired:true,incoming:{...context().incoming,type:'monster'}};
  await expect(recoverLiveTurnTransition(user,enc,()=>{})).rejects.toThrow('could not be verified');expect(m.death).not.toHaveBeenCalled();
 });
+
+it('reviews movement before retrying an uncommitted saved clock request',async()=>{
+ const original=m.rpc.getMockImplementation()!;
+ m.rpc.mockImplementation(async(name,args)=>{if(name==='begin_live_turn_transition')throw new Error('Movement pending');return original(name,args);});
+ await expect(advanceLiveTurnTransition(user,enc,turn,()=>{})).rejects.toThrow('Movement pending');
+ const review=vi.fn(async()=>{throw new Error('Review postponed');});m.rpc.mockClear();
+ await expect(recoverLiveTurnTransition(user,enc,()=>{},review)).rejects.toThrow('Review postponed');
+ expect(m.rpc.mock.calls.map(([name])=>name)).toEqual(['read_live_turn_transition']);expect(localStorage.length).toBe(1);
+ m.rpc.mockImplementation(original);await recoverLiveTurnTransition(user,enc,()=>{},async()=>{});expect(localStorage.length).toBe(0);
+});

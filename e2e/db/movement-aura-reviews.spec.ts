@@ -1,7 +1,8 @@
+import {readFileSync} from 'node:fs';
 import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {test,expect} from '@playwright/test';
-import {gateDbSuite} from './helpers';
+import {test,expect,type Page} from '@playwright/test';
+import {gateDbSuite,signInAsSeedDm} from './helpers';
 const sql=(q:string)=>execFileSync('docker',['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'],{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 const auth=(user:string,q:string)=>`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${user}","role":"authenticated"}';${q};commit;`;
 const literal=(v:unknown)=>"'"+JSON.stringify(v).replaceAll("'","''")+"'::jsonb";
@@ -93,6 +94,63 @@ test.describe('Movement aura review decisions',()=>{
   move();const [entry]=queue(),receipt=settle();
   sql(`update dndkeep_private.aura_resolutions set turn_id='${randomUUID()}' where request_id='${receipt}'`);
   expect(()=>finish(entry,choices(entry,'resolved',receipt))).toThrow(/saved aura receipt/);expect(queue()).toHaveLength(1);
+ });
+
+ test('the server refuses a new clock boundary until movement is reviewed',()=>{
+  move();const [entry]=queue();
+  const clock=JSON.parse(sql(auth(dm,`select get_combat_clock_context('${enc}','${turn}')`)));
+  const request=randomUUID(),q=`select commit_combat_clock_transition('${enc}','${request}','${turn}','${clock.incomingId}',${clock.nextIndex},${clock.nextRound})`;
+  expect(()=>sql(auth(dm,q))).toThrow(/pending movement/);expect(sql(`select psionic_turn_id from combat_encounters where id='${enc}'`)).toBe(turn);
+  expect(sql(`select count(*) from dndkeep_private.combat_clock_transitions where request_id='${request}'`)).toBe('0');
+  finish(entry);sql(auth(dm,q));expect(sql(`select psionic_turn_id from combat_encounters where id='${enc}'`)).not.toBe(turn);
+ });
+ async function mountReview(page:Page){
+  sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}','{"sub":"${dm}","email":"${dm}@move-aura.local"}','email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${dm}@move-aura.local`);
+  await page.evaluate(async({enc})=>{
+   const rp='/node_modules/.vite/deps/react.js',dp='/node_modules/.vite/deps/react-dom_client.js',mp='/src/components/shared/Modal.tsx',hp='/src/components/Combat/useAuraTurnReview.tsx',cp='/src/lib/combatEncounter.ts';
+   const [React,dom,modal,hook,combat]=await Promise.all([import(rp),import(dp),import(mp),import(hp),import(cp)]);
+   function Harness(){const aura=hook.useAuraTurnReview(enc);return React.default.createElement(React.default.Fragment,null,aura.dialog,React.default.createElement('button',{onClick:async()=>{
+    delete document.body.dataset.turnResult;document.body.dataset.turnResult=JSON.stringify(await combat.advanceTurn(enc,aura.resolve,aura.reviewMovement));
+   }},'Finish reviewed turn'));}
+   const host=document.createElement('div');host.style.cssText='position:fixed;top:80px;left:12px;z-index:1000';document.body.appendChild(host);
+   dom.default.createRoot(host).render(React.default.createElement(modal.ModalProvider,null,React.default.createElement(Harness)));
+  },{enc});
+ }
+ test('DM can postpone and record a movement ruling before End Turn',async({page},info)=>{
+  move();await mountReview(page);const errors:string[]=[],bad:string[]=[];
+  page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});page.on('response',r=>{if(r.status()>=400)bad.push(`${r.status()} ${r.url()}`);});
+  const end=page.getByRole('button',{name:'Finish reviewed turn'}),dialog=page.getByRole('dialog',{name:'Review movement effects'});
+  await end.click();await expect(dialog).toBeVisible();await expect(dialog.getByRole('button',{name:'Confirm movement review'})).toBeDisabled();
+  await page.keyboard.press('Escape');await expect.poll(()=>page.evaluate(()=>document.body.dataset.turnResult??'')).toContain('postponed');expect(queue()).toHaveLength(1);expect(sql(`select psionic_turn_id from combat_encounters where id='${enc}'`)).toBe(turn);
+  // End-of-turn aura excluded here so the manual movement ruling is isolated.
+  sql(`update combatants set active_buffs='[]' where id='${ca}'`);
+  await end.click();await expect(dialog).toBeVisible();await dialog.getByLabel('Ruling for Target').selectOption('not_triggered');await dialog.getByLabel('Reason for Target').fill('The route stayed outside the aura.');await dialog.getByLabel('Movement review note').fill('Confirmed the route with the player.');
+  await dialog.screenshot({path:`.tmp/movement-review-${info.project.name}.png`});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[role=dialog], [role=dialog] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
+  await dialog.getByRole('button',{name:'Confirm movement review'}).click();await expect.poll(()=>page.evaluate(()=>document.body.dataset.turnResult??'')).toBe('{"ok":true}');expect(queue()).toEqual([]);expect(sql(`select psionic_turn_id from combat_encounters where id='${enc}'`)).not.toBe(turn);expect(errors).toEqual([]);expect(bad).toEqual([]);
+ });
+ test('movement save review reuses its receipt for the outgoing aura',async({page})=>{
+  move();await mountReview(page);await page.getByRole('button',{name:'Finish reviewed turn'}).click();
+  const movement=page.getByRole('dialog',{name:'Review movement effects'});await movement.getByRole('button',{name:'Resolve or resume save'}).click();
+  const input=page.getByRole('dialog',{name:'Review aura inputs'});await expect(input).toBeVisible();
+  await input.getByLabel('Base saving throw modifier',{exact:true}).fill('0');await input.getByLabel('Concentration save modifier',{exact:true}).fill('0');await input.getByLabel('Damage defense',{exact:true}).selectOption('normal');for(const checkbox of await input.getByRole('checkbox').all())await checkbox.check();await input.getByRole('button',{name:'Roll and review'}).click();
+  const result=page.getByRole('dialog',{name:'Aura: review save'});await expect(result).toBeVisible();const saved=await result.innerText();await page.keyboard.press('Escape');await expect(movement).toBeVisible();await expect(movement.getByRole('alert')).toContainText('postponed');
+  await movement.getByRole('button',{name:'Resolve or resume save'}).click();await expect(result).toBeVisible();expect(await result.innerText()).toBe(saved);await expect(input).toBeHidden();
+  await result.getByRole('button',{name:'Apply result',exact:true}).click();await expect(movement.getByRole('status')).toHaveText('Saved result verified.');await movement.getByLabel('Movement review note').fill('Confirmed the movement and saved effect.');await movement.getByRole('button',{name:'Confirm movement review'}).click();
+  await expect.poll(()=>page.evaluate(()=>document.body.dataset.turnResult??'')).toBe('{"ok":true}');expect(queue()).toEqual([]);expect(sql(`select count(*) from dndkeep_private.aura_resolutions where encounter_id='${enc}'`)).toBe('1');
+ });
+
+ test('map DM controls can review movement without advancing combat',async({page},info)=>{
+  move();await mountReview(page);const errors:string[]=[],bad:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});page.on('response',r=>{if(r.status()>=400)bad.push(`${r.status()} ${r.url()}`);});await page.goto('/campaigns');await page.getByText('Movement aura fixture',{exact:true}).locator('visible=true').first().click();
+  const controls=page.getByRole('group',{name:'Combat controls'});await expect(controls).toBeVisible();
+  await controls.screenshot({path:`.tmp/movement-controls-${info.project.name}.png`});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('.initiative-strip, .initiative-strip *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
+  await controls.getByRole('button',{name:'Review movement',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Review movement effects'});await expect(dialog).toBeVisible();
+  await dialog.getByLabel('Ruling for Target').selectOption('not_triggered');await dialog.getByLabel('Reason for Target').fill('Reviewed the route at the table.');await dialog.getByLabel('Movement review note').fill('No movement effect triggered.');await dialog.getByRole('button',{name:'Confirm movement review'}).scrollIntoViewIfNeeded();
+  await dialog.screenshot({path:`.tmp/movement-review-footer-${info.project.name}.png`});
+  await dialog.getByRole('button',{name:'Confirm movement review'}).click();await expect(dialog).toBeHidden();await expect.poll(()=>queue().length).toBe(0);expect(sql(`select psionic_turn_id from combat_encounters where id='${enc}'`)).toBe(turn);expect(errors).toEqual([]);expect(bad).toEqual([]);
  });
 
 });

@@ -1,3 +1,4 @@
+export type MovementTurnReviewer=(encounterId:string,userId:string,guard:()=>void)=>Promise<void>;
 import {psionicRpc} from './psionicTurns';
 import {verifyMovementAuraEvents,type MovementAuraEvent} from './movementAuraEvents';
 export interface MovementAuraCandidate {candidateId:string;originId:string;targetId:string;auraKey:string;originName:string;targetName:string;name:string;trigger:'creature_entered'|'emanation_entered';spec:Record<string,unknown>}
