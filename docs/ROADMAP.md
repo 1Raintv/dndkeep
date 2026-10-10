@@ -6800,3 +6800,30 @@ integration and reconciliation remain release prerequisites.
 Full required gate passes: 3,355 unit tests, 195/195 TypeScript diagnostics,
 React hooks, RAW, coordinates, anchors, production build and 255.2 KB entry
 budget. Final browser run: two passed; diff check clean.
+
+### Atomic deterministic turn budgets (unreleased)
+
+The saved combat-clock transaction now resets the incoming participant's action,
+Bonus Action, reaction, movement, leveled-spell flag, Dash, Disengage and attack
+count together with the new turn identity. It clears once-per-turn markers for
+that encounter's whole roster, because those apply on every creature's turn.
+Outgoing action budgets and other encounters remain untouched. Roster locks are
+acquired in ID order before successor validation and combatant duration writes.
+
+Receipt replay returns before any reset, preserving actions and markers spent
+after the acknowledged transition. A later failure rolls back the budgets along
+with the clock. The public API and DM authorization stay unchanged. This removes
+a prerequisite for the durable controller, but the legacy live handler still
+needs replacement: remove its separate deterministic resets when wiring this
+transaction. Recharge dice, legendary-action logging, mastery effects, aura work
+and incoming-effect recovery remain separate integration work. No deployment.
+
+Verification: all 114 local clock/expiry/browser cases pass across desktop and
+mobile. Four added cases cover incoming-only reset, encounter-wide marker scope,
+receipt replay after new spending, rollback and rejected/unauthorized requests.
+The reset case failed against the prior database implementation before applying
+the migration. Full gate passes (3,355 units,195/195 TypeScript,255.2 KB entry).
+SQL lint, security advisors, changed-file ESLint and diff checks pass. Migration
+20261010070008 was applied and recorded only in the existing local Docker stack;
+no reset or changes to unrelated migration history. Supabase function guidance
+and the current database changelog were reviewed; no new API dependency.

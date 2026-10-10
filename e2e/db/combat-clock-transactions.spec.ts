@@ -210,6 +210,37 @@ test.describe('Atomic combat clock transitions',()=>{
  test('within-round transitions change actor identity without ticking time or buffs',()=>{
   const r=run();expect(r).toMatchObject({requestId:request,incomingId:pb,index:1,round:1,roundWrapped:false,campaignRounds:0,replayed:false});expect(r.turnId).not.toBe(turn);expect(state()).toMatchObject({index:1,round:1,clock:0,lair:true});expect(buffs()[0].duration).toBe(3);
  });
+ const budgets=(id:string)=>JSON.parse(sql(`select jsonb_build_object('action',action_used,'bonus',bonus_used,'reaction',reaction_used,
+  'movement',movement_used_ft,'spell',leveled_spell_cast,'dash',dash_used_this_turn,'disengaged',disengaged_this_turn,
+  'attacks',attacks_remaining,'markers',once_per_turn_used) from combat_participants where id='${id}'`));
+ const spent={action:true,bonus:true,reaction:true,movement:25,spell:true,dash:true,disengaged:true,attacks:0,markers:['cleave']};
+ function spendBudgets(){sql(`update combat_participants set action_used=true,bonus_used=true,reaction_used=true,movement_used_ft=25,
+  leveled_spell_cast=true,dash_used_this_turn=true,disengaged_this_turn=true,attacks_remaining=0,attacks_per_action=2,
+  once_per_turn_used=array['cleave'] where encounter_id='${enc}'`);}
+ test('clock atomically resets only incoming budgets and every participant turn marker',()=>{
+  spendBudgets();const otherEnc=randomUUID(),otherActor=randomUUID();
+  sql(`insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${otherEnc}','${campaign}','active',1,0);
+   insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,combatant_id,action_used,once_per_turn_used)
+   values('${otherActor}','${otherEnc}','${campaign}','character','${b}','Other',0,'${cb}',true,array['cleave']);`);
+  const otherBefore=budgets(otherActor);run();
+  expect(budgets(pb)).toEqual({action:false,bonus:false,reaction:false,movement:0,spell:false,dash:false,disengaged:false,attacks:2,markers:[]});
+  expect(budgets(pa)).toEqual({...spent,markers:[]});expect(budgets(otherActor)).toEqual(otherBefore);
+ });
+ test('clock receipt replay preserves budgets spent after the original advance',()=>{
+  spendBudgets();const first=run();spendBudgets();
+  expect(run()).toEqual({...first,replayed:true});expect(budgets(pa)).toEqual(spent);expect(budgets(pb)).toEqual(spent);
+ });
+ test('clock budget resets roll back with a later buff failure',()=>{
+  const q=wrapCall();spendBudgets();const before=state();
+  sql(`update combatants set active_buffs='{}' where id='${cb}'`);
+  expect(()=>run(q)).toThrow(/Check campaign buff data/);expect(state()).toEqual(before);
+  expect(budgets(pa)).toEqual(spent);expect(budgets(pb)).toEqual(spent);
+ });
+ test('rejected clock requests cannot clear budgets or turn markers',()=>{
+  spendBudgets();expect(()=>run(call(request,turn,pa))).toThrow(/Initiative roster changed/);
+  expect(()=>run(call(),player)).toThrow(/only to its DM/);
+  expect(budgets(pa)).toEqual(spent);expect(budgets(pb)).toEqual(spent);
+ });
  test('round wrap commits the actor, campaign clock, lair reset and buff tick together',()=>{
   expect(run(wrapCall())).toMatchObject({incomingId:pa,index:0,round:2,roundWrapped:true,campaignRounds:1});expect(state()).toMatchObject({index:0,round:2,clock:1,lair:false});expect(buffs()).toEqual([{id:'timed',duration:2},{id:'indefinite',duration:-1}]);
   expect(sql(`select elapsed_seconds from dndkeep_private.psionic_duration_clocks where character_id='${a}'`)).toBe('6');
