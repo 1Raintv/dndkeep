@@ -164,6 +164,29 @@ test.describe('saved attack outcome rules',()=>{
   expect(result).toMatchObject({calls:2,attack:{state:'attack_rolled',attack_d20:10}});expect(f.readBuffs()).toEqual(f.buffs.slice(1));
  });
 
+ test('live attacks combine mastery and condition sources before cancellation',async({page})=>{
+  await signInAsSeedDm(page,email);
+  const cases=[
+   {attacker:['Poisoned'],target:['Restrained'],vex:true,sap:false,calls:1,die:10},
+   {attacker:['Poisoned'],target:['Restrained'],vex:false,sap:true,calls:1,die:10},
+   {attacker:['Poisoned'],target:['Restrained'],vex:true,sap:true,calls:1,die:10},
+   {attacker:['Poisoned'],target:[],vex:true,sap:false,calls:1,die:10},
+   {attacker:[],target:['Restrained'],vex:false,sap:true,calls:1,die:10},
+   {attacker:[],target:[],vex:true,sap:false,calls:2,die:16},
+   {attacker:[],target:[],vex:false,sap:true,calls:2,die:10},
+  ];
+  for(const c of cases){
+   const f=masteryFixture();f.setBuffs([...(c.vex?[{key:'mastery_vexed',onlyVsTargetParticipantId:f.target}]:[]),...(c.sap?[{key:'mastery_sapped'}]:[])]);
+   sql(`update combatants set active_conditions=array[${c.attacker.map(v=>"'"+v+"'").join(',')}]::text[] where id=(select combatant_id from combat_participants where id='${f.actor}');
+    update combatants set active_conditions=array[${c.target.map(v=>"'"+v+"'").join(',')}]::text[] where id=(select combatant_id from combat_participants where id='${f.target}')`);
+   const result=await page.evaluate(async id=>{
+    const {rollAttackRoll}=await import('/src/lib/pendingAttack.ts');const original=Math.random;let calls=0;Math.random=()=>++calls===1?0.475:0.775;
+    try{return {attack:await rollAttackRoll(id),calls};}finally{Math.random=original;}
+   },f.id);
+   expect(result,JSON.stringify(c)).toMatchObject({calls:c.calls,attack:{state:'attack_rolled',attack_d20:c.die}});expect(f.readBuffs()).toEqual([]);
+  }
+ });
+
  test('target checks reject a removed scene instead of loading another campaign map',async({page})=>{
   const selected=randomUUID(),otherScene=randomUUID();
   sql(`insert into scenes(id,campaign_id,owner_id,name,grid_type,grid_size_px,width_cells,height_cells,ambient_light,is_published) values

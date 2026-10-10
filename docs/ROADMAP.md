@@ -1,5 +1,20 @@
 # DNDKeep — Two-Track Roadmap
 
+### Attack accuracy — combine advantage sources before cancellation (not released)
+
+Condition and mastery sources now enter one rules-layer calculation before
+advantage/disadvantage cancel. Previously, a condition pair collapsed to
+`normal`, allowing Sap or Vex to incorrectly reintroduce disadvantage or
+advantage. Both sources remain present regardless of how many effects grant
+one side. Existing Prone distance and Invisible handling are preserved; this
+change does not add visibility adjudication for special senses.
+
+Source: [2024 rules, Advantage/Disadvantage](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game).
+Pure tests cover the source combinations; a local browser/database regression
+checks seven real rolls, including kept dice, number of dice and consumption
+of the applicable mastery markers. No database migration or UI changes.
+
+
 ### Attack recording — atomic mastery consumption (local; not released)
 
 Migration 20261010161121 records the original attack snapshot and consumes

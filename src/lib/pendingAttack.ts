@@ -433,17 +433,10 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
     }
   }
 
-  const baseAdvantageState = getAdvantageState(attackerConditions, targetConditions, distanceCells);
-  // v2.630.0 — Weapon Mastery markers: Sap on the attacker forces
-  // disadvantage on this roll; a Vex marker scoped to this target
-  // grants advantage. RAW stacking: any advantage + any disadvantage
-  // = normal roll. (Known approximation: the collapsed AdvantageState
-  // doesn't expose underlying flags, so condition adv+dis that already
-  // cancelled to 'normal' can be tipped by a marker.)
+  // v2.869 — combine every source before cancelling advantage/disadvantage.
+  // A condition pair that cancels must stay cancelled when Sap/Vex is added.
   const masteryMarkers = surveyMasteryMarkers(attackerBuffs, atk.target_participant_id ?? null);
-  const mHadAdv = baseAdvantageState === 'advantage' || masteryMarkers.adv;
-  const mHadDis = baseAdvantageState === 'disadvantage' || masteryMarkers.dis;
-  const advantageState = (mHadAdv && mHadDis ? 'normal' : mHadAdv ? 'advantage' : mHadDis ? 'disadvantage' : 'normal') as ReturnType<typeof getAdvantageState>;
+  const advantageState = getAdvantageState(attackerConditions,targetConditions,distanceCells,masteryMarkers);
   const bonus = atk.attack_bonus ?? 0;
 
   // Advantage/disadvantage: roll 2d20 and take higher / lower. Normal: 1d20.
