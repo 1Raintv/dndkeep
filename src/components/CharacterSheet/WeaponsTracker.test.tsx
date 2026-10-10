@@ -67,3 +67,43 @@ it('passes the known ability contribution through without deriving it from damag
  render(<WeaponsTracker weapons={[weapon]} attacksPerAction={1} onUpdate={vi.fn()} historyCharacterId="hero"/>);
  expect(m.attack).toHaveBeenCalledWith(expect.objectContaining({attackBonus:9,attackAbilityModifier:4}));
 });
+
+const manual:WeaponItem={id:'manual',name:'Greatsword',attackBonus:9,attackAbilityModifier:4,damageDice:'2d6',damageBonus:6,damageType:'slashing',range:'Melee',properties:'',notes:''};
+it('creates a manual attack with a separately reviewed ability modifier',()=>{
+ const update=vi.fn();render(<WeaponsTracker weapons={[]} attacksPerAction={1} onUpdate={update}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Add Custom Attack'}));
+ fireEvent.change(screen.getByLabelText('Name *'),{target:{value:'Greatsword'}});
+ fireEvent.change(screen.getByLabelText('Attack Bonus (d20 +)'),{target:{value:'9'}});
+ fireEvent.change(screen.getByLabelText('Damage Bonus'),{target:{value:'6'}});
+ fireEvent.change(screen.getByLabelText('Attack ability modifier (optional)'),{target:{value:'4'}});
+ fireEvent.click(screen.getByRole('button',{name:'Add Attack'}));
+ expect(update).toHaveBeenCalledWith([expect.objectContaining({name:'Greatsword',attackBonus:9,damageBonus:6,attackAbilityModifier:4})]);
+});
+it.each(['0','-2',''])('editing preserves explicit modifier %s separately from total bonuses',value=>{
+ const update=vi.fn();render(<WeaponsTracker weapons={[manual]} attacksPerAction={1} onUpdate={update}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Edit Greatsword'}));
+ expect((screen.getByLabelText('Attack ability modifier (optional)') as HTMLInputElement).value).toBe('4');
+ fireEvent.change(screen.getByLabelText('Attack ability modifier (optional)'),{target:{value}});
+ fireEvent.click(screen.getByRole('button',{name:'Save Changes'}));
+ const result=update.mock.calls[0][0][0];expect(result.attackBonus).toBe(9);expect(result.damageBonus).toBe(6);
+ if(value==='')expect(result).not.toHaveProperty('attackAbilityModifier');else expect(result.attackAbilityModifier).toBe(Number(value));
+});
+it('rejects fractional modifiers without silently truncating them',()=>{
+ const update=vi.fn();render(<WeaponsTracker weapons={[manual]} attacksPerAction={1} onUpdate={update}/>);fireEvent.click(screen.getByRole('button',{name:'Edit Greatsword'}));
+ fireEvent.change(screen.getByLabelText('Attack ability modifier (optional)'),{target:{value:'1.5'}});
+ expect(screen.getByRole('alert').textContent).toContain('whole-number');fireEvent.click(screen.getByRole('button',{name:'Save Changes'}));expect(update).not.toHaveBeenCalled();
+});
+it('manual editing and removal never persist generated weapon rows',()=>{
+ const update=vi.fn(),generated=[{...manual,id:'inv_weapon',name:'Inventory sword'},{...manual,id:'nat_claw',name:'Claw'},unarmed];
+ render(<WeaponsTracker weapons={[manual,...generated]} attacksPerAction={1} onUpdate={update}/>);
+ expect(screen.queryByRole('button',{name:'Edit Claw'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Edit Greatsword'}));fireEvent.click(screen.getByRole('button',{name:'Save Changes'}));
+ expect(update.mock.calls[0][0]).toEqual([manual]);
+ fireEvent.click(screen.getByRole('button',{name:'Remove Greatsword'}));expect(update.mock.calls[1][0]).toEqual([]);
+});
+it('opening Add after an edit starts with an unknown ability instead of copying it',()=>{
+ render(<WeaponsTracker weapons={[manual]} attacksPerAction={1} onUpdate={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Edit Greatsword'}));fireEvent.click(screen.getByRole('button',{name:'Cancel'}));
+ fireEvent.click(screen.getByRole('button',{name:'Add Custom Attack'}));expect((screen.getByLabelText('Name *') as HTMLInputElement).value).toBe('');
+ expect((screen.getByLabelText('Attack ability modifier (optional)') as HTMLInputElement).value).toBe('');
+});

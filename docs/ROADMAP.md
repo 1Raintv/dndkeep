@@ -1,5 +1,25 @@
 # DNDKeep — Two-Track Roadmap
 
+### Manual attack ability review (local; not released)
+
+The sheet now exposes Add Custom Attack and named Edit/Remove controls. Its
+optional ability-modifier field is independent of total attack/damage bonuses:
+zero and negative values persist, blank stays unknown, and fractional/invalid
+values cannot save. Editing preserves the reviewed value instead of dropping it.
+Saving/removing manual attacks excludes generated inventory, species and unarmed
+rows, preventing copies in character.weapons. The combat declaration modal's
+separate manual-entry path remains a follow-up.
+
+Validation: full gate passed (4,533 unit tests, TS baseline lowered 194 to 193,
+entry 255.7 KB). Local desktop/mobile browser flows verify persistence across
+reloads, zero/negative/blank values, fractional rejection and no generated copies.
+Console/HTTP checks and the official modal overflow probe pass. Removing modifier
+persistence made the browser regression fail on the stored value; restored code
+passed. Screenshots reviewed and modal spacing improved. No migration added.
+Evidence: .tmp/manual-weapon-*-gate.log, .tmp/manual-weapon-*-e2e.log,
+.tmp/manual-weapon-mutation.log. Production remains unchanged.
+
+
 ### Graze combat dialog integrated (local; not released)
 
 New weapon declarations opt into the saved Graze path. The eager grazeOnMiss HP

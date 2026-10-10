@@ -1,6 +1,7 @@
 import {unarmedSaveRequest,type UnarmedSaveMode} from '../../rules/unarmedStrike';
 import {explicitAttackMode} from '../../rules/attackMode';
-import { useState } from 'react';
+import { useId, useState } from 'react';
+import {parseWeaponAbilityModifier} from '../../rules/weaponAbility';
 import { v4 as uuidv4 } from 'uuid';
 import type { WeaponItem } from '../../types';
 import { rollDie, computeActiveBonuses } from '../../lib/gameUtils';
@@ -64,6 +65,9 @@ export default function WeaponsTracker({
  weapons, onUpdate, characterId, characterName, historyCharacterId, userId, campaignId,
  activeConditions = [], activeBufss = [], attacksPerAction,
 }: WeaponsTrackerProps) {
+ const formId=useId();
+ const [abilityInput,setAbilityInput]=useState('');
+ const parsedAbility=parseWeaponAbilityModifier(abilityInput);
  const [showAdd, setShowAdd] = useState(false);
  const [editId, setEditId] = useState<string | null>(null);
  const [lastRoll, setLastRoll] = useState<RollResult | null>(null);
@@ -107,18 +111,25 @@ export default function WeaponsTracker({
   finally{setUnarmedBusy(false);}
  }
 
+ function openAdd() {
+ setForm({name:'',attackBonus:0,damageDice:'1d8',damageBonus:0,damageType:'slashing',range:'Melee',properties:'',notes:''});
+ setAbilityInput('');setEditId(null);setShowAdd(true);
+ }
+
  function openEdit(w: WeaponItem) {
  setForm({ ...w });
+ setAbilityInput(w.attackAbilityModifier==null?'':String(w.attackAbilityModifier));
  setEditId(w.id);
  setShowAdd(true);
  }
 
  function saveWeapon() {
- if (!form.name?.trim()) return;
+ if (!form.name?.trim()||!parsedAbility.valid) return;
  const weapon: WeaponItem = {
  id: editId ?? uuidv4(),
  name: form.name!.trim(),
  attackBonus: form.attackBonus ?? 0,
+ ...(parsedAbility.value===undefined?{}:{attackAbilityModifier:parsedAbility.value}),
  damageDice: form.damageDice ?? '1d8',
  damageBonus: form.damageBonus ?? 0,
  damageType: form.damageType ?? 'slashing',
@@ -127,16 +138,16 @@ export default function WeaponsTracker({
  notes: form.notes ?? '',
  };
  if (editId) {
- onUpdate(weapons.filter(w => !String(w.id).startsWith('inv_')).map(w => w.id === editId ? weapon : w));
+ onUpdate(customWeapons.map(w => w.id === editId ? weapon : w));
  } else {
- onUpdate([...weapons.filter(w => !String(w.id).startsWith('inv_')), weapon]);
+ onUpdate([...customWeapons, weapon]);
  }
  setShowAdd(false);
  setEditId(null);
  }
 
  function removeWeapon(id: string) {
- onUpdate(weapons.filter(w => w.id !== id));
+ onUpdate(customWeapons.filter(w => w.id !== id));
  }
 
  async function handleHit(weapon: WeaponItem) {
@@ -237,12 +248,9 @@ export default function WeaponsTracker({
  }
  }
 
- // v2.266.0 — was splitting weapons into customWeapons and an
- // unused inventoryWeapons branch; the unused branch was kept "for
- // symmetry" but TS rejects it. Drop entirely; we filter only
- // customWeapons here. If a future ranged-from-inventory section
- // wants its own branch, recreate it then.
- const customWeapons = weapons.filter(w => !String(w.id).startsWith('inv_'));
+ // v2.869: generated inventory, species and unarmed rows are rebuilt from
+ // their source. Never copy them into the manually saved weapon list.
+ const customWeapons = weapons.filter(w => !String(w.id).startsWith('inv_')&&!String(w.id).startsWith('nat_')&&w.id!=='unarmed');
 
  return (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
@@ -480,10 +488,10 @@ export default function WeaponsTracker({
  compact
  />
  )}
- {!isInv && w.id !== 'unarmed' && (
+ {!isInv && !String(w.id).startsWith('nat_') && w.id !== 'unarmed' && (
  <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
- <button className="btn-ghost btn-sm" onClick={() => openEdit(w)} style={{ padding: '2px 6px', fontSize: 10 }}></button>
- <button className="btn-ghost btn-sm" onClick={() => removeWeapon(w.id)} style={{ padding: '2px 6px', fontSize: 10 }}></button>
+ <button className="btn-ghost btn-sm" aria-label={`Edit ${w.name}`} onClick={() => openEdit(w)} style={{ padding: '2px 6px', fontSize: 10 }}>Edit</button>
+ <button className="btn-ghost btn-sm" aria-label={`Remove ${w.name}`} onClick={() => removeWeapon(w.id)} style={{ padding: '2px 6px', fontSize: 10 }}>×</button>
  </div>
  )}
  </div>
@@ -525,55 +533,63 @@ export default function WeaponsTracker({
 
 
 
+ <button className="btn-secondary" onClick={openAdd} style={{alignSelf:'flex-start'}}>Add Custom Attack</button>
+
  {/* Add/Edit form modal */}
  {showAdd && (
  <ModalPortal>
  <div className="modal-overlay" onClick={() => setShowAdd(false)}>
- <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
- <h3 style={{ marginBottom: 'var(--sp-4)' }}>{editId ? 'Edit Attack' : 'Add Custom Attack'}</h3>
- <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+ <div className="modal" role="dialog" aria-modal="true" aria-labelledby={`${formId}-title`} style={{ maxWidth: 460, padding:16 }} onClick={e => e.stopPropagation()}>
+ <h3 id={`${formId}-title`} style={{ margin: '0 0 12px' }}>{editId ? 'Edit Attack' : 'Add Custom Attack'}</h3>
+ <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
  <div>
- <label>Name *</label>
- <input value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Longsword, Firebolt, Shove…" autoFocus />
+ <label htmlFor={`${formId}-name`}>Name *</label>
+ <input id={`${formId}-name`} value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Longsword, Firebolt, Shove…" autoFocus />
  </div>
- <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
+ <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
  <div>
- <label>Attack Bonus (d20 +)</label>
- <input type="number" value={form.attackBonus ?? 0} onChange={e => setForm(f => ({ ...f, attackBonus: parseInt(e.target.value) || 0 }))} />
+ <label htmlFor={`${formId}-attackBonus`}>Attack Bonus (d20 +)</label>
+ <input id={`${formId}-attackBonus`} type="number" value={form.attackBonus ?? 0} onChange={e => setForm(f => ({ ...f, attackBonus: parseInt(e.target.value) || 0 }))} />
  </div>
  <div>
- <label>Damage Dice</label>
- <select value={form.damageDice ?? '1d8'} onChange={e => setForm(f => ({ ...f, damageDice: e.target.value }))}>
+ <label htmlFor={`${formId}-damageDice`}>Damage Dice</label>
+ <select id={`${formId}-damageDice`} value={form.damageDice ?? '1d8'} onChange={e => setForm(f => ({ ...f, damageDice: e.target.value }))}>
  {DICE_OPTIONS.map(d => <option key={d} value={d}>{d === 'flat' ? 'Flat (no dice)' : d}</option>)}
  </select>
  </div>
  <div>
- <label>Damage Bonus</label>
- <input type="number" value={form.damageBonus ?? 0} onChange={e => setForm(f => ({ ...f, damageBonus: parseInt(e.target.value) || 0 }))} />
+ <label htmlFor={`${formId}-damageBonus`}>Damage Bonus</label>
+ <input id={`${formId}-damageBonus`} type="number" value={form.damageBonus ?? 0} onChange={e => setForm(f => ({ ...f, damageBonus: parseInt(e.target.value) || 0 }))} />
  </div>
  <div>
- <label>Damage Type</label>
- <select value={form.damageType ?? 'slashing'} onChange={e => setForm(f => ({ ...f, damageType: e.target.value }))}>
+ <label htmlFor={`${formId}-damageType`}>Damage Type</label>
+ <select id={`${formId}-damageType`} value={form.damageType ?? 'slashing'} onChange={e => setForm(f => ({ ...f, damageType: e.target.value }))}>
  {DAMAGE_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
  </select>
  </div>
  </div>
  <div>
- <label>Range</label>
- <input value={form.range ?? 'Melee'} onChange={e => setForm(f => ({ ...f, range: e.target.value }))} placeholder="Melee or Ranged (80/320 ft.)" />
+ <label htmlFor={`${formId}-ability`}>Attack ability modifier (optional)</label>
+ <input id={`${formId}-ability`} type="number" step="1" value={abilityInput} onChange={e=>setAbilityInput(e.target.value)} placeholder="e.g. 4" aria-describedby={`${formId}-ability-help`} aria-invalid={!parsedAbility.valid}/>
+ <div id={`${formId}-ability-help`} style={{fontSize:11,color:'var(--t-2)',marginTop:4}}>For Graze and mastery effects. Enter only the chosen ability modifier, excluding proficiency and magic bonuses. Leave blank if unsure.</div>
+ {!parsedAbility.valid&&<div role="alert">Enter a whole-number modifier or leave it blank.</div>}
  </div>
  <div>
- <label>Properties (optional)</label>
- <input value={form.properties ?? ''} onChange={e => setForm(f => ({ ...f, properties: e.target.value }))} placeholder="Versatile, Finesse, Light…" />
+ <label htmlFor={`${formId}-range`}>Range</label>
+ <input id={`${formId}-range`} value={form.range ?? 'Melee'} onChange={e => setForm(f => ({ ...f, range: e.target.value }))} placeholder="Melee or Ranged (80/320 ft.)" />
  </div>
  <div>
- <label>Notes (optional) — start with "save:DC14 CON" to mark as spell save</label>
- <input value={form.notes ?? ''} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="+1 magic, or save:DC14 CON" />
+ <label htmlFor={`${formId}-properties`}>Properties (optional)</label>
+ <input id={`${formId}-properties`} value={form.properties ?? ''} onChange={e => setForm(f => ({ ...f, properties: e.target.value }))} placeholder="Versatile, Finesse, Light…" />
+ </div>
+ <div>
+ <label htmlFor={`${formId}-notes`}>Notes (optional) — start with "save:DC14 CON" to mark as spell save</label>
+ <input id={`${formId}-notes`} value={form.notes ?? ''} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="+1 magic, or save:DC14 CON" />
  </div>
  </div>
- <div style={{ display: 'flex', gap: 'var(--sp-3)', marginTop: 'var(--sp-5)', justifyContent: 'flex-end' }}>
+ <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
  <button className="btn-secondary" onClick={() => setShowAdd(false)}>Cancel</button>
- <button className="btn-gold" onClick={saveWeapon} disabled={!form.name?.trim()}>
+ <button className="btn-gold" onClick={saveWeapon} disabled={!form.name?.trim()||!parsedAbility.valid}>
  {editId ? 'Save Changes' : 'Add Attack'}
  </button>
  </div>
