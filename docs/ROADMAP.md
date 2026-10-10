@@ -6269,3 +6269,27 @@ gates green (TypeScript197/197, entry255.2KB). Four local desktop/mobile browser
 cases pass, including receipt recovery, changed equipment with preserved dice,
 one recorded event, resumed turn advancement, keyboard focus and the standard
 overflow probe. Desktop/mobile screenshots reviewed. Changed-file lint clean.
+
+
+### Standalone concentration equipment bonuses (unreleased)
+
+The live standalone damage controller now adds eligible flat equipment save
+bonuses to effective Constitution before creating its durable damage request.
+The server still adds proficiency exactly once. The existing inventory snapshot
+fences equipment changes, and retries retain the original request/bonus. Invalid
+non-integer equipment totals fail before request creation or HP submission.
+
+Live sheet coverage pins an exact DC10 boundary: CON14/proficiency3 with a d20 of4
+fails without the ring and succeeds with an equipped, attuned Ring of Protection.
+Unequipped/unattuned rings are excluded; a nonproficient character still receives
+the ring bonus. Existing War Caster, multiple-hit, reload and lost-response tests
+exercise the same flow. No new migration or UI layout change.
+
+This fixes flat equipment only. The standalone offer contract still needs an
+explicit exhaustion and temporary-save-effect audit (its snapshot currently lacks
+those fields). It must retain damage-time context and receipt replay when expanded.
+The shared combat-clock integration remains a release blocker. Not deployed.
+
+Verification:3,227 unit tests and34 local desktop/mobile concentration-sheet
+regressions pass. Required type/hooks/RAW/coordinate/anchor/build/budget gates
+pass (TypeScript197/197; entry255.2KB). Changed-file ESLint and diff checks clean.

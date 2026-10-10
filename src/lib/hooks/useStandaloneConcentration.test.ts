@@ -2,8 +2,8 @@
 import {act,cleanup,renderHook,waitFor} from '@testing-library/react';
 import {beforeEach,afterEach,expect,it,vi} from 'vitest';
 import type {Character} from '../../types';
-const m=vi.hoisted(()=>({load:vi.fn(),roll:vi.fn(),confirm:vi.fn(),retire:vi.fn(),savedRolls:vi.fn(),savedDamage:vi.fn(),create:vi.fn(),submit:vi.fn(),cancel:vi.fn()}));
-vi.mock('../gameUtils',()=>({computeStats:()=>({modifiers:{constitution:2}})}));
+const m=vi.hoisted(()=>({equipment:vi.fn(),load:vi.fn(),roll:vi.fn(),confirm:vi.fn(),retire:vi.fn(),savedRolls:vi.fn(),savedDamage:vi.fn(),create:vi.fn(),submit:vi.fn(),cancel:vi.fn()}));
+vi.mock('../gameUtils',()=>({computeStats:()=>({modifiers:{constitution:2}}),computeActiveBonuses:m.equipment}));
 vi.mock('../api/standaloneDamage',()=>({STANDALONE_DAMAGE_CHANGED:'damage-changed',savedStandaloneDamage:m.savedDamage,createStandaloneDamage:m.create,submitStandaloneDamage:m.submit,cancelStandaloneDamage:m.cancel}));
 vi.mock('../api/standaloneConcentration',()=>({STANDALONE_SAVE_CHANGED:'save-changed',loadStandaloneSaves:m.load,rollStandaloneSave:m.roll,confirmStandaloneRoll:m.confirm,retireStandaloneSave:m.retire,savedStandaloneRolls:m.savedRolls,savedStandaloneCreations:()=>[],queueStandaloneSave:vi.fn(),cancelStandaloneCreation:vi.fn()}));
 import {useStandaloneConcentration} from './useStandaloneConcentration';
@@ -11,7 +11,7 @@ const character={id:'hero',user_id:'owner',concentration_spell:'Fly',concentrati
 const offer={request_id:'save',character_id:'hero',spell_name:'Fly',casting_revision:2,damage:5,dc:10,save_bonus:2,has_advantage:false,natural_extremes:false,created_at:'2026-10-08T00:00:00Z',outcome:null,automation_mode:'prompt' as const};
 const receipt={requestId:'save',characterId:'hero',spell:'Fly',castingRevision:2,outcome:'passed',reason:'save',rolls:[15],d20:15,total:17,dc:10,bonus:2,advantage:false,replayed:false,character};
 const queue=()=>({flush:vi.fn(async()=>{}),getSnapshot:()=>({pending:false,error:null})});
-beforeEach(()=>{vi.resetAllMocks();m.savedDamage.mockReturnValue(null);m.savedRolls.mockReturnValue([]);m.load.mockResolvedValue({character,pending:[]});m.roll.mockResolvedValue(receipt);m.submit.mockResolvedValue({character,resolution:null});});afterEach(cleanup);
+beforeEach(()=>{vi.resetAllMocks();m.equipment.mockReturnValue({saveBonus:0});m.savedDamage.mockReturnValue(null);m.savedRolls.mockReturnValue([]);m.load.mockResolvedValue({character,pending:[]});m.roll.mockResolvedValue(receipt);m.submit.mockResolvedValue({character,resolution:null});});afterEach(cleanup);
 it('flushes edits before damage and blocks double clicks synchronously',async()=>{
  const q=queue(),accept=vi.fn(),ref={current:character};let finish!:()=>void;q.flush.mockImplementation(()=>new Promise<void>(resolve=>{finish=resolve;}));
  m.create.mockReturnValue({requestId:'hit'});const {result}=renderHook(()=>useStandaloneConcentration('owner',ref,q,false,accept,vi.fn()));
@@ -55,4 +55,16 @@ it('surfaces malformed recovery during retry without an unhandled rejection',asy
 it('frozen and nonowner sheets cannot start or roll saved damage',async()=>{
  const {result,rerender}=renderHook(({user,frozen})=>useStandaloneConcentration(user,{current:character},queue(),frozen,vi.fn(),vi.fn()),{initialProps:{user:'owner',frozen:true}});
  expect(result.current.applyDamage(5)).toBe(false);await act(async()=>{await result.current.roll(offer);});rerender({user:'other',frozen:false});expect(result.current.applyDamage(5)).toBe(false);expect(m.create).not.toHaveBeenCalled();expect(m.roll).not.toHaveBeenCalled();
+});
+
+it('includes eligible equipment without adding proficiency or combat buffs twice',async()=>{
+ m.equipment.mockReturnValue({saveBonus:2});m.create.mockReturnValue({requestId:'hit'});
+ const c={...character,inventory:[]};const {result}=renderHook(()=>useStandaloneConcentration('owner',{current:c},queue(),false,vi.fn(),vi.fn()));
+ await act(async()=>{result.current.applyDamage(5);});
+ expect(m.equipment).toHaveBeenCalledWith([],c.inventory);expect(m.create).toHaveBeenCalledWith(c,'owner',5,4);
+});
+it.each(['1',NaN,Infinity,0.5])('rejects malformed equipment save bonus %s before saving damage',async saveBonus=>{
+ m.equipment.mockReturnValue({saveBonus});const {result}=renderHook(()=>useStandaloneConcentration('owner',{current:character},queue(),false,vi.fn(),vi.fn()));
+ await act(async()=>{expect(result.current.applyDamage(5)).toBe(false);});
+ expect(result.current.error).toContain('equipment saving throw');expect(m.create).not.toHaveBeenCalled();expect(m.submit).not.toHaveBeenCalled();
 });

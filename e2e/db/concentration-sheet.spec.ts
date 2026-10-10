@@ -29,15 +29,20 @@ test.describe('Concentration sheet saves (local stack)', () => {
     if (userId) sql(`delete from action_logs where character_id='${charId}'; delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
   });
 
+  const protection=(equipped:boolean,attuned:boolean)=>({magic_item_id:'ring-protection',name:'Ring of Protection',magical:true,equipped,attuned,saveBonus:1});
   for (const sample of [
     {name:'proficient Constitution',level:5,con:14,proficient:true,die:10,damage:5,natural:false,bonus:5,passed:true},
+    {name:'equipped and attuned protection contributes once',level:5,con:14,proficient:true,die:4,damage:5,natural:false,bonus:6,passed:true,inventory:[protection(true,true)]},
+    {name:'unattuned protection does not contribute',level:5,con:14,proficient:true,die:4,damage:5,natural:false,bonus:5,passed:false,inventory:[protection(true,false)]},
+    {name:'unequipped protection does not contribute',level:5,con:14,proficient:true,die:4,damage:5,natural:false,bonus:5,passed:false,inventory:[protection(false,true)]},
+    {name:'equipment bonus works without Constitution proficiency',level:5,con:14,proficient:false,die:7,damage:5,natural:false,bonus:3,passed:true,inventory:[protection(true,true)]},
     {name:'natural one follows total under standard rules',level:20,con:30,proficient:true,die:1,damage:5,natural:false,bonus:16,passed:true},
     {name:'natural twenty can fail DC 30 under standard rules',level:5,con:10,proficient:false,die:20,damage:60,natural:false,bonus:0,passed:false},
     {name:'natural twenty house rule is preserved',level:5,con:10,proficient:false,die:20,damage:60,natural:true,bonus:0,passed:true},
   ]) test(sample.name,async({page})=>{
     await page.addInitScript(value=>{Math.random=()=>value;},(sample.die-0.5)/20);
     sql(`update characters set current_hp=100,max_hp=100,temp_hp=0,level=${sample.level},constitution=${sample.con},
-      saving_throw_proficiencies='${sample.proficient?'{constitution}':'{}'}',nat_1_20_saves=${sample.natural},
+      saving_throw_proficiencies='${sample.proficient?'{constitution}':'{}'}',nat_1_20_saves=${sample.natural},inventory='${JSON.stringify('inventory' in sample?sample.inventory:[])}',
       concentration_spell='detect-magic',concentration_rounds_remaining=100 where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     await page.getByPlaceholder('0',{exact:true}).locator('visible=true').first().fill(String(sample.damage));
