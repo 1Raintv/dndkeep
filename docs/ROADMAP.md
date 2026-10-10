@@ -9071,3 +9071,27 @@ corrected for this new uncommitted local entry). Release rehearsals now need all
 315 repo migrations. Production unchanged. Remaining Psion work: saved technique
 choice UI/recovery and real Bolt damage verification, then the broader ability
 and map review continues.
+
+### Telekinetic Techniques — validated client receipt checkpoint
+
+Added a dedicated choose/read API for the saved technique transaction. It checks
+Propel's original character, action, roll and payment evidence plus captured
+campaign/encounter/participant/map-piece identities before offering a choice.
+The existing pure technique planner supplies the allowed effects. Receipts must
+match the chosen technique, original dice evidence, exact effect/duration or
+saved Bolt attack and damage. An ambiguous or malformed success remains
+unconfirmed; it never authorizes a fresh roll or applying an effect locally.
+Reads may return no choice yet. Old/tabletop unbound declarations are rejected.
+
+33 focused regressions cover all four choices, mismatched identities and effects,
+expiry owner, no-die/free-d4 modes, secondary Psion, Surge/Enkindled totals and
+input changes during confirmation. Real local saved Boost receipts validate
+through the browser API on desktop/mobile alongside existing movement and expiry
+checks. No new migration or UI controls in this checkpoint. This API is ready
+for the controls but is not yet invoked by the player UI.
+
+Next: list completed failed declarations still awaiting an optional choice,
+persist uncertain choices and expose the recoverable choice controls. Keep
+existing unfinished-roll/save recovery intact. Bolt's live damage/defense
+resolution remains to verify. No production deployment.
+Full gate for this checkpoint: 4,177 unit tests, TS 194/194, entry 255.7 KB.

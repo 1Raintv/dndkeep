@@ -9,7 +9,10 @@ export interface PropelTarget {participantId?:string|null;name?:string;legalTarg
 export interface PropelRequest {requestId:string;turnId:string;mode:'free'|'powered'|'technique';movement:'push'|'warp';roll:number;target:PropelTarget}
 export interface PropelRoll {declarationId:string;originalRolls:number[];enkindledRolls:number[];usedSurge:boolean;rolls:number[];total:number}
 export type PropelOutcome='passed'|'failed'|'cancelled';
+export interface PropelParticipantBinding {id:string;participantType:string;entityId:string;combatantId:string;definitionType:string;definitionId:string}
+export interface PropelParticipantBindings {campaignId:string;encounterId:string;actor:PropelParticipantBinding;target:PropelParticipantBinding}
 export interface PropelRecord {
+ participant_bindings?:PropelParticipantBindings|null;
  request_id:string;character_id:string;request:Omit<PropelRequest,'requestId'>&{roll:number};
  source_feature:'Telekinetic Propel'|'Warp Propel';mode:PropelRequest['mode'];movement:PropelRequest['movement'];base_roll:number;psion_level:number;
  target:PropelTarget;caster_snapshot:Character;created_at:string;

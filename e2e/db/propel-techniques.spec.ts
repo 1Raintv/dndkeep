@@ -101,6 +101,8 @@ test.describe('Telekinetic Technique choices',()=>{
    update combat_encounters set current_turn_index=1 where id='${encounter}';update combat_participants set max_speed_ft=30,movement_used_ft=0 where id='${target}';update combatants set current_hp=20,max_hp=20 where campaign_id='${campaign}';`);
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});page.on('response',response=>{if(response.status()>=400)errors.push(`${response.status()} ${new URL(response.url()).pathname}`);});
   await signInAsSeedDm(page,`${dm}@propelsave.local`);await page.goto(`/campaigns/${campaign}`);
+  const savedTechnique=await page.evaluate(async({character,id})=>{const records='/src/lib/api/psionicPropel.ts',techniques='/src/lib/api/propelTechniques.ts';const row=await(await import(/* @vite-ignore */ records)).readPropel(character,id);return(await import(/* @vite-ignore */ techniques)).choosePropelTechnique(row);},{character,id});
+  expect(savedTechnique).toMatchObject({declarationId:id,choice:'boost',actorId:caster,targetId:target,buff:{speedBonus:10}});
   const strip=page.getByRole('region',{name:'Combat initiative'});
   await expect(strip.getByText('40/40 ft',{exact:true})).toBeVisible();
   const validate=()=>page.evaluate(async id=>{const path='/src/lib/movement.ts';return (await import(/* @vite-ignore */ path)).canMove(id,40);},target);
