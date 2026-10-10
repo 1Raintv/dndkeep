@@ -103,4 +103,35 @@ test.describe('Propel save settlement',()=>{
  test('chosen failure payment errors roll back its receipt and next-save consumption',()=>{const effect=sliver();sql(`update characters set class_resources='{"psionic-energy-dice":0}' where id='${character}'`);expect(()=>choose()).toThrow();expect(consumed(effect)).toBe('unused');expect(read()).toBeNull();});
  test('invalid chosen-failure DC cannot consume the effect',()=>{const effect=sliver();expect(()=>choose(context(),dm,-1)).toThrow(/Invalid save DC/);expect(consumed(effect)).toBe('unused');});
  test('competing roll submissions return the first receipt and charge once',async()=>{sliver();const expected=context();const results=await Promise.all([parallel(auth(owner,command([12],3,expected))),parallel(auth(owner,command([1],4,expected)))]);expect(results.map(r=>r.code)).toEqual([0,0]);const [a,b]=results.map(r=>JSON.parse(r.out));expect(a.save).toEqual(b.save);expect(energy()).toBe('1');expect(sql(`select count(*) from psionic_energy_uses where request_id='${id}'`)).toBe('1');});
+ const complete=()=>JSON.parse(sql(auth(dm,`select end_combat_encounter('${encounter}',(select psionic_turn_id from combat_encounters where id='${encounter}'))`)));
+ const completionState=()=>sql(`select jsonb_build_object('enc',(select to_jsonb(e) from combat_encounters e where id='${encounter}'),
+  'character',(select to_jsonb(c) from characters c where id='${character}'),
+  'receipts',(select count(*) from dndkeep_private.encounter_completions where encounter_id='${encounter}'),
+  'events',(select count(*) from combat_events where encounter_id='${encounter}' and event_type='combat_ended'))`);
+ test('pending Propel prevents ending combat without changing character state',()=>{
+  const before=completionState();expect(()=>complete()).toThrow(/Resolve pending Telekinetic or Warp Propel/);expect(completionState()).toBe(before);expect(energy()).toBe('2');
+ });
+ test('a declared roll still awaiting finalization also prevents completion',()=>{
+  sql(`update dndkeep_private.propel_declarations set roll_result=null where request_id='${id}'`);
+  const before=completionState();expect(()=>complete()).toThrow(/Resolve pending Telekinetic or Warp Propel/);expect(completionState()).toBe(before);
+ });
+ for(const accept of [true,false])test(`pending resistance blocks ending until the DM decides ${accept}`,()=>{
+  legendary();expect(settle([1]).pendingResistance).toBe(true);const before=completionState();
+  expect(()=>complete()).toThrow(/Resolve pending Telekinetic or Warp Propel/);expect(completionState()).toBe(before);expect(energy()).toBe('2');
+  decide(accept);expect(complete()).toMatchObject({encounterId:encounter,replayed:false});expect(energy()).toBe(accept?'2':'1');
+ });
+ for(const roll of [1,20])test(`settled save ${roll} permits completion without another energy payment`,()=>{
+  settle([roll]);const paid=energy();expect(complete().replayed).toBe(false);expect(energy()).toBe(paid);
+ });
+ test('explicit pre-save cancellation permits ending and does not refund the Bonus Action',()=>{
+  sql(auth(owner,`select psionic_propel('${character}','finish','{"declarationId":"${id}","outcome":"cancelled"}')`));
+  expect(sql(`select bonus_used from combat_participants where id='${caster}'`)).toBe('t');expect(energy()).toBe('2');expect(complete().replayed).toBe(false);
+ });
+ test('the pending check is bound to the captured encounter, not current character membership',()=>{
+  sql(`update characters set campaign_id=null where id='${character}'`);
+  // Test the receipt guard directly: completion's earlier identity check also
+  // rejects this broken membership, but must not be our only pending check.
+  expect(()=>sql(`insert into dndkeep_private.encounter_completions(encounter_id,turn_id,completed_by,result) values('${encounter}',gen_random_uuid(),'${dm}','{}')`)).toThrow(/Resolve pending Telekinetic or Warp Propel/);
+ });
+
 });

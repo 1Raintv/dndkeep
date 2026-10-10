@@ -8092,3 +8092,33 @@ homebrew-template storage. Other unfinished actions (including pending Propel,
 attack/reaction declarations and death-save offers) need a completion audit;
 this change does not claim to gate all of them. Continue source-based Psion
 ability checks and map path/teleport intent work before release.
+
+
+### Pending Propel blocks End Combat (2026-10-10, unreleased)
+
+The completion transaction now rejects unfinished Telekinetic/Warp Propel
+requests, including finalized power rolls awaiting a save and recorded failures
+awaiting Legendary Resistance. Closing the encounter previously made the
+resistance decision impossible. The error directs the DM to resolve the saved
+request on the character sheet; pre-save cancellation remains explicit and
+keeps the Bonus Action spent. Completed saves do not spend another Energy Die
+when combat ends.
+
+Migration 20261010070028 adds an indexed private completion-receipt guard.
+It uses the declaration's captured encounter, independent of current character
+membership. A rejection rolls back carry-over, the completion receipt, log and
+status together. Existing declaration SHARE / completion UPDATE encounter locks
+serialize declarations with completion. No new client table or function access.
+
+Verified: 60 local database/browser cases across Propel settlement and encounter
+completion, including eight new pending/completed/cancelled/identity cases. Full
+required gate passes: 3,894 units, TS 194/194, 255.7 KB entry. SQL lint clean;
+security advisors unchanged (keep_warm and client_errors). Exact migration
+recorded locally, no repository versions pending, foreign history preserved.
+No production deployment.
+
+Next: turn advancement can still change the live turn while a Propel request is
+unfinished. Audit the pre-effect check and the authoritative clock boundary
+rather than assuming this completion-only guard covers End Turn. Other pending
+attack/reaction requests, declaration cleanup after participant deletion, and
+per-instance creature carry-over remain open.
