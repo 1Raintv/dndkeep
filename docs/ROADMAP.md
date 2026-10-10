@@ -1,5 +1,32 @@
 # DNDKeep — Two-Track Roadmap
 
+### DM Telepath attack review and declaration (local; not released)
+
+AttackResolutionModal now offers a separate DM review panel after an attack roll.
+It discovers encounter Telepaths (including secondary-class Psions), loads scoped
+eligibility, and requires explicit distance/visibility confirmation. Hit/crit offers
+Distraction; miss/fumble offers Bolstering with server-enforced level requirements.
+The live attack, turn and range are rechecked before preparing RNG. Preparation
+and submission reuse durable drafts; the attack dialog's action lock prevents
+advancing damage during declaration. Saved offers then use the player/DM prompt.
+Waiting text now identifies saved reactions instead of promising a 120-second expiry.
+Delayed context reads are discarded after changing the selected character.
+
+Four desktop/mobile end-to-end checks pass from review through saved settlement
+for both features, confirming one Reaction claim and Energy charged only on actual
+outcome change. Explicit range and confirmation checks block rolling; removing the
+range guard makes the test fail. Compact mobile form and desktop screenshots were
+inspected; official overflow probe passes. Five new unit cases cover discovery,
+multiclass eligibility, failures, stale selection and pending-request recovery.
+Full gate passed: 4,602 tests, TS 193/193, entry 255.7 KB.
+Evidence: .tmp/telepath-review-{gate,ui-final,mutation}.log and desktop/mobile PNGs.
+
+Before release: add durable normal-reaction combat history, resolve interrupted
+preparation drafts explicitly, finish release migration rehearsals/CI and broader
+integration checks. Ability-check Bolstering still needs its own saved event path;
+this UI only automates attack reactions. No migration or production change here.
+
+
 ### Saved Telepath player/DM prompt (local; new declaration controls still pending)
 
 ReactionPromptModal now routes saved Distraction/Bolstering offers to a dedicated

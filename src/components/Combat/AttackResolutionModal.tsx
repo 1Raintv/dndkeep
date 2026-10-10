@@ -1,3 +1,4 @@
+import TelepathReviewControls from './TelepathReviewControls';
 import GrazeChoiceControls from './GrazeChoiceControls';
 import GrazeDamagePanel from './GrazeDamagePanel';
 import {readGrazeChoice} from '../../lib/api/grazeDamage';
@@ -356,6 +357,7 @@ function AttackResolutionContent({ campaignId, isDM }: Props) {
           {atk.state === 'attack_rolled' && (
             <>
               <HitBanner atk={atk} />
+              {isDM&&atk.attack_kind==='attack_roll'&&<TelepathReviewControls key={`${atk.id}:${atk.updated_at}`} attack={atk} disabled={controlsDisabled||isWaitingForReactions} runAction={runAction} onSaved={()=>void load()}/>}
 
               {acceptedReactions.length > 0 && (
                 <div style={{
@@ -378,7 +380,7 @@ function AttackResolutionContent({ campaignId, isDM }: Props) {
                   <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, color: '#fbbf24' }}>
                     ⏳ Waiting on reactions: {outstandingOffers.map(o => `${o.reactor_name} (${o.reaction_name})`).join(', ')}
                   </div>
-                  <span style={{ fontSize: 10, color: 'var(--t-3)' }}>Up to 120s</span>
+                  <span style={{ fontSize: 10, color: 'var(--t-3)' }}>{outstandingOffers.some(o=>o.reaction_key.startsWith('telepath_'))?'Resolve saved reaction':'Up to 120s'}</span>
                 </div>
               ) : (atk.hit_result === 'hit' || atk.hit_result === 'crit') && atk.damage_dice ? (
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

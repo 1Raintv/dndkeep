@@ -308,6 +308,34 @@ test.describe('Telepath attack context',()=>{
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe(cancel?'12':'7');
   expect(errors).toEqual([]);await page.close();
  });
+ for(const feature of ['distraction','bolstering'])test(`DM creates and resolves reviewed Telepath ${feature}`,async({page},info)=>{
+  sql(`update auth.users set instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),created_at=now(),updated_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${owner}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${owner}','${owner}',jsonb_build_object('sub','${owner}','email','${owner}@action.local'),'email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${owner}@action.local`);
+  if(feature==='bolstering')sql(`update pending_attacks set target_ac=20,hit_result='miss' where id='${attack}'`);
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
+  await page.evaluate(async campaign=>{
+   const React=await import('/node_modules/.vite/deps/react.js'),dom=await import('/node_modules/.vite/deps/react-dom_client.js');
+   const attack=await import('/src/components/Combat/AttackResolutionModal.tsx'),reaction=await import('/src/components/Combat/ReactionPromptModal.tsx'),toast=await import('/src/components/shared/Toast.tsx');
+   const host=document.createElement('div');document.body.appendChild(host);dom.default.createRoot(host).render(React.default.createElement(toast.ToastProvider,null,React.default.createElement(React.default.Fragment,null,React.default.createElement(attack.default,{campaignId:campaign,isDM:true}),React.default.createElement(reaction.default,{campaignId:campaign}))));
+  },campaign);
+  await page.getByRole('button',{name:'Review Psion reaction',exact:true}).click();const review=page.getByRole('region',{name:'DM Telepath review'});
+  await review.getByLabel('Reacting Psion',{exact:true}).selectOption(character);await expect(review).toContainText('Range: 60 ft');
+  const declare=review.getByRole('button',{name:'Roll and save reaction',exact:true});await expect(declare).toBeDisabled();
+  await review.getByLabel('Distance to subject (ft)',{exact:true}).fill('61');await review.getByLabel('The Psion can see the subject.',{exact:true}).check();await review.getByLabel('I confirm range and visibility for this attack.',{exact:true}).check();await expect(declare).toBeDisabled();
+  await review.getByLabel('Distance to subject (ft)',{exact:true}).fill('30');await expect(declare).toBeDisabled();await review.getByLabel('I confirm range and visibility for this attack.',{exact:true}).check();await expect(declare).toBeEnabled();
+  await page.screenshot({path:info.outputPath('telepath-review.png')});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[aria-label=\"DM Telepath review\"], [aria-label=\"DM Telepath review\"] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
+  await declare.click();const saved=page.getByRole('dialog',{name:'Saved Telepath reaction'});await expect(saved).toContainText('Saved dice:');
+  const declaration=JSON.parse(sql(`select jsonb_build_object('id',request_id,'roll',base_roll) from dndkeep_private.telepath_declarations where character_id='${character}'`));
+  expect(declaration.roll).toBeGreaterThanOrEqual(1);expect(declaration.roll).toBeLessThanOrEqual(8);
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('8');
+  await saved.getByRole('button',{name:'Apply saved reaction',exact:true}).click();await expect(saved).toHaveCount(0);
+  expect(sql(`select attack_total from pending_attacks where id='${attack}'`)).toBe(String(17+(feature==='distraction'?-1:1)*declaration.roll));
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe(declaration.roll>=3?'7':'8');
+  expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${declaration.id}'`)).toBe('1');
+  expect(errors).toEqual([]);await page.close();
+ });
  test('dispatcher does not expose private records or helper functions directly',()=>{
   expect(sql(`select has_function_privilege('anon','public.telepath_reaction(uuid,text,jsonb)','execute') or has_function_privilege('authenticated','dndkeep_private.telepath_reaction_record(uuid,uuid)','execute') or has_table_privilege('authenticated','dndkeep_private.telepath_declarations','select')`)).toBe('f');
  });
