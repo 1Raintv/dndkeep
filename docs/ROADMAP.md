@@ -9576,3 +9576,27 @@ Telepath distance/visibility acceptance remains next: use exact instance binding
 and the current scene, and never treat absent map evidence as proof of range or
 sight. Existing center-ray wall checks alone do not establish visibility through
 darkness/invisibility; that still needs supported vision evidence or DM review.
+
+
+### Telepath client context and spatial preparation
+
+Added a client adapter for the scoped attack context. It validates original
+snapshot identity, current hit/miss calculation, participant binding, level,
+energy, shared action flags, range-review state and feature trigger before
+returning data to future controls. Shared action-budget validation is reused.
+No dice or payment is initiated by this adapter.
+
+Spatial preparation requires an explicit scene and strict map reads. It uses a
+unique character token and the subject's exact combatant instance, rejecting
+ambiguous/missing instances instead of a same-name/species fallback. Canonical
+footprint distance handles larger tokens. Returned positions are a preview,
+not authorization: a future acceptance must recheck the actor's combatant
+binding, both placements, saved turn and visibility. Visibility review remains
+explicit even when range was measured; center-ray walls are not proof of sight.
+
+Unit checks cover malformed responses, inconsistent spending/outcomes, unknown
+range, exact-instance selection, large footprints and failed/missing maps. An
+authenticated local browser check reads the real endpoint and measures the two
+actual placements at 30 ft. Existing Reaction and Energy ledgers remain untouched.
+No new migration or player control; production unchanged. Saved acceptance,
+linked enhancements/payment, visibility review and Graze ordering remain open.

@@ -1,7 +1,7 @@
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {expect,test} from '@playwright/test';
-import {gateDbSuite} from './helpers';
+import {gateDbSuite,signInAsSeedDm} from './helpers';
 const sql=(query:string)=>execFileSync('docker',['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-q','-t','-A','-v','ON_ERROR_STOP=1'],{input:query,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 test.describe('Telepath attack context',()=>{
  gateDbSuite();let owner:string,other:string,character:string,campaign:string,encounter:string,participant:string,enemy:string;
@@ -69,6 +69,25 @@ test.describe('Telepath attack context',()=>{
  });
  test('anonymous callers cannot invoke either context entry point',()=>{
   expect(sql(`select has_function_privilege('anon','public.get_telepath_attack_context(uuid,uuid,text)','execute') or has_function_privilege('anon','dndkeep_private.telepath_attack_context(uuid,uuid,text)','execute')`)).toBe('f');
+ });
+
+ test('browser validates real context and measures the exact placed subject',async({page})=>{
+  const scene=randomUUID();
+  sql(`update auth.users set instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data=jsonb_build_object('provider','email','providers',jsonb_build_array('email')),created_at=now(),updated_at=now(),confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${owner}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${owner}','${owner}',jsonb_build_object('sub','${owner}','email','${owner}@action.local'),'email',now(),now(),now());
+   update campaigns set use_combatants_for_battlemap=true where id='${campaign}';
+   insert into scenes(id,campaign_id,owner_id,name,grid_type,grid_size_px,width_cells,height_cells,ambient_light,is_published) values('${scene}','${campaign}','${owner}','Telepath range','square',70,20,20,'bright',true);
+   insert into scene_token_placements(scene_id,combatant_id,x,y,size_override) select '${scene}',combatant_id,35,35,'medium' from combat_participants where id='${participant}';
+   insert into scene_token_placements(scene_id,combatant_id,x,y,size_override) select '${scene}',combatant_id,455,35,'medium' from combat_participants where id='${enemy}';`);
+  await signInAsSeedDm(page,`${owner}@action.local`);
+  const result=await page.evaluate(async({character,attack,scene})=>{
+   const {getTelepathAttackContext}=await import('/src/lib/api/telepathReactions.ts');
+   const {loadTelepathSpatialEvidence}=await import('/src/lib/telepathSpatialEvidence.ts');
+   const context=await getTelepathAttackContext(character,attack,'distraction');
+   return {context,spatial:await loadTelepathSpatialEvidence(context,scene)};
+  },{character,attack,scene});
+  expect(result.context).toMatchObject({reactionAvailable:true,telepathyRange:60,spatialReviewRequired:true});
+  expect(result.spatial).toMatchObject({status:'measured',distanceFeet:30,visibilityReviewRequired:true});
  });
 
 });
