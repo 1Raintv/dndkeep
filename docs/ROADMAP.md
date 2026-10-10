@@ -7109,3 +7109,35 @@ This fixes live Guards eligibility at preparation time. Aura settlement still
 needs to recheck save inputs and protection inside its commit transaction;
 one-use save penalties, damage defenses and durable multi-step recovery remain
 unfinished. The broader turn-controller release remains gated on that work.
+
+### Live aura damage defenses (unreleased)
+
+Aura damage now reads the target's stored typed defenses before rolling or
+reserving its use. Character defenses include the canonical species-choice
+resolver; creature defenses come from the matching campaign creature record.
+Missing/qualified creature defense arrays require review instead of silently
+becoming empty. Unknown types, missing targets and failed reads also stop
+before dice or the once-per-turn marker. Character NULL manual arrays retain
+the existing no-manual-entry semantics.
+
+The existing affinity rule is applied after save reduction: save half rounds
+down, resistance rounds down again, then vulnerability doubles. Immunity
+prevents HP writes and concentration checks. Petrified grants blanket resistance
+without stacking another half on a matching typed resistance. Concentration
+receives the final defended damage. Save logs retain original roll, after-save
+amount and final defense modifier so the calculation can be reviewed.
+Source: [2024 Damage and Healing](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game).
+
+Verification:all16 live aura cases pass across desktop/mobile; the added cases
+verify 15→7→3→6 save/resistance/vulnerability and zero damage from immunity in
+real stored HP/logs. Four resolver and ten defense-reader unit cases cover
+Petrified, species choices, conditional/missing creature data and failed reads.
+Full gate passes (3,467 units,195/195 TypeScript,255.2 KB entry); changed-file
+lint has no errors and15 existing aura warnings. No migration or deployment.
+
+This covers supported unconditional typed defenses and Petrified. Conditional
+creature clauses need a review path; arbitrary equipment/spell defenses not
+represented in these fields are not inferred from prose. The same transaction
+must eventually validate all captured defenses/save inputs, apply one-use save
+penalties, commit HP/concentration/events and consume the per-turn marker once.
+The current separate writes remain an explicit release blocker.

@@ -1,6 +1,8 @@
 import {rollSavingThrow,exhaustionPenalty} from '../rules/savingThrows';
 import {rollSaveBonuses} from '../rules/saveBonuses';
 import {readAuraSaveState} from './api/auraSaveState';
+import {readAuraDamageDefenses} from './api/auraDamageDefenses';
+import {applyDamageAffinities} from '../rules/damageAffinities';
 // v2.634.0 — Aura / proximity engine (2024 Emanation rules).
 //
 // RAW basis, verified against the 2024 rules glossary and the 2024
@@ -264,7 +266,9 @@ export async function resolveAuraSave(input: {
   if (await alreadySavedThisTurn(input.targetParticipantId, marker)) return false;
 
   const state=await readAuraSaveState(input.campaignId,input.encounterId,input.targetParticipantId,aura.spec.saveAbility);
-  const {conditionsAutoFailSave,conditionsDisadvantageSave}=await import('./conditions');
+  const {conditionsAutoFailSave,conditionsDisadvantageSave,conditionsResistAll}=await import('./conditions');
+  const defenses=aura.spec.damageDice?await readAuraDamageDefenses(input.campaignId,input.encounterId,input.targetParticipantId,aura.spec.damageType):{immune:false,resistant:false,vulnerable:false};
+  defenses.resistant ||= conditionsResistAll(state.conditions);
   const automaticFailure=conditionsAutoFailSave(state.conditions,aura.spec.saveAbility);
   const disadvantage=conditionsDisadvantageSave(state.conditions,aura.spec.saveAbility);
   const {getTargetSaveBonus,rollDiceExpr}=await import('./pendingAttack');
@@ -278,10 +282,11 @@ export async function resolveAuraSave(input: {
   const save=rollSavingThrow(bonus,aura.spec.saveDC,{advantage:state.advantage,disadvantage,naturalExtremes:base.naturalExtremes,forceFailure:automaticFailure});
   const {d20,total,passed}=save;
 
-  let damage = 0;
-  if (aura.spec.damageDice) {
-    const rolled = rollDiceExpr(aura.spec.damageDice).total;
-    damage = passed ? (aura.spec.halfOnSave ? Math.floor(rolled / 2) : 0) : rolled;
+  let damage=0,damageRolled=0,damageAfterSave=0,damageModifier='none';
+  if(aura.spec.damageDice){
+    damageRolled=rollDiceExpr(aura.spec.damageDice).total;
+    damageAfterSave=passed?(aura.spec.halfOnSave?Math.floor(damageRolled/2):0):damageRolled;
+    const applied=applyDamageAffinities(damageAfterSave,defenses);damage=applied.final;damageModifier=applied.modifier;
   }
 
   // Prepare all reads/dice before reserving the marker. A read failure must not
@@ -319,7 +324,7 @@ export async function resolveAuraSave(input: {
       breakdown,
       total: automaticFailure ? null : total,
       success: passed,
-      damage,
+      damage,damage_rolled:damageRolled,damage_after_save:damageAfterSave,damage_modifier:damageModifier,
       label: `${aura.spec.name} (${aura.originName}): ${input.targetName} ${triggerLabel} — ${aura.spec.saveAbility} ${automaticFailure?'save automatically failed':`save ${total} vs DC ${aura.spec.saveDC}, ${passed?'passed':'failed'}`}${damage > 0 ? `, ${damage} ${aura.spec.damageType ?? ''} damage`.trimEnd() : ''}`,
     },
   });

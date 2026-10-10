@@ -316,6 +316,17 @@ test.describe('Atomic combat clock transitions',()=>{
   expect(await invoke('guards-expired')).toEqual({ok:true});await expect.poll(()=>sql(`select count(*) from combat_events where encounter_id='${enc}' and event_type='save_rolled'`)).toBe('2');
   const expired=evidence('guards-expired');expect(expired.advantage).toBe(false);expect(expired.rolls).toHaveLength(1);
  });
+ for(const immune of [false,true])test(`live aura damage applies typed defenses (immune=${immune})`,async({page})=>{
+  sql(`update characters set nat_1_20_saves=false,wisdom=10,saving_throw_proficiencies='{}',inventory='[]',damage_resistances=array['fire'],damage_vulnerabilities=array['fire'],damage_immunities=${immune?"array['fire']":"array[]::text[]"} where id='${a}';update combatants set active_buffs='[]' where id='${ca}'`);
+  await signInFixtureDm(page);
+  await page.evaluate(async({campaign,enc,pa,pb})=>{
+   const api=await import('/src/lib/auras.ts');await api.resolveAuraSave({campaignId:campaign,encounterId:enc,targetParticipantId:pa,targetName:'A',targetType:'character',trigger:'turn_end',
+    aura:{originParticipantId:pb,originName:'B',originSize:1,originRow:0,originCol:0,spec:{key:'defense-fixture',name:'Defense fixture',radiusFt:15,saveAbility:'WIS',saveDC:0,damageDice:'15',damageType:'fire',halfOnSave:true,triggers:['turn_end'],exemptParticipantIds:[],speedInside:null,affects:'all'}}});
+  },{campaign,enc,pa,pb});
+  expect(sql(`select current_hp from combatants where id='${ca}'`)).toBe(immune?'20':'14');
+  await expect.poll(()=>sql(`select count(*) from combat_events where encounter_id='${enc}' and event_type='save_rolled'`)).toBe('1');
+  expect(JSON.parse(sql(`select payload from combat_events where encounter_id='${enc}' and event_type='save_rolled'`))).toMatchObject({damage_rolled:15,damage_after_save:7,damage:immune?0:6,damage_modifier:immune?'immune':'resistant-vulnerable'});
+ });
  const recoverMovement=()=>`select recover_turn_movement_features('${pa}','${turn}')`;
  const featureUses=()=>JSON.parse(sql(`select feature_uses from characters where id='${a}'`));
  const movementFixture=()=>{sql(`update characters set feature_uses='{"Feline Agility":1,"species:Feline Agility":1,"Psionic Restoration":1,"custom":4}' where id='${a}'`);endEffects(pa,ca,false);};

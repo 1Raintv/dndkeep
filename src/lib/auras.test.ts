@@ -1,9 +1,10 @@
 import {beforeEach,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({from:vi.fn(),update:vi.fn(),event:vi.fn(),mark:vi.fn(),concentration:vi.fn(),target:{} as Record<string,unknown>,writeError:null as {message:string}|null,markerError:null as {message:string}|null,damage:1,die:vi.fn(()=>1),saveState:vi.fn(),saveBonus:vi.fn()}));
+const m=vi.hoisted(()=>({from:vi.fn(),update:vi.fn(),event:vi.fn(),mark:vi.fn(),concentration:vi.fn(),target:{} as Record<string,unknown>,writeError:null as {message:string}|null,markerError:null as {message:string}|null,damage:1,die:vi.fn(()=>1),saveState:vi.fn(),defenses:vi.fn(),saveBonus:vi.fn()}));
 vi.mock('./supabase',()=>({supabase:{from:m.from}}));
 vi.mock('./api/checked',()=>({checkedWrite:async(_op:unknown,_context:unknown,q:unknown)=>await q}));
 vi.mock('./combatEvents',()=>({emitCombatEvent:m.event,newChainId:()=> 'chain'}));
 vi.mock('./cleave',()=>({markUsedThisTurn:m.mark}));
+vi.mock('./api/auraDamageDefenses',()=>({readAuraDamageDefenses:m.defenses}));
 vi.mock('./api/auraSaveState',()=>({readAuraSaveState:m.saveState}));
 vi.mock('./pendingAttack',()=>({getTargetSaveBonus:m.saveBonus,rollDiceExpr:()=>({total:m.damage}),runConcentrationSave:m.concentration}));
 vi.mock('../rules/dice',async importOriginal=>({...await importOriginal<typeof import('../rules/dice')>(),rollDie:m.die}));
@@ -11,7 +12,7 @@ import {resolveAuraSave,type ActiveAura} from './auras';
 const aura:ActiveAura={originParticipantId:'origin',originName:'Caster',originSize:1,originRow:0,originCol:0,spec:{key:'test',name:'Test aura',radiusFt:15,saveAbility:'WIS',saveDC:15,damageDice:'1d6',damageType:'radiant',halfOnSave:true,triggers:['turn_end'],exemptParticipantIds:[],speedInside:'half',affects:'all'}};
 const run=()=>resolveAuraSave({campaignId:'campaign',encounterId:'encounter',aura,targetParticipantId:'target',targetName:'Target',targetType:'character',trigger:'turn_end'});
 beforeEach(()=>{
- vi.clearAllMocks();m.die.mockReset().mockReturnValue(1);m.saveState.mockReset().mockResolvedValue({conditions:[],buffs:[],exhaustion:0});m.saveBonus.mockReset().mockResolvedValue({bonus:0,confidence:'high',naturalExtremes:false});m.damage=1;m.writeError=null;m.markerError=null;
+ vi.clearAllMocks();m.defenses.mockReset().mockResolvedValue({immune:false,resistant:false,vulnerable:false});m.die.mockReset().mockReturnValue(1);m.saveState.mockReset().mockResolvedValue({conditions:[],buffs:[],exhaustion:0});m.saveBonus.mockReset().mockResolvedValue({bonus:0,confidence:'high',naturalExtremes:false});m.damage=1;m.writeError=null;m.markerError=null;
  m.target={id:'target',combatant_id:'body',participant_type:'character',combatants:{current_hp:0,max_hp:20,temp_hp:3,death_save_failures:0,death_save_successes:0,is_stable:true,is_dead:false}};
  m.from.mockReturnValue({select:(fields:string)=>({eq:()=>({maybeSingle:async()=>({data:fields==='once_per_turn_used'?{once_per_turn_used:[]}:m.target,error:fields==='once_per_turn_used'?m.markerError:null})})}),
   update:m.update.mockImplementation(()=>({eq:()=>({select:()=>({single:async()=>({data:{id:'body'},error:m.writeError})})})}))});
@@ -68,4 +69,20 @@ it('active Guards retains the higher Intelligence save die',async()=>{
  m.damage=0;m.die.mockReturnValueOnce(4).mockReturnValueOnce(18);m.saveState.mockResolvedValue({conditions:[],buffs:[],exhaustion:0,advantage:true});
  await resolveAuraSave({campaignId:'campaign',encounterId:'encounter',aura:{...aura,spec:{...aura.spec,saveAbility:'INT'}},targetParticipantId:'target',targetName:'Target',targetType:'character',trigger:'turn_end'});
  expect(m.event).toHaveBeenCalledWith(expect.objectContaining({payload:expect.objectContaining({d20:18,rolls:[4,18],advantage:true,success:true})}));
+});
+
+it('save half precedes resistance rounding and vulnerability',async()=>{
+ m.damage=15;m.die.mockReturnValue(20);m.defenses.mockResolvedValue({immune:false,resistant:true,vulnerable:true});m.target.combatants={current_hp:20,max_hp:20,temp_hp:0,is_dead:false};await run();
+ expect(m.update).toHaveBeenCalledWith(expect.objectContaining({current_hp:14}));expect(m.event).toHaveBeenCalledWith(expect.objectContaining({payload:expect.objectContaining({damage_rolled:15,damage_after_save:7,damage:6,damage_modifier:'resistant-vulnerable'})}));
+ expect(m.concentration).toHaveBeenCalledWith(expect.objectContaining({damage:6}));
+});
+it('immunity prevents HP writes and concentration checks',async()=>{
+ m.damage=15;m.defenses.mockResolvedValue({immune:true,resistant:false,vulnerable:true});await run();expect(m.update).not.toHaveBeenCalled();expect(m.concentration).not.toHaveBeenCalled();
+});
+it('Petrified grants blanket resistance without stacking it twice',async()=>{
+ m.damage=9;m.saveState.mockResolvedValue({conditions:['Petrified'],buffs:[],exhaustion:0});m.defenses.mockResolvedValue({immune:false,resistant:true,vulnerable:false});await run();
+ expect(m.event).toHaveBeenCalledWith(expect.objectContaining({payload:expect.objectContaining({damage:4,damage_modifier:'resistant'})}));
+});
+it('unverified defenses stop before dice or reserving the marker',async()=>{
+ m.defenses.mockRejectedValue(new Error('Review defenses'));await expect(run()).rejects.toThrow('Review defenses');expect(m.mark).not.toHaveBeenCalled();expect(m.die).not.toHaveBeenCalled();
 });
