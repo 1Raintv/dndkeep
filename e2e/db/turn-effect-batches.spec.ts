@@ -1,7 +1,7 @@
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {test,expect} from '@playwright/test';
-import {gateDbSuite} from './helpers';
+import {gateDbSuite,signInAsSeedDm} from './helpers';
 const args=['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'];
 const sql=(q:string)=>execFileSync('docker',args,{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 const auth=(u:string,q:string)=>`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${u}","role":"authenticated"}';${q};commit;`;
@@ -76,4 +76,28 @@ test.describe('Atomic turn effect batches',()=>{
    expect(()=>sql(auth(dm,call(context(),patch)))).toThrow(/Invalid turn effect/);
   expect(()=>sql(auth(dm,call(context(),updates(),request,[{eventType:'spell_cast',payload:{}}])))).toThrow(/Invalid turn effect/);expect(context().current_hp).toBe(40);expect(count()).toBe('0');
  });
+ test('persisted browser recovery reads the original batch after a lost reply without applying again',async({page})=>{
+  sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}','{"sub":"${dm}","email":"${dm}@tick.local"}','email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${dm}@tick.local`);
+  const identity={participantId:participant,encounterId:encounter,turnId:turn,timing:'turn_end' as const};
+  const plan={combatantId:combatant,expected:context(),updates:updates(),events};let commits=0;
+  await page.route('**/rest/v1/rpc/commit_turn_effect_batch',async route=>{await route.fetch();commits++;await route.abort('failed');});
+  const first=await page.evaluate(async({user,identity,plan})=>{
+   const api=await import('/src/lib/api/turnEffects.ts');
+   try{await api.runTurnEffects(user,identity,async()=>plan);return {failed:false,saved:null};}
+   catch{return {failed:true,saved:api.savedTurnEffect(user,identity)};}
+  },{user:dm,identity,plan});
+  expect(first.failed).toBe(true);expect(first.saved).toMatchObject({expected:plan.expected,updates:plan.updates});expect(commits).toBe(2);expect(context().current_hp).toBe(36);
+  sql(`update combatants set current_hp=49 where id='${combatant}'`);
+  await page.unroute('**/rest/v1/rpc/commit_turn_effect_batch');await page.reload();
+  const recovered=await page.evaluate(async({user,identity})=>{
+   const api=await import('/src/lib/api/turnEffects.ts');
+   const receipt=await api.runTurnEffects(user,identity,async()=>{throw new Error('Do not roll again');});
+   return {receipt,saved:api.savedTurnEffect(user,identity)};
+  },{user:dm,identity});
+  expect(recovered.receipt).toMatchObject({requestId:first.saved!.requestId,replayed:true,state:{current_hp:36}});expect(recovered.saved).toBeNull();expect(context().current_hp).toBe(49);
+  expect(sql(`select count(*) from combat_events where encounter_id='${encounter}' and event_type in('damage_applied','spell_effect_removed')`)).toBe('2');
+ });
+
 });

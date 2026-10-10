@@ -6551,3 +6551,34 @@ rolling, and connect processTurnTicks. Outgoing failures must stop the boundary;
 incoming failures need a resumable phase so retrying cannot accidentally advance
 another turn. Only after both are recoverable should advanceTurn switch to the
 atomic combat-clock API and remove its legacy duplicate clock/buff writes.
+
+
+### Saved turn-effect request client (unreleased; caller integration pending)
+
+src/lib/api/turnEffects.ts now persists complete effect proposals and reads the
+server's participant/turn/timing receipt before preparing any dice. Interrupted
+submissions keep their original request ID and payload. Same-tab requests
+coalesce; server uniqueness resolves competing tabs. Recovery uses the recorded
+winner rather than applying another proposal. Storage is scoped to user,
+encounter, participant, turn and timing, with a discovery function for turn
+recovery controls. Malformed requests/receipts fail closed. JSONB key ordering
+is accepted without weakening outcome comparisons.
+
+An acknowledged receipt is not hidden by browser-cleanup failure. Its state is
+historical and must not be written back as current HP; callers should refresh
+combat state. Preparation callbacks must still guard UI scope and obtain fresh
+turn state. Invalid or stale proposals remain saved for explicit review: there
+is no silent reroll/cancellation path in this API.
+
+Verification:13 client unit regressions and2 actual desktop/mobile browser
+recovery cases pass. The browser drops both commit replies, reloads, then reads
+the original result without invoking the preparation callback or replacing later
+healing. The initial browser fixture lacked auth timestamps; that fixture was
+corrected and the final isolated run passes. Full gate passes (3,297 units,
+196/196 TypeScript,entry255.2KB); ESLint and diff checks pass. No new migration,
+UI layout change or production deployment.
+
+Next: connect processTurnTicks and the turn controller to this client, including
+explicit recovery for an incoming effect that fails AFTER the clock advances.
+The live turn button still uses its older effect writes; these tests verify the
+new API end to end, not a completed turn-controller migration.
