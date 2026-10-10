@@ -1,5 +1,5 @@
 import {beforeEach,expect,it,vi} from 'vitest';
-import {availablePropelTechniques,choosePropelTechnique,validPropelTechniqueReceipt,type PropelTechniqueReceipt} from './propelTechniques';
+import {availablePropelTechniques,choosePropelTechnique,listPropelTechniques,validPropelTechniqueReceipt,type PropelTechniqueReceipt} from './propelTechniques';
 import {validPropelRecord,type PropelRecord} from './psionicPropel';
 import type {Character} from '../../types';
 const mock=vi.hoisted(()=>({rpc:vi.fn()}));
@@ -80,4 +80,11 @@ it('Bolt preserves paid Surge and Enkindled dice evidence, rather than adding In
 it('the free Psykinetic d4 permits Bolt with the saved total and no Energy Die payment',()=>{
  const row=record();row.mode=row.request.mode='technique';Object.assign(row.result!,{energyCost:0,energy:null});
  expect(availablePropelTechniques(row).find(o=>o.kind==='bolt')).toEqual({kind:'bolt',damageType:'Force',damage:4});expect(validPropelTechniqueReceipt(receipt(row,'bolt'),row)).toBe(true);
+});
+
+it('validates current-turn recovery rows and never accepts another character or duplicate declaration',async()=>{
+ mock.rpc.mockResolvedValue([record()]);await expect(listPropelTechniques(id(2))).resolves.toHaveLength(1);
+ for(const rows of [[record(),record()],[{...record(),character_id:id(11)}],[{...record(),technique_result:receipt()}],[{...record(),participant_bindings:null}],null]){
+  mock.rpc.mockResolvedValue(rows);await expect(listPropelTechniques(id(2))).rejects.toMatchObject({definitelyNotPaid:false});
+ }
 });

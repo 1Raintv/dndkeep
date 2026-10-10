@@ -4,6 +4,8 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import type {Character} from '../../../types';
 const m=vi.hoisted(()=>({begin:vi.fn(),finish:vi.fn(),context:vi.fn(),list:vi.fn(),resume:vi.fn(),roll:vi.fn(),combat:vi.fn()}));
 vi.mock('../../../lib/supabase',()=>({supabase:{}}));
+vi.mock('./PropelTechniqueRecoveryList',()=>({default:()=>null}));
+vi.mock('./PropelTechniqueControls',()=>({default:()=>null}));
 vi.mock('../../../lib/api/psionicPropel',async()=>({...await vi.importActual('../../../lib/api/psionicPropel'),beginPropel:m.begin,finishPropel:m.finish,getPropelContext:m.context,listPropel:m.list}));
 vi.mock('../../../lib/api/psionicDamage',()=>({loadPsionicDamageContext:m.combat}));
 vi.mock('../../../lib/gameUtils',()=>({classSaveDC:(c:Character)=>c.intelligence}));

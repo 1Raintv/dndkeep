@@ -48,3 +48,13 @@ export async function choosePropelTechnique(input:PropelRecord,choice:PropelTech
  if(!validPropelTechniqueReceipt(result,row)||(choice!==null&&result.choice!==choice))throw new PsionicRequestError('The saved technique could not be verified. Keep the same choice and retry; do not apply it again.',false);
  return result;
 }
+
+/** Discover only unresolved choices in the original legal combat turn. Local
+ * uncertain attempts are recovered separately even after they leave this list. */
+export async function listPropelTechniques(character:string):Promise<PropelRecord[]>{
+ if(!uuid(character))throw new PsionicRequestError('Invalid technique character.',true);
+ const result=await psionicRpc('list_propel_techniques',{p_character:character},true);
+ if(!Array.isArray(result)||result.some(row=>!validPropelRecord(row,character)||!availablePropelTechniques(row).length||row.technique_result!=null)
+  ||new Set(result.map(row=>row.request_id)).size!==result.length)throw new PsionicRequestError('Pending technique choices could not be verified. Try loading them again.',false);
+ return result;
+}

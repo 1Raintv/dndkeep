@@ -13,6 +13,7 @@ export interface PropelParticipantBinding {id:string;participantType:string;enti
 export interface PropelParticipantBindings {campaignId:string;encounterId:string;actor:PropelParticipantBinding;target:PropelParticipantBinding}
 export interface PropelRecord {
  participant_bindings?:PropelParticipantBindings|null;
+ technique_result?:unknown;
  request_id:string;character_id:string;request:Omit<PropelRequest,'requestId'>&{roll:number};
  source_feature:'Telekinetic Propel'|'Warp Propel';mode:PropelRequest['mode'];movement:PropelRequest['movement'];base_roll:number;psion_level:number;
  target:PropelTarget;caster_snapshot:Character;created_at:string;

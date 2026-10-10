@@ -94,6 +94,37 @@ test.describe('Telekinetic Technique choices',()=>{
   expect(results.filter(r=>r.code===0)).toHaveLength(1);expect(results.find(r=>r.code!==0)?.error).toContain('already saved');
   expect(buffs()).toHaveLength(1);expect(read().choice).toBe(JSON.parse(results.find(r=>r.code===0)!.out).choice);
  });
+
+ test('discovers a failed current-turn technique without browser storage, then hides a saved choice',()=>{
+  const list=(u=owner)=>JSON.parse(sql(auth(u,`select list_propel_techniques('${character}')`)));
+  expect(list()).toEqual([]);settle();expect(list().map((r:{request_id:string})=>r.request_id)).toEqual([id]);expect(()=>list(outsider)).toThrow();
+  choose('none');expect(list()).toEqual([]);
+ });
+ test('does not offer techniques from an old turn or changed subclass',()=>{
+  settle();sql(`update characters set subclass='Telepath' where id='${character}'`);expect(JSON.parse(sql(auth(owner,`select list_propel_techniques('${character}')`)))).toEqual([]);
+  sql(`update characters set subclass='Psykinetic' where id='${character}';update combat_encounters set round_number=round_number+1 where id='${encounter}'`);expect(JSON.parse(sql(auth(owner,`select list_propel_techniques('${character}')`)))).toEqual([]);
+ });
+ test('player technique controls recover after reload and a lost saved-choice reply',async({page},info)=>{
+  settle();
+  sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${owner}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${owner}','${owner}',jsonb_build_object('sub','${owner}','email','${owner}@propelsave.local'),'email',now(),now(),now());
+   update profiles set show_ua_content=true where id='${owner}';update characters set current_hp=20,max_hp=20 where id='${character}';update combatants set current_hp=20,max_hp=20 where campaign_id='${campaign}';`);
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${new URL(r.url()).pathname}`);});
+  page.on('console',m=>{if(m.type()==='error'&&!m.text().includes('net::ERR_FAILED'))errors.push(m.text());});
+  await signInAsSeedDm(page,`${owner}@propelsave.local`);await page.goto(`/character/${character}`);
+  const ability=page.locator('.arow-grid').filter({has:page.getByText('Telekinetic Propel',{exact:true})}),dialog=page.getByRole('dialog',{name:'Telekinetic Propel',exact:true});
+  await ability.getByRole('button',{name:'Use / resume'}).click();await expect(dialog.getByRole('button',{name:/Review technique/})).toBeVisible();
+  await page.reload();await ability.getByRole('button',{name:'Use / resume'}).click();await dialog.getByRole('button',{name:/Review technique/}).click();
+  const panel=dialog.getByRole('region',{name:'Telekinetic Technique'});
+  await expect(panel.getByRole('button',{name:/Boost ·/})).toBeVisible();await expect(panel.getByRole('button',{name:/Telekinetic Bolt · 3 Force/})).toBeVisible();
+  await page.screenshot({path:`.tmp/technique-menu-${info.project.name}.png`});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[aria-label=\"Telekinetic Technique\"], [aria-label=\"Telekinetic Technique\"] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
+  let dropped=0;await page.route('**/rest/v1/rpc/choose_propel_technique',async route=>{const body=route.request().postDataJSON();if(body.p_choice==='boost'){await route.fetch();dropped++;await route.abort();}else await route.continue();});
+  await panel.getByRole('button',{name:/Boost ·/}).click();await expect(panel.getByRole('button',{name:'Confirm saved technique'})).toBeEnabled();expect(dropped).toBe(2);expect(buffs()).toHaveLength(1);
+  await page.unroute('**/rest/v1/rpc/choose_propel_technique');await page.reload();await ability.getByRole('button',{name:'Use / resume'}).click();await dialog.getByRole('button',{name:/Review technique/}).click();await expect(panel).toContainText('Saved: Boost.');
+  expect(await page.evaluate(character=>Object.keys(localStorage).filter(k=>k.startsWith(`dndkeep:propel-technique:${character}:`)),character)).toEqual([]);expect(buffs()).toHaveLength(1);
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('1');expect(errors).toEqual([]);
+ });
  test('Boost changes the live movement display, Dash and next-caster-turn expiry',async({page},info)=>{
   settle();choose('boost');
   sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';

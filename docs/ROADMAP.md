@@ -9122,3 +9122,43 @@ failed declarations awaiting optional choice is next; old expired unresolved
 attempts also need an explicit authoritative closure path. Do not silently drop
 those drafts or present technique automation as player-ready yet.
 Full gate: 4,202 unit tests, TS 194/194, entry 255.7 KB.
+
+### Telekinetic Techniques — player controls and discovery checkpoint
+
+Propel's saved-use dialog now renders a separate technique panel after an
+eligible failed save. It offers Boost (+10 ft until caster's next turn), Disorient
+(no Opportunity Attacks until target's next turn), Bolt (saved Force total), or
+no technique. The panel uses validated receipts and durable choice recovery;
+loading/read failures do not expose fresh choices, and uncertain sends expose
+only confirmation of the original attempt. Buttons explain that no extra action
+or Energy Die is spent. Bolt is explicitly queued for damage resolution.
+
+Migration 20261010133905 adds authorized server discovery for failed, bound,
+unselected Psykinetic techniques in the original active turn. It excludes ended
+or transitioning turns, changed progression and completed choices. This is a
+separate endpoint from unfinished-roll recovery. The dialog combines discovered
+rows with local uncertain attempts, which remain readable after leaving the
+current-turn list. The currently selected row is hidden from the review list.
+
+Component checks cover exact wording, one choice, lost replies/remount, another
+tab's saved winner, read failure and an unsettled-to-failed transition in the same
+mounted use. Browser checks exercise discovery after reload with no local draft,
+then deliberately lose both responses to an actually committed Boost. Reload
+finds the local attempt, shows the authoritative saved Boost and clears recovery
+without another effect or Energy Die. Removing the panel makes that regression
+fail. Desktop/mobile screenshots and scoped overflow checks reviewed.
+
+Full gate: 4,209 units, TS 194/194, entry 255.7 KB. Local SQL lint has no errors;
+security advisors retain only existing keep_warm/client_errors warnings. Exact
+local SQL/ledger equality verified; foreign history 20261008213500 preserved.
+The CLI again refused that foreign entry, so only the new SQL and its ledger
+were applied transactionally. Repo now has 316 migrations; release rehearsals
+must be refreshed before merge. No production deployment.
+
+Remaining: authoritative closure of expired unresolved local technique attempts,
+real Bolt damage/defense/concentration verification, and broader Psion/map review.
+The current-turn player menu works; this is not a claim that all Psion automation
+or every recovery edge case is finished.
+Final verification: 46 database/browser checks pass across desktop/mobile,
+including the existing declaration/reload flow. The focused console rerun also
+passes on both viewports; only deliberately aborted reply requests are allowed.

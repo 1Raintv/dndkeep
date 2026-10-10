@@ -1,3 +1,5 @@
+import PropelTechniqueControls from './PropelTechniqueControls';
+import PropelTechniqueRecoveryList from './PropelTechniqueRecoveryList';
 import {pendingPropelSaves,type SavedPropelSave} from '../../../lib/api/propelSaves';
 import type {PropelSaveDetails} from '../../../rules/propelSaveDetails';
 import {Suspense,useEffect,useRef,useState} from 'react';
@@ -124,6 +126,7 @@ export default function PropelControls({character,persistence,warp=false,campaig
  {!savedEncounter&&<button className="btn-ghost" disabled={busy||pending.length>0||!row.roll_result} onClick={()=>finish('failed')}>Save failed</button>}
  <button className="btn-ghost" disabled={busy||pending.length>0} onClick={()=>void run(async(active,id)=>{if(await modal.confirm({title:'Cancel this Propel use?',message:'The Bonus Action and paid Hit Dice stay spent. No Energy Die is spent.',confirmLabel:'Cancel use'})&&active())await send({kind:'finish',request:{requestId:row.request_id,outcome:'cancelled'}},active,id);})}>Cancel use</button>
  </div>}
+ <PropelTechniqueControls key={row.request_id} row={row} disabled={busy}/>
  </section>:<section aria-label="Choose Propel target">
  <p>Choose one other Large or smaller creature you can see within 30 ft.</p>
  <label>Target {context?.encounterId?<select aria-label="Target" value={target} disabled={busy} onChange={e=>{setTarget(e.target.value);setConfirmed(false);}}><option value="">Choose creature</option>{targets.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>:<input aria-label="Target" maxLength={120} value={target} disabled={busy} onChange={e=>{setTarget(e.target.value);setConfirmed(false);}} placeholder="Tabletop target name"/>}</label>
@@ -135,6 +138,7 @@ export default function PropelControls({character,persistence,warp=false,campaig
  {context&&!context.bonusAvailable&&<p>Your Bonus Action is unavailable. Saved uses can still be resumed.</p>}
  </section>}
  {saved.length>0&&<section aria-label="Unfinished Propel uses"><h4>Unfinished uses</h4>{saved.map(r=><button className="btn-ghost" style={{display:'block',margin:'6px 0',maxWidth:'100%',whiteSpace:'normal'}} key={r.request_id} disabled={busy||pending.length>0} onClick={()=>void run((active,id)=>resume(r.request_id,active,id))}>Resume {r.source_feature} · {r.target.name??'creature'} · {new Date(r.created_at).toLocaleString()}</button>)}{cursor&&<button className="btn-ghost" disabled={busy} onClick={()=>void run((active,id)=>refresh(active,id,cursor))}>Load older uses</button>}</section>}
+ <PropelTechniqueRecoveryList selectedId={row?.request_id} characterId={character.id} disabled={busy} onSelect={saved=>setRow(saved)}/>
  <button className="btn-ghost" disabled={busy} style={{marginTop:16}} onClick={close}>Close for later</button>
  </div></div></ModalPortal>}
  {open&&assisted&&row&&row.roll_result&&row.target.participantId&&savedEncounter&&row.caster_snapshot.campaign_id&&<Suspense fallback={<p role="status">Loading save controls…</p>}><PropelSaveControls key={row.request_id} row={row}
