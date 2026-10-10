@@ -6988,3 +6988,32 @@ entry), changed-file ESLint and SQL lint/security advisors pass. One existing
 attack-dialog unit test failed in the initial gate, passed in isolation, then
 passed in the repeated complete gate; no attack-dialog code changed.
 All 146 clock regressions pass on desktop/mobile, including ten new expiry cases.
+
+### Saved movement-gated recovery (unreleased)
+
+Migration20261010070012 adds DM-authorized, once-per-participant/turn recovery
+for the existing Feline Agility tracker aliases. It requires a saved outgoing
+turn-effect receipt and rechecks the authoritative outgoing actor and movement.
+It handles an actor killed by its outgoing effect, changes only the two known
+movement keys in the locked current character row, and retains other resources,
+including Psionic Restoration. Character locks precede campaign/encounter locks.
+Malformed counters stop recovery; moved turns record a no-op receipt.
+
+A private receipt and the feature update commit together. Retries return the
+historical result even after combat ends, without erasing later feature uses.
+Current DM ownership is checked before replay. Concurrent calls converge on
+one receipt; a receipt-insert failure rolls back all feature changes. The API
+client validates identity and recovered keys, retries the deterministic turn
+identity, and never copies receipt contents over today's character resources.
+
+Verification:18 local DB cases and two actual browser cases pass across desktop
+and mobile. Browser cases lose both write replies, reload, recover the original
+receipt and preserve a later spent use. Eight new client unit cases and the
+full gate pass (3,419 units,195/195 TypeScript,255.2 KB entry); changed-file ESLint,
+SQL lint and security advisors pass. Migration applied/recorded locally only.
+
+The legacy live helper is still active until the durable turn controller is
+connected; it cannot call this API before saved outgoing effects exist. Replace
+its snapshot update with this phase during that integration. No deployment or
+claim that legacy recovery is already atomic. Next blockers: aura resolution
+and reconciling incoming effects/another request's completed clock transition.

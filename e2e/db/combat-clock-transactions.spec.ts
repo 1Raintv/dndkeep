@@ -269,6 +269,58 @@ test.describe('Atomic combat clock transitions',()=>{
   expect(()=>run(call(),player)).toThrow(/only to its DM/);
   expect(budgets(pa)).toEqual(spent);expect(budgets(pb)).toEqual(spent);
  });
+ const recoverMovement=()=>`select recover_turn_movement_features('${pa}','${turn}')`;
+ const featureUses=()=>JSON.parse(sql(`select feature_uses from characters where id='${a}'`));
+ const movementFixture=()=>{sql(`update characters set feature_uses='{"Feline Agility":1,"species:Feline Agility":1,"Psionic Restoration":1,"custom":4}' where id='${a}'`);endEffects(pa,ca,false);};
+ test('saved movement recovery clears only its two keys and preserves current Psion resources',()=>{
+  movementFixture();sql(`update characters set feature_uses=feature_uses||'{"custom":5}' where id='${a}'`);
+  expect(run(recoverMovement())).toEqual({participantId:pa,encounterId:enc,turnId:turn,characterId:a,recovered:['Feline Agility','species:Feline Agility'],replayed:false});
+  expect(featureUses()).toEqual({'Feline Agility':0,'species:Feline Agility':0,'Psionic Restoration':1,custom:5});
+ });
+ test('saved movement recovery replays without erasing a subsequent use even after combat ends',()=>{
+  movementFixture();const first=run(recoverMovement());sql(`update characters set feature_uses=feature_uses||'{"Feline Agility":1}' where id='${a}';update combat_encounters set status='ended' where id='${enc}'`);
+  expect(run(recoverMovement())).toEqual({...first,replayed:true});expect(featureUses()['Feline Agility']).toBe(1);
+ });
+ test('saved movement recovery records a moved turn without restoring uses on retry',()=>{
+  movementFixture();sql(`update combat_participants set movement_used_ft=5 where id='${pa}'`);expect(run(recoverMovement()).recovered).toEqual([]);
+  sql(`update combat_participants set movement_used_ft=0 where id='${pa}'`);expect(run(recoverMovement()).replayed).toBe(true);expect(featureUses()['Feline Agility']).toBe(1);
+ });
+ test('saved movement recovery requires confirmed outgoing effects and rejects a stale turn',()=>{
+  expect(()=>run(recoverMovement())).toThrow(/Confirm outgoing turn effects/);movementFixture();run();expect(()=>run(recoverMovement())).toThrow(/Combat turn changed/);
+ });
+ test('saved movement recovery authorizes the current DM before replay and keeps its ledger private',()=>{
+  movementFixture();run(recoverMovement());expect(()=>run(recoverMovement(),player)).toThrow(/only to/);expect(()=>sql('set role anon;'+recoverMovement())).toThrow(/permission denied/);
+  expect(()=>sql(auth(dm,'select * from dndkeep_private.turn_movement_recoveries'))).toThrow(/permission denied/);
+  sql(`update campaigns set owner_id='${player}' where id='${campaign}'`);expect(()=>run(recoverMovement())).toThrow(/only to/);expect(run(recoverMovement(),player).replayed).toBe(true);
+ });
+ test('saved movement recovery follows a lethal outgoing effect without giving the next actor its recovery',()=>{
+  sql(`update characters set feature_uses='{"Feline Agility":1}' where id='${a}'`);endEffects(pa,ca);expect(run(recoverMovement()).recovered).toEqual(['Feline Agility']);expect(featureUses()['Feline Agility']).toBe(0);
+ });
+ test('saved movement recovery concurrent retries change resources once',async()=>{
+  movementFixture();const results=await Promise.all([parallel(auth(dm,recoverMovement())),parallel(auth(dm,recoverMovement()))]);
+  expect(results.map(r=>r.code)).toEqual([0,0]);expect(results.map(r=>JSON.parse(r.out).replayed).sort()).toEqual([false,true]);
+  expect(sql(`select count(*) from dndkeep_private.turn_movement_recoveries where participant_id='${pa}'`)).toBe('1');
+ });
+ test('saved movement recovery receipt failure rolls back resource changes',()=>{
+  movementFixture();const original=featureUses(),fn='reject_movement_'+request.replaceAll('-','');
+  sql(`create function public.${fn}() returns trigger language plpgsql as $$ begin if new.participant_id='${pa}' then raise exception 'fixture movement failure';end if;return new;end $$;create trigger ${fn} before insert on dndkeep_private.turn_movement_recoveries for each row execute function public.${fn}()`);
+  try{expect(()=>run(recoverMovement())).toThrow(/fixture movement failure/);expect(featureUses()).toEqual(original);
+  }finally{sql(`drop trigger ${fn} on dndkeep_private.turn_movement_recoveries;drop function public.${fn}()`);}
+  expect(run(recoverMovement()).replayed).toBe(false);
+ });
+ test('saved movement recovery browser retry recovers a lost response without refilling later uses',async({page})=>{
+  movementFixture();await signInFixtureDm(page);let writes=0;
+  await page.route('**/rest/v1/rpc/recover_turn_movement_features',async route=>{writes++;await route.fetch();await route.abort('failed');});
+  const invoke=()=>page.evaluate(async i=>{const api=await import('/src/lib/api/turnMovementRecovery.ts');try{return {receipt:await api.recoverTurnMovementFeatures(i)};}catch(e){return {error:String(e)};}},{participantId:pa,encounterId:enc,turnId:turn});
+  expect(await invoke()).toHaveProperty('error');expect(writes).toBe(2);expect(featureUses()['Feline Agility']).toBe(0);
+  sql(`update characters set feature_uses=feature_uses||'{"Feline Agility":1}' where id='${a}'`);
+  await page.unroute('**/rest/v1/rpc/recover_turn_movement_features');await page.reload();
+  expect(await invoke()).toMatchObject({receipt:{replayed:true,recovered:['Feline Agility','species:Feline Agility']}});expect(featureUses()['Feline Agility']).toBe(1);
+ });
+ test('saved movement recovery rejects malformed counters without touching other keys',()=>{
+  movementFixture();sql(`update characters set feature_uses=feature_uses||'{"species:Feline Agility":"spent"}' where id='${a}'`);const before=featureUses();
+  expect(()=>run(recoverMovement())).toThrow(/Review movement feature uses/);expect(featureUses()).toEqual(before);
+ });
  const setMastery=(items:unknown[])=>sql(`update combatants set active_buffs='${JSON.stringify(items).replaceAll("'","''")}' where id='${ca}'`);
  const expiryEvents=()=>JSON.parse(sql(`select coalesce(jsonb_agg(jsonb_build_object('payload',payload,'visibility',visibility,'sequence',sequence) order by sequence),'[]') from combat_events where encounter_id='${enc}' and event_type='buff_removed'`));
  test('saved mastery expiry matches the pure planner for start, end and legacy markers',()=>{
