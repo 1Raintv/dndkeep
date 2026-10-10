@@ -75,3 +75,18 @@ it('damage without concentration does not roll temporary save effects',()=>{
  const random=vi.spyOn(Math,'random');const r=createStandaloneDamage({...character,concentration_spell:'',active_buffs:[{name:'Bane'}]},u,9,2);
  expect(r.effectRolls).toEqual([]);expect(random).not.toHaveBeenCalled();
 });
+
+it('accepts damage-time class advantage from the saved server offer',async()=>{
+ const r=createStandaloneDamage({...character,gained_feats:[]},u,9,2);m.rpc.mockResolvedValue({data:receipt(r),error:null});
+ await expect(submitStandaloneDamage(r)).resolves.toMatchObject({check:{has_advantage:true}});
+});
+it('does not drop known feat advantage from the saved damage check',async()=>{
+ const r=request(),v=receipt(r);v.check.has_advantage=false;m.rpc.mockResolvedValue({data:v,error:null});
+ await expect(submitStandaloneDamage(r)).rejects.toThrow('advantage');
+});
+
+it('rejects a non-boolean server advantage value and preserves recovery',async()=>{
+ const r=createStandaloneDamage({...character,gained_feats:[]},u,9,2),v=receipt(r);
+ m.rpc.mockResolvedValue({data:{...v,check:{...v.check,has_advantage:'true'}},error:null});
+ await expect(submitStandaloneDamage(r)).rejects.toThrow('advantage');expect(savedStandaloneDamage(u,c)).toEqual(r);
+});

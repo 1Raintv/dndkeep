@@ -1,5 +1,43 @@
 # DNDKeep — Two-Track Roadmap
 
+### Stony Epidermis concentration advantage (local)
+
+Migration `20261010234500_mutable_form_concentration.sql` snapshots Stony's
+advantage into campaign and solo damage-triggered concentration saves. Existing
+checks retain their original dice contract through activation, expiry and replay;
+other Mutable Form choices do not grant the benefit. Advantage cannot be edited
+after creation. Cancellation tombstones skip the live-effect lookup.
+
+The shared active-form calculation now has a private, non-client-callable reader
+for trusted transactions; the existing public/shared reader keeps its original
+owner/campaign authorization. Solo clients honor the server's damage-time
+advantage instead of reconstructing only feats, while still validating boolean
+shape, War Caster entitlement, request identity, DC and modifiers. This preserves
+class benefits after expiry without rerolling or weakening database ownership.
+The shared prompt and solo history say "advantage" without falsely attributing
+Stony to War Caster.
+
+New tests cover Stony, other choices, immutable campaign/solo offers, unknown
+clocks, cancellation, internal-reader privileges, expiry and two-die replay.
+Actual-sheet desktop/mobile tests cover both War Caster and Stony without the
+feat; the API recovery case keeps the original pair across lost responses and
+reload after expiry. Full `npm run verify` passes (4,814 tests, TS 193/193, entry
+256.1 KB). Local database lint has no findings for the changed functions.
+All 56 existing campaign/solo concentration regressions pass; teardown required
+stopping that run's verified Vite process after all cases completed. Four final
+prompt checks pass across desktop/mobile, and reverting the inaccurate War Caster
+label makes the Stony browser case fail. Prompt screenshots are readable. The
+whole-page overflow probe still finds the previously noted desktop ability-range
+label and a separate narrow mobile concentration-status card; queue the latter
+for UI repair. Migration reapplication succeeds in rollback; all 349 repo
+migrations are local and foreign version 20261008213500 remains untouched.
+Evidence: `.tmp/stony-*.log`.
+
+This implements concentration advantage only. Stony's resistance, other pending
+Mutable Form benefits/public controls, and final release rehearsals remain open.
+The migration is local only; production is unchanged.
+
+
 ### Player melee reach previews share targeting geometry (local)
 
 The player melee weapon/unarmed picker now publishes its verified range and live

@@ -55,22 +55,24 @@ test.describe('Concentration sheet saves (local stack)', () => {
     await expect.poll(()=>sql(`select concentration_spell from characters where id='${charId}'`)).toBe(sample.passed?'detect-magic':'');
     expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Concentration Check'`)).toBe('1');
   });
-  test('War Caster keeps the higher die and logs both without summing them',async({page},info)=>{
+  for(const source of ['feat','stony'])test(`${source} keeps the higher die and logs both without summing them`,async({page},info)=>{
     sql(`update characters set current_hp=100,max_hp=100,temp_hp=0,constitution=14,
       saving_throw_proficiencies='{constitution}',gained_feats=array['War Caster'],nat_1_20_saves=false,
       concentration_spell='detect-magic',concentration_rounds_remaining=100 where id='${charId}'`);
+    if(source==='stony')sql(`update characters set gained_feats='{}',subclass='Metamorph',level=10,class_resources='{"psionic-energy-dice":8}' where id='${charId}';
+      begin;set local request.jwt.claims='{"sub":"${userId}","role":"authenticated"}';select dndkeep_private.begin_mutable_form('${charId}','${randomUUID()}',dndkeep_private.action_turn_context('${charId}')->>'turnId',2,false,'{"kind":"stony","resistance":"Fire"}');commit;`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     await page.getByPlaceholder('0',{exact:true}).locator('visible=true').first().fill('40');
     await page.getByRole('button',{name:'Damage',exact:true}).locator('visible=true').first().click();
-    const roll=page.getByRole('button',{name:'Roll CON Save (+5)',exact:true}).locator('visible=true').first();
-    await expect(page.getByText(/War Caster: roll two d20s/)).toBeVisible();const panel=page.getByRole('region',{name:'Concentration check required'});
+    const roll=page.getByRole('button',{name:source==='stony'?'Roll CON Save (+6)':'Roll CON Save (+5)',exact:true}).locator('visible=true').first();
+    await expect(page.getByText(/Advantage: roll two d20s/)).toBeVisible();const panel=page.getByRole('region',{name:'Concentration check required'});
     await panel.evaluate(el=>el.scrollIntoView({block:'center'}));
-    await panel.screenshot({path:info.outputPath('sheet-war-caster-prompt.png')});
+    await panel.screenshot({path:info.outputPath(`sheet-${source}-prompt.png`)});
     await page.evaluate(()=>{let n=0;Math.random=()=>n++===0?.125:n===2?.825:.5;});
     await roll.click();
-    await expect.poll(()=>sql(`select total from action_logs where character_id='${charId}' and action_name='Concentration Check'`)).toBe('22');
+    await expect.poll(()=>sql(`select total from action_logs where character_id='${charId}' and action_name='Concentration Check'`)).toBe(source==='stony'?'23':'22');
     const entry=JSON.parse(sql(`select jsonb_build_object('dice',individual_results,'expression',dice_expression,'notes',notes) from action_logs where character_id='${charId}' and action_name='Concentration Check'`));
-    expect(entry).toMatchObject({dice:[3,17],expression:'2d20kh1'});expect(entry.notes).toContain('War Caster advantage');
+    expect(entry).toMatchObject({dice:[3,17],expression:'2d20kh1'});expect(entry.notes).toContain('Concentration advantage');
     expect(sql(`select concentration_spell from characters where id='${charId}'`)).toBe('detect-magic');
     expect(sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Concentration Check'`)).toBe('1');
   });

@@ -51,8 +51,10 @@ function verify(value:unknown,r:StandaloneDamageRequest):StandaloneDamageReceipt
  verifyConcentrationState(c,r.characterId);
  const expected=r.expected,prof=expected.saving_throw_proficiencies?.some(p=>['con','constitution'].includes(p.toLowerCase()));
  const row:StandaloneSaveOffer={request_id:r.saveRequestId,character_id:r.characterId,spell_name:expected.concentration_spell??'',casting_revision:expected.concentration_revision!,
-  damage:r.damage,dc:concentrationDC(r.damage),save_bonus:r.modifier+(prof?characterProficiencyBonus(expected):0)-exhaustionPenalty(expected.exhaustion_level??0),has_advantage:hasWarCaster(expected.gained_feats),natural_extremes:expected.nat_1_20_saves!==false,
+  damage:r.damage,dc:concentrationDC(r.damage),save_bonus:r.modifier+(prof?characterProficiencyBonus(expected):0)-exhaustionPenalty(expected.exhaustion_level??0),has_advantage:v.check?.has_advantage??v.resolution?.advantage??hasWarCaster(expected.gained_feats),natural_extremes:expected.nat_1_20_saves!==false,
   created_at:new Date().toISOString(),outcome:null};
+ // The saved server offer includes timed class effects, not just sheet feats.
+ if(typeof row.has_advantage!=='boolean'||hasWarCaster(expected.gained_feats)&&!row.has_advantage)throw new Error('The concentration advantage could not be verified.');
  if(v.check!==null){
   verifyStandaloneOffer(v.check,r.characterId);
   for(const field of ['request_id','spell_name','casting_revision','damage','dc','save_bonus','has_advantage','natural_extremes'] as const)

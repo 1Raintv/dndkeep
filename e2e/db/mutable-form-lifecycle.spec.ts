@@ -21,6 +21,57 @@ test.describe('Mutable Form saved private lifecycle',()=>{
   turn=invoke(`dndkeep_private.action_turn_context('${character}')`).turnId;
  });
  test.afterEach(()=>sql(`delete from characters where id='${character}';delete from auth.users where id in('${owner}','${other}')`));
+ const concentrationSnapshot=()=>sql(`select jsonb_build_object('concentration_spell',concentration_spell,'concentration_revision',concentration_revision,
+  'constitution',constitution,'inventory',inventory,'level',level,'secondary_class',secondary_class,'secondary_level',secondary_level,
+  'saving_throw_proficiencies',saving_throw_proficiencies,'gained_feats',gained_feats,'nat_1_20_saves',nat_1_20_saves) from characters where id='${character}'`);
+ const queueSave=(save=randomUUID())=>invoke(`public.queue_standalone_concentration_save('${character}','${save}',5,2,'${concentrationSnapshot()}')`);
+ test('Stony concentration advantage survives expiry and replays the original two dice',()=>{
+  sql(`update characters set level=10,concentration_spell='Fly',constitution=14,nat_1_20_saves=false where id='${character}'`);
+  begin(false,{kind:'stony',resistance:'Fire'});const save=randomUUID();expect(queueSave(save).has_advantage).toBe(true);
+  sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+600 where character_id='${character}'`);
+  const result=invoke(`public.settle_standalone_concentration_save('${character}','${save}',array[3,17])`);
+  expect(result).toMatchObject({advantage:true,rolls:[3,17],d20:17,total:19,outcome:'passed'});
+  expect(invoke(`public.settle_standalone_concentration_save('${character}','${save}',array[1,2])`)).toMatchObject({...result,replayed:true});
+  expect(queueSave().has_advantage).toBe(false);
+  expect(sql(`select notes from action_logs where id='${save}'`)).toContain('Concentration advantage');
+  expect(sql(`select notes from action_logs where id='${save}'`)).not.toContain('War Caster');
+ });
+ for(const choice of [{kind:'stride'},{kind:'flexibility'}])test(`other improved choices do not grant concentration advantage: ${choice.kind}`,()=>{
+  sql(`update characters set level=10,concentration_spell='Fly' where id='${character}'`);begin(false,choice);
+  expect(queueSave().has_advantage).toBe(false);
+  sql(`update characters set gained_feats=array['War Caster'] where id='${character}'`);expect(queueSave().has_advantage).toBe(true);
+ });
+ test('activating Stony later does not upgrade an existing concentration check',()=>{
+  sql(`update characters set level=10,concentration_spell='Fly' where id='${character}'`);const save=randomUUID();queueSave(save);
+  begin(false,{kind:'stony',resistance:'Cold'});
+  expect(invoke(`public.get_standalone_concentration_saves('${character}')`).pending[0]).toMatchObject({request_id:save,has_advantage:false});
+  expect(()=>sql(`update dndkeep_private.standalone_concentration_saves set has_advantage=true where request_id='${save}'`)).toThrow();
+ });
+ test('unreadable active clocks block a new check but do not block cancellation tombstones',()=>{
+  sql(`update characters set level=10,concentration_spell='Fly' where id='${character}'`);begin(false,{kind:'stony',resistance:'Cold'});
+  sql(`delete from dndkeep_private.psionic_duration_clocks where character_id='${character}'`);
+  expect(()=>queueSave()).toThrow('clock');
+  expect(invoke(`public.cancel_standalone_concentration_request('${character}','${randomUUID()}',5,2,'${concentrationSnapshot()}')`).canceled).toBe(true);
+ });
+ test('campaign offers capture Stony, reject advantage edits and retain the original dice contract',()=>{
+  const camp=randomUUID(),enc=randomUUID(),participant=randomUUID(),save=randomUUID();
+  try{
+   sql(`insert into campaigns(id,owner_id,name) values('${camp}','${owner}','Stony saves');
+    update characters set campaign_id='${camp}',level=10,concentration_spell='Fly',nat_1_20_saves=false where id='${character}';
+    insert into combat_encounters(id,campaign_id,status,current_turn_index) values('${enc}','${camp}','active',0);
+    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values('${participant}','${enc}','${camp}','character','${character}','Stony',0);`);
+   turn=invoke(`dndkeep_private.action_turn_context('${character}')`).turnId;begin(false,{kind:'stony',resistance:'Fire'});
+   sql(`insert into pending_concentration_saves(id,campaign_id,encounter_id,chain_id,participant_id,character_id,spell_name,damage,dc,con_bonus,has_con_prof,expires_at,concentration_revision,has_advantage)
+    select '${save}','${camp}','${enc}','${randomUUID()}','${participant}',id,'Fly',5,10,2,false,now()+interval '2 minutes',concentration_revision,false from characters where id='${character}'`);
+   expect(sql(`select has_advantage from pending_concentration_saves where id='${save}'`)).toBe('t');
+   expect(()=>sql(`update pending_concentration_saves set has_advantage=false where id='${save}'`)).toThrow();
+   sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+600 where character_id='${character}'`);
+   expect(invoke(`public.settle_pending_concentration_save('${save}',3,'player',17,null)`)).toMatchObject({advantage:true,rolls:[3,17],d20:17,outcome:'passed'});
+  }finally{sql(`delete from campaigns where id='${camp}'`);}
+ });
+ test('the trusted active-form reader cannot be invoked by an authenticated client',()=>{
+  expect(sql(`select has_function_privilege('authenticated','dndkeep_private.read_mutable_form_active_internal(uuid)','execute')`)).toBe('f');
+ });
  test('saves the roll, original ability inputs and one action/payment; exact retry does not pay again',()=>{
   expect(begin()).toMatchObject({base_roll:2,duration_seconds:60,ability_context:{intelligence:16},replayed:false,energy_receipt:{remaining:5}});
   expect(begin().replayed).toBe(true);expect(()=>begin(false,null,3)).toThrow();

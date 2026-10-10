@@ -118,3 +118,12 @@ it('an identical creation retry retains its effect dice before server confirmati
  const first=createStandaloneSaveRequest(c1,u,5,2,id);expect(createStandaloneSaveRequest(c1,u,5,2,id)).toEqual(first);expect(random).toHaveBeenCalledTimes(1);
  expect(first.modifier).toBe(3);expect(first.expected.active_buffs).toEqual(c1.active_buffs);
 });
+
+it('accepts server-snapshotted class advantage without a War Caster feat',async()=>{
+ const r=createStandaloneSaveRequest({...character,gained_feats:[]},u,5,2,id);
+ await expect(queueStandaloneSave(r)).resolves.toMatchObject({has_advantage:true});
+});
+it('still rejects missing advantage for a captured War Caster feat',async()=>{
+ m.rpc.mockResolvedValue({data:{...row,has_advantage:false,replayed:false},error:null});
+ await expect(queueStandaloneSave(request())).rejects.toThrow('does not match');
+});

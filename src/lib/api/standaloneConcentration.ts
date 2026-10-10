@@ -96,9 +96,11 @@ export function queueStandaloneSave(input:StandaloneSaveRequest):Promise<Standal
  if(!validRequest(input))throw new Error('Invalid concentration request.');const r=structuredClone(input),{k,text}=persist('create',r);
  return coalesce(k,text,async()=>{
   const data=await rpc('queue_standalone_concentration_save',args(r)),v=offer(data,r.characterId),c=r.expected;
+  // v2.869 — the server snapshots temporary class effects with the save.
+  // Feats alone cannot reconstruct this damage-time advantage after expiry.
   const proficient=c.saving_throw_proficiencies?.some(p=>['con','constitution'].includes(p.toLowerCase()));
   if(v.request_id!==r.requestId||v.damage!==r.damage||v.spell_name!==c.concentration_spell||v.casting_revision!==c.concentration_revision
-   ||v.save_bonus!==r.modifier+(proficient?characterProficiencyBonus(c):0)-exhaustionPenalty(c.exhaustion_level??0)||v.has_advantage!==hasWarCaster(c.gained_feats)
+   ||v.save_bonus!==r.modifier+(proficient?characterProficiencyBonus(c):0)-exhaustionPenalty(c.exhaustion_level??0)||(hasWarCaster(c.gained_feats)&&!v.has_advantage)
    ||v.natural_extremes!==(c.nat_1_20_saves!==false)||typeof (data as {replayed?:unknown}).replayed!=='boolean')throw new Error('The saved concentration check does not match the request.');
   forget('create',r);return v;
  });
