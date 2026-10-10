@@ -19,13 +19,18 @@ test.describe('Telekinetic Technique choices',()=>{
     ('${caster}','${encounter}','${campaign}','character','${character}','Psion',0),('${target}','${encounter}','${campaign}','creature','${target}','Target',1);
    update combatants set definition_id=p.entity_id from combat_participants p where combatants.id=p.combatant_id and p.encounter_id='${encounter}';`);
   sql(`update characters set subclass='Psykinetic' where id='${character}'`);
+  if(testInfo.title.includes('concentrating'))sql(`insert into characters(id,user_id,campaign_id,name,species,class_name,background,level,current_hp,max_hp,temp_hp,concentration_spell)
+   values('${target}','${dm}','${campaign}','Concentrating target','Human','Cleric','Sage',5,20,20,1,'Bless');
+   update combat_participants set participant_type='character' where id='${target}';
+   update combatants set definition_type='character',current_hp=20,max_hp=20,temp_hp=1 where id=(select combatant_id from combat_participants where id='${target}');`);
+
   if(testInfo.title.includes('secondary Psion'))sql(`update characters set class_name='Fighter',level=1,subclass='Champion',secondary_class='Psion',secondary_level=5,secondary_subclass='Psykinetic' where id='${character}'`);
   const mode=testInfo.title.includes('no-die')?'free':testInfo.title.includes('free d4')?'technique':'powered';
   const turn=JSON.parse(sql(auth(owner,`select psionic_propel('${character}','context')`))).turnId;
   const payload=JSON.stringify({requestId:id,turnId:turn,mode,movement:'push',roll:mode==='free'?0:3,target:{participantId:target,legalTargetConfirmed:true}});
   sql(auth(owner,`select psionic_propel('${character}','begin','${payload}');select psionic_propel('${character}','finalize','{"declarationId":"${id}"}')`));
  });
- test.afterEach(()=>sql(`delete from campaigns where id='${campaign}';delete from characters where id='${character}';delete from auth.users where id in('${owner}','${dm}','${outsider}');`));
+ test.afterEach(()=>sql(`delete from campaigns where id='${campaign}';delete from characters where id in('${character}','${target}');delete from auth.users where id in('${owner}','${dm}','${outsider}');`));
  const context=()=>JSON.parse(sql(auth(owner,`select get_propel_save_context('${character}','${id}')`)));
  const settle=(dice=2)=>JSON.parse(sql(auth(owner,`select settle_propel_save('${character}','${id}','${JSON.stringify(context())}',10,array[${dice}],0,0,'[]',3)`)));
  const choose=(choice:string,user=owner)=>JSON.parse(sql(auth(user,`select choose_propel_technique('${character}','${id}','${choice}')`)));
@@ -48,14 +53,21 @@ test.describe('Telekinetic Technique choices',()=>{
   expect(sql(`select current_hp from combatants where id=(select combatant_id from combat_participants where id='${target}')`)).toBe(before);
   sql(`delete from pending_attacks where id='${id}'`);expect(choose('bolt').replayed).toBe(true);expect(sql(`select count(*) from pending_attacks where id='${id}'`)).toBe('0');
  });
- for(const [defense,expected] of [['normal',3],['resistant',1],['immune',0],['vulnerable',6],['resistant-vulnerable',2],['petrified',1],['ward',1]] as const)
+ for(const [defense,expected] of [['normal',3],['resistant',1],['immune',0],['vulnerable',6],['resistant-vulnerable',2],['petrified',1],['ward',1],['concentrating',3],['immune-concentrating',0],['dropped-concentrating',3]] as const)
  test(`Bolt settles ${defense} Force damage once through the live pipeline`,async({page})=>{
   settle();choose('bolt');
-  const snapshot={damage_resistances:defense.includes('resistant')?['force']:[],damage_immunities:defense==='immune'?['force']:[],damage_vulnerabilities:defense.includes('vulnerable')?['force']:[]};
+  const snapshot={damage_resistances:defense.includes('resistant')?['force']:[],damage_immunities:defense.includes('immune')?['force']:[],damage_vulnerabilities:defense.includes('vulnerable')?['force']:[]};
   sql(`update combatants set current_hp=20,max_hp=20,temp_hp=1,stat_block_snapshot='${JSON.stringify(snapshot)}',active_conditions='${defense==='petrified'?'{Petrified}':'{}'}',active_buffs='${defense==='ward'?'[{"key":"ward","name":"Force ward","resistances":["force"]}]':'[]'}' where id=(select combatant_id from combat_participants where id='${target}');
    update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
    insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}',jsonb_build_object('sub','${dm}','email','${dm}@propelsave.local'),'email',now(),now(),now());`);
+  const startingHp=defense==='dropped-concentrating'?2:20;
+  if(defense.includes('concentrating'))sql(`update characters set current_hp=${startingHp},damage_immunities='${defense.includes('immune')?'{force}':'{}'}' where id='${target}';update combatants set current_hp=${startingHp} where id=(select combatant_id from combat_participants where id='${target}');`);
   await signInAsSeedDm(page,`${dm}@propelsave.local`);
+  let droppedReply=false;
+  if(defense==='concentrating')await page.route('**/rest/v1/rpc/apply_propel_bolt_damage',async route=>{
+   if(droppedReply||!route.request().postDataJSON()?.p_expected){await route.continue();return;}
+   droppedReply=true;const reply=await route.fetch();expect(reply.ok()).toBe(true);await route.abort('failed');
+  });
   const rolled=await page.evaluate(async id=>{const path='/src/lib/pendingAttack.ts';return(await import(/* @vite-ignore */ path)).rollDamage(id);},id);
   expect(rolled).toMatchObject({damage_raw:3,damage_final:3,damage_rolls:[]});
   const apply=()=>page.evaluate(async id=>{const path='/src/lib/pendingAttack.ts';return(await import(/* @vite-ignore */ path)).applyDamage(id);},id);
@@ -88,9 +100,19 @@ test.describe('Telekinetic Technique choices',()=>{
   const results=await Promise.all([apply(),apply()]);
   for(const result of results)expect(result).toMatchObject({state:'applied',damage_final:expected});
   expect(await apply()).toMatchObject({state:'applied',damage_final:expected});
-  expect(JSON.parse(sql(`select jsonb_build_object('hp',current_hp,'temp',temp_hp) from combatants where id=(select combatant_id from combat_participants where id='${target}')`))).toEqual({hp:20-Math.max(0,expected-1),temp:expected?0:1});
+  expect(JSON.parse(sql(`select jsonb_build_object('hp',current_hp,'temp',temp_hp) from combatants where id=(select combatant_id from combat_participants where id='${target}')`))).toEqual({hp:Math.max(0,startingHp-Math.max(0,expected-1)),temp:expected?0:1});
   expect(sql(`select count(*) from combat_events where payload->>'attack_id'='${id}' and event_type='damage_applied'`)).toBe('1');
   expect(sql(`select count(*) from dndkeep_private.propel_bolt_damage_applications where attack_id='${id}'`)).toBe('1');
+  if(defense.includes('concentrating')){
+   expect(sql(`select current_hp from characters where id='${target}'`)).toBe(String(Math.max(0,startingHp-Math.max(0,expected-1))));
+   expect(sql(`select count(*) from pending_concentration_saves where character_id='${target}'`)).toBe(defense==='concentrating'?'1':'0');
+   expect(sql(`select concentration_spell from characters where id='${target}'`)).toBe(defense==='dropped-concentrating'?'':'Bless');
+   if(defense==='concentrating'){
+    expect(droppedReply).toBe(true);
+    expect(JSON.parse(sql(`select jsonb_build_object('damage',damage,'dc',dc) from pending_concentration_saves where character_id='${target}'`))).toEqual({damage:3,dc:10});
+   }
+  }
+
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('1');
  });
  test('skip is a saved choice with no effect and cannot become Bolt later',()=>{

@@ -9,7 +9,10 @@ one transaction. The original caster/target bindings and saved die total are
 verified before application. Old declarations, altered damage and unknown or
 conditional defenses stop for review rather than guessing. A dedicated DM
 resolution choice for conditional defenses remains needed; this checkpoint does
-not claim those targets are fully automated. Production migration is pending.
+not claim those targets are fully automated. Additional desktop/mobile checks
+verify character HP synchronization, one concentration save after damage, no
+save under immunity, concentration ending at zero HP, and recovery after a
+committed application reply is lost. Production migration is pending.
 
 ### Propel player-view regression checkpoint (not released)
 
