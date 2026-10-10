@@ -1,5 +1,18 @@
 # DNDKeep — Two-Track Roadmap
 
+### Production data preflight (2026-10-10; not released)
+
+Production's exact 233-version ledger matches the repository through
+20261008211300, with 85 later migrations pending and no earlier missing or
+foreign versions. None of 108 production combat participants violate the new
+legendary-action cap. Stable-state backfill candidates and pending legacy death
+saves are also zero. `scripts/check-psion-release-preflight.sql` preserves these
+read-only, count-only checks for repeating immediately before release. The
+checks are point-in-time evidence, not proof of all runtime compatibility.
+
+Vercel's preview check for 90477d8a failed with its build-rate-limit result.
+No merge or production migration was attempted.
+
 ### Release rehearsal refresh — 318 migrations (not released)
 
 Both retained isolated databases (fresh-chain origin and main-upgrade origin)
