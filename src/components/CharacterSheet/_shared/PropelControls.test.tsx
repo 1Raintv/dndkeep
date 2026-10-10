@@ -48,3 +48,23 @@ it.each(['encounterId','participantId','actorId','ownerTurnId'])('rejects a chan
  fireEvent.click(screen.getByRole('button',{name:'Declare Bonus Action'}));
  await screen.findByRole('alert');expect(m.roll).not.toHaveBeenCalled();expect(m.begin).not.toHaveBeenCalled();
 });
+
+for(const movement of ['push','warp'] as const){
+ it.each([null,'passed','cancelled','failed'] as const)(`${movement}: only a settled failure instructs movement (%s)`,async outcome=>{
+  const result={...row,movement,outcome,result:outcome?{feet:movement==='warp'?30:25,energyCost:outcome==='failed'?1:0}:null};
+  m.begin.mockResolvedValue(result);m.resume.mockResolvedValue(result);
+  render(<PropelControls character={character}/>);await choose();
+  fireEvent.click(screen.getByRole('button',{name:'Declare Bonus Action'}));
+  await screen.findByText(/Strength save DC 15/);
+  if(outcome==='failed')expect(screen.getByTestId('propel-movement').textContent).toContain(movement==='warp'?'within 30 ft of you, horizontal to you':'25 ft straight toward or away from you');
+  else{
+   expect(screen.queryByTestId('propel-movement')).toBeNull();
+   expect(screen.getByText(outcome===null?'Resolve and confirm the saving throw before moving the target.':outcome==='passed'?'Save succeeded. Do not move the target.':'Use cancelled. Do not move the target.')).toBeTruthy();
+  }
+ });
+}
+it('explains the conditional cost before rolling and the fixed Warp distance',async()=>{
+ render(<PropelControls character={{...character,subclass:'Psi Warper'}} warp/>);await choose();
+ expect(screen.getByText(/Roll one Energy Die now; spend it only if the target fails/).textContent).toContain('rolling does not extend it');
+ expect(m.roll).not.toHaveBeenCalled();
+});

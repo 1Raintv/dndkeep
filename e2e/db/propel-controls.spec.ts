@@ -28,6 +28,8 @@ test.describe('Saved Propel controls',()=>{
   await dialog.getByRole('checkbox').check();await dialog.getByLabel('Movement',{exact:true}).selectOption('powered');
   await page.screenshot({path:info.outputPath('propel-target.png')});
   await dialog.getByRole('button',{name:'Declare Bonus Action'}).click();await expect(dialog).toContainText('Saved dice total:');
+  await expect(dialog).toContainText('Resolve and confirm the saving throw before moving the target.');
+  await expect(dialog.getByTestId('propel-movement')).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Bonus Action Used',exact:true})).toBeDisabled({timeout:10000});
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('2');
   const declaration=sql(`select request_id from dndkeep_private.propel_declarations where character_id='${charId}'`);
@@ -37,6 +39,7 @@ test.describe('Saved Propel controls',()=>{
   await dialog.getByRole('button',{name:/Resume Telekinetic Propel/}).click();await expect(dialog).toContainText(`Saved dice total: ${roll}.`);
   await dialog.getByRole('button',{name:'Save failed',exact:true}).click();
   await expect(dialog.getByRole('status')).toContainText('Saved: failed. 1 Energy Dice spent.');
+  await expect(dialog.getByTestId('propel-movement')).toContainText(`Move the target ${5*Number(roll)} ft straight toward or away from you.`);
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('1');
   expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${charId}'`)).toBe('1');
   await page.screenshot({path:info.outputPath('propel-finished.png')});

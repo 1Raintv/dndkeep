@@ -7173,3 +7173,22 @@ its snapshot and target identity must match the aura target. Aura save evidence,
 one-use penalties, creature damage, logs and its per-turn receipt/marker still
 need to commit together. This checkpoint fixes a prerequisite, not that whole
 transaction or the broader durable turn controller.
+
+
+### Propel review — settled movement instructions (2026-10-09)
+
+The existing branch labels both Propel cards as Bonus Actions, places Warp
+beside Telekinetic Propel, and offers free movement or an Energy Die roll.
+A review found that its saved-use dialog still instructed map movement before
+save settlement. Movement instructions now require a confirmed failed outcome
+and use the verified receipt distance. Passed/cancelled saves explicitly prohibit
+movement; pending saves wait for confirmation, including resistance decisions.
+Before declaration, the dialog explains conditional Energy Die payment and that
+Warp remains within 30 feet of the caster regardless of the roll.
+
+Nine added component regressions cover both movement types across pending,
+passed, cancelled and failed outcomes, receipt distance and upfront cost text.
+The real desktop/mobile flow verifies pending instructions, reload recovery,
+failed-save movement, one Bonus Action claim and one conditional Energy Die cost.
+Full verify gate and changed-file lint pass (TypeScript 195/195, entry 255.2 KB).
+No production deployment: durable turn/aura recovery integration remains pending.

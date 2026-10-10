@@ -110,7 +110,12 @@ export default function PropelControls({character,persistence,warp=false,campaig
  {row?<section aria-label="Saved Propel use">
  <p>Target: {row.target.name??'Selected creature'} · Strength save DC {classSaveDC(row.caster_snapshot,'INT')}</p>
  <p>{row.roll_result?`Saved dice total: ${row.roll_result.total}.`:'Roll not finalized.'} Bonus Action spent.</p>
- <p>{row.movement==='warp'?'On failure: teleport to an unoccupied space you can see within 30 ft of you, horizontal to you.':`On failure: move ${row.mode==='free'?5:5*(row.roll_result?.total??row.base_roll)} ft straight toward or away from you.`} Apply movement on the map.</p>
+ {/* v2.869 follow-up — Movement follows the settled receipt, including any Legendary Resistance
+     decision. A declaration or provisional roll never authorizes movement. */}
+ {row.outcome==='failed'&&row.result?<p data-testid="propel-movement">{row.movement==='warp'
+  ?'Teleport the target to an unoccupied space you can see within 30 ft of you, horizontal to you.'
+  :`Move the target ${row.result.feet} ft straight toward or away from you.`} Apply movement on the map.</p>
+  :<p>{row.outcome==='passed'?'Save succeeded. Do not move the target.':row.outcome==='cancelled'?'Use cancelled. Do not move the target.':'Resolve and confirm the saving throw before moving the target.'}</p>}
  <p>{row.mode==='powered'?'One Energy Die is spent only on a failed save.':'No Energy Die cost.'} Paid Hit Dice stay spent.</p>
  {row.outcome?<p role="status">Saved: {row.outcome}. {row.result?.energyCost??0} Energy Dice spent.</p>:<div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
  {!row.roll_result&&<button className="btn-ghost" disabled={busy||pending.length>0} onClick={()=>void run((active,id)=>resume(row.request_id,active,id))}>Continue saved roll</button>}
@@ -124,6 +129,7 @@ export default function PropelControls({character,persistence,warp=false,campaig
  <label>Target {context?.encounterId?<select aria-label="Target" value={target} disabled={busy} onChange={e=>{setTarget(e.target.value);setConfirmed(false);}}><option value="">Choose creature</option>{targets.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select>:<input aria-label="Target" maxLength={120} value={target} disabled={busy} onChange={e=>{setTarget(e.target.value);setConfirmed(false);}} placeholder="Tabletop target name"/>}</label>
  <label style={{display:'flex',gap:8,alignItems:'center',margin:'12px 0'}}><input style={{width:18,height:18,flexShrink:0}} type="checkbox" checked={confirmed} disabled={busy} onChange={e=>setConfirmed(e.target.checked)}/> I confirm its size, sight and range are legal.</label>
  <label>Movement <select aria-label="Movement" disabled={busy} value={mode} onChange={e=>setMode(e.target.value as PropelRequest['mode'])}><option value="free">{warp?'Teleport · no die':'5 ft · no die'}</option>{state.technique&&!warp&&<option value="technique">Roll free d4</option>}<option value="powered" disabled={state.dice<1}>Roll Energy Die (d{state.sides})</option></select></label>
+ <p>{mode==='powered'?'Roll one Energy Die now; spend it only if the target fails the save.':mode==='technique'?'Roll a free d4; no Energy Die is spent.':'No roll or Energy Die cost.'}{warp?' The teleport stays within 30 ft of you; rolling does not extend it.':mode!=='free'?' On failure, movement is 5 times the roll in feet.':' On failure, move the target 5 ft straight toward or away from you.'}</p>
  <p>Declaring spends your Bonus Action, even if the save passes. Closing before declaration costs nothing.</p>
  <button className="btn-primary" disabled={busy||pending.length>0||saveDrafts.length>0||!context?.bonusAvailable||!target.trim()||!confirmed} onClick={declare}>Declare Bonus Action</button>
  {context&&!context.bonusAvailable&&<p>Your Bonus Action is unavailable. Saved uses can still be resumed.</p>}
