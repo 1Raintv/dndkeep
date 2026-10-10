@@ -42,12 +42,16 @@ test.describe('saved attack outcome rules',()=>{
   await attack.click();const row=page.getByRole('button',{name:/Boundary Target/});
   await expect(row).toBeEnabled();await expect(row).toContainText(`${baseReach+5} ft`);
   await expect(row).toBeInViewport({ratio:1});
+  const preview=()=>page.evaluate(async()=>{const {useBattleMapStore}=await import('/src/lib/stores/battleMapStore.ts');return useBattleMapStore.getState().reachPreview;});
+  await expect.poll(preview).toMatchObject({sceneId:scene,centerWorldX:35,centerWorldY:35,footprintCells:1,reachFt:baseReach+5});
   await page.screenshot({path:info.outputPath('mutable-form-reach.png')});
   sql(`update campaigns set combat_rounds_elapsed=combat_rounds_elapsed+10 where id='${camp}'`);
   await row.click();await expect(page.getByRole('alert')).toContainText('Reach changed');
   expect(sql(`select count(*) from pending_attacks where campaign_id='${camp}'`)).toBe('0');
+  await expect.poll(preview).toBeNull();
   await attack.click();await expect(row).toBeDisabled();await expect(row).toContainText('out of range');
   await expect(row).toHaveAttribute('title',`Out of range — ${baseReach+5} ft (max ${baseReach} ft)`);
+  await expect.poll(preview).toMatchObject({sceneId:scene,reachFt:baseReach});
   await page.screenshot({path:info.outputPath('mutable-form-reach-expired.png')});
   expect(errors).toEqual([]);
  });

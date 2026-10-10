@@ -1,5 +1,30 @@
 # DNDKeep — Two-Track Roadmap
 
+### Player melee reach previews share targeting geometry (local)
+
+The player melee weapon/unarmed picker now publishes its verified range and live
+attacker footprint to the existing Pixi reach overlay. Canonical token identity
+and footprint geometry handle ordinary, Large and Huge tokens. Loading, movement,
+submission and closing remove the picker preview; cleanup does not erase a newer
+preview owned by another control. Both player and monster previews carry their
+scene ID, and the renderer refuses a preview from another scene.
+
+Focused unit coverage checks footprint centers, position/range updates, cleanup,
+scene changes, missing token identity and invalid ranges. Actual-sheet browser
+checks assert the overlay metadata matches the active and expired Mutable Form
+picker range. A real Pixi browser fixture checks rendered pixel bounds at 5/10
+feet, clearing on close and hiding across scenes on desktop/mobile. Screenshots
+reviewed at both sizes. Full `npm run verify` passes (4,809 tests, TS 193/193,
+entry 256.1 KB). Disconnecting preview publication makes the pixel-boundary test
+fail, proving it guards the connection. All six restored browser cases pass;
+the official overflow probe is clean for the map fixture on desktop/mobile. Evidence: `.tmp/player-reach-overlay-*.log`.
+
+This visualizes the current picker allowance; final selection still rechecks the
+saved form. It is not atomic server-side range enforcement. Weapon-specific
+opportunity attacks and other unfinished Mutable Form effects remain open.
+Production unchanged.
+
+
 ### Mutable Form melee weapon targeting (local)
 
 PlayerAttackButton now reads the saved active form before opening a melee

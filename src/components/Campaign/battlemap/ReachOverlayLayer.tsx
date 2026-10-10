@@ -9,7 +9,8 @@ import { useBattleMapStore } from '../../../lib/stores/battleMapStore';
 /**
  * v2.469.0 — ReachOverlayLayer.
  *
- * Reads battleMapStore.reachPreview. When the DM hovers a melee attack
+ * Reads a scene-scoped battleMapStore.reachPreview from player melee
+ * targeting or monster attack hover. When the DM hovers a melee attack
  * action button in MonsterActionPanel, the panel writes the active
  * token's footprint center + reach in feet to the store; this layer
  * draws a translucent red rectangle covering every cell within
@@ -44,6 +45,7 @@ export function ReachOverlayLayer(props: {
 }) {
   const { viewport, gridSizePx } = props;
   const reachPreview = useBattleMapStore(s => s.reachPreview);
+  const sceneId = useBattleMapStore(s => s.currentSceneId);
   const reachRectRef = useRef<Graphics | null>(null);
 
   useEffect(() => {
@@ -65,7 +67,7 @@ export function ReachOverlayLayer(props: {
   useEffect(() => {
     const rect = reachRectRef.current;
     if (!rect || rect.destroyed) return;
-    if (!reachPreview) {
+    if (!reachPreview || reachPreview.sceneId !== sceneId) {
       rect.visible = false;
       return;
     }
@@ -97,7 +99,7 @@ export function ReachOverlayLayer(props: {
     rect.stroke();
     rect.visible = true;
   // v2.805: a replacement viewport owns new Graphics, even when hover data is unchanged.
-  }, [viewport, reachPreview, gridSizePx]);
+  }, [viewport, reachPreview, gridSizePx, sceneId]);
 
   return null;
 }

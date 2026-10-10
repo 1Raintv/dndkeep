@@ -1495,6 +1495,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
     const aabb = tokenFootprintAABBPx(token, liveBattleMap.grid_size);
     if (!aabb) return;
     setReachPreview({
+      sceneId: liveBattleMap.id,
       centerWorldX: (aabb.minX + aabb.maxX) / 2,
       centerWorldY: (aabb.minY + aabb.maxY) / 2,
       footprintCells: sizeToFootprintCells((token as { size?: unknown }).size),

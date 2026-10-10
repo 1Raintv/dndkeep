@@ -23,6 +23,7 @@
 // rows stay disabled as before.
 
 import { useMemo } from 'react';
+import {useTargetReachPreview} from '../Campaign/battlemap/useTargetReachPreview';
 import { createPortal } from 'react-dom';
 import type { CombatParticipant } from '../../types';
 import {useTargetBattleMap} from '../../lib/hooks/useTargetBattleMap';
@@ -39,6 +40,7 @@ import { TargetGroupChip, rowStyleFor } from './TargetGroupChip';
 interface Props {
   participants: CombatParticipant[];
   selectionDisabled?: boolean;
+  showMeleeReach?: boolean;
   excludeParticipantId?: string | null;
   allowSelfTarget?: boolean;
   title?: string;
@@ -69,6 +71,7 @@ interface Props {
 export default function TargetPickerModal({
   participants,
   selectionDisabled = false,
+  showMeleeReach = false,
   excludeParticipantId,
   allowSelfTarget = false,
   title = 'Pick a target',
@@ -83,6 +86,7 @@ export default function TargetPickerModal({
 }: Props) {
   const {battleMap,loading:rangeLoading,failed:rangeFailed,retry,sceneId}=useTargetBattleMap(!!fromParticipant,campaignId);
   const movementBusy=useMapMovementBusy();
+  useTargetReachPreview(battleMap,fromParticipant,maxRangeFt,showMeleeReach&&!selectionDisabled&&!movementBusy&&!rangeLoading&&!rangeFailed);
 
   // v2.746.0 — rank instead of filter. The distance callback carries the
   // v2.480 footprint-aware math (0 ft for self; null while the map loads

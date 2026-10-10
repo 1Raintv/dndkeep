@@ -236,6 +236,7 @@ export default function PlayerAttackButton({
         <TargetPickerModal
           participants={participants}
           selectionDisabled={busy}
+          showMeleeReach={usesMeleeReach}
           excludeParticipantId={myParticipant.id}
           title={`Attack with ${attackName}`}
           subtitle={`${attackKind === 'save' ? `${saveAbility ?? ''} DC ${saveDC ?? '—'} save · ` : attackKind === 'attack_roll' ? `${(attackBonus ?? 0) >= 0 ? '+' : ''}${attackBonus ?? 0} to hit · ` : ''}${damageDice} ${damageType}`}
