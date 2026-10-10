@@ -15,6 +15,7 @@
 
 import { supabase } from './supabase';
 import { newChainId } from './combatEvents';
+import {psionicRpc} from './api/psionicTurns';
 import type { CombatParticipant } from '../types';
 
 export interface DeclareSaveBatchInput {
@@ -36,6 +37,8 @@ export interface DeclareSaveBatchInput {
   inferredCondition: string | null;
   /** Saved with each attack so a resistance pause cannot lose its rider. */
   conditionIntent?: {conditionName:string;sourcePrefix:'monster_action'|'legendary_action';sourceKind:string;durationRounds:number|null;saveToEnd:{ability:string;dc:number}|null}|null;
+  /** Charge legendary save actions before any rolls, atomically with declaration. */
+  legendaryCost?: number;
   targets: CombatParticipant[];
 }
 
@@ -82,7 +85,7 @@ export async function declareSaveBatch(
     condition_intent: input.conditionIntent ?? null,
   }));
 
-  const { data, error } = await supabase.rpc('declare_save_batch', {
+  const args = {
     p_campaign_id: input.campaignId,
     p_encounter_id: input.encounterId,
     p_chain_id: chainId,
@@ -97,40 +100,46 @@ export async function declareSaveBatch(
     p_damage_type: input.damageType,
     p_inferred_condition: input.inferredCondition,
     p_targets: targetsPayload,
-  });
+  };
+  let data: unknown;
+  let error: {message:string}|null = null;
+  if (input.legendaryCost !== undefined) {
+    const {data: encounter,error: readError} = await supabase.from('combat_encounters').select('psionic_turn_id').eq('id',input.encounterId).single();
+    if(readError || !encounter?.psionic_turn_id) throw new Error('Could not verify the legendary action turn.');
+    const receipt = await psionicRpc('declare_paid_legendary_saves',{p_request:{...args,p_turn_id:encounter.psionic_turn_id,p_legendary_cost:input.legendaryCost}},true) as {chainId:string;turnId:string;cost:number;remaining:number;rows:unknown;replayed:boolean};
+    if(!receipt || receipt.chainId!==chainId || receipt.turnId!==encounter.psionic_turn_id || receipt.cost!==input.legendaryCost || !Number.isInteger(receipt.remaining) || receipt.remaining<0 || typeof receipt.replayed!=='boolean') throw new Error('The legendary action payment could not be verified. Review the saved attack before trying again.');
+    data=receipt.rows;
+  } else {
+    ({data,error}=await supabase.rpc('declare_save_batch',args));
+  }
 
   if (error) {
     console.error('[declareSaveBatch] RPC failed', error);
     return null;
   }
 
-  // The RPC returns one row per target in the same order we sent them.
-  // Map row → target by index. We also keep an id index as a safety
-  // net in case Postgres reorders (it shouldn't for a sequential FOR
-  // loop, but belt-and-suspenders).
-  const rawRows = (data as Array<{
+  // A partial or malformed response is not permission to skip paid targets.
+  // Keep the attack IDs for review rather than silently completing a subset.
+  const rawRows = data as Array<{
     pending_attack_id: string;
     target_participant_id: string;
     target_name: string;
     immune_to_condition: boolean;
-  }>) ?? [];
-
+  }>;
   const targetById = new Map(liveTargets.map(t => [t.id, t]));
-  const rows: DeclaredSaveTargetRow[] = rawRows.map(r => {
-    const target = targetById.get(r.target_participant_id);
-    if (!target) {
-      // Should never happen — the RPC only echoes targets we sent.
-      // If it does, drop the row rather than crashing the whole batch.
-      console.warn('[declareSaveBatch] RPC returned unknown target', r);
-    }
-    return {
-      pendingAttackId: r.pending_attack_id,
-      targetParticipantId: r.target_participant_id,
-      targetName: r.target_name,
-      immuneToCondition: r.immune_to_condition,
-      target: target!,
-    };
-  }).filter(r => r.target);
+  if(!Array.isArray(rawRows) || rawRows.length!==liveTargets.length
+    || rawRows.some(r=>!r || typeof r.pending_attack_id!=='string' || !r.pending_attack_id || !targetById.has(r.target_participant_id) || typeof r.target_name!=='string' || typeof r.immune_to_condition!=='boolean')
+    || new Set(rawRows.map(r=>r.pending_attack_id)).size!==rawRows.length
+    || new Set(rawRows.map(r=>r.target_participant_id)).size!==rawRows.length) {
+    throw new Error('The declared save targets could not be verified. Review the saved attacks before trying again.');
+  }
+  const rows: DeclaredSaveTargetRow[] = rawRows.map(r => ({
+    pendingAttackId: r.pending_attack_id,
+    targetParticipantId: r.target_participant_id,
+    targetName: r.target_name,
+    immuneToCondition: r.immune_to_condition,
+    target: targetById.get(r.target_participant_id)!,
+  }));
 
   return { chainId, rows };
 }

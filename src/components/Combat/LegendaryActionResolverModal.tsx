@@ -488,6 +488,7 @@ export default function LegendaryActionResolverModal({
         damageType: sv.damageType,
         inferredCondition,
         conditionIntent: sv.conditionName ? {conditionName:sv.conditionName,sourcePrefix:'legendary_action',sourceKind:laOption.name.toLowerCase().replace(/[^a-z0-9]+/g,'_'),durationRounds:null,saveToEnd:null} : null,
+        legendaryCost: cost,
         targets,
       });
       if (!batch) {
@@ -523,7 +524,7 @@ export default function LegendaryActionResolverModal({
         else failed++;
       }));
       window.dispatchEvent(new Event('dndkeep:hp-applied'));
-      await spend();
+      // v2.869: points were charged with declaration, before any effects.
       const parts = [`${laOption.name}: ${passed} saved · ${failed} failed`];
       if (resistancePending > 0) parts.push(`${resistancePending} awaiting Legendary Resistance; finish pending attacks after deciding`);
       if (sv.conditionName && conditionApplied > 0) parts.push(`${sv.conditionName} ×${conditionApplied}`);

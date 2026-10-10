@@ -393,10 +393,16 @@ test.describe('Atomic aura resolution',()=>{
   expect(errors).toEqual([]);
  });
 
- test('legendary save conditions settle without resistance before closing the attack',async({page},info)=>{
+ for(const lostReply of [false,true]) test('legendary save conditions settle without resistance before closing the attack'+(lostReply?' after a lost payment reply':''),async({page},info)=>{
   monster();sql(`update homebrew_monsters set dex=10,saving_throws='{}' where id='${b}';update combat_participants set legendary_actions_total=3,legendary_actions_remaining=3 where id='${pa}';update combat_participants set legendary_resistance=0 where id='${pb}'`);await signInFixtureDm(page);
-  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error' && !(lostReply && message.text().includes('503')))errors.push(message.text());});
 
+  const requests:string[]=[];
+  await page.route('**/rest/v1/rpc/declare_paid_legendary_saves',async route=>{
+   requests.push(JSON.stringify(route.request().postDataJSON()));const response=await route.fetch();
+   if(lostReply && requests.length===1){expect(response.ok()).toBe(true);await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Simulated lost payment reply'})});}
+   else await route.fulfill({response});
+  });
   await page.evaluate(async({campaign,enc,actor,entity,combatant})=>{
    Math.random=()=>0.01;
    const reactPath='/node_modules/.vite/deps/react.js',domPath='/node_modules/.vite/deps/react-dom_client.js',modalPath='/src/components/Combat/LegendaryActionResolverModal.tsx',toastPath='/src/components/shared/Toast.tsx';
@@ -408,11 +414,11 @@ test.describe('Atomic aura resolution',()=>{
   await dialog.locator('button[data-target-group]').first().click();await dialog.getByRole('button',{name:'Resolve 1 target & spend 2'}).click();
   await expect(dialog).toBeHidden();
   await expect(page.getByText(/Wing Attack: 0 saved · 1 failed · Prone ×1/)).toBeVisible();
-  await page.screenshot({path:`.tmp/legendary-save-settled-${info.project.name}.png`});
+  await page.screenshot({path:`.tmp/legendary-save-settled-${lostReply}-${info.project.name}.png`});
   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[role=dialog], [role=dialog] *, .toast, .toast *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
   expect(JSON.parse(sql(`select jsonb_build_object('state',state,'pending',pending_lr_decision,'damage',damage_final) from pending_attacks where encounter_id='${enc}'`))).toMatchObject({state:'canceled',pending:false,damage:null});
   expect(JSON.parse(sql(`select recipe from dndkeep_private.attack_condition_intents where encounter_id='${enc}'`))).toMatchObject({conditionName:'Prone',sourcePrefix:'legendary_action',durationRounds:null,saveToEnd:null});
-  expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe('20');expect(sql(`select coalesce(active_conditions,'{}'::text[]) @> array['Prone'] from combatants where id='${cb}'`)).toBe('t');expect(sql(`select legendary_actions_remaining from combat_participants where id='${pa}'`)).toBe('1');expect(sql(`select count(*) from dndkeep_private.attack_condition_resolutions r join pending_attacks a on a.id=r.attack_id where a.encounter_id='${enc}'`)).toBe('1');expect(errors).toEqual([]);
+  expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe('20');expect(sql(`select coalesce(active_conditions,'{}'::text[]) @> array['Prone'] from combatants where id='${cb}'`)).toBe('t');expect(sql(`select legendary_actions_remaining from combat_participants where id='${pa}'`)).toBe('1');expect(sql(`select count(*) from dndkeep_private.attack_condition_resolutions r join pending_attacks a on a.id=r.attack_id where a.encounter_id='${enc}'`)).toBe('1');expect(requests).toHaveLength(lostReply?2:1);if(lostReply)expect(requests[0]).toBe(requests[1]);expect(sql(`select count(*) from dndkeep_private.legendary_save_payments p join dndkeep_private.save_batch_declarations d using(chain_id) where d.encounter_id='${enc}'`)).toBe('1');expect(errors).toEqual([]);
  });
 
  test('creature save summaries match live automation and mark unknown data',async({page},info)=>{

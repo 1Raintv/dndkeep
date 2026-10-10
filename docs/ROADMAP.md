@@ -8485,3 +8485,33 @@ This is the server prerequisite, not finished browser recovery: saveBatch.ts sti
 generates a fresh chain per invocation. Next persist the exact browser request,
 resume existing attack states without rerolling, and make action/recharge payment
 recoverable. Do not claim that repeated UI clicks are already deduplicated.
+
+
+### 2026-10-10 — charge legendary save batches before effects (unreleased)
+
+Migration 20261010070040 adds a private payment receipt and a checked DM-only
+paid declaration. Legendary save actions now create their attacks, debit points
+and log the spend in one transaction before rolling saves or applying conditions.
+The modal no longer calls the legacy spend helper after resolving its batch.
+Insufficient points, incapacitation, changed turns and the actor's own turn reject
+before effects. Historical receipt replay preserves later resource refills and
+never charges again. Empty target sets and pre-existing unpaid declarations reject.
+Hidden actor spends retain hidden event visibility.
+
+The client verifies the payment envelope and complete target set; transient lost
+replies retry the exact request/chain. Six focused database checks passed including
+simultaneous retries, ownership, timing, changed cost and late-log rollback.
+Six desktop/mobile browser checks passed across immediate saves, resistance pauses
+and an injected lost payment response (two identical submissions, one debit and
+one attack). Screenshots inspected; overflow and unexpected error checks passed.
+Removing the paid declaration failed the regression; restoration passed again.
+Full verification passed: 3,947 units, TS 194/194, entry 255.7 KB. SQL lint clean;
+existing keep_warm/client_errors advisor findings unchanged. Exact local migration
+ledger verified; foreign local history preserved. Not deployed.
+
+Remaining: persist the exact browser request across reload/exhausted retries and
+resume each recorded attack phase without rerolling. Fresh button invocations
+still generate new IDs. Other legendary-action types, normal monster action/
+recharge payment, and full legendary-action timing limits retain legacy paths.
+This checkpoint guarantees one charge per same paid request, not full encounter
+or browser recovery. The rest of the release audit remains open.

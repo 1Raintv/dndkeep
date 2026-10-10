@@ -210,6 +210,46 @@ test.describe('Atomic encounter completion',()=>{
   expect(()=>sql(auth(dm,saveBatch()))).toThrow(/no longer in this encounter/);expect(sql(`select count(*) from pending_attacks where campaign_id='${campaign}'`)).toBe('0');
  });
 
+ const paidRequest=()=>({p_campaign_id:campaign,p_encounter_id:enc,p_chain_id:request,p_turn_id:turn,p_legendary_cost:2,p_attacker_id:pa,p_attacker_name:'Spoofed',p_attacker_type:'creature',p_attack_name:'Legendary fixture',p_save_dc:15,p_save_ability:'DEX',p_save_success_effect:'none',p_damage_dice:null,p_damage_type:null,p_inferred_condition:null,p_targets:[{participant_id:pb}]});
+ const paidSetup=()=>{sql(`update combat_encounters set current_turn_index=1 where id='${enc}';update combat_participants set legendary_actions_total=3,legendary_actions_remaining=3 where id='${pa}'`);turn=sql(`select psionic_turn_id from combat_encounters where id='${enc}'`);};
+ const paidCall=(value=paidRequest())=>`select declare_paid_legendary_saves('${JSON.stringify(value)}'::jsonb)`;
+ const paidCounts=()=>JSON.parse(sql(`select jsonb_build_object('remaining',(select legendary_actions_remaining from combat_participants where id='${pa}'),'attacks',(select count(*) from pending_attacks where encounter_id='${enc}'),'payments',(select count(*) from dndkeep_private.legendary_save_payments where chain_id='${request}'),'logs',(select count(*) from combat_events where encounter_id='${enc}' and event_type='legendary_action_used'))`));
+ test('paid legendary save declaration commits points, attacks and one event together',()=>{
+  paidSetup();const q=paidCall(),first=JSON.parse(sql(auth(dm,q)));
+  expect(first).toMatchObject({chainId:request,turnId:turn,cost:2,remaining:1,replayed:false});expect(first.rows).toHaveLength(1);
+  expect(paidCounts()).toEqual({remaining:1,attacks:1,payments:1,logs:1});
+  sql(`update combat_participants set legendary_actions_remaining=3 where id='${pa}';update pending_attacks set state='canceled' where encounter_id='${enc}'`);finish();
+  expect(JSON.parse(sql(auth(dm,q)))).toEqual({...first,replayed:true});expect(paidCounts()).toEqual({remaining:3,attacks:1,payments:1,logs:1});
+ });
+ test('paid legendary saves reject insufficient points before creating effects',()=>{
+  paidSetup();sql(`update combat_participants set legendary_actions_remaining=1 where id='${pa}'`);
+  expect(()=>sql(auth(dm,paidCall()))).toThrow(/Not enough/);expect(paidCounts()).toEqual({remaining:1,attacks:0,payments:0,logs:0});
+ });
+ test('paid legendary saves reject wrong owners, stale turns and their own turn',()=>{
+  paidSetup();expect(()=>sql(auth(player,paidCall()))).toThrow(/Only the campaign DM/);
+  expect(()=>sql(auth(dm,paidCall({...paidRequest(),p_turn_id:randomUUID()})))).toThrow(/turn changed/);
+  sql(`update combat_encounters set current_turn_index=0 where id='${enc}'`);turn=sql(`select psionic_turn_id from combat_encounters where id='${enc}'`);expect(()=>sql(auth(dm,paidCall()))).toThrow(/another creature/);
+  expect(paidCounts()).toEqual({remaining:3,attacks:0,payments:0,logs:0});
+ });
+ test('paid legendary saves reject incapacitated actors and changed retry costs',()=>{
+  paidSetup();sql(`update combatants set active_conditions=array['Stunned'] where id='${ca}'`);expect(()=>sql(auth(dm,paidCall()))).toThrow(/incapacitated/);
+  sql(`update combatants set active_conditions='{}' where id='${ca}'`);sql(auth(dm,paidCall()));
+  expect(()=>sql(auth(dm,paidCall({...paidRequest(),p_legendary_cost:1})))).toThrow(/request changed/);expect(paidCounts()).toEqual({remaining:1,attacks:1,payments:1,logs:1});
+ });
+ test('paid legendary save log failure rolls back both charge and declaration',()=>{
+  paidSetup();const fn='reject_paid_'+randomUUID().replaceAll('-','');
+  sql(`create function public.${fn}() returns trigger language plpgsql as $$begin if new.chain_id='${request}' and new.event_type='legendary_action_used' then raise exception 'fixture paid log failure';end if;return new;end$$;create trigger ${fn} before insert on combat_events for each row execute function public.${fn}()`);
+  try{expect(()=>sql(auth(dm,paidCall()))).toThrow(/fixture paid log failure/);expect(paidCounts()).toEqual({remaining:3,attacks:0,payments:0,logs:0});expect(sql(`select count(*) from dndkeep_private.save_batch_declarations where chain_id='${request}'`)).toBe('0');}
+  finally{sql(`drop trigger ${fn} on combat_events;drop function public.${fn}()`);}
+  expect(JSON.parse(sql(auth(dm,paidCall()))).remaining).toBe(1);
+ });
+ test('simultaneous paid legendary save retries debit once and preserve hidden visibility',async()=>{
+  paidSetup();sql(`update combat_participants set hidden_from_players=true where id='${pa}'`);
+  const q=auth(dm,paidCall());const run=()=>new Promise<{code:number|null,out:string,error:string}>(resolve=>{const child=spawn('docker',args);let out='',error='';child.stdout.on('data',v=>out+=v);child.stderr.on('data',v=>error+=v);child.on('close',code=>resolve({code,out,error}));child.stdin.end(q);});
+  const results=await Promise.all([run(),run()]);expect(results.map(r=>r.code),JSON.stringify(results)).toEqual([0,0]);expect(results.map(r=>JSON.parse(r.out).replayed).sort()).toEqual([false,true]);
+  expect(paidCounts()).toEqual({remaining:1,attacks:1,payments:1,logs:1});expect(sql(`select visibility from combat_events where chain_id='${request}' and event_type='legendary_action_used'`)).toBe('hidden_from_players');
+ });
+
  const recipe=()=>({conditionName:'Frightened',sourcePrefix:'monster_action',sourceKind:'frightful_presence',durationRounds:10,saveToEnd:{ability:'WIS',dc:15}});
  const effectBatch=(intent:unknown)=>{const target={participant_id:pb,name:'B',type:'character',entity_id:b,condition_intent:intent};return saveBatch(pa,[target]).replace(",null,'",",'frightened','");};
  test('save batches durably capture rider duration, source, repeat save and actor identity',()=>{
