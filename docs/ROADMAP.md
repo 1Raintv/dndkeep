@@ -8317,3 +8317,26 @@ layout changed. Not deployed.
 
 Next: finish audit of attack/reaction payment and turn boundaries, and provide
 explicit recovery for legacy canceled attacks with unresolved resistance.
+
+
+### 2026-10-10 — wait for final saves before automated riders (unreleased)
+
+Legendary-action save batches no longer apply condition riders while Legendary
+Resistance remains pending. A shared pure save-outcome check rejects missing,
+mismatched, canceled or already-progressed rows before downstream effects.
+Single-target and batch monster actions use the same check. Batch errors are
+reported as unresolved instead of falsely counting them as failed saving throws;
+pending resistance gets its own summary count. Existing action accounting remains
+one spend for the declared batch; transaction consolidation is still pending.
+
+The real legendary-action modal was tested on local desktop/mobile: one pending
+resistance, unchanged HP, no Prone, and one two-point action spend. Screenshots
+inspected, official overflow probe passed, browser console/page errors absent.
+Removing the early return made that test fail on incorrectly applied Prone;
+restoring it passed both sizes again. No new database migration. Full required
+gate passed (TS 194/194; entry 255.7 KB), plus pure outcome regression tests.
+
+Remaining: persist condition-rider intent and resume it after the resistance
+choice; current pending-attack controls do not automatically restore all inferred
+monster/legendary condition riders. Do not claim complete automation or replay-safe
+batch payment until that continuation and accounting are consolidated. Not deployed.

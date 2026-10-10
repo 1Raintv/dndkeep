@@ -1,3 +1,4 @@
+import {saveResolutionOutcome} from '../../rules/saveResolution';
 import {verifiedTargetSaves,UnverifiedSaveBonusError} from '../../lib/verifiedTargetSaves';
 // v2.446.0 — Legendary Action resolution modal.
 //
@@ -495,10 +496,14 @@ export default function LegendaryActionResolverModal({
       let passed = 0;
       let failed = 0;
       let conditionApplied = 0;
+      let resistancePending = 0;
       await Promise.all(batch.rows.map(async (row) => {
         const sb = saveBonuses.get(row.target.id)!;
         const r = await rollSave(row.pendingAttackId, sb.bonus);
-        const ok = (r as any)?.save_result === 'passed';
+        const outcome = saveResolutionOutcome(r, row.pendingAttackId);
+        // v2.869: never apply riders, cancel or count a failure before the DM decides.
+        if (outcome === 'awaiting_resistance') { resistancePending++; return; }
+        const ok = outcome === 'passed';
         if (sv.damageDice) {
           const damaged = await rollDamage(r?.id ?? row.pendingAttackId);
           if (damaged && damaged.state === 'damage_rolled') {
@@ -537,8 +542,9 @@ export default function LegendaryActionResolverModal({
       window.dispatchEvent(new Event('dndkeep:hp-applied'));
       await spend();
       const parts = [`${laOption.name}: ${passed} saved · ${failed} failed`];
+      if (resistancePending > 0) parts.push(`${resistancePending} awaiting Legendary Resistance; finish pending attacks after deciding`);
       if (sv.conditionName && conditionApplied > 0) parts.push(`${sv.conditionName} ×${conditionApplied}`);
-      showToast(parts.join(' · '), failed > 0 ? 'info' : 'success');
+      showToast(parts.join(' · '), failed > 0 || resistancePending > 0 ? 'info' : 'success');
       onClose();
     } catch (err) {
       if(!(err instanceof UnverifiedSaveBonusError))console.error('[LegendaryActionResolverModal] save batch failed', err);

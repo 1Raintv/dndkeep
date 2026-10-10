@@ -1,3 +1,4 @@
+import {saveResolutionOutcome} from '../../rules/saveResolution';
 import {verifiedTargetSaves,UnverifiedSaveBonusError} from '../../lib/verifiedTargetSaves';
 import {explicitAttackMode} from '../../rules/attackMode';
 import './MonsterActionPanel.css';
@@ -1243,6 +1244,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
             // creatures, level-based for PCs, both with prof check).
             const sb = saveBonuses!.get(target.id)!;
             const rolled = await rollSave(attack.id, sb.bonus);
+            const saveOutcome = saveResolutionOutcome(rolled, attack.id);
 
             // v2.414.0 — Show Combat Rolls. Animate the d20 +
             // modifier + total before continuing.
@@ -1265,7 +1267,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
             // the DM. The LegendaryResistancePromptModal (already in
             // the codebase) will pick up pending_lr_decision via
             // realtime and surface the choice.
-            if (rolled && (rolled as any).pending_lr_decision) {
+            if (saveOutcome === 'awaiting_resistance') {
               showToast(`${target.name} may use Legendary Resistance — resolve via the prompt.`, 'info');
             } else if (a.damage_dice) {
               // Save with damage (e.g. dragon breath weapon). Roll
@@ -1325,7 +1327,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
               // roll so the DM can narrate the immunity (the player
               // still saw their character roll, which is what they
               // wanted).
-              const passed = (rolled as any)?.save_result === 'passed';
+              const passed = saveOutcome === 'passed';
               if (passed) {
                 showToast(`${target.name} succeeded on ${ability} save vs ${a.name}.`, 'success');
               } else if (targetImmuneToCondition && inferredCondition) {
@@ -1632,6 +1634,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       let conditionAppliedCount = 0;
       let immuneCount = 0;
       let lrPendingCount = 0;
+      let unresolvedCount = 0;
 
       // v2.443.0 — Batch declare. One round-trip to:
       //   - insert N pending_attacks rows (state='declared')
@@ -1691,11 +1694,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
         try {
           const sb = saveBonuses.get(target.id)!;
           const rolled = await rollSave(pendingAttackId, sb.bonus);
-          const passed = (rolled as any)?.save_result === 'passed';
+          const saveOutcome = saveResolutionOutcome(rolled, pendingAttackId);
+          const passed = saveOutcome === 'passed';
 
           // LR-pending targets pause here; the LR modal will pick
           // up the pending row via realtime and resolve out-of-band.
-          if (rolled && (rolled as any).pending_lr_decision) {
+          if (saveOutcome === 'awaiting_resistance') {
             lrPendingCount++;
             showToast(`${target.name} may use Legendary Resistance — resolve via the prompt.`, 'info');
             return;
@@ -1752,7 +1756,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
           }
         } catch (err) {
           console.error(`[MonsterActionPanel] save chain failed for ${target.name}`, err);
-          failedCount++;
+          unresolvedCount++;
         }
       }));
 
@@ -1769,7 +1773,9 @@ export default function MonsterActionPanel({ isDM }: Props) {
       if (immuneCount > 0 && conditionName) {
         parts.push(`immune to ${conditionName} ×${immuneCount}`);
       }
-      showToast(parts.join(' · '), failedCount > 0 ? 'info' : 'success');
+      if (lrPendingCount > 0) parts.push(`${lrPendingCount} awaiting Legendary Resistance`);
+      if (unresolvedCount > 0) parts.push(`${unresolvedCount} unresolved — review pending attacks`);
+      showToast(parts.join(' · '), failedCount > 0 || lrPendingCount > 0 || unresolvedCount > 0 ? 'info' : 'success');
 
       // ── ONE accounting decrement for the whole batch ──────────
       // Mirrors the single-target accounting at the end of handlePick.
