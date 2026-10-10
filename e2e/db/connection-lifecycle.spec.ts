@@ -203,4 +203,56 @@ test.describe('saved Connection private lifecycle',()=>{
   expect(errors).toEqual([]);
  });
 
+ for(const scenario of ['free','paid','fresh rejection'] as const)test(`Connection retry retains correct payment: ${scenario}`,async({page},info)=>{
+  sql(`update characters set level=5,feature_uses='${scenario==='paid'?'{"Telepathic Connection":1}':'{}'}' where id='${character}';
+   update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${owner}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${owner}','${owner}',jsonb_build_object('sub','${owner}','email','${owner}@connection.local'),'email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${owner}@connection.local`);
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(`/e2e/fixtures/connection.html?character=${character}`);
+  const panel=page.getByRole('region',{name:'Telepathic Connection controls'});
+  await expect(panel).toContainText('Telepathy · 30 ft');
+  let behavior:'drop'|'deny'|'allow'=scenario==='fresh rejection'?'deny':'drop';const sent:{p_payload:{requestId:string}}[]=[];
+  await page.route('**/rest/v1/rpc/psionic_connection',async route=>{
+   const body=route.request().postDataJSON();if(body.p_operation!=='begin')return route.continue();sent.push(body);
+   if(behavior==='drop'){const response=await route.fetch();expect(response.ok()).toBe(true);return route.abort();}
+   if(behavior==='deny')return route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({code:'42501',message:'Extension permission rejected',details:null,hint:null})});
+   return route.continue();
+  });
+  const extend=panel.getByRole('button',{name:scenario==='paid'?'Extend telepathy (1 die)':'Extend telepathy (free)',exact:true});
+  await extend.click();await page.getByRole('button',{name:'Roll and extend',exact:true}).click();
+  if(scenario==='fresh rejection'){
+   await expect(panel.getByRole('alert')).toContainText('Extension permission rejected');
+   await expect(panel.getByRole('button',{name:'Confirm saved extension'})).toHaveCount(0);
+   expect(await page.evaluate(id=>localStorage.getItem(`dndkeep:connection:${id}`),character)).toBeNull();
+   expect(sql(`select count(*) from dndkeep_private.connection_declarations where character_id='${character}'`)).toBe('0');
+   expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${character}'`)).toBe('0');
+   behavior='allow';await extend.click();await page.getByRole('button',{name:'Roll and extend',exact:true}).click();
+  }else{
+   await expect(panel.getByRole('button',{name:'Confirm saved extension'})).toBeEnabled();expect(sent).toHaveLength(2);
+   const original=await page.evaluate(id=>localStorage.getItem(`dndkeep:connection:${id}`),character);
+   expect(original).not.toBeNull();
+   expect(sql(`select count(*) from dndkeep_private.connection_declarations where character_id='${character}'`)).toBe('1');
+   behavior='deny';await page.reload();await panel.getByRole('button',{name:'Confirm saved extension'}).click();
+   await expect(panel.getByRole('alert')).toContainText('Extension permission rejected');
+   await expect(panel.getByRole('button',{name:'Confirm saved extension'})).toBeEnabled();
+   expect(await page.evaluate(id=>localStorage.getItem(`dndkeep:connection:${id}`),character)).toBe(original);
+   await expect(panel.getByRole('button',{name:/Extend telepathy/})).toBeDisabled();
+   await page.screenshot({path:info.outputPath('connection-retry-retained.png')});
+   behavior='allow';await page.reload();await panel.getByRole('button',{name:'Confirm saved extension'}).click();
+  }
+  await expect(panel).toContainText('60m 0s remaining');
+  await expect(panel.getByRole('button',{name:'Confirm saved extension'})).toHaveCount(0);
+  const declaration=JSON.parse(sql(`select to_jsonb(d) from dndkeep_private.connection_declarations d where character_id='${character}'`));
+  await expect(panel).toContainText(`Telepathy · ${30+10*declaration.base_roll} ft`);
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe(scenario==='paid'?'5':'6');
+  expect(sql(`select feature_uses->>'Telepathic Connection' from characters where id='${character}'`)).toBe(scenario==='paid'?'2':'1');
+  expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${character}'`)).toBe('1');
+  expect(sql(`select count(*) from psionic_energy_uses where character_id='${character}' and request->>'operation'='connection'`)).toBe('1');
+  expect(await page.evaluate(id=>localStorage.getItem(`dndkeep:connection:${id}`),character)).toBeNull();
+  if(scenario==='fresh rejection'){expect(sent).toHaveLength(2);expect(sent[0].p_payload.requestId).not.toBe(sent[1].p_payload.requestId);}
+  else{expect(sent).toHaveLength(4);for(const request of sent)expect(request).toEqual(sent[0]);}
+  await page.screenshot({path:info.outputPath('connection-retry-confirmed.png')});expect(errors).toEqual([]);
+ });
+
 });

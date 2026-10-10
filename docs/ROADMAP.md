@@ -1,5 +1,29 @@
 # DNDKeep — Two-Track Roadmap
 
+### Connection preserves committed-but-unconfirmed extensions (local; not released)
+
+Connection now distinguishes freshly generated first sends from saved retries.
+A definitive rejection may discard a fresh request; a later rejection retains the
+original request because an earlier lost reply may follow a committed extension.
+Successful replay finishes the saved roll and clears recovery without new dice,
+a second Bonus Action, another free-use increment or another Energy Die payment.
+
+New real-browser regressions cover free and paid extensions plus safe recovery
+from a fresh rejection. The first two failed before the fix because the retry
+button disappeared; the fresh rejection case already passed and remains green.
+Tests commit both lost replies, reload, simulate a later 403, then replay the same
+request. Source recheck: owner-provided UA update p.3 requires an available Energy
+Die even for the first-free extension, matching the existing availability guard.
+
+Validation: all 34 Connection lifecycle cases pass across desktop/mobile,
+including ownership, one-hour game duration, rest expiry, Surge/Enkindled and
+existing official overflow checks. Full `npm run verify`: 4,642 tests,
+TS 193/193, 256.1 KB entry. Screenshots inspected. Evidence:
+`.tmp/connection-retry-{before,browser,gate}.log`.
+No schema changes; production unchanged. Current prior-head preview remains
+build-rate-limited. Next: Connection's seedless preparation marker still blocks
+recovery after a failed final storage write; apply reload-safe saved entropy.
+
 ### Propel retains uncertain requests after later rejection (local; not released)
 
 A lost reply can follow a committed declaration or failed-save settlement. A later

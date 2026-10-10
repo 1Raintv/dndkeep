@@ -49,10 +49,13 @@ export default function ConnectionControls({character,persistence}:{character:Ch
   checkEnhancements(id,declarationId);await finishConnection(id,declarationId);
   forgetConnection(id,declarationId);if(active())setTick(n=>n+1);
  }
- async function send(request:ConnectionRequest,id:string,active:()=>boolean,enhance:boolean){
+ async function send(request:ConnectionRequest,id:string,active:()=>boolean,enhance:boolean,freshDeclaration=false){
   let saved:ConnectionRecord;
   try{saved=await beginConnection(id,request);}catch(cause){
-   if(cause instanceof PsionicRequestError&&cause.definitelyNotPaid)forgetConnection(id,request.requestId);throw cause;
+   // v2.869: a later rejection cannot disprove an earlier committed extension
+   // whose reply was lost. Only a freshly created, first-send request is safe
+   // to discard on definitive rejection; recovery preserves its original roll.
+   if(freshDeclaration&&cause instanceof PsionicRequestError&&cause.definitelyNotPaid)forgetConnection(id,request.requestId);throw cause;
   }
   if(!active())return;acceptPsionicEnergyReceipt(latest,saved.energy_receipt);
   if(enhance&&!saved.roll_result){
@@ -74,7 +77,7 @@ export default function ConnectionControls({character,persistence}:{character:Ch
   const current=psionicPowerState(latest.current);
   if(!current.valid||!current.connectionValid||current.dice<1||current.connectionFree!==before.connectionFree)throw new Error('Resources changed. Review Connection and try again.');
   const request=prepareConnection(id,{requestId:crypto.randomUUID(),turnId,free:current.connectionFree},()=>rollDie(current.sides));setPending(request);
-  await send(request,id,active,true);
+  await send(request,id,active,true,true);
  });}
  const state=psionicPowerState(latest.current),unfinished=rows.filter(r=>!r.roll_result&&r.request_id!==pending?.requestId);
  const display=connectionRangeDisplay(state.telepathyRange,rows.map(r=>({total:r.roll_result?.total??null,remainingSeconds:r.remainingSeconds})));
