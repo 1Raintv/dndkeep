@@ -9095,3 +9095,30 @@ persist uncertain choices and expose the recoverable choice controls. Keep
 existing unfinished-roll/save recovery intact. Bolt's live damage/defense
 resolution remains to verify. No production deployment.
 Full gate for this checkpoint: 4,177 unit tests, TS 194/194, entry 255.7 KB.
+
+### Telekinetic Techniques — durable choice recovery checkpoint
+
+Technique choices now have per-character/per-declaration browser recovery,
+separate from original roll/save drafts. Confirmation stores the exact choice
+before any request; storage failures prevent sending. Different choices cannot
+overwrite an uncertain attempt. Corrupt or mismatched entries remain intact and
+surface an error. Cleanup removes only the matching attempt; failed cleanup
+leaves an idempotent retry.
+
+The confirmation/recovery coordinator reads the server before resending. An
+already-saved choice, including a winner from another tab, is shown without
+applying another effect. With no server receipt, recovery resends the exact local
+choice. Read/transport/rule failures retain the attempt until authoritative
+reconciliation; none invent a new roll or resource payment.
+
+25 unit regressions cover every choice, isolation, corrupt data, storage failures,
+cleanup races, uncertainty, read-first recovery and another tab's winning choice.
+Desktop/mobile local browser checks recover saved Boost over a conflicting local
+Disorient attempt, clear that attempt, and retain the existing movement/Dash/
+expiry guarantees. No new migration or production deployment.
+
+The player controls still need to invoke this coordinator. Server discovery of
+failed declarations awaiting optional choice is next; old expired unresolved
+attempts also need an explicit authoritative closure path. Do not silently drop
+those drafts or present technique automation as player-ready yet.
+Full gate: 4,202 unit tests, TS 194/194, entry 255.7 KB.

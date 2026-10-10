@@ -103,6 +103,9 @@ test.describe('Telekinetic Technique choices',()=>{
   await signInAsSeedDm(page,`${dm}@propelsave.local`);await page.goto(`/campaigns/${campaign}`);
   const savedTechnique=await page.evaluate(async({character,id})=>{const records='/src/lib/api/psionicPropel.ts',techniques='/src/lib/api/propelTechniques.ts';const row=await(await import(/* @vite-ignore */ records)).readPropel(character,id);return(await import(/* @vite-ignore */ techniques)).choosePropelTechnique(row);},{character,id});
   expect(savedTechnique).toMatchObject({declarationId:id,choice:'boost',actorId:caster,targetId:target,buff:{speedBonus:10}});
+  const recovered=await page.evaluate(async({character,id})=>{const records='/src/lib/api/psionicPropel.ts',storage='/src/lib/propelTechniqueRecovery.ts',recovery='/src/lib/confirmPropelTechnique.ts';const saved=await import(/* @vite-ignore */ storage);saved.rememberPropelTechnique(character,{declarationId:id,choice:'disorient'});const row=await(await import(/* @vite-ignore */ records)).readPropel(character,id);const result=await(await import(/* @vite-ignore */ recovery)).resumePropelTechnique(row);return {result,pending:saved.pendingPropelTechniques(character)};},{character,id});
+  expect(recovered).toMatchObject({result:{choice:'boost',declarationId:id},pending:[]});
+
   const strip=page.getByRole('region',{name:'Combat initiative'});
   await expect(strip.getByText('40/40 ft',{exact:true})).toBeVisible();
   const validate=()=>page.evaluate(async id=>{const path='/src/lib/movement.ts';return (await import(/* @vite-ignore */ path)).canMove(id,40);},target);
