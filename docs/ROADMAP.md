@@ -7810,3 +7810,22 @@ movement/outgoing processing; finish typed defenses/concentration for buff ticks
 verify other actions cannot race unfinished incoming work; review combatant
 identity edits during a pending transition. This entry does not claim all combat
 or Psion automation is finished.
+
+
+### Propel declaration storage guard (2026-10-10, unreleased)
+
+Telekinetic/Warp Propel now save an interruption marker before rolling the
+optional die. A failed marker write prevents RNG and submission; a failed final
+write preserves the marker and blocks replacement rolls. Malformed, mismatched,
+or interrupted saved requests are no longer silently treated as absent. Their
+browser data stays intact and the player sees the recovery error. Free movement
+never calls RNG. Existing saved successful requests still resume exact dice.
+An interrupted marker without a completed roll requires investigation; this
+change deliberately does not invent a result or automatically clear it.
+
+Regression coverage includes storage failure before/after RNG, corrupt JSON,
+wrong request identity, invalid targets, zero-die movement, and player-control
+error handling. All 69 focused cases pass; the full project verification gate
+passes with the existing TypeScript baseline and entry budget unchanged. No new
+lint errors in the four changed code/test files. Existing unfinished aura
+integration remains separate and uncommitted. No production deployment.

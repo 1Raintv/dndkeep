@@ -1,16 +1,46 @@
 // @vitest-environment happy-dom
-import {beforeEach,expect,it,vi} from 'vitest';
+import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 vi.mock('./supabase',()=>({supabase:{}}));
-import {rememberPropel,pendingPropel,forgetPropel,type PendingPropel} from './propelRecovery';
+import {rememberPropel,pendingPropel,forgetPropel,preparePropel,type PendingPropel} from './propelRecovery';
 const pending:PendingPropel={kind:'begin',request:{requestId:'00000000-0000-4000-8000-000000000001',turnId:'turn',mode:'powered',movement:'push',roll:3,target:{name:'Goblin',legalTargetConfirmed:true}}};
 beforeEach(()=>localStorage.clear());
+afterEach(()=>vi.restoreAllMocks());
 it('roundtrips the frozen roll, scoped to its owner',()=>{rememberPropel('hero',pending);expect(pendingPropel('hero')).toEqual([pending]);expect(pendingPropel('other')).toEqual([]);forgetPropel('hero',pending);expect(pendingPropel('hero')).toEqual([]);});
 it('rejects changing a saved roll or outcome',()=>{rememberPropel('hero',pending);expect(()=>rememberPropel('hero',{...pending,request:{...pending.request,roll:4}})).toThrow(/original/);const p:PendingPropel={kind:'finish',request:{requestId:pending.request.requestId,outcome:'failed'}};rememberPropel('hero',p);expect(()=>rememberPropel('hero',{kind:'finish',request:{...p.request,outcome:'passed'}})).toThrow(/original/);});
-it('ignores malformed requests rather than executing them',()=>{localStorage.setItem('dndkeep:propel:hero:bad:begin','{"kind":"begin","request":{}}');expect(pendingPropel('hero')).toEqual([]);});
+it('blocks malformed requests rather than treating an uncertain use as absent',()=>{localStorage.setItem('dndkeep:propel:hero:bad:begin','{"kind":"begin","request":{}}');expect(()=>pendingPropel('hero')).toThrow(/could not be recovered/);expect(pendingPropel('other')).toEqual([]);});
 
 it('keeps both save dice and prevents changing evidence on retry',()=>{
  const save={participantId:'manual',outcome:'failed' as const,dc:15,d20:3,bonus:2,total:5,rolls:[1,3],advantage:true,naturalExtremes:false};
  const p:PendingPropel={kind:'finish',request:{requestId:pending.request.requestId,outcome:'failed',save}};
  rememberPropel('hero',p);expect(pendingPropel('hero')).toEqual([p]);
  expect(()=>rememberPropel('hero',{kind:'finish',request:{...p.request,save:{...save,dc:16}}})).toThrow(/original/);
+});
+
+const declaration={requestId:'00000000-0000-4000-8000-000000000001',turnId:'turn',mode:'powered' as const,movement:'push' as const,target:{name:'Goblin',legalTargetConfirmed:true as const}};
+it('writes the interruption marker before rolling and keeps the exact completed roll',()=>{
+ const roll=vi.fn(()=>{expect(()=>pendingPropel('hero')).toThrow(/could not be recovered/);return 3;});
+ const saved=preparePropel('hero',declaration,roll);
+ expect(saved).toEqual(pending);expect(pendingPropel('hero')).toEqual([pending]);
+ expect(()=>preparePropel('hero',declaration,roll)).toThrow(/original/);expect(roll).toHaveBeenCalledTimes(1);
+});
+it('does not roll or submit when the marker cannot be stored',()=>{
+ vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw new Error('Storage full');});
+ const roll=vi.fn(()=>3);expect(()=>preparePropel('hero',declaration,roll)).toThrow('Storage full');expect(roll).not.toHaveBeenCalled();
+});
+it('preserves a blocked interruption marker if storing the rolled request fails',()=>{
+ const write=localStorage.setItem.bind(localStorage);let writes=0;
+ vi.spyOn(localStorage,'setItem').mockImplementation(function(key,value){if(++writes===2)throw new Error('Storage full');write(key,value);});
+ const roll=vi.fn(()=>3);expect(()=>preparePropel('hero',declaration,roll)).toThrow('Storage full');
+ expect(()=>preparePropel('hero',declaration,roll)).toThrow(/could not be recovered/);expect(roll).toHaveBeenCalledTimes(1);
+});
+it('free movement does not call RNG',()=>{
+ const roll=vi.fn(()=>3);expect(preparePropel('hero',{...declaration,mode:'free'},roll).request).toMatchObject({mode:'free',roll:0});expect(roll).not.toHaveBeenCalled();
+});
+it.each(['{broken','null',JSON.stringify({...pending,request:{...pending.request,requestId:'00000000-0000-4000-8000-000000000002'}})])('preserves corrupt or mismatched saved requests (%s)',value=>{
+ const key='dndkeep:propel:hero:'+declaration.requestId+':begin';localStorage.setItem(key,value);
+ expect(()=>pendingPropel('hero')).toThrow(/could not be recovered/);expect(localStorage.getItem(key)).toBe(value);
+});
+it('validates the target before writing a marker or rolling',()=>{
+ const roll=vi.fn(()=>3);expect(()=>preparePropel('hero',{...declaration,target:{name:'',legalTargetConfirmed:true}},roll)).toThrow(/Invalid/);
+ expect(localStorage.length).toBe(0);expect(roll).not.toHaveBeenCalled();
 });

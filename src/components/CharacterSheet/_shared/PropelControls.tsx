@@ -5,7 +5,7 @@ import {lazyWithRetry} from '../../../lib/lazyWithRetry';
 const PropelSaveControls=lazyWithRetry(()=>import('./PropelSaveControls'));
 import type {Character,Campaign,CombatParticipant} from '../../../types';
 import {readPropel,beginPropel,finishPropel,getPropelContext,listPropel,type PropelContext,type PropelCursor,type PropelRecord,type PropelRequest,type PropelOutcome} from '../../../lib/api/psionicPropel';
-import {forgetPropel,pendingPropel,rememberPropel,type PendingPropel} from '../../../lib/propelRecovery';
+import {forgetPropel,pendingPropel,rememberPropel,preparePropel,type PendingPropel} from '../../../lib/propelRecovery';
 import {loadPsionicDamageContext} from '../../../lib/api/psionicDamage';
 import {acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
 import {PsionicRequestError,type PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
@@ -51,7 +51,7 @@ export default function PropelControls({character,persistence,warp=false,campaig
   if(lock.current)return;lock.current=true;setBusy(true);setError('');
   const id=latest.current.id,e=epoch.current.value,active=()=>mounted.current&&latest.current.id===id&&epoch.current.value===e;
   try{await task(active,id);}catch(cause){if(active())setError(cause instanceof Error?cause.message:'Could not confirm Propel. Resume the saved use.');}
-  finally{lock.current=false;if(mounted.current)setBusy(false);if(active()){try{setPending(pendingPropel(id));setSaveDrafts(pendingPropelSaves(id));}catch{setError('Browser storage is unavailable. Reopen the sheet before starting a new use.');}}}
+  finally{lock.current=false;if(mounted.current)setBusy(false);if(active()){try{setPending(pendingPropel(id));setSaveDrafts(pendingPropelSaves(id));}catch(cause){setError(cause instanceof Error?cause.message:'Browser storage is unavailable. Do not start another use.');}}}
  }
  async function refresh(active:()=>boolean,id:string,more:PropelCursor|null=null){
   const page=await listPropel(id,more);if(!active())return;
@@ -93,9 +93,9 @@ export default function PropelControls({character,persistence,warp=false,campaig
   if(pendingPropel(id).length||pendingPropelSaves(id).length)throw new Error('Confirm the saved Propel request before starting another use.');
   if(!fresh.bonusAvailable||fresh.turnId!==context.turnId||fresh.encounterId!==context.encounterId||fresh.participantId!==context.participantId||fresh.actorId!==context.actorId||fresh.ownerTurnId!==context.ownerTurnId)
    throw new Error('Your turn or Bonus Action changed. Reopen Propel before declaring.');
-  const request:PropelRequest={requestId:crypto.randomUUID(),turnId:fresh.turnId,mode,movement:warp?'warp':'push',roll:mode==='free'?0:rollDie(mode==='technique'?4:state.sides),
+  const request:Omit<PropelRequest,'roll'>={requestId:crypto.randomUUID(),turnId:fresh.turnId,mode,movement:warp?'warp':'push',
    target:fresh.encounterId?{participantId:target,legalTargetConfirmed:true}:{name:target.trim(),legalTargetConfirmed:true}};
-  await send({kind:'begin',request},active,id);
+  await send(preparePropel(id,request,()=>rollDie(mode==='technique'?4:state.sides)),active,id);
  });}
  function finish(outcome:PropelOutcome,save:PropelSaveDetails|null=null){if(!row)return;const id=row.request_id;void run(async(active,characterId)=>{await send({kind:'finish',request:{requestId:id,outcome,save}},active,characterId);});}
  const savedEncounter=row&&'encounterId' in row.turn_context?row.turn_context.encounterId:null;

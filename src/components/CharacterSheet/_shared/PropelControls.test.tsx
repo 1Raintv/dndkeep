@@ -14,7 +14,7 @@ import {pendingPropel,rememberPropel} from '../../../lib/propelRecovery';
 const character={id:'00000000-0000-4000-8000-000000000001',name:'Hero',class_name:'Psion',level:5,intelligence:16,class_resources:{'psionic-energy-dice':2}} as unknown as Character;
 const row={turn_context:{soloTurn:0},request_id:'00000000-0000-4000-8000-000000000002',target:{name:'Goblin'},caster_snapshot:{...character,intelligence:15},mode:'powered',movement:'push',base_roll:3,roll_result:{total:3},outcome:null};
 beforeEach(()=>{localStorage.clear();vi.resetAllMocks();m.context.mockResolvedValue({bonusAvailable:true,turnId:'turn',encounterId:null});m.list.mockResolvedValue({items:[],nextCursor:null});m.roll.mockReturnValue(3);m.begin.mockResolvedValue(row);m.resume.mockResolvedValue(row);m.finish.mockResolvedValue({...row,outcome:'passed',result:{energyCost:0}});});
-afterEach(cleanup);
+afterEach(()=>{cleanup();vi.restoreAllMocks();});
 async function open(){fireEvent.click(screen.getByRole('button',{name:'Use / resume'}));await waitFor(()=>expect((screen.getByLabelText('Target') as HTMLInputElement).disabled).toBe(false));}
 async function choose(){await open();fireEvent.change(screen.getByLabelText('Target'),{target:{value:'Goblin'}});fireEvent.click(screen.getByRole('checkbox'));fireEvent.change(screen.getByLabelText('Movement'),{target:{value:'powered'}});}
 it('does not roll or declare before a legal target is confirmed',async()=>{render(<PropelControls character={character}/>);await open();expect((screen.getByRole('button',{name:'Declare Bonus Action'}) as HTMLButtonElement).disabled).toBe(true);fireEvent.click(screen.getByRole('button',{name:'Close for later'}));expect(m.roll).not.toHaveBeenCalled();expect(m.begin).not.toHaveBeenCalled();});
@@ -67,4 +67,18 @@ it('explains the conditional cost before rolling and the fixed Warp distance',as
  render(<PropelControls character={{...character,subclass:'Psi Warper'}} warp/>);await choose();
  expect(screen.getByText(/Roll one Energy Die now; spend it only if the target fails/).textContent).toContain('rolling does not extend it');
  expect(m.roll).not.toHaveBeenCalled();
+});
+
+it('blocks declaration without rolling if browser storage cannot save the interruption marker',async()=>{
+ render(<PropelControls character={character}/>);await choose();
+ vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw new Error('Storage unavailable');});
+ fireEvent.click(screen.getByRole('button',{name:'Declare Bonus Action'}));
+ await screen.findByRole('alert');expect(m.roll).not.toHaveBeenCalled();expect(m.begin).not.toHaveBeenCalled();
+});
+it('keeps a damaged saved declaration visible as an error and never rolls again',async()=>{
+ localStorage.setItem(`dndkeep:propel:${character.id}:bad:begin`,'{broken');
+ render(<PropelControls character={character}/>);fireEvent.click(screen.getByRole('button',{name:'Use / resume'}));
+ expect((await screen.findByRole('alert')).textContent).toContain('do not roll or declare again');
+ expect((screen.getByRole('button',{name:'Declare Bonus Action'}) as HTMLButtonElement).disabled).toBe(true);
+ expect(m.roll).not.toHaveBeenCalled();expect(m.begin).not.toHaveBeenCalled();
 });
