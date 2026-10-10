@@ -1,5 +1,23 @@
 # DNDKeep — Two-Track Roadmap
 
+### Release rehearsal refresh — 317 migrations (not released)
+
+Both retained isolated rehearsal databases (fresh-chain origin and main-upgrade
+origin) applied the five migrations added since their 312-migration checkpoint.
+Their ledger version sets exactly match all 317 repo migrations; SQL lint passes.
+Across public/dndkeep_private, they match on 1,139 columns, 362 function
+signatures/bodies/permissions, 128 policies and 244 indexes, after normalizing
+CRLF to LF inside function bodies. Anonymous execution of the new Bolt,
+Opportunity Attack and technique-list endpoints is denied; authenticated direct
+receipt inserts are denied and the Bolt receipt table has RLS enabled.
+
+This extends the existing rehearsals; it is not a new empty-database rebuild.
+It does not prove compatibility with populated production data. Rehearsal
+containers are stopped with their volumes retained. Production remains untouched.
+Both hosted CI Gate runs passed for 497a16e2 (38058502546 and 38058499497).
+Vercel continued to report its build-rate limit. Do not treat local migration
+success as a release.
+
 ### Telekinetic Bolt damage checkpoint (local; not released)
 
 New Bolt declarations use a private, idempotent settlement receipt. The saved
