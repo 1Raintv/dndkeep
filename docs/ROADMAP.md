@@ -7374,3 +7374,26 @@ remain outstanding. No production deployment in this checkpoint.
 
 Final gate: 3,541 unit tests; TypeScript 195/195; clean hooks, RAW, coordinates,
 anchors; production build and 255.7 KB entry budget pass.
+
+
+### Historical aura damage verification (2026-10-09)
+
+`auraDamageEvidence` reconstructs the original save, reviewed Legendary
+Resistance choice, damage and before/after HP pools without writing live state.
+It validates recorded damage dice against the source expression and reuses the
+canonical save, affinity and temporary-HP rules. Half damage precedes resistance
+rounding and vulnerability; Petrified contributes resistance; immunity prevents
+damage. Invalid pools, unsupported totals and ineligible resistance choices
+require review. Zero-damage receipts must have no damage result.
+
+The atomic aura database suite now checks every committed fixture receipt with
+both client save and damage validators before cleanup, including replay after
+later healing, immunity, death at zero through temporary HP, concentration
+offers and creature resistance. Pool verification does not yet validate the
+concentration fields, consumption receipt or transaction identity; those checks
+and durable recovery orchestration remain necessary before live integration.
+No production deployment in this checkpoint.
+
+Validation: 12 focused unit cases and 34 local database cases pass. Full gate:
+3,553 units, TypeScript 195/195, hooks/RAW/coordinates/anchors, production build
+and 255.7 KB entry budget all pass. Changed-file ESLint and diff checks pass.

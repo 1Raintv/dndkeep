@@ -1,6 +1,8 @@
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {test,expect} from '@playwright/test';
+import {validAuraDamagePools} from '../../src/rules/auraDamageEvidence';
+import {validAuraSaveEvidence} from '../../src/rules/auraSaveEvidence';
 import {gateDbSuite} from './helpers';
 const args=['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'];
 const sql=(q:string)=>execFileSync('docker',args,{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
@@ -20,7 +22,16 @@ test.describe('Atomic aura resolution',()=>{
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,combatant_id) values('${pa}','${enc}','${campaign}','character','${a}','A',0,'${ca}'),('${pb}','${enc}','${campaign}','character','${b}','B',1,'${cb}');commit;`);
   turn=sql(`select psionic_turn_id from combat_encounters where id='${enc}'`);writeAura();
  });
- test.afterEach(()=>sql(`delete from campaigns where id='${campaign}';delete from characters where id in('${a}','${b}');delete from homebrew_monsters where id='${b}';delete from monsters where id='${b}';delete from auth.users where id in('${dm}','${player}')`));
+ test.afterEach(()=>{
+  try{
+   const receipts=JSON.parse(sql(`select coalesce(jsonb_agg(jsonb_build_object('request',request,'result',result)),'[]') from dndkeep_private.aura_resolutions where encounter_id='${enc}'`));
+   for(const receipt of receipts){
+    const {expected,proposal}=receipt.request,result=receipt.result;
+    expect(validAuraSaveEvidence(expected,proposal.save,result.penalty.penalty,result.save)).toBe(true);
+    expect(validAuraDamagePools(expected,proposal,result.penalty.penalty,result)).toBe(true);
+   }
+  }finally{sql(`delete from campaigns where id='${campaign}';delete from characters where id in('${a}','${b}');delete from homebrew_monsters where id='${b}';delete from monsters where id='${b}';delete from auth.users where id in('${dm}','${player}')`);}
+ });
  function aura(){return {key:'aura:fixture',name:'Aura',casterParticipantId:pa,aura:{key:'fixture',name:'Aura',radiusFt:15,saveAbility:'WIS',saveDC:14,damageDice:'3d8',damageType:'radiant',halfOnSave:true,triggers:['turn_end','creature_entered','emanation_entered'],exemptParticipantIds:[],speedInside:'half',affects:'all'}};}
  function writeAura(value:unknown=[aura()]){sql(`update combatants set active_buffs='${JSON.stringify(value).replaceAll("'","''")}' where id='${ca}'`);}
  const call=(trigger='turn_end',expected=turn,origin=pa,target=pb)=>`select get_aura_resolution_context('${enc}','${expected}','${origin}','${target}','fixture','${trigger}')`;
