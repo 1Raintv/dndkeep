@@ -1,5 +1,31 @@
 # DNDKeep — Two-Track Roadmap
 
+### Telepath client lifecycle validation (not yet UI-wired)
+
+Added typed begin/read/list/enhance/finish/cancel adapters for the authenticated
+saved-reaction dispatcher. Responses must agree on declaration/character/attack,
+original reviewed context, Reaction claim, base die, enhancement identities and
+ordering, adjusted dice, attack outcome and conditional Energy receipt. Validation
+uses the saved Psion level, so later progression changes do not hide old records.
+Requests are copied before asynchronous calls and retain their identities across
+retries. Malformed successes remain uncertain, never authorization to reroll.
+Surge calculation and attack outcome reuse the canonical rules modules.
+
+39 unit cases cover malformed evidence, natural 20/1, Bolstering thresholds,
+conditional costs, enhancement order, duplicate list rows and changed requests.
+Six authenticated desktop/mobile browser cases pass: lost begin/finish replies
+followed by reload/list recovery, and actual Enkindled+Surge completion/cancellation
+through the typed API. Full gate passed: 4,583 tests, TS 193/193, entry 255.7 KB.
+No migration this step.
+Evidence: .tmp/telepath-client-{unit,db,gate}.log. Production unchanged.
+
+Next: durable browser drafts before rolling, actual DM review/player saved-use
+controls, and explicit Telepath handling in ReactionPromptModal (generic timeout,
+accept and decline paths cannot settle a saved Telepath declaration). Do not enable
+new offer creation until those paths are integrated. Normal reaction history still
+needs implementation; ability-check Bolstering remains a separate event lifecycle.
+
+
 ### Original-campaign Telepath cleanup (local backend; not UI-wired)
 
 Migration 20261010200000 lets the original campaign's current DM cancel an

@@ -234,17 +234,33 @@ test.describe('Telepath attack context',()=>{
     const response=await route.fetch();expect(response.ok()).toBe(true);dropped++;await route.abort('failed');
    });
    const failed=await page.evaluate(async({character,operation,payload})=>{
-    const {psionicRpc}=await import('/src/lib/api/psionicTurns.ts');try{await psionicRpc('telepath_reaction',{p_character:character,p_operation:operation,p_payload:payload},true);return false;}catch{return true;}
+    const api=await import('/src/lib/api/telepathLifecycle.ts');try{if(operation==='begin')await api.beginTelepathReaction(character,payload);else await api.finishTelepathReaction(character,payload.declarationId);return false;}catch{return true;}
    },{character,operation,payload:operation==='begin'?input:{declarationId:input.requestId}});
    expect(failed).toBe(true);expect(dropped).toBe(2);await page.unroute('**/rest/v1/rpc/telepath_reaction');await page.reload();
    const records=await page.evaluate(async({character,attack})=>{
-    const {psionicRpc}=await import('/src/lib/api/psionicTurns.ts');return await psionicRpc('telepath_reaction',{p_character:character,p_operation:'list',p_payload:{attackId:attack}}) as {request_id:string;result:null|{energyCost:number}}[];
+    const {listTelepathReactions}=await import('/src/lib/api/telepathLifecycle.ts');return await listTelepathReactions(character,attack);
    },{character,attack});
    expect(records).toHaveLength(1);expect(records[0].request_id).toBe(input.requestId);
    if(operation==='begin')expect(records[0].result).toBeNull();else expect(records[0].result?.energyCost).toBe(1);
   }
   expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${input.requestId}'`)).toBe('1');
   expect(sql(`select count(*) from public.psionic_energy_uses where request_id='${input.requestId}'`)).toBe('1');
+  await page.close();
+ });
+ for(const cancel of [false,true])test(`browser validates enhanced saved records (cancel=${cancel})`,async({page})=>{
+  sql(`update auth.users set instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),created_at=now(),updated_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${owner}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${owner}','${owner}',jsonb_build_object('sub','${owner}','email','${owner}@action.local'),'email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${owner}@action.local`);
+  sql(`update characters set level=20,class_resources='{"psionic-energy-dice":12}',hit_dice_spent=0 where id='${character}'`);
+  const input=beginPayload(2);dispatch('begin',input);
+  for(const enhancement of [{declarationId:input.requestId,requestId:randomUUID(),kind:'enkindled',extraRolls:[2,8],hitDie:null},{declarationId:input.requestId,requestId:randomUUID(),kind:'surge',extraRolls:null,hitDie:6}]){
+   await page.evaluate(async({character,enhancement})=>{const api=await import('/src/lib/api/telepathLifecycle.ts');return api.enhanceTelepathReaction(character,enhancement);},{character,enhancement});
+  }
+  const pending=await page.evaluate(async({character,id})=>{const api=await import('/src/lib/api/telepathLifecycle.ts');return api.readTelepathReaction(character,id);},{character,id:input.requestId});
+  expect(pending.enhancements).toHaveLength(2);
+  const result=await page.evaluate(async({character,id,cancel})=>{const api=await import('/src/lib/api/telepathLifecycle.ts');return api.finishTelepathReaction(character,id,cancel);},{character,id:input.requestId,cancel});
+  expect(result.result).toMatchObject({cancelled:cancel,energyCost:cancel?0:1,reactionCost:1});
+  expect(sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('3');
   await page.close();
  });
  test('dispatcher does not expose private records or helper functions directly',()=>{
