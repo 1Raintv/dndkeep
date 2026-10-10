@@ -6893,3 +6893,37 @@ snapshots/receipts and retained corrupt requests. Full gate passes (3,394 units,
 195/195 TypeScript,255.2 KB entry). SQL lint, security advisors, changed-file
 ESLint and diff checks pass. Initial unit setup used unavailable jsdom; corrected
 to the repository's existing happy-dom environment, with no new dependency.
+
+### Atomic legendary-action refill and accurate live log (unreleased)
+
+The saved clock transaction now refills the incoming participant's legendary
+pool and emits its visibility-aware refill event in the same transaction as
+budgets and turn identity. It preserves the existing configured total/lair
+adjustment, leaves outgoing and already-full/overfilled pools alone, and exits
+on receipt replay before any refill. Event failure rolls back both the refill
+and the other turn changes. This migrates the existing behavior; it does not
+claim every catalog monster's configured legendary total has been audited.
+
+The legacy live handler's event now reports the actual lair-adjusted refill
+instead of incorrectly reporting only the base total. Two unit cases cover the
+normal and lair paths. The new server path still awaits the durable controller;
+remove the old refill write/event when integrating it to avoid duplicate logs.
+Aura saves/damage, timed mastery markers, movement-gated feature recovery and
+full phase reconciliation remain integration work. No production deployment.
+
+The database tests exposed an additional live bug: the original remaining<=total
+constraint rejected the configured +1 lair refill. The migration replaces it
+with a bounded allowance of one extra use for nonzero pools (a use can remain
+after leaving the lair); zero pools still allow none. A fixture that tried to
+store five uses in a three-use pool was corrected to the valid four-use case.
+
+Verification: the initial full clock run passed124 cases and failed four
+(two affected cases on each viewport). After the constraint correction, all16
+legendary cases pass on desktop/mobile, including both formerly failing cases,
+new pool-bound checks, receipt replay and event-failure rollback. Two additional
+live-handler browser checks pass with the lair fixture: one advance and one
+correct refill event to four uses. The pre-migration normal/lair refill tests
+failed as expected. Final required gate passes (3,396 units,195/195 TypeScript,
+255.2 KB entry); SQL lint/security advisors and changed-file ESLint pass (34
+existing combatEncounter warnings, no errors). Migration20261010070010 is applied
+and recorded locally only; no reset or unrelated history changes.

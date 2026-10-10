@@ -53,6 +53,7 @@ vi.mock('./movementGatedFeatures',()=>({resetMovementGatedFeatures:vi.fn(async()
 vi.mock('./masteryRiders',()=>({sweepExpiredMasteryMarkers:vi.fn(async()=>{})}));
 vi.mock('./api/checked', () => ({ checkedWrite: vi.fn(async () => ({ error: null })) }));
 
+import { emitCombatEvent } from './combatEvents';
 import { recoverInitiativeResources } from './initiativeResources';
 vi.mock('./initiativeResources',()=>({recoverInitiativeResources:vi.fn(async()=>{})}));
 import { advanceTurn, characterToSeed, seedToRow, firstPerDefinition, startEncounter, endEncounter, addParticipantToEncounter, rollInitiativeForParticipant, type SeedSource } from './combatEncounter';
@@ -67,6 +68,7 @@ const opOf = (c: Call, name: string) => c.ops.find(o => o.op === name);
 beforeEach(() => {
   vi.mocked(recoverInitiativeResources).mockClear();
   h.state.ticks.mockClear();
+  vi.mocked(emitCombatEvent).mockClear();
   h.state.calls.length = 0;
   h.state.respond = () => ({ data: [], error: null });
 });
@@ -243,6 +245,16 @@ describe('shared live turn advancement',()=>{
   expect(h.state.ticks.mock.calls).toHaveLength(2);
   expect(h.state.ticks).toHaveBeenNthCalledWith(1,{participantId:'p0',encounterId:'guard-enc',timing:'turn_end'});
   expect(h.state.ticks).toHaveBeenNthCalledWith(2,{participantId:'p1',encounterId:'guard-enc',timing:'turn_start'});
+ });
+ it.each([false,true])('logs the actual legendary refill including the lair adjustment (%s)',async inLair=>{
+  h.state.respond=c=>{
+   if(c.table==='combat_encounters')return {data:opOf(c,'update')?{psionic_turn_id:'next'}:{...encounter,in_lair:inLair},error:null};
+   return {data:actors.map((a,n)=>({...a,legendary_actions_total:n===1?3:0,legendary_actions_remaining:n===1?1:0})),error:null};
+  };
+  expect(await advanceTurn('guard-enc')).toEqual({ok:true});
+  expect(emitCombatEvent).toHaveBeenCalledWith(expect.objectContaining({eventType:'legendary_actions_refilled',payload:{refilled_from:1,refilled_to:inLair?4:3}}));
+  const write=h.state.calls.find(c=>c.table==='combat_participants'&&opOf(c,'update')&&opOf(c,'eq')?.args[1]==='p1');
+  expect(opOf(write!,'update')!.args[0]).toMatchObject({legendary_actions_remaining:inLair?4:3});
  });
  it('a later deliberate call can advance after the first finishes',async()=>{
   h.state.respond=successful;const first=advanceTurn('guard-enc');expect(await first).toEqual({ok:true});

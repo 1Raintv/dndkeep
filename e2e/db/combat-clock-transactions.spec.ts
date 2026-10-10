@@ -121,6 +121,7 @@ test.describe('Atomic combat clock transitions',()=>{
   await failure.getByRole('button',{name:'Dismiss',exact:true}).click();await expect(failure).toHaveCount(0);
  });
  test('live turn handler coalesces overlapping controls into one database advance',async({page})=>{
+  sql(`update combat_encounters set in_lair=true where id='${enc}';update combat_participants set legendary_actions_total=3,legendary_actions_remaining=1 where id='${pb}'`);
   await signInFixtureDm(page);let reads=0,writes=0;let release!:()=>void;
   const held=new Promise<void>(resolve=>{release=resolve;});
   await page.route(/\/rest\/v1\/combat_encounters(?:\?|$)/,async route=>{
@@ -138,6 +139,8 @@ test.describe('Atomic combat clock transitions',()=>{
   try{await expect.poll(()=>reads).toBe(1);expect(writes).toBe(0);}finally{release();}
   expect(await pending).toEqual({shared:true,results:[{ok:true},{ok:true}]});
   expect(writes).toBe(1);expect(state()).toMatchObject({index:1,round:1,clock:0});expect(state().turn).not.toBe(turn);
+  expect(sql(`select legendary_actions_remaining from combat_participants where id='${pb}'`)).toBe('4');
+  await expect.poll(()=>JSON.parse(sql(`select coalesce(jsonb_agg(payload),'[]') from combat_events where encounter_id='${enc}' and event_type='legendary_actions_refilled'`))).toEqual([{refilled_from:1,refilled_to:4}]);
  });
  test('browser recovery observes another request winner without advancing or rerunning its effects',async({page})=>{
   await signInFixtureDm(page);const loser={requestId:randomUUID(),encounterId:enc,expectedTurn:turn,incomingId:pb,nextIndex:1,nextRound:1};
@@ -240,6 +243,38 @@ test.describe('Atomic combat clock transitions',()=>{
   spendBudgets();expect(()=>run(call(request,turn,pa))).toThrow(/Initiative roster changed/);
   expect(()=>run(call(),player)).toThrow(/only to its DM/);
   expect(budgets(pa)).toEqual(spent);expect(budgets(pb)).toEqual(spent);
+ });
+ const legendaryEvents=()=>JSON.parse(sql(`select coalesce(jsonb_agg(jsonb_build_object('payload',payload,'visibility',visibility)),'[]') from combat_events where encounter_id='${enc}' and event_type='legendary_actions_refilled'`));
+ for(const inLair of [false,true])test(`clock refills and logs the incoming legendary pool (lair=${inLair})`,()=>{
+  sql(`update combat_encounters set in_lair=${inLair} where id='${enc}';update combat_participants set legendary_actions_total=3,legendary_actions_remaining=1,hidden_from_players=true where encounter_id='${enc}'`);
+  run();expect(sql(`select legendary_actions_remaining from combat_participants where id='${pb}'`)).toBe(inLair?'4':'3');
+  expect(sql(`select legendary_actions_remaining from combat_participants where id='${pa}'`)).toBe('1');
+  expect(legendaryEvents()).toEqual([{payload:{refilled_from:1,refilled_to:inLair?4:3},visibility:'hidden_from_players'}]);
+ });
+ test('clock refill replay preserves legendary uses spent after the turn starts',()=>{
+  sql(`update combat_participants set legendary_actions_total=3,legendary_actions_remaining=1 where id='${pb}'`);
+  const first=run();sql(`update combat_participants set legendary_actions_remaining=0 where id='${pb}'`);
+  expect(run()).toEqual({...first,replayed:true});expect(sql(`select legendary_actions_remaining from combat_participants where id='${pb}'`)).toBe('0');expect(legendaryEvents()).toHaveLength(1);
+ });
+ for(const [total,remaining] of [[3,3],[3,4],[0,0]])test(`clock does not reduce or announce an unchanged legendary pool (${total}/${remaining})`,()=>{
+  sql(`update combat_participants set legendary_actions_total=${total},legendary_actions_remaining=${remaining} where id='${pb}'`);run();
+  expect(sql(`select legendary_actions_remaining from combat_participants where id='${pb}'`)).toBe(String(remaining));expect(legendaryEvents()).toEqual([]);
+ });
+ test('legendary pool bounds allow one lair use but reject larger or nonexistent pools',()=>{
+  expect(()=>sql(`update combat_participants set legendary_actions_total=3,legendary_actions_remaining=5 where id='${pb}'`)).toThrow(/legendary_remaining_le_lair_cap/);
+  expect(()=>sql(`update combat_participants set legendary_actions_total=0,legendary_actions_remaining=1 where id='${pb}'`)).toThrow(/legendary_remaining_le_lair_cap/);
+  sql(`update combat_participants set legendary_actions_total=3,legendary_actions_remaining=4 where id='${pb}'`);
+  expect(sql(`select legendary_actions_remaining from combat_participants where id='${pb}'`)).toBe('4');
+ });
+ test('a legendary log failure rolls back refill, other budgets, clock and receipt',()=>{
+  spendBudgets();sql(`update combat_participants set legendary_actions_total=3,legendary_actions_remaining=1 where id='${pb}'`);
+  const before=state(),fn='reject_legendary_'+request.replaceAll('-','');
+  sql(`create function public.${fn}() returns trigger language plpgsql as $$ begin if new.chain_id='${request}' and new.event_type='legendary_actions_refilled' then raise exception 'fixture legendary failure';end if;return new;end $$;create trigger ${fn} before insert on combat_events for each row execute function public.${fn}()`);
+  try{expect(()=>run()).toThrow(/fixture legendary failure/);expect(state()).toEqual(before);expect(budgets(pb)).toEqual(spent);
+   expect(sql(`select legendary_actions_remaining from combat_participants where id='${pb}'`)).toBe('1');expect(legendaryEvents()).toEqual([]);
+   expect(sql(`select count(*) from dndkeep_private.combat_clock_transitions where encounter_id='${enc}'`)).toBe('0');
+  }finally{sql(`drop trigger ${fn} on combat_events;drop function public.${fn}()`);}
+  expect(run().replayed).toBe(false);expect(legendaryEvents()).toHaveLength(1);
  });
  test('round wrap commits the actor, campaign clock, lair reset and buff tick together',()=>{
   expect(run(wrapCall())).toMatchObject({incomingId:pa,index:0,round:2,roundWrapped:true,campaignRounds:1});expect(state()).toMatchObject({index:0,round:2,clock:1,lair:false});expect(buffs()).toEqual([{id:'timed',duration:2},{id:'indefinite',duration:-1}]);

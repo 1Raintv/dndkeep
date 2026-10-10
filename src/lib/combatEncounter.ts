@@ -1092,7 +1092,7 @@ async function advanceTurnOnce(encounterId: string): Promise<CombatActionResult>
       eventType: 'legendary_actions_refilled',
       payload: {
         refilled_from: laRemaining,
-        refilled_to: laTotal,
+        refilled_to: laCap,
       },
       visibility: incomingParticipant.hidden_from_players ? 'hidden_from_players' : 'public',
     });
