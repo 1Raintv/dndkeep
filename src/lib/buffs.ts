@@ -19,8 +19,7 @@ import { checkedWrite } from './api/checked';
 import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { rollDiceExpr } from '../rules/dice';
-import { applyDamageToPools } from '../rules/hp';
-import {resolveDamageAtZero} from '../rules/deathSaves';
+import { planTurnTicks, type TurnTick } from '../rules/turnTicks';
 // v2.315: active_buffs reads come from combatants via JOIN.
 import {
   JOINED_COMBATANT_FIELDS,
@@ -77,16 +76,7 @@ export interface ActiveBuff {
  *  bonuses, so a fabricated roll would be wrong. It emits a
  *  save_requested event (RAW order: damage first, then the save) and
  *  the DM removes the buff on a success via the existing buff UI. */
-export interface TurnTick {
-  kind: 'damage' | 'heal' | 'temp_hp';
-  timing: 'turn_start' | 'turn_end';
-  dice?: string;                 // XdY rolled fresh each tick
-  flat?: number;                 // added to the dice total
-  damageType?: string;
-  saveEnds?: { ability: string; dc: number };
-  /** Remove the buff after it fires once (Acid Arrow's delayed 2d4). */
-  oneShot?: boolean;
-}
+export type { TurnTick } from '../rules/turnTicks';
 
 // ─── Apply / remove ──────────────────────────────────────────────
 
@@ -608,15 +598,6 @@ export async function processTurnTicks(opts: {
     const isCharacter = part.participant_type === 'character';
     const targetType = isCharacter ? 'player' : 'monster';
     const visibility = part.hidden_from_players ? 'hidden_from_players' : 'public';
-    const maxHp = (part.max_hp as number | null) ?? 0;
-    let hp = (part.current_hp as number | null) ?? 0;
-    let tempHp = (part.temp_hp as number | null) ?? 0;
-    let failures = (part.death_save_failures as number | null) ?? 0;
-    let successes = (part.death_save_successes as number | null) ?? 0;
-    let isStable = !!part.is_stable;
-    let isDead = false;
-    const removedKeys: string[] = [];
-    const events: Array<Parameters<typeof emitCombatEvent>[0]> = [];
     const base = {
       campaignId: part.campaign_id as string,
       encounterId: opts.encounterId,
@@ -627,112 +608,23 @@ export async function processTurnTicks(opts: {
       visibility: visibility as any,
     };
 
-    for (const buff of ticking) {
-      if (isDead) break;
-      const tick = buff.turnTick!;
-      const { total: diceTotal } = tick.dice ? rollDiceExpr(tick.dice) : { total: 0 };
-      const amount = diceTotal + (tick.flat ?? 0);
-
-      if (tick.kind === 'damage' && amount > 0) {
-        if (hp === 0 && isCharacter && !isDead) {
-          // RAW: damage while at 0 HP = one death-save failure (ticks
-          // aren't attacks, so no crit doubling); it also breaks
-          // stability.
-          // v2.869 audit: damage still consumes temp HP at zero, and a
-          // sufficiently large hit kills immediately even on the first failure.
-          tempHp = applyDamageToPools(hp,tempHp,amount).tempAfter;
-          const damageState=resolveDamageAtZero(amount,maxHp,failures);
-          failures=damageState.failures;isStable=damageState.isStable;isDead=damageState.isDead;
-          events.push({
-            ...base, chainId: newChainId(), sequence: 0,
-            eventType: 'damage_at_0_hp_failure_added',
-            payload: { source_buff: buff.name, tick: true, amount, temp_hp_after:tempHp, failures, became_dead: isDead, massive_damage_death:damageState.massiveDamage },
-          });
-        } else if (hp > 0 || !isCharacter) {
-          const hpBefore = hp;
-          // v2.636 — pool math consolidated into rules/hp.ts
-          const tickApplied = applyDamageToPools(hp, tempHp, amount);
-          tempHp = tickApplied.tempAfter;
-          const toHp = tickApplied.dmgToHp;
-          hp = tickApplied.hpAfter;
-          const overflow = hpBefore > 0 && hp === 0 ? Math.max(0, toHp - hpBefore) : 0;
-          if (isCharacter && hpBefore > 0 && hp === 0 && overflow >= maxHp && maxHp > 0) {
-            isDead = true;
-            failures = 3;
-          }
-          events.push({
-            ...base, chainId: newChainId(), sequence: 0,
-            eventType: 'damage_applied',
-            payload: {
-              amount, damage_type: tick.damageType ?? 'untyped',
-              source_buff: buff.name, tick: true, timing: opts.timing,
-              hp_after: hp, temp_hp_after: tempHp,
-              dropped_to_0: hpBefore > 0 && hp === 0,
-              massive_damage_death: isDead && failures === 3 && overflow >= maxHp && maxHp > 0,
-            },
-          });
-        }
-        // RAW order for Searing Smite: damage first, THEN the save.
-        if (tick.saveEnds && !isDead) {
-          events.push({
-            ...base, chainId: newChainId(), sequence: 0,
-            eventType: 'save_requested',
-            payload: {
-              ability: tick.saveEnds.ability, dc: tick.saveEnds.dc,
-              source_buff: buff.name, tick: true,
-              on_success: `${buff.name} ends — remove the buff`,
-            },
-          });
-        }
-      } else if (tick.kind === 'heal' && amount > 0 && hp < maxHp) {
-        const hpBefore = hp;
-        hp = Math.min(maxHp, hp + amount);
-        if (hpBefore === 0 && hp > 0) {
-          // RAW: regaining any HP resets both death-save counters.
-          failures = 0; successes = 0; isStable = false;
-        }
-        events.push({
-          ...base, chainId: newChainId(), sequence: 0,
-          eventType: 'healing_applied',
-          payload: { amount: hp - hpBefore, source_buff: buff.name, tick: true, hp_after: hp, woke_up: hpBefore === 0 },
-        });
-      } else if (tick.kind === 'temp_hp' && amount > 0) {
-        // RAW: temp HP never stack — keep the higher pool.
-        const next = Math.max(tempHp, amount);
-        if (next !== tempHp) {
-          tempHp = next;
-          events.push({
-            ...base, chainId: newChainId(), sequence: 0,
-            eventType: 'temp_hp_gained',
-            payload: { amount: next, source_buff: buff.name, tick: true },
-          });
-        }
-      }
-
-      if (tick.oneShot) {
-        removedKeys.push(buff.key);
-        events.push({
-          ...base, chainId: newChainId(), sequence: 0,
-          eventType: 'spell_effect_removed',
-          payload: { source_buff: buff.name, reason: 'one_shot_tick_fired' },
-        });
-      }
-    }
-
-    const updates: Record<string, any> = {
-      current_hp: hp,
-      temp_hp: tempHp,
-      death_save_failures: failures,
-      death_save_successes: successes,
-      is_stable: isStable,
+    const { updates, events } = planTurnTicks({
+      current_hp: part.current_hp ?? 0, max_hp: part.max_hp ?? 0,
+      temp_hp: part.temp_hp ?? 0, death_save_failures: part.death_save_failures ?? 0,
+      death_save_successes: part.death_save_successes ?? 0,
+      is_stable: !!part.is_stable, is_dead: !!part.is_dead, active_buffs: buffs,
+    }, isCharacter, opts.timing);
+    // Preserve the legacy patch shape until the atomic adapter replaces it:
+    // unchanged buff/death fields must not overwrite a concurrent update.
+    const { active_buffs, is_dead, ...pools } = updates;
+    const patch = {
+      ...pools,
+      ...(is_dead ? { is_dead: true } : {}),
+      ...(active_buffs.length !== buffs.length ? { active_buffs: asJsonb(active_buffs) } : {}),
     };
-    if (isDead) updates.is_dead = true;
-    if (removedKeys.length) {
-      updates.active_buffs = asJsonb(buffs.filter(b => !removedKeys.includes(b.key)));
-    }
-    await checkedWrite('combatants.update turn-ticks', { combatantId }, (supabase as any).from('combatants').update(updates).eq('id', combatantId));
+    await checkedWrite('combatants.update turn-ticks', { combatantId }, (supabase as any).from('combatants').update(patch).eq('id', combatantId));
 
-    for (const evt of events) await emitCombatEvent(evt);
+    for (const evt of events) await emitCombatEvent({ ...base, ...evt, chainId: newChainId(), sequence: 0 });
   } catch (e) {
     console.error('[processTurnTicks] failed (turn advance unaffected):', e);
   }

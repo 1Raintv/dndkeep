@@ -6582,3 +6582,32 @@ Next: connect processTurnTicks and the turn controller to this client, including
 explicit recovery for an incoming effect that fails AFTER the clock advances.
 The live turn button still uses its older effect writes; these tests verify the
 new API end to end, not a completed turn-controller migration.
+
+### Turn-effect rules planner (unreleased; recovery integration pending)
+
+The live buff tick processor now delegates calculations to src/rules/turnTicks.ts.
+The planner produces complete HP/temp-HP/death-save/stability/death/buff outcomes
+and ordered event payloads without database or logging dependencies. The TurnTick
+type lives with the rules; buffs.ts re-exports it for existing consumers. Dice use
+the canonical roller, with injection for deterministic tests. The legacy adapter
+retains its narrow patch shape so unchanged buff/death fields are not newly
+written from an old snapshot.
+
+Ten new rule cases cover timing selection, dice plus flat amounts, immutable
+inputs and retained metadata, damage/save/removal ordering, lethal interruption,
+healing resets/caps, current temp-HP policy, already-dead actors, creature versus
+character handling, zero-amount one-shots and empty effects. Existing live-caller
+regressions still pass. Full verification passes:3,307 units,196/196 TypeScript,
+RAW/coordinates/anchors/hooks/build/budget,entry255.2KB. Changed-file ESLint has
+zero errors (12 existing any warnings in buffs.ts); diff check passes.
+
+This is preparation for atomic persistence, not completed turn recovery. The
+live caller still has its previous writes and failure handling. Concentration,
+typed defenses, save-ends automation and explicit temp-HP replacement choice
+remain gaps. No UI change, migration or production deployment.
+
+Next: connect the planner to the saved turn-effect client and add an explicit
+incoming-turn recovery phase before changing clock writes. A failure after the
+clock moved must resume effects without advancing again; a changed/dead actor
+must not be interpreted against a shifted filtered roster. Stale saved proposals
+need an explicit review path rather than silent rerolls or indefinite blocking.
