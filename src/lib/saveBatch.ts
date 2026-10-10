@@ -34,6 +34,8 @@ export interface DeclareSaveBatchInput {
   /** Lowercase condition slug (e.g. 'frightened'). Pass null when no
    *  condition is being applied so the RPC skips the immunity lookup. */
   inferredCondition: string | null;
+  /** Saved with each attack so a resistance pause cannot lose its rider. */
+  conditionIntent?: {conditionName:string;sourcePrefix:'monster_action'|'legendary_action';sourceKind:string;durationRounds:number|null;saveToEnd:{ability:string;dc:number}|null}|null;
   targets: CombatParticipant[];
 }
 
@@ -77,6 +79,7 @@ export async function declareSaveBatch(
     name: t.name,
     type: t.participant_type,
     entity_id: t.entity_id ?? '',
+    condition_intent: input.conditionIntent ?? null,
   }));
 
   const { data, error } = await supabase.rpc('declare_save_batch', {

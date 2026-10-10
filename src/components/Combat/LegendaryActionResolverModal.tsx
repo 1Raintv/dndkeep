@@ -487,6 +487,7 @@ export default function LegendaryActionResolverModal({
         damageDice: sv.damageDice,
         damageType: sv.damageType,
         inferredCondition,
+        conditionIntent: sv.conditionName ? {conditionName:sv.conditionName,sourcePrefix:'legendary_action',sourceKind:laOption.name.toLowerCase().replace(/[^a-z0-9]+/g,'_'),durationRounds:null,saveToEnd:null} : null,
         targets,
       });
       if (!batch) {

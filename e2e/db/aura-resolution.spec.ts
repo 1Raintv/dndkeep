@@ -356,6 +356,7 @@ test.describe('Atomic aura resolution',()=>{
   await page.screenshot({path:`.tmp/legendary-save-wait-${info.project.name}.png`});
   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[role=dialog], [role=dialog] *, .toast, .toast *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
   expect(JSON.parse(sql(`select jsonb_build_object('state',state,'pending',pending_lr_decision,'damage',damage_final) from pending_attacks where encounter_id='${enc}'`))).toMatchObject({state:'declared',pending:true,damage:null});
+  expect(JSON.parse(sql(`select recipe from dndkeep_private.attack_condition_intents where encounter_id='${enc}'`))).toMatchObject({conditionName:'Prone',sourcePrefix:'legendary_action',durationRounds:null,saveToEnd:null});
   expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe('20');expect(sql(`select coalesce(active_conditions,'{}'::text[]) @> array['Prone'] from combatants where id='${cb}'`)).toBe('f');expect(sql(`select legendary_actions_remaining from combat_participants where id='${pa}'`)).toBe('1');expect(errors).toEqual([]);
  });
 

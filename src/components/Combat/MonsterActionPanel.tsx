@@ -1667,6 +1667,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
         damageDice: a.damage_dice ?? null,
         damageType: a.damage_type ?? null,
         inferredCondition,
+        conditionIntent: conditionName ? {conditionName,sourcePrefix:'monster_action',sourceKind,durationRounds:durationRounds??null,saveToEnd:saveToEnd??null} : null,
         targets: liveTargets,
       });
 

@@ -163,6 +163,19 @@ test.describe('Atomic encounter completion',()=>{
   const other=randomUUID();sql(`insert into combat_encounters(id,campaign_id,status) values('${other}','${campaign}','active');update combat_participants set encounter_id='${other}' where id='${pb}'`);
   expect(()=>sql(auth(dm,saveBatch()))).toThrow(/no longer in this encounter/);expect(sql(`select count(*) from pending_attacks where campaign_id='${campaign}'`)).toBe('0');
  });
+
+ const recipe=()=>({conditionName:'Frightened',sourcePrefix:'monster_action',sourceKind:'frightful_presence',durationRounds:10,saveToEnd:{ability:'WIS',dc:15}});
+ const effectBatch=(intent:unknown)=>{const target={participant_id:pb,name:'B',type:'character',entity_id:b,condition_intent:intent};return saveBatch(pa,[target]).replace(",null,'",",'frightened','");};
+ test('save batches durably capture rider duration, source, repeat save and actor identity',()=>{
+  const r=JSON.parse(sql(auth(dm,effectBatch(recipe()))));const saved=JSON.parse(sql(auth(dm,`select read_attack_condition_intent('${r.pending_attack_id}')`)));
+  expect(saved).toMatchObject({attack_id:r.pending_attack_id,campaign_id:campaign,encounter_id:enc,turn_id:turn,origin_id:pa,target_id:pb,target_combatant_id:cb,recipe:{...recipe(),declaredRound:1,initiallyImmune:false,source:`monster_action:Batch fixture:${pa}`}});
+  expect(()=>sql(auth(player,`select read_attack_condition_intent('${r.pending_attack_id}')`))).toThrow(/Only the campaign DM/);
+  expect(()=>sql(auth(dm,'select * from dndkeep_private.attack_condition_intents'))).toThrow(/permission denied/);
+ });
+ for(const invalid of [{conditionName:null},{durationRounds:-1},{saveToEnd:{ability:'WIS',dc:null}},{sourcePrefix:'script'},{sourceKind:12}])test(`invalid saved rider rolls back the attack: ${JSON.stringify(invalid)}`,()=>{
+  expect(()=>sql(auth(dm,effectBatch({...recipe(),...invalid})))).toThrow(/Review/);
+  expect(sql(`select count(*) from pending_attacks where encounter_id='${enc}'`)).toBe('0');expect(sql(`select count(*) from dndkeep_private.attack_condition_intents where encounter_id='${enc}'`)).toBe('0');
+ });
  async function login(page:Page){
   sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
    insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}',jsonb_build_object('sub','${dm}','email','${dm}@turn.local'),'email',now(),now(),now())`);

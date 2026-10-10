@@ -8363,3 +8363,26 @@ fixed and the checks rerun. Not deployed.
 Rider intent/duration still needs durable capture and atomic continuation after
 Legendary Resistance. This prerequisite does not claim to implement that feature,
 fix all immunity sources, or consolidate batch resource payment.
+
+
+### 2026-10-10 — retain save-batch condition intent (unreleased)
+
+Monster and legendary save batches now include their parsed condition metadata
+in each target declaration. Migration 20261010070037 saves immutable private
+intent with the attack, canonical origin/target/combatant, turn, declared round,
+source, duration and repeat-save specification. A malformed recipe rolls back
+both intent and attack. A checked DM-only reader supports later recovery; direct
+client access is denied. Older callers without metadata remain compatible.
+
+Seven focused SQL/browser checks passed after fixing an operator-precedence
+error caught by SQL lint. The real legendary-action path preserves Prone intent
+while leaving the undecided target unharmed. Full gate passed: 3,930 unit tests,
+TS 194/194, 255.7 KB entry. SQL lint clean; existing keep_warm/client_errors
+advisors unchanged. Local migration ledger matches exact SQL, foreign history
+preserved, no repository migrations pending. Not deployed.
+
+This checkpoint captures intent; it does not apply it automatically. Next:
+implement receipt-backed settlement from the final save, recheck live immunity,
+preserve condition provenance/cascades/concentration behavior, and integrate
+continuation without repeating existing effects or spending the batch again.
+Single-target monster actions and legacy declarations still lack this metadata.
