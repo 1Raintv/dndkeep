@@ -28,6 +28,16 @@ export interface CombatClockContext extends Omit<CombatClockRequest,'requestId'>
 export async function getCombatClockContext(user:string,encounter:string,turn:string):Promise<CombatClockContext>{
  if(![user,encounter,turn].every(uuid))throw new PsionicRequestError('Invalid combat turn identity. No request was sent.',true);
  const value=await psionicRpc('get_combat_clock_context',{p_encounter_id:encounter,p_expected_turn:turn},true);
+ return verifyClockContext(value,user,encounter,turn);
+}
+
+/** Durable, idempotent outgoing reservation. Retry this turn after a lost reply. */
+export async function prepareCombatTurnEnd(user:string,encounter:string,turn:string):Promise<CombatClockContext>{
+ if(![user,encounter,turn].every(uuid))throw new PsionicRequestError('Invalid combat turn identity. No request was sent.',true);
+ const value=await psionicRpc('prepare_combat_turn_end',{p_encounter_id:encounter,p_expected_turn:turn},true);
+ return verifyClockContext(value,user,encounter,turn);
+}
+function verifyClockContext(value:unknown,user:string,encounter:string,turn:string):CombatClockContext{
  const c=value as CombatClockContext|null;
  if(!c||c.userId!==user||c.encounterId!==encounter||c.expectedTurn!==turn||!uuid(c.outgoingId)
   ||!validCombatClockRequest({...c,requestId:c.outgoingId})||typeof c.roundWrapped!=='boolean'

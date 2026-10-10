@@ -46,7 +46,7 @@ const h = vi.hoisted(() => {
 
 vi.mock('./supabase', () => ({ supabase: h.supabase,getCurrentUserId:async()=> 'dm' }));
 vi.mock('./api/liveTurnTransitions',()=>({withCurrentTurnUser:(work:(user:string,guard:()=>void)=>Promise<unknown>)=>work('dm',()=>{}),recoverLiveTurnTransition:h.state.recoverLive,advanceLiveTurnTransition:h.state.advanceLive}));
-vi.mock('./api/combatClock',()=>({getCombatClockContext:h.state.clock}));
+vi.mock('./api/combatClock',()=>({prepareCombatTurnEnd:h.state.clock}));
 vi.mock('./combatEvents', () => ({
   emitCombatEvent: vi.fn(async () => null),
   emitCombatEventChain: vi.fn(async () => null),

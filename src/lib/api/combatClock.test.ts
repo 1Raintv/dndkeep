@@ -1,6 +1,6 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({rpc:vi.fn()}));vi.mock('../supabase',()=>({supabase:{rpc:mocks.rpc}}));
-import {readCombatClockTransition,getCombatClockContext,commitCombatClock} from './combatClock';
+import {prepareCombatTurnEnd,readCombatClockTransition,getCombatClockContext,commitCombatClock} from './combatClock';
 const id=(n:number)=>`${n}${'0'.repeat(7)}-0000-4000-8000-000000000000`;
 const request={requestId:id(1),encounterId:id(2),expectedTurn:id(3),incomingId:id(4),nextIndex:0,nextRound:2};
 const receipt={requestId:request.requestId,encounterId:request.encounterId,incomingId:request.incomingId,turnId:id(5),index:0,round:2,roundWrapped:true,campaignRounds:12,replayed:false};
@@ -49,4 +49,14 @@ it('treats only an explicit null lookup as no recorded winner',async()=>{
 });
 it.each([{request:{...request,expectedTurn:id(8)}},{request:{...request,requestId:'bad'}},{receipt:{...receipt,replayed:false}},{receipt:{...receipt,requestId:id(8),replayed:true}},{receipt:{...receipt,turnId:request.expectedTurn,replayed:true}}])('rejects a mismatched historical record %j',async bad=>{
  mocks.rpc.mockResolvedValue({data:{request,receipt:{...receipt,replayed:true},...bad},error:null});await expect(readCombatClockTransition(request)).rejects.toMatchObject({definitelyNotPaid:false});
+});
+
+it('reserves the same outgoing turn after a lost reply',async()=>{
+ mocks.rpc.mockRejectedValueOnce(new Error('Offline')).mockResolvedValueOnce({data:context,error:null});
+ expect(await prepareCombatTurnEnd(id(6),request.encounterId,request.expectedTurn)).toEqual(context);
+ expect(mocks.rpc.mock.calls[0]).toEqual(mocks.rpc.mock.calls[1]);expect(mocks.rpc).toHaveBeenCalledWith('prepare_combat_turn_end',{p_encounter_id:request.encounterId,p_expected_turn:request.expectedTurn});
+});
+it('rejects a reservation for a different turn before processing effects',async()=>{
+ mocks.rpc.mockResolvedValue({data:{...context,expectedTurn:id(8)},error:null});
+ await expect(prepareCombatTurnEnd(id(6),request.encounterId,request.expectedTurn)).rejects.toThrow('could not be verified');
 });

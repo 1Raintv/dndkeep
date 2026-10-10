@@ -766,8 +766,9 @@ async function advanceTurnOnce(encounterId: string,userId:string,guard:()=>void,
 
   // v2.869: an end-effect receipt anchors the outgoing actor even if its
   // damage killed them. The compressed living roster cannot identify that turn.
-  const {getCombatClockContext}=await import('./api/combatClock');
-  const initialClock=await getCombatClockContext(userId,encounterId,enc.psionic_turn_id);
+  // Reserve before separate condition/aura calls; retries keep the same actor.
+  const {prepareCombatTurnEnd}=await import('./api/combatClock');
+  const initialClock=await prepareCombatTurnEnd(userId,encounterId,enc.psionic_turn_id);
   guard();
 
   // v2.445.0 — End-of-turn condition processing for the OUTGOING

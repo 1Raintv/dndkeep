@@ -8154,3 +8154,37 @@ reservation to exclude new declarations throughout all separate outgoing effect
 calls. This change protects the final clock and saved tick boundary, not every
 legacy partial effect. Other pending actions and per-instance creature carry-over
 remain in the release audit.
+
+
+### Durable outgoing-turn reservation (2026-10-10, unreleased)
+
+End Turn now reserves its outgoing actor before any separate condition-save,
+tick or aura calls. The private reservation is keyed by encounter and turn;
+new Propel declarations for that turn are rejected, rolling back their attempted
+Bonus Action claim. It has no timeout that could reopen a partly resolved turn.
+Retrying End Turn, including after reload or a lost reply, resumes the same
+actor. Other actors' later turns are unaffected. Current DM authorization is
+checked again on every reservation/replay.
+
+Migration 20261010070030 serializes reservation creation against declarations
+using the existing encounter locks, and preserves the reserved actor when they
+die before outgoing ticks are recorded. The live effect actor helper keeps its
+existing incoming-death/effect guards, then uses the reservation for first-turn
+outgoing recovery. A dead outgoing actor advances to its living successor
+without an invented round wrap.
+
+Verified: 33 local database/browser cases across turn-boundary and live-turn
+reconciliation suites; both declaration/reservation race orders, lost replies
+plus reload, dead-actor continuation, membership/ownership and private-table
+protection. The full required gate passes: 3,897 units, TS 194/194, 255.7 KB entry.
+Changed clock API modules lint cleanly. SQL lint clean; security advisors remain
+keep_warm and client_errors only. Exact migration recorded locally, foreign
+history preserved. Not deployed.
+
+Remaining: the reservation currently gates Propel declarations. Extend it to
+other ordinary action writers while preserving legitimate reaction windows;
+audit unfinished spell/attack/resource requests before closing combat. Existing
+legacy condition/aura calls still require their own idempotency audit; a
+reservation prevents competing declarations but does not itself make those
+separate calls transactional. Do not claim general multiplayer action sequencing
+or the full release audit complete.
