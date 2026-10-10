@@ -49,7 +49,10 @@ test.describe('Telepath attack context',()=>{
  });
  test('rejects changed identities, terminal state and inconsistent outcomes',()=>{
   sql(`update pending_attacks set attacker_participant_id='${participant}' where id='${attack}'`);expect(()=>context()).toThrow();
-  sql(`update pending_attacks set attacker_participant_id='${enemy}',state='damage_rolled' where id='${attack}'`);expect(()=>context()).toThrow();
+  sql(`update pending_attacks set attacker_participant_id='${enemy}' where id='${attack}';
+   begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';
+   select public.attack_reaction_offers('${attack}','post_attack_roll',(select updated_at from pending_attacks where id='${attack}'),array[]::text[]);
+   update pending_attacks set state='damage_rolled' where id='${attack}';commit;`);expect(()=>context()).toThrow();
   sql(`update pending_attacks set state='attack_rolled',hit_result='miss' where id='${attack}'`);expect(()=>context('bolstering')).toThrow();
  });
  test('rejects malformed energy pools',()=>{
@@ -107,6 +110,30 @@ test.describe('Telepath attack context',()=>{
  test('Bolstering turns a missed attack into a hit with one conditional payment',()=>{
   sql(`update pending_attacks set target_ac=20,hit_result='miss' where id='${attack}'`);const d=beginSaved(3,'bolstering');
   expect(finishSaved(d.request_id)).toMatchObject({energyCost:1,total:20,result:'hit',changed:true});
+ });
+
+ test('saved Bolstering invalidates a prior empty check and permits the target Shield offer',()=>{
+  const defender=randomUUID(),defenderParticipant=randomUUID();
+  try{
+   sql(`insert into characters(id,user_id,campaign_id,name,species,class_name,background,level,known_spells,spell_slots) values('${defender}','${other}','${campaign}','Defender','Human','Wizard','Sage',5,array['shield'],'{"1":{"total":2,"used":0}}');
+    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values('${defenderParticipant}','${encounter}','${campaign}','character','${defender}','Defender',2);
+    update combatants set definition_id='${defender}' where id=(select combatant_id from combat_participants where id='${defenderParticipant}');
+    delete from pending_attacks where id='${attack}';
+    insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,attacker_name,attacker_type,target_participant_id,target_name,target_type,attack_name,attack_kind,attack_bonus,target_ac,chain_id)
+    values('${attack}','${campaign}','${encounter}','${enemy}','Enemy','monster','${defenderParticipant}','Defender','character','Strike','attack_roll',5,20,'${randomUUID()}');`);
+   const snapshot={version:1,attackId:attack,campaignId:campaign,encounterId:encounter,attackerId:enemy,targetId:defenderParticipant,d20:12,total:17,targetAC:20,naturalOneAutoFails:true,criticalOnHit:false,automatic:'none',result:'miss'};
+   sql(`update pending_attacks set state='attack_rolled',attack_d20=12,attack_total=17,hit_result='miss',attack_roll_snapshot='${JSON.stringify(snapshot)}' where id='${attack}'`);
+   const check=(keys:string[]|null)=>sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';set local role authenticated;
+    select public.attack_reaction_offers('${attack}','post_attack_roll',(select updated_at from pending_attacks where id='${attack}'),${keys===null?'null':`array[${keys.map(k=>`'${k}'`).join(',')}]::text[]`});commit;`);
+   expect(JSON.parse(check([])).offerCount).toBe(0);
+   const d=beginSaved(3,'bolstering');expect(finishSaved(d.request_id)).toMatchObject({energyCost:1,result:'hit',total:20});
+   const current=sql(`select revision from dndkeep_private.attack_reaction_revisions where attack_id='${attack}'`);
+   expect(check(null)).toBe('');expect(()=>sql(`update pending_attacks set state='damage_rolled' where id='${attack}'`)).toThrow(/Recover the attack reaction check/);
+   expect(finishSaved(d.request_id).replayed).toBe(true);expect(sql(`select revision from dndkeep_private.attack_reaction_revisions where attack_id='${attack}'`)).toBe(current);
+   expect(JSON.parse(check(['shield'])).offerCount).toBe(1);
+   expect(sql(`select reactor_participant_id from pending_reactions where pending_attack_id='${attack}' and reaction_key='shield'`)).toBe(defenderParticipant);
+   expect(()=>sql(`update pending_attacks set state='damage_rolled' where id='${attack}'`)).toThrow(/Resolve offered reactions/);
+  }finally{sql(`delete from characters where id='${defender}'`);}
  });
  test('saved declarations recover exactly and refuse changed rolls on the same identity',()=>{
   const d=beginSaved(3),expected=JSON.stringify(d.context),review=JSON.stringify(d.review);

@@ -25,6 +25,46 @@ test.describe('durable attack reaction offers',()=>{
  const query=(keys:string[]|null=['shield'],user?:string,rev?:string,trigger='post_attack_roll')=>`begin;set local request.jwt.claims='{"sub":"${user??owner}","role":"authenticated"}';set local role authenticated;
  select public.attack_reaction_offers('${attack}','${trigger}','${rev??revision}',${keys===null?'null':`array[${keys.map(k=>`'${k}'`).join(',')}]::text[]`});commit;`;
  const call=(keys:string[]|null=['shield'],user?:string,rev?:string,trigger='post_attack_roll')=>{const r=sql(query(keys,user,rev,trigger));return r?JSON.parse(r):null;};
+
+ const refreshRevision=()=>{revision=sql(`select updated_at from pending_attacks where id='${attack}'`);};
+ test('a miss becoming a hit opens a new check and blocks damage until checked',async({page})=>{
+  sql(`update pending_attacks set attack_total=12,hit_result='miss' where id='${attack}'`);refreshRevision();call([]);
+  const stale=revision;sql(`update pending_attacks set attack_total=17,hit_result='hit' where id='${attack}'`);
+  expect(call(null)).toBeNull();expect(()=>call(['shield'],owner,stale)).toThrow(/changed/);
+  expect(()=>sql(`update pending_attacks set state='damage_rolled' where id='${attack}'`)).toThrow(/Recover the attack reaction check/);
+  await signInAsSeedDm(page,email);
+  await page.evaluate(async id=>{const {rollAttackRoll}=await import('/src/lib/pendingAttack.ts');await rollAttackRoll(id);},attack);
+  expect(call(null).offerCount).toBe(1);expect(sql(`select count(*) from pending_reactions where pending_attack_id='${attack}' and state='offered' and reaction_key='shield'`)).toBe('1');
+  expect(sql(`select count(*) from dndkeep_private.attack_reaction_offer_batches where attack_id='${attack}' and trigger_point='post_attack_roll'`)).toBe('2');
+  expect(()=>sql(`update pending_attacks set state='damage_rolled' where id='${attack}'`)).toThrow(/Resolve offered reactions/);
+ });
+ for(const state of ['accepted','declined','expired'])test(`a changed outcome never reopens an earlier ${state} choice`,()=>{
+  call();sql(`update pending_reactions set state='${state}' where pending_attack_id='${attack}'`);
+  const before=sql(`select id||'|'||expires_at||'|'||state from pending_reactions where pending_attack_id='${attack}'`);
+  sql(`update pending_attacks set hit_result='miss',attack_total=12 where id='${attack}'`);refreshRevision();expect(call(null)).toBeNull();call([]);
+  sql(`update pending_attacks set hit_result='hit',attack_total=18 where id='${attack}'`);refreshRevision();expect(call(null)).toBeNull();expect(call().offerCount).toBe(1);
+  expect(sql(`select id||'|'||expires_at||'|'||state from pending_reactions where pending_attack_id='${attack}'`)).toBe(before);
+  expect(sql(`select count(*) from pending_reactions where pending_attack_id='${attack}'`)).toBe('1');
+  sql(`update pending_attacks set state='damage_rolled',damage_raw=3,damage_final=3 where id='${attack}'`);
+ });
+ test('unrelated metadata does not reopen a batch but changed AC does',()=>{
+  call([]);sql(`update pending_attacks set attacker_name='Renamed' where id='${attack}'`);expect(call(null).offerCount).toBe(0);
+  sql(`update pending_attacks set target_ac=16 where id='${attack}'`);expect(call(null)).toBeNull();refreshRevision();expect(call([]).offerCount).toBe(0);
+ });
+ test('outcome changes cannot be bundled with damage advancement to bypass checking',()=>{
+  call([]);expect(()=>sql(`update pending_attacks set state='damage_rolled',attack_total=18 where id='${attack}'`)).toThrow(/changed attack outcome/);
+  expect(sql(`select state||'|'||attack_total from pending_attacks where id='${attack}'`)).toBe('attack_rolled|17');
+ });
+ test('a concurrent outcome change never leaves an old check authoritative',async()=>{
+  const result=await Promise.allSettled([parallelSql(query([])),parallelSql(`update pending_attacks set attack_total=18 where id='${attack}'`)]);
+  expect(result[1].status).toBe('fulfilled');expect(call(null)).toBeNull();
+  expect(()=>sql(`update pending_attacks set state='damage_rolled' where id='${attack}'`)).toThrow(/Recover the attack reaction check/);
+  refreshRevision();expect(call([]).offerCount).toBe(0);sql(`update pending_attacks set state='damage_rolled' where id='${attack}'`);
+ });
+ test('app roles cannot forge reaction revisions or invoke their trigger',()=>{
+  expect(()=>sql(`begin;set local role authenticated;insert into dndkeep_private.attack_reaction_revisions values('${attack}',99);commit;`)).toThrow();
+  expect(sql(`select has_function_privilege('authenticated','dndkeep_private.track_attack_reaction_revision()','execute')`)).toBe('f');
+ });
  test('read is nonmutating and an empty batch stays empty across later candidates',()=>{
  expect(call(null)).toBeNull();expect(sql(`select count(*) from dndkeep_private.attack_reaction_offer_batches where attack_id='${attack}'`)).toBe('0');
  expect(call([]).offerCount).toBe(0);expect(call(['shield']).offerCount).toBe(0);expect(sql(`select count(*) from pending_reactions where pending_attack_id='${attack}'`)).toBe('0');

@@ -2,7 +2,8 @@ import {psionicRpc,PsionicRequestError} from './psionicTurns';
 export type AttackReactionWindow='post_attack_roll'|'post_damage_roll'|'pre_damage_applied';
 const uuid=(v:string)=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 /** v2.869: null keys read a saved batch; [] records a verified empty batch.
- * Retries return the first committed batch, even after its offers terminate. */
+ * Retries return the current outcome revision’s committed batch. A changed roll
+ * needs a new check; existing offer decisions and deadlines are never reset. */
 export async function attackReactionOffers(attackId:string,triggerPoint:AttackReactionWindow,updatedAt:string|null,keys:readonly string[]|null):Promise<number|null>{
  if(!uuid(attackId)||!['post_attack_roll','post_damage_roll','pre_damage_applied'].includes(triggerPoint)
   ||keys!==null&&(!updatedAt||!Number.isFinite(Date.parse(updatedAt))||keys.length>4||keys.some(k=>!(triggerPoint==='post_attack_roll'?k==='shield':triggerPoint==='post_damage_roll'&&['uncanny_dodge','absorb_elements','hellish_rebuke'].includes(k)))))

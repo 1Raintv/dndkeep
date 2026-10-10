@@ -1,5 +1,37 @@
 # DNDKeep — Two-Track Roadmap
 
+### Revised post-roll reaction checks (local; not released)
+
+Migration 20261010193500 adds private, server-owned attack outcome revisions and
+keys post-roll offer batches by revision. Changes to total, AC, hit result, cover
+or participant/kind bindings while attack_rolled require a new eligibility check.
+The existing dispatcher still adopts prior accepted/declined/expired offers with
+their original identities and deadlines; it never reopens them. A previously
+empty miss batch no longer suppresses a newly eligible Shield after Bolstering.
+Unrelated metadata edits preserve the current check. Damage advancement rejects
+an unchecked revision, including an attempt to change outcome and advance in the
+same write. Damage windows retain their existing once-only batches.
+
+Validation: full gate passed (4,534 tests, TS 193/193, entry 255.7 KB). The combined
+local reaction/Telepath run passed 53 cases and exposed one outdated fixture that
+changed identity while jumping to damage. Splitting that fixture into identity
+restoration, authenticated reaction check and advancement restored the intended
+terminal-context test. It and a new real saved-Bolstering case passed: conditional
+one-die payment, no extra revision on replay, new defender Shield offer, and damage
+held until a decision. Other new cases cover concurrent outcome/check writes,
+accepted/declined/expired decision preservation, stale candidates and private-table
+protection. All eight desktop/mobile combat-dialog and Graze recovery flows
+passed with the new revision checks. SQL lint adds no diagnostics (20 existing warning functions); security
+findings remain keep_warm/client_errors. Exact local migration ledger verified.
+
+This provides follow-up checks for the existing defensive reaction registry. It
+does not yet expose Telepath controls, add their authenticated lifecycle dispatcher,
+or automate ability-check Bolstering. Repo chain: 340; retained release rehearsals
+still need 333–340. No production migration/deployment performed.
+Evidence: .tmp/reaction-revisions-{db,bolstering,gate,ui}.log and
+.tmp/reaction-revisions-{lint,advisors}.json.
+
+
 ### Durable attack-roll history (local; not released)
 
 New live attack rolls use record_pending_attack_roll_with_history. It composes
