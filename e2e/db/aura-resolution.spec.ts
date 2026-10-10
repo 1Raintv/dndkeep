@@ -258,4 +258,16 @@ test.describe('Atomic aura resolution',()=>{
   sql(`update homebrew_monsters set cr='9',save_proficiencies=null where id='${b}'`);expect(await readBonus()).toMatchObject({confidence:'low'});
  });
 
+ for(const kind of ['srd_monster','custom'])test(`live creature saving throws follow the linked ${kind} totals`,async({page})=>{
+  const snapshot={int:18,wis:10,saving_throws:{Intelligence:9}};
+  if(kind==='srd_monster')sql(`insert into monsters(id,name,type,cr,xp,size,hp,hp_formula,ac,speed,str,dex,con,int,wis,cha,saving_throws) values('${b}','Save fixture','Beast','9',5000,'Medium',20,'3d8',10,30,10,10,10,18,10,10,${literal(snapshot.saving_throws)})`);
+  sql(`update combatants set definition_type='${kind}',stat_block_snapshot=${literal(snapshot)} where id='${cb}';update combat_participants set participant_type='monster' where id='${pb}'`);
+  await signInFixtureDm(page);
+  const read=()=>page.evaluate(async target=>{const path='/src/lib/pendingAttack.ts',api=await import(/* @vite-ignore */ path);return {int:await api.getTargetSaveBonus(target,'INT'),wis:await api.getTargetSaveBonus(target,'WIS')};},pb);
+  expect(await read()).toMatchObject({int:{bonus:9,confidence:'high'},wis:{bonus:0,confidence:'high'}});
+  if(kind==='srd_monster')sql(`update monsters set saving_throws=null where id='${b}'`);
+  else sql(`update combatants set stat_block_snapshot=${literal({...snapshot,saving_throws:null})} where id='${cb}'`);
+  expect(await read()).toMatchObject({int:{confidence:'low'},wis:{confidence:'low'}});
+ });
+
 });

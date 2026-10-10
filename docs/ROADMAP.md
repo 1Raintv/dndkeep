@@ -7567,3 +7567,25 @@ browser cases pass. Full gate passes: 3,676 units, TypeScript 195/195,
 hooks/RAW/coordinates/anchors, production build and entry budget. New code/tests
 lint clean; pendingAttack retains the same pre-existing one style error and
 27 warnings, confirmed against HEAD.
+
+
+### Creature saving throw sources (2026-10-10, unreleased)
+
+The live save reader now follows the participant's linked combatant definition:
+public catalog, campaign/owner-scoped homebrew, or custom snapshot. It rejects
+missing or mismatched links without trying a same-ID row in another table.
+Catalog `saving_throws` values are final totals, not proficiency flags; explicit
+empty maps permit ability modifiers, while NULL/malformed maps require review.
+Short/full ability aliases are normalized and conflicting aliases are rejected.
+Custom snapshots with catalog save maps use the same validation; existing
+homebrew-shaped snapshots retain verified score/proficiency/CR calculations.
+
+Remaining: catalog-to-homebrew import currently loses listed save totals and
+leaves `ability_scores` unset. Preserve those values explicitly in a subsequent
+change rather than inferring proficiency from arbitrary totals. Live reviewed
+aura/turn orchestration also remains unfinished. No production deployment.
+
+Validation: 64 focused unit tests and six real desktop/mobile browser checks
+pass. Full gate: 3,714 unit tests, TypeScript 195/195, hooks/RAW/coordinates/
+anchors, production build and entry budget. New modules/tests lint clean;
+pendingAttack retains its prior one style error and 27 warnings.

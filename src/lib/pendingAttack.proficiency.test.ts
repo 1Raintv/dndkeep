@@ -63,7 +63,7 @@ it('does not silently accept malformed equipment save values',async()=>{
 });
 
 function creatureReads(creature:Record<string,unknown>){
- mocks.from.mockImplementation((table:string)=>{const result=()=>({data:table==='combat_participants'?{participant_type:'creature',entity_id:'creature',campaign_id:'campaign'}:creature});const q={select:()=>q,eq:()=>q,single:async()=>result(),maybeSingle:async()=>result()};return q;});
+ mocks.from.mockImplementation((table:string)=>{const result=()=>({data:table==='combat_participants'?{participant_type:'creature',entity_id:'creature',campaign_id:'campaign',combatant_id:'cb'}:table==='combatants'?{campaign_id:'campaign',definition_type:'homebrew_monster',definition_id:'creature'}:{...creature,campaign_id:'campaign'}});const q={select:()=>q,eq:()=>q,single:async()=>result(),maybeSingle:async()=>result()};return q;});
 }
 it.each([null,'', '5th','unknown'])('does not invent proficient creature PB from CR %s',cr=>{
  creatureReads({ability_scores:{int:18},save_proficiencies:['int'],cr});return expect(getTargetSaveBonus('participant','INT')).resolves.toMatchObject({confidence:'low'});

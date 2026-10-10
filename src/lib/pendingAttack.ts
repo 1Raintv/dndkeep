@@ -1,3 +1,5 @@
+import {catalogSaveBonus} from '../rules/catalogSaveBonus';
+import {readCreatureSaveDefinition} from './api/creatureSaveDefinition';
 import {creatureSaveInputs} from '../rules/creatureSaveInputs';
 import {resolveAttackSave,forgetAttackSave} from './api/attackSaves';
 import {psychicDamageRoll} from '../rules/psychicDamageRoll';
@@ -1422,41 +1424,28 @@ export async function getActivePendingAttack(campaignId: string): Promise<Pendin
 }
 
 // ─── Save bonus lookup for target ────────────────────────────────
-// v2.102.0 — Phase F pt 3a: resolve the target's save bonus for a given
-// ability. For character targets: ability modifier + proficiency (if save
-// proficient). For monster/npc targets: 0 by default — DM overrides manually.
-//
-// v2.249.0 — extended to handle NPC participants by reading `npcs.dex`
-// (the only ability field reliably populated on the npcs table for
-// roster-spawned entries). DEX saves get a real bonus; other abilities
-// still fall back to 0 with `confidence: 'low'` so callers can flag
-// the value as unverified. Monster participants and characters with no
-// row return `confidence: 'low'` for the same reason; PC characters
-// with full data return `confidence: 'high'`.
+// v2.869: characters use effective scores, proficiency and active equipment.
+// Creatures use their linked catalog/homebrew/custom definition; unknown data
+// returns low confidence so automated consumers can require manual review.
 export async function getTargetSaveBonus(
   participantId: string,
   ability: string,   // 'STR' | 'DEX' | 'CON' | 'INT' | 'WIS' | 'CHA'
 ): Promise<{ bonus: number; breakdown: string; confidence?: 'high' | 'low'; naturalExtremes?: boolean }> {
   const { data: part } = await supabase
     .from('combat_participants')
-    .select('participant_type, entity_id, campaign_id')
+    .select('participant_type, entity_id, campaign_id, combatant_id')
     .eq('id', participantId)
     .single();
   if (!part) return { bonus: 0, breakdown: '0 (no participant)', confidence: 'low' };
 
-  // v2.350.0 — Unified creature branch. Pre-v2.350 there were two
-  // branches: 'npc' (read from npcs table + walk dm_npc_roster for CR)
-  // and 'monster' (low-confidence fallback). Post-migration, both
-  // npcs and dm_npc_roster are gone and creatures live in
-  // homebrew_monsters with a unified shape (ability_scores,
-  // save_proficiencies, cr all on the same row). One branch handles
-  // the whole space.
+  // v2.869: catalog totals and custom snapshots follow their linked source.
   if (isCreatureParticipantType(part.participant_type)) {
-    const { data: cr } = await supabase
-      .from('homebrew_monsters')
-      .select('ability_scores, save_proficiencies, name, cr')
-      .eq('id', part.entity_id)
-      .maybeSingle();
+    const cr=await readCreatureSaveDefinition(part);
+    if(cr&&Object.prototype.hasOwnProperty.call(cr,'saving_throws')){
+      const bonus=catalogSaveBonus(ability,cr);
+      return bonus===null?{bonus:0,breakdown:'Review creature saving throw data',confidence:'low'}:
+        {bonus,breakdown:`${bonus>=0?'+':''}${bonus} (${ability}, stat block)`,confidence:'high'};
+    }
     const inputs=creatureSaveInputs(ability,cr?.ability_scores,cr?.save_proficiencies,cr?.cr);
     if(!inputs)return {bonus:0,breakdown:`Review creature ${ability} score, save proficiencies and challenge rating`,confidence:'low'};
     const mod=abilityModifier(inputs.score),isProficient=inputs.proficient;
