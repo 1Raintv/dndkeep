@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveDeathSave,resolveDamageAtZero } from './deathSaves';
+import { resolveDeathSave,resolveDamageAtZero,resolveNonAttackDamage } from './deathSaves';
 
 describe('2024 death-save outcomes', () => {
   it('stabilizes at zero HP and clears both counters on the third success', () => {
@@ -46,4 +46,28 @@ describe('damage at zero HP',()=>{
  it.each([[0,20,0],[-1,20,0],[1.5,20,0],[1,0,0],[1,20,3],[1,20,-1]])('rejects invalid damage/state %j',(damage,max,failures)=>{
   expect(()=>resolveDamageAtZero(damage,max,failures)).toThrow();
  });
+});
+
+const healthy={current_hp:5,max_hp:20,temp_hp:3,death_save_failures:0,death_save_successes:0,is_stable:false,is_dead:false};
+describe('non-attack damage lifecycle',()=>{
+ it('uses temp HP before calculating massive damage overflow',()=>{
+  expect(resolveNonAttackDamage(healthy,true,27)).toMatchObject({updates:{current_hp:0,temp_hp:0,is_dead:false},droppedTo0:true,massiveDamage:false});
+  expect(resolveNonAttackDamage(healthy,true,28)).toMatchObject({updates:{is_dead:true,death_save_failures:3},massiveDamage:true});
+ });
+ it('breaks stability at zero even when temp HP absorbs all damage',()=>{
+  expect(resolveNonAttackDamage({...healthy,current_hp:0,is_stable:true},true,1)).toMatchObject({updates:{temp_hp:2,is_stable:false,death_save_failures:1},damageAtZero:true});
+ });
+ it('adds a third failure or instant death at zero',()=>{
+  expect(resolveNonAttackDamage({...healthy,current_hp:0,death_save_failures:2},true,1).updates.is_dead).toBe(true);
+  expect(resolveNonAttackDamage({...healthy,current_hp:0},true,20)).toMatchObject({massiveDamage:true,updates:{is_dead:true,death_save_failures:3}});
+ });
+ it('kills ordinary creatures at zero without assigning player failures',()=>{
+  expect(resolveNonAttackDamage(healthy,false,8).updates).toMatchObject({is_dead:true,death_save_failures:0});
+ });
+ it('leaves dead creatures and zero damage unchanged',()=>{
+  const dead={...healthy,current_hp:0,is_dead:true,death_save_failures:3};expect(resolveNonAttackDamage(dead,true,10).updates).toEqual(dead);
+  expect(resolveNonAttackDamage(healthy,true,0).updates).toEqual(healthy);
+ });
+ it('does not mutate its source state',()=>{resolveNonAttackDamage(healthy,true,100);expect(healthy.current_hp).toBe(5);});
+ it.each([-1,1.5,NaN])('rejects invalid damage %s',damage=>{expect(()=>resolveNonAttackDamage(healthy,true,damage)).toThrow();});
 });

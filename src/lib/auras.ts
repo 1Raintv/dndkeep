@@ -44,7 +44,7 @@ import { savingThrowPassed } from '../rules/savingThrows';
 // concentration cleanup for free rather than needing its own table.
 
 import { rollDie } from '../rules/dice';
-import { applyDamageToPools } from '../rules/hp';
+import { resolveNonAttackDamage } from '../rules/deathSaves';
 import { supabase } from './supabase';
 import { checkedWrite } from './api/checked';
 import { emitCombatEvent, newChainId } from './combatEvents';
@@ -348,32 +348,29 @@ async function applyAuraDamage(input: {
   auraName: string;
   chainId: string;
 }): Promise<void> {
-  const { data: tgtRaw } = await (supabase as any)
+  const { data: tgtRaw, error: readError } = await (supabase as any)
     .from('combat_participants')
     .select('id, combatant_id, participant_type, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .maybeSingle();
-  if (!tgtRaw) return;
+  if (readError || !tgtRaw) throw new Error('Aura damage target could not be read.');
   const tgt = normalizeParticipantRow(tgtRaw);
   if (tgt.is_dead) return;
 
-  const tempBefore = (tgt.temp_hp as number | null) ?? 0;
-  const hpBefore = (tgt.current_hp as number | null) ?? 0;
-  // v2.636 — pool math consolidated into rules/hp.ts
-  const { tempAfter, hpAfter, droppedTo0 } = applyDamageToPools(hpBefore, tempBefore, input.damage);
   const isCharacter = tgt.participant_type === 'character';
-  const monsterDied = droppedTo0 && !isCharacter;
-
-  const combatantId = (tgt as any).combatant_id as string | null;
-  if (!combatantId) return;
-  await checkedWrite('combatants.update aura-damage', { combatantId }, (supabase as any)
-    .from('combatants')
-    .update({
-      current_hp: hpAfter,
-      temp_hp: tempAfter,
-      ...(monsterDied ? { is_dead: true } : {}),
-    })
-    .eq('id', combatantId));
+  const resolved = resolveNonAttackDamage({current_hp:tgt.current_hp,max_hp:tgt.max_hp,temp_hp:tgt.temp_hp??0,
+    death_save_failures:tgt.death_save_failures??0,death_save_successes:tgt.death_save_successes??0,
+    is_stable:tgt.is_stable??false,is_dead:tgt.is_dead??false},isCharacter,input.damage);
+  const {droppedTo0,damageAtZero,massiveDamage,updates}=resolved;
+  const combatantId=tgt.combatant_id as string|null;
+  if(!combatantId)throw new Error('Aura damage target is not linked to combat.');
+  // v2.869: confirm the write before reporting damage or rolling concentration.
+  // The aura-wide save/marker/damage transaction remains separate follow-up work.
+  const write=await checkedWrite('combatants.update aura-damage',{combatantId},(supabase as any)
+    .from('combatants').update({current_hp:updates.current_hp,temp_hp:updates.temp_hp,
+      death_save_failures:updates.death_save_failures,is_stable:updates.is_stable,is_dead:updates.is_dead})
+    .eq('id',combatantId).select('id').single());
+  if(write.error)throw new Error('Aura damage could not be confirmed: '+write.error.message);
 
   await emitCombatEvent({
     campaignId: input.campaignId,
@@ -393,20 +390,26 @@ async function applyAuraDamage(input: {
     },
   });
 
-  if (droppedTo0) {
+  if(damageAtZero){
+    await emitCombatEvent({campaignId:input.campaignId,encounterId:input.encounterId,chainId:input.chainId,sequence:2,
+      actorType:'system',actorName:'System',targetType:input.targetType as any,targetName:input.targetName,
+      eventType:'damage_at_0_hp_failure_added',payload:{via:'aura',aura_name:input.auraName,damage:input.damage,
+        failures:updates.death_save_failures,became_dead:updates.is_dead,massive_damage_death:massiveDamage}});
+  }
+  if (droppedTo0 || updates.is_dead) {
     await emitCombatEvent({
       campaignId: input.campaignId,
       encounterId: input.encounterId,
       chainId: input.chainId,
-      sequence: 2,
+      sequence: damageAtZero ? 3 : 2,
       actorType: 'system',
       actorName: 'System',
       targetType: input.targetType as any,
       targetName: input.targetName,
-      eventType: monsterDied ? 'died' : 'dropped_to_0_hp',
-      payload: { via: 'aura', aura_name: input.auraName, damage: input.damage },
+      eventType: updates.is_dead ? 'died' : 'dropped_to_0_hp',
+      payload: { via: 'aura', aura_name: input.auraName, damage: input.damage, massive_damage_death:massiveDamage },
     });
-  } else if (isCharacter) {
+  } else if (isCharacter && updates.current_hp > 0) {
     // RAW: damage from any source can break concentration.
     const { runConcentrationSave } = await import('./pendingAttack');
     await runConcentrationSave({

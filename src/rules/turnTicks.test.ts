@@ -43,6 +43,14 @@ describe('ordered turn-effect proposals', () => {
     expect(result.updates.active_buffs.map(b => b.key)).toEqual(['healing']);
     expect(result.events.map(e => e.eventType)).toEqual(['damage_at_0_hp_failure_added', 'spell_effect_removed']);
   });
+  it('ordinary creature death stops later healing and save requests',()=>{
+    const roll=vi.fn(()=>7);
+    const result=planTurnTicks(state({current_hp:3,temp_hp:2,active_buffs:[
+      buff('lethal',{flat:5,saveEnds:{ability:'con',dc:15}}),buff('heal',{kind:'heal',dice:'1d8'}),
+    ]}),false,'turn_end',roll);
+    expect(result.updates).toMatchObject({current_hp:0,is_dead:true,death_save_failures:0});
+    expect(result.events.map(e=>e.eventType)).toEqual(['damage_applied']);expect(roll).not.toHaveBeenCalled();
+  });
   it('healing from zero resets counters before a later nonlethal hit', () => {
     const result = planTurnTicks(state({current_hp: 0, temp_hp: 0, is_stable: true,
       death_save_failures: 2, death_save_successes: 2, active_buffs: [

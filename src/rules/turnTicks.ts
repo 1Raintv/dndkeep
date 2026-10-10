@@ -1,8 +1,7 @@
 // v2.869: compute one ordered turn-effect proposal without database/log writes.
 // The caller owns persistence and retries; never recalculate a saved proposal.
 import { rollDiceExpr } from './dice';
-import { applyDamageToPools } from './hp';
-import { resolveDamageAtZero } from './deathSaves';
+import {resolveNonAttackDamage} from './deathSaves';
 
 export interface TurnTick {
   kind: 'damage' | 'heal' | 'temp_hp';
@@ -49,41 +48,16 @@ export function planTurnTicks<B extends TickingBuff>(
     const amount = diceTotal + (tick.flat ?? 0);
 
     if (tick.kind === 'damage' && amount > 0) {
-      if (hp === 0 && isCharacter && !isDead) {
-        // RAW: damage while at 0 HP = one death-save failure (ticks
-        // aren't attacks, so no crit doubling); it also breaks
-        // stability.
-        // v2.869 audit: damage still consumes temp HP at zero, and a
-        // sufficiently large hit kills immediately even on the first failure.
-        tempHp = applyDamageToPools(hp,tempHp,amount).tempAfter;
-        const damageState=resolveDamageAtZero(amount,maxHp,failures);
-        failures=damageState.failures;isStable=damageState.isStable;isDead=damageState.isDead;
-        events.push({
-          eventType: 'damage_at_0_hp_failure_added',
-          payload: { source_buff: buff.name, tick: true, amount, temp_hp_after:tempHp, failures, became_dead: isDead, massive_damage_death:damageState.massiveDamage },
-        });
-      } else if (hp > 0 || !isCharacter) {
-        const hpBefore = hp;
-        // v2.636 — pool math consolidated into rules/hp.ts
-        const tickApplied = applyDamageToPools(hp, tempHp, amount);
-        tempHp = tickApplied.tempAfter;
-        const toHp = tickApplied.dmgToHp;
-        hp = tickApplied.hpAfter;
-        const overflow = hpBefore > 0 && hp === 0 ? Math.max(0, toHp - hpBefore) : 0;
-        if (isCharacter && hpBefore > 0 && hp === 0 && overflow >= maxHp && maxHp > 0) {
-          isDead = true;
-          failures = 3;
-        }
-        events.push({
-          eventType: 'damage_applied',
-          payload: {
-            amount, damage_type: tick.damageType ?? 'untyped',
-            source_buff: buff.name, tick: true, timing,
-            hp_after: hp, temp_hp_after: tempHp,
-            dropped_to_0: hpBefore > 0 && hp === 0,
-            massive_damage_death: isDead && failures === 3 && overflow >= maxHp && maxHp > 0,
-          },
-        });
+      const applied=resolveNonAttackDamage({current_hp:hp,max_hp:maxHp,temp_hp:tempHp,death_save_failures:failures,
+        death_save_successes:successes,is_stable:isStable,is_dead:isDead},isCharacter,amount);
+      hp=applied.updates.current_hp;tempHp=applied.updates.temp_hp;failures=applied.updates.death_save_failures;
+      isStable=applied.updates.is_stable;isDead=applied.updates.is_dead;
+      if(applied.damageAtZero){
+        events.push({eventType:'damage_at_0_hp_failure_added',payload:{source_buff:buff.name,tick:true,amount,
+          temp_hp_after:tempHp,failures,became_dead:isDead,massive_damage_death:applied.massiveDamage}});
+      }else{
+        events.push({eventType:'damage_applied',payload:{amount,damage_type:tick.damageType??'untyped',source_buff:buff.name,
+          tick:true,timing,hp_after:hp,temp_hp_after:tempHp,dropped_to_0:applied.droppedTo0,massive_damage_death:applied.massiveDamage}});
       }
       // RAW order for Searing Smite: damage first, THEN the save.
       if (tick.saveEnds && !isDead) {

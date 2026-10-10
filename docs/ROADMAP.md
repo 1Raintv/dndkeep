@@ -7017,3 +7017,37 @@ connected; it cannot call this API before saved outgoing effects exist. Replace
 its snapshot update with this phase during that integration. No deployment or
 claim that legacy recovery is already atomic. Next blockers: aura resolution
 and reconciling incoming effects/another request's completed clock transition.
+
+### Live aura damage/death-state correction (unreleased)
+
+Aura damage previously changed only HP/temp HP and ordinary monster death.
+Characters at zero took no death-save failure, stable characters stayed stable,
+and massive aura damage could not kill a character. A shared non-attack damage
+resolver now handles these cases for both aura damage and turn ticks. Temporary
+HP absorbs pool damage first; at zero, taking damage still adds a failure and
+breaks stability. From positive HP, massive damage compares the remaining HP
+overflow with maximum HP. Ordinary creatures die at zero, stopping subsequent
+turn-tick healing/dice/save requests. Neither source can critically hit.
+Source: [2024 Basic Rules, Damage and Healing](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game).
+
+The actual aura handler writes the resulting death state, emits corresponding
+failure/death events, and requires a confirmed HP update before reporting damage
+or rolling concentration. Missing target data fails visibly instead of returning
+success. Living characters still test concentration for damage absorbed by temp
+HP; no concentration roll is attempted for an unconscious zero-HP target.
+
+Verification:four desktop/mobile cases execute resolveAuraSave against local
+Docker and check zero-HP stability/failure and massive-death state plus logs.
+Rule and mocked live-handler tests cover overflow thresholds, temp HP, a third
+failure, dead creatures, invalid amounts, write failure, concentration and
+ordered tick termination. Full gate passes (195/195 TypeScript,255.2 KB entry);
+changed-file lint has no errors (existing aura any-type warnings remain).
+No schema changes or production deployment.
+
+Remaining aura audit: save modifiers/advantage/automatic failures, damage
+resistance/immunity/vulnerability, linked concentration cleanup at zero, and
+atomic save/once-per-turn marker/HP/log recovery. The current live marker is
+still reserved before the other writes and can outlive a failure; this change
+does not claim to solve that transaction gap. The durable controller must not
+be released with that gap hidden.
+Final complete unit suite:3,433 tests pass, including the creature tick regression.

@@ -269,6 +269,16 @@ test.describe('Atomic combat clock transitions',()=>{
   expect(()=>run(call(),player)).toThrow(/only to its DM/);
   expect(budgets(pa)).toEqual(spent);expect(budgets(pb)).toEqual(spent);
  });
+ for(const massive of [false,true])test(`live aura damage updates dying state (massive=${massive})`,async({page})=>{
+  sql(`update characters set nat_1_20_saves=false where id='${a}';update combatants set current_hp=${massive?5:0},temp_hp=3,is_stable=${massive?'false':'true'},death_save_failures=0,active_buffs='[]' where id='${ca}'`);
+  await signInFixtureDm(page);
+  expect(await page.evaluate(async({campaign,enc,pa,pb,damage})=>{
+   const api=await import('/src/lib/auras.ts');return api.resolveAuraSave({campaignId:campaign,encounterId:enc,targetParticipantId:pa,targetName:'A',targetType:'character',trigger:'turn_end',
+    aura:{originParticipantId:pb,originName:'B',originSize:1,originRow:0,originCol:0,spec:{key:'fixture',name:'Fixture aura',radiusFt:15,saveAbility:'WIS',saveDC:100,damageDice:String(damage),damageType:'radiant',halfOnSave:true,triggers:['turn_end'],exemptParticipantIds:[],speedInside:'half',affects:'all'}}});
+  },{campaign,enc,pa,pb,damage:massive?28:1})).toBe(true);
+  expect(JSON.parse(sql(`select jsonb_build_object('hp',current_hp,'temp',temp_hp,'stable',is_stable,'dead',is_dead,'failures',death_save_failures) from combatants where id='${ca}'`))).toEqual({hp:0,temp:massive?0:2,stable:false,dead:massive,failures:massive?3:1});
+  await expect.poll(()=>sql(`select count(*) from combat_events where encounter_id='${enc}' and event_type='${massive?'died':'damage_at_0_hp_failure_added'}'`)).toBe('1');
+ });
  const recoverMovement=()=>`select recover_turn_movement_features('${pa}','${turn}')`;
  const featureUses=()=>JSON.parse(sql(`select feature_uses from characters where id='${a}'`));
  const movementFixture=()=>{sql(`update characters set feature_uses='{"Feline Agility":1,"species:Feline Agility":1,"Psionic Restoration":1,"custom":4}' where id='${a}'`);endEffects(pa,ca,false);};
