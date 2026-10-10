@@ -12,3 +12,9 @@ it('rejects unavailable capstone, extra dice count, die size, and Surge level',(
 it('preserves conditional Energy expenditure independently of the larger bonus',()=>{
  expect(conditionalPsionicDie(20,1,19,true,enhancement)).toMatchObject({cost:1,remaining:0});expect(conditionalPsionicDie(20,1,19,false,enhancement)).toMatchObject({cost:0,remaining:1});
 });
+
+it('keeps an unenhanced total equal to its recorded original die',()=>{
+ expect(validPsionicRoll(5,4)).toBe(true);
+ expect(validPsionicRoll(5,4,{originalRoll:4})).toBe(true);
+ for(const originalRoll of [0,2,9,NaN])expect(validPsionicRoll(5,4,{originalRoll})).toBe(false);
+});

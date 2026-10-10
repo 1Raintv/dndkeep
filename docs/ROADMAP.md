@@ -9400,3 +9400,26 @@ or every recovery edge case is finished.
 Final verification: 46 database/browser checks pass across desktop/mobile,
 including the existing declaration/reload flow. The focused console rerun also
 passes on both viewports; only deliberately aborted reply requests are allowed.
+
+
+### Telepath reactions — source-checked rules foundation
+
+Owner UA Update p.10 verified for Telepathic Distraction (Psion 3) and
+Telepathic Bolstering (Psion 10). Added a pure planner covering subclass and
+multiclass eligibility, Reaction availability, visibility, strongest live
+Connection range, original trigger outcome, final enhanced dice and conditional
+Energy Die expenditure. Reaction is consumed even if the outcome stays unchanged.
+Unknown range/clock evidence requires review. Natural attack extremes and
+explicit automatic results survive numeric modifiers; checks use their total.
+
+This is a foundation, not player-ready automation: no control or database write
+uses this planner yet. Next bind the original attack/check event and its target
+in an idempotent transaction, claim the Reaction, save enhancements and settle
+only one outcome/payment before exposing player controls. Unknown/conditional
+attack results need explicit authoritative resolution rather than guessed AC.
+
+The audit also tightened shared Psion roll validation: an unenhanced total must
+match its recorded original die. This protects existing callers as well as the
+new planner. Tests cover threshold equality, natural extremes, failed bonuses,
+range expiry, malformed resources, subclass levels and Surge/Enkindled totals.
+No new migration; no production deployment. Vercel preview remains rate-limited.
