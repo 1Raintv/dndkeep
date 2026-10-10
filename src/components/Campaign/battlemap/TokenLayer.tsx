@@ -2255,7 +2255,9 @@ export function TokenLayer(props: {
       // show a neutral white line so the distance label still helps.
       // (drag was captured at the top of this function.)
       const ati = activeTokenInfoRef.current;
-      const inCombatForThisToken = !!(ati && drag && ati.tokenId === drag.id && ati.max > 0);
+      // v2.869: zero Speed is a tracked, exhausted budget (e.g. Paralyzed),
+      // not permission to show a neutral out-of-combat movement preview.
+      const inCombatForThisToken = !!(ati && drag && ati.tokenId === drag.id);
       let lineColor = 0xffffff;
       let labelColor = 0xffffff;
       let costLabel = `${distanceFt} ft`;

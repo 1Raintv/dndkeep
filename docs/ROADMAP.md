@@ -1,5 +1,14 @@
 # DNDKeep — Two-Track Roadmap
 
+### Zero-speed map preview (local; not released)
+
+Dragging the active token with a zero movement allowance now shows the red
+budget warning and zero feet remaining. Zero Speed no longer falls through to
+the neutral out-of-combat preview. Real DM/player browser tests verify the
+Paralyzed token's red preview and unchanged saved position at desktop/mobile
+widths, alongside existing ownership, failed-write rollback and movement limits.
+The fixture now starts at round one to match the server's combat lifecycle.
+
 ### Interrupted technique closure (local; not released)
 
 An uncertain Boost/Disorient/Bolt choice can now be closed without adding an
