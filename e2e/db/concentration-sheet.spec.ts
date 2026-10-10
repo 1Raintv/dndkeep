@@ -161,4 +161,23 @@ test.describe('Concentration sheet saves (local stack)', () => {
     await other.reload();await expect(other.getByRole('region',{name:'Concentration check required',exact:true})).toHaveCount(1);await other.close();
   });
 
+  test('Bless and Bane dice survive a lost damage reply and later effect removal',async({page})=>{
+    sql(`update characters set current_hp=30,max_hp=30,temp_hp=0,constitution=14,saving_throw_proficiencies='{constitution}',nat_1_20_saves=false,
+      active_buffs='[{"name":"Bless","saveBonus":0},{"name":"Bane"},{"name":"Ward","saveBonus":2}]',concentration_spell='detect-magic',concentration_rounds_remaining=100 where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    await page.evaluate(()=>{Math.random=()=>.25;});
+    let lostReplies=0;await page.route('**/rest/v1/rpc/apply_standalone_damage',async route=>{const result=await route.fetch();expect(result.ok()).toBe(true);await route.abort();lostReplies++;});
+    await page.getByTitle('Take 1 damage',{exact:true}).locator('visible=true').first().click();
+    await expect(page.getByRole('button',{name:'Confirm damage',exact:true})).toBeVisible();
+    await expect.poll(()=>lostReplies).toBe(2);await expect.poll(()=>sql(`select current_hp from characters where id='${charId}'`)).toBe('29');
+    await expect(page.getByRole('button',{name:'Confirm damage',exact:true})).toBeEnabled();
+    const saved=await page.evaluate(()=>JSON.parse(Object.entries(localStorage).find(([k])=>k.startsWith('dndkeep:solo-damage:'))![1]));
+    expect(saved.effectRolls.map((x:{total:number})=>x.total)).toEqual([2,-2,2]);expect(saved.modifier).toBe(4);
+    sql(`update characters set active_buffs='[]' where id='${charId}'`);
+    await page.unroute('**/rest/v1/rpc/apply_standalone_damage');await page.reload();await page.getByRole('button',{name:'Confirm damage',exact:true}).click();
+    const roll=page.getByRole('button',{name:'Roll CON Save (+7)',exact:true});await expect(roll).toBeVisible();await page.evaluate(()=>{Math.random=()=>.25;});await roll.click();
+    await expect.poll(()=>sql(`select total from action_logs where character_id='${charId}' and action_name='Concentration Check'`)).toBe('13');
+    expect(sql(`select current_hp from characters where id='${charId}'`)).toBe('29');
+  });
+
 });

@@ -6331,3 +6331,42 @@ both mobile and desktop exhaustion boundaries and legacy receipt recovery.
 Required type/hooks/RAW/coordinate/anchor/build/budget gates pass (197/197 carried
 TypeScript errors; entry255.2KB). Local SQL error-level lint is clean; changed-file
 ESLint has only the existing any-type warning. No production migration or deploy.
+
+
+### Temporary modifiers on standalone concentration saves (unreleased)
+
+Standalone damage/save creation now rolls active saving-throw modifiers with the
+canonical dice module and persists their faces/totals alongside the original
+request before network I/O. The modifier sent to the existing reviewed-bonus
+contract includes these effects; proficiency and exhaustion remain server-added.
+A retry sends the original aggregate and never rolls its effects again. New
+requests snapshot active_buffs; a changed effect rejects before changing HP.
+Old committed requests replay unchanged, while a new legacy request with active
+buffs must reload instead of silently ignoring them. Queue and cancellation bounds
+now both accommodate the bounded effect total.
+
+The death-save effect helper is renamed saveBonuses and shared instead of copied.
+It recognizes the sheet's old Bless (saveBonus:0) and Bane (name-only) presets,
+handles explicit numeric/dice bonuses and signed dice penalties, and avoids
+stacking duplicate named Bless/Bane entries. Positive die faces plus a negative
+multiplier preserve Bane's evidence. Unsupported expressions stop the request.
+Malformed saved effect arithmetic is rejected. Non-concentrating damage creates
+no effect dice. Automatic death saves use the same corrected calculation.
+
+Limits: the server still accepts a reviewed aggregate modifier; it fences the
+source buffs but does not independently derive their dice. Effect faces survive
+unconfirmed requests in this browser; after confirmation the server retains the
+aggregate, not a cross-device effect-dice breakdown. Advantage/disadvantage from
+temporary effects and other legacy campaign-sheet saves remain follow-up work.
+No production migration or deployment. Local migration was applied transactionally
+with its ledger entry, preserving the unrelated local migration-history mismatch.
+
+Rules sources: https://www.dndbeyond.com/spells/2618933-bless and
+https://www.dndbeyond.com/spells/2618900-bane .
+
+Verification:3,250 unit tests and required type/hooks/RAW/coordinate/anchor/build/
+budget gates pass (197/197 TypeScript; entry255.2KB). 108 database/browser cases
+passed in the broad run; both new desktop/mobile effect-recovery cases pass after
+fixing the fixture's global-random sequence and waiting for the committed hit
+before removing effects. This gives110 verified cases. SQL error-level lint is
+clean; changed-file ESLint retains only the existing any-type warning. No deploy.

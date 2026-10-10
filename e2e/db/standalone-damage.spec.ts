@@ -163,4 +163,19 @@ test.describe('Atomic standalone damage and concentration',()=>{
   expect(run(settle('array[14]'))).toMatchObject({outcome:'failed',bonus:-5,total:9});
  });
 
+ const effectSnapshot=()=>JSON.stringify({...JSON.parse(exhaustedSnapshot()),active_buffs:JSON.parse(sql(`select coalesce(active_buffs,'[]') from characters where id='${character}'`))});
+ test('changed temporary effects reject damage before changing HP',()=>{
+  const expected=effectSnapshot();sql(`update characters set active_buffs='[{"name":"Bless","saveBonus":0}]' where id='${character}'`);
+  expect(()=>run(damage(6,randomUUID(),hpRevision(),expected))).toThrow(/Character changed/);expect(sql(`select current_hp from characters where id='${character}'`)).toBe('20');
+ });
+ test('a legacy new hit must reload rather than ignore active effects',()=>{
+  sql(`update characters set active_buffs='[{"name":"Bane"}]' where id='${character}'`);
+  expect(()=>run(damage())).toThrow(/Reload to include active effects/);expect(pending()).toEqual([]);
+ });
+ test('recorded modifier stays fixed after effects change and the hit is retried',()=>{
+  sql(`update characters set active_buffs='[{"name":"Bless","saveBonus":0}]' where id='${character}'`);
+  const q=damage(6,randomUUID(),hpRevision(),effectSnapshot());const first=run(q);
+  sql(`update characters set active_buffs='[]' where id='${character}'`);expect(run(q)).toMatchObject({replayed:true,check:{save_bonus:first.check.save_bonus}});
+ });
+
 });

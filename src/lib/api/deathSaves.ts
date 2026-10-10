@@ -1,9 +1,9 @@
 import {psionicRpc} from './psionicTurns';
 import {rollDie} from '../../rules/dice';
-import {rollDeathSaveBonuses,type DeathSaveBonusRoll} from '../../rules/deathSaveBonuses';
+import {rollSaveBonuses,type SaveBonusRoll} from '../../rules/saveBonuses';
 import {resolveDeathSave} from '../../rules/deathSaves';
 export interface DeathSaveContext {pendingId:string;characterId:string;participantId:string;combatantId:string;encounterId:string;state:string;encounterStatus:string;hp:number;stable:boolean;dead:boolean;successes:number;failures:number;exhaustion:number;buffs:unknown[];conditions:string[];resolutionMode?:'auto'|'prompt';inventory?:unknown[]}
-export interface SavedDeathSave {version:1;bonusRolls?:DeathSaveBonusRoll[];characterId:string;pendingId:string;context:DeathSaveContext;pool:number[];dice:number[];bonus:number;advantage:boolean;disadvantage:boolean;penaltyD4:number}
+export interface SavedDeathSave {version:1;bonusRolls?:SaveBonusRoll[];characterId:string;pendingId:string;context:DeathSaveContext;pool:number[];dice:number[];bonus:number;advantage:boolean;disadvantage:boolean;penaltyD4:number}
 export interface DeathSaveReceipt {pendingId:string;outcome:string;d20:number|null;total:number|null;dice?:number[];bonus?:number;exhaustion?:number;successes?:number;failures?:number;stable?:boolean;dead?:boolean;hp?:number;replayed:boolean;penalty:{saveId:string;saveKind:string;penalty:number;die:number|null;consumedIds:string[];expiredIds:string[]}|null}
 const key=(c:string,id:string)=>`dndkeep:death-save:${c}:${id}`;
 export const DEATH_SAVE_CHANGED='dndkeep:death-save-changed';
@@ -52,11 +52,11 @@ export async function prepareDeathSave(c:string,id:string,bonus:number,advantage
    context=await deathSaveContext(c,id);
   }
   if(context.state!=='pending')throw new Error('This save is already resolved. Confirm the saved roll to recover its result.');
-  let bonusRolls:DeathSaveBonusRoll[]|undefined;
+  let bonusRolls:SaveBonusRoll[]|undefined;
   if(automatic){
    if(!Array.isArray(context.inventory))throw new Error('Update the app database before automatic death saves.');
    const {computeActiveBonuses}=await import('../gameUtils');
-   const effects=rollDeathSaveBonuses(context.buffs,computeActiveBonuses([],context.inventory).saveBonus);
+   const effects=rollSaveBonuses(context.buffs,computeActiveBonuses([],context.inventory).saveBonus);
    bonus=effects.bonus;bonusRolls=effects.rolls;
   }
   const pool=[...(old?.pool??[])],count=advantage!==disadvantage?2:1;

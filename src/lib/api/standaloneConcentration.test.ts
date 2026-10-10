@@ -112,3 +112,9 @@ it('loads negative total bonuses caused by exhaustion',async()=>{
  m.rpc.mockResolvedValue({data:{character,pending:[{...row,save_bonus:-15}]},error:null});
  expect((await loadStandaloneSaves(c)).pending[0].save_bonus).toBe(-15);
 });
+
+it('an identical creation retry retains its effect dice before server confirmation',()=>{
+ const random=vi.spyOn(Math,'random').mockReturnValue(0),c1={...character,active_buffs:[{name:'Bless'}]};
+ const first=createStandaloneSaveRequest(c1,u,5,2,id);expect(createStandaloneSaveRequest(c1,u,5,2,id)).toEqual(first);expect(random).toHaveBeenCalledTimes(1);
+ expect(first.modifier).toBe(3);expect(first.expected.active_buffs).toEqual(c1.active_buffs);
+});

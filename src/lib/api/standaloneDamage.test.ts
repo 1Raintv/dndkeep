@@ -58,3 +58,20 @@ it('damage acknowledgement includes the captured exhaustion penalty',async()=>{
  v.check.save_bonus=1;m.rpc.mockResolvedValue({data:v,error:null});
  expect((await submitStandaloneDamage(r)).check?.save_bonus).toBe(1);
 });
+
+it('persists Bless and Bane dice before damage and never rerolls on retry',async()=>{
+ const random=vi.spyOn(Math,'random').mockReturnValueOnce(0).mockReturnValueOnce(.75);
+ const r=createStandaloneDamage({...character,active_buffs:[{name:'Bless',saveBonus:0},{name:'Bane'}]},u,9,2);
+ expect(r.modifier).toBe(-1);expect(r.baseModifier).toBe(2);expect(r.effectRolls?.map(x=>x.total)).toEqual([1,-4]);
+ m.rpc.mockRejectedValue(new Error('offline'));await expect(submitStandaloneDamage(r)).rejects.toThrow('offline');
+ expect(savedStandaloneDamage(u,c)).toEqual(r);expect(()=>createStandaloneDamage(character,u,9,2)).toThrow('previous');expect(random).toHaveBeenCalledTimes(2);
+ const v=receipt(r);v.check.save_bonus=2;m.rpc.mockResolvedValue({data:v,error:null});await submitStandaloneDamage(r);expect(random).toHaveBeenCalledTimes(2);
+});
+it('malformed saved effect arithmetic is not silently accepted',()=>{
+ vi.spyOn(Math,'random').mockReturnValue(0);const r=createStandaloneDamage({...character,active_buffs:[{name:'Bless'}]},u,9,2);
+ r.effectRolls![0].total=4;localStorage.setItem(`dndkeep:solo-damage:${u}:${c}`,JSON.stringify(r));expect(()=>savedStandaloneDamage(u,c)).toThrow('does not match');
+});
+it('damage without concentration does not roll temporary save effects',()=>{
+ const random=vi.spyOn(Math,'random');const r=createStandaloneDamage({...character,concentration_spell:'',active_buffs:[{name:'Bane'}]},u,9,2);
+ expect(r.effectRolls).toEqual([]);expect(random).not.toHaveBeenCalled();
+});
