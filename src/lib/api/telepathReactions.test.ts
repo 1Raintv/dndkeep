@@ -1,5 +1,5 @@
 import {beforeEach,expect,it,vi} from 'vitest';
-import {getTelepathAttackContext,validTelepathAttackContext,type TelepathAttackContext} from './telepathReactions';
+import {cancelTelepathReactionByDm,getTelepathAttackContext,validTelepathAttackContext,type TelepathAttackContext} from './telepathReactions';
 const mock=vi.hoisted(()=>({rpc:vi.fn()}));vi.mock('./psionicTurns',()=>({psionicRpc:mock.rpc}));
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const saved=():TelepathAttackContext=>({characterId:id(1),feature:'distraction',psionLevel:10,energyRemaining:8,reactionAvailable:true,telepathyRange:60,rangeVerified:true,spatialReviewRequired:true,
@@ -35,4 +35,17 @@ it('supports unknown range as explicit review and a current miss after AC change
 it('fails before RPC for malformed identity and rejects malformed success',async()=>{
  await expect(getTelepathAttackContext('bad',id(6),'distraction')).rejects.toThrow();expect(mock.rpc).not.toHaveBeenCalled();
  mock.rpc.mockResolvedValue({});await expect(getTelepathAttackContext(id(1),id(6),'distraction')).rejects.toThrow('could not be verified');
+});
+
+it('DM cancellation retries the same saved identity and retains spent resources',async()=>{
+ const result={requestId:id(1),cancelled:true,reactionCost:1,energyCost:0,energy:null,replayed:true};mock.rpc.mockResolvedValue(result);
+ expect(await cancelTelepathReactionByDm(id(1),' Character left ')).toEqual(result);
+ expect(mock.rpc).toHaveBeenCalledWith('cancel_telepath_reaction_by_dm',{p_request:id(1),p_reason:'Character left'},true);
+});
+it.each(['',' ', 'x'.repeat(501)])('rejects an invalid cancellation reason before sending',async reason=>{
+ await expect(cancelTelepathReactionByDm(id(1),reason)).rejects.toThrow();expect(mock.rpc).not.toHaveBeenCalled();
+});
+it.each([{requestId:id(9)},{cancelled:false},{reactionCost:0},{energyCost:1},{energy:{}},{replayed:null}])('rejects cancellation evidence that changes identity or costs %j',async patch=>{
+ mock.rpc.mockResolvedValue({requestId:id(1),cancelled:true,reactionCost:1,energyCost:0,energy:null,replayed:false,...patch});
+ await expect(cancelTelepathReactionByDm(id(1),'Character left')).rejects.toThrow('could not be confirmed');
 });

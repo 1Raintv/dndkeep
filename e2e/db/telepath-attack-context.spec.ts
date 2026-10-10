@@ -95,6 +95,71 @@ test.describe('Telepath attack context',()=>{
   const result=sql(`begin;set local request.jwt.claims='{"sub":"${user}","role":"authenticated"}';set local role authenticated;select public.telepath_reaction('${actor}','${operation}','${JSON.stringify(payload).replace(/'/g,"''")}');commit;`);
   return JSON.parse(result);
  };
+ const cancelByDm=(request:string,reason='Character left the campaign',user=owner)=>JSON.parse(sql(`begin;set local request.jwt.claims='{"sub":"${user}","role":"authenticated"}';set local role authenticated;select public.cancel_telepath_reaction_by_dm('${request}','${reason.replace(/'/g,"''")}');commit;`));
+ test('DM cancellation closes a departed character offer without changing dice or resources',()=>{
+  const d=beginSaved(3);
+  const before=sql(`select jsonb_build_object('resources',class_resources,'hitDice',hit_dice_spent) from characters where id='${character}'`);
+  sql(`update characters set campaign_id=null,user_id='${other}' where id='${character}'`);
+  expect(()=>dispatch('cancel',{declarationId:d.request_id})).toThrow();
+  expect(()=>cancelByDm(d.request_id,'Owner cannot cancel',other)).toThrow();
+  expect(cancelByDm(d.request_id)).toMatchObject({cancelled:true,reactionCost:1,energyCost:0,energy:null,replayed:false});
+  expect(cancelByDm(d.request_id,'Different retry note')).toMatchObject({replayed:true,cancelReason:'Character left the campaign'});
+  expect(sql(`select jsonb_build_object('resources',class_resources,'hitDice',hit_dice_spent) from characters where id='${character}'`)).toBe(before);
+  expect(sql(`select attack_total||':'||hit_result from pending_attacks where id='${attack}'`)).toBe('17:hit');
+  expect(sql(`select state from pending_reactions where id='${d.request_id}'`)).toBe('declined');
+  expect(sql(`select count(*) from combat_events where payload->>'declaration_id'='${d.request_id}'`)).toBe('1');
+  expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${d.request_id}'`)).toBe('1');
+ });
+ test('DM cancellation rejects strangers and invalid reasons without deciding the offer',()=>{
+  const d=beginSaved(3);
+  expect(()=>cancelByDm(d.request_id,'Unauthorized',other)).toThrow();
+  for(const reason of ['', '   ', 'x'.repeat(501)])expect(()=>cancelByDm(d.request_id,reason)).toThrow();
+  expect(sql(`select state from pending_reactions where id='${d.request_id}'`)).toBe('offered');
+  expect(sql(`select result is null from dndkeep_private.telepath_declarations where request_id='${d.request_id}'`)).toBe('t');
+ });
+ test('DM cancellation follows current ownership of the original campaign',()=>{
+  const d=beginSaved(3);sql(`update campaigns set owner_id='${other}' where id='${campaign}'`);
+  expect(()=>cancelByDm(d.request_id)).toThrow();
+  expect(cancelByDm(d.request_id,'New DM cleanup',other)).toMatchObject({cancelled:true,canceledBy:other});
+ });
+ test('DM cancellation cannot undo a settled roll or duplicate a normal cancellation',()=>{
+  const d=beginSaved(3);finishSaved(d.request_id);
+  expect(()=>cancelByDm(d.request_id)).toThrow();
+  expect(sql(`select attack_total from pending_attacks where id='${attack}'`)).toBe('14');
+ });
+ test('DM cancellation recovers a normal cancellation without adding history',()=>{
+  const d=beginSaved(3);finishSaved(d.request_id,true);
+  expect(cancelByDm(d.request_id)).toMatchObject({cancelled:true,replayed:true});
+  expect(sql(`select count(*) from combat_events where payload->>'declaration_id'='${d.request_id}'`)).toBe('0');
+ });
+ test('DM cancellation keeps linked enhancement Hit Dice spent after departure',()=>{
+  const d=beginSaved(2);enhanceSaved(d.request_id);
+  sql(`update characters set campaign_id=null,user_id='${other}' where id='${character}'`);
+  expect(cancelByDm(d.request_id)).toMatchObject({cancelled:true,energyCost:0});
+  expect(sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('1');
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('8');
+ });
+ test('DM cancellation history failure rolls back the decision and offer together',()=>{
+  const d=beginSaved(2),constraint='test_cancel_'+randomUUID().replace(/-/g,'');
+  sql(`alter table public.combat_events add constraint ${constraint} check (payload->>'declaration_id' is distinct from '${d.request_id}') not valid`);
+  try {
+   expect(()=>cancelByDm(d.request_id)).toThrow();
+   expect(sql(`select state from pending_reactions where id='${d.request_id}'`)).toBe('offered');
+   expect(sql(`select result is null from dndkeep_private.telepath_declarations where request_id='${d.request_id}'`)).toBe('t');
+  } finally {sql(`alter table public.combat_events drop constraint ${constraint}`);}
+  expect(cancelByDm(d.request_id)).toMatchObject({cancelled:true,replayed:false});
+  expect(sql(`select count(*) from combat_events where payload->>'declaration_id'='${d.request_id}'`)).toBe('1');
+ });
+ test('DM cancellation simultaneous requests create exactly one history event',async()=>{
+  const d=beginSaved(2),query=`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';set local role authenticated;select public.cancel_telepath_reaction_by_dm('${d.request_id}','Concurrent cleanup');commit;`;
+  const run=()=>new Promise<Record<string,unknown>>((resolve,reject)=>{
+   const process=spawn('docker',['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1']);let out='',err='';
+   process.stdout.on('data',data=>out+=data);process.stderr.on('data',data=>err+=data);process.on('error',reject);
+   process.on('close',code=>{if(code)reject(new Error(err));else{try{resolve(JSON.parse(out.trim()));}catch(error){reject(error);}}});process.stdin.end(query);
+  });
+  const results=await Promise.all([run(),run()]);expect(results.map(r=>r.replayed).sort()).toEqual([false,true]);
+  expect(sql(`select count(*) from combat_events where payload->>'declaration_id'='${d.request_id}'`)).toBe('1');
+ });
  const beginPayload=(roll=3)=>({requestId:randomUUID(),attackId:attack,feature:'distraction',expected:context(),roll,review:{distanceFeet:30,visible:true,confirmed:true}});
  test('authenticated dispatcher recovers the declaration and conditional payment without spending twice',()=>{
   const input=beginPayload();expect(dispatch('context',{attackId:attack,feature:'distraction'})).toEqual(context());expect(dispatch('list',{attackId:attack})).toEqual([]);

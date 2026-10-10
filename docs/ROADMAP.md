@@ -1,5 +1,27 @@
 # DNDKeep — Two-Track Roadmap
 
+### Original-campaign Telepath cleanup (local backend; not UI-wired)
+
+Migration 20261010200000 lets the original campaign's current DM cancel an
+unresolved saved Telepath reaction after its character leaves or moves. It locks
+in the same order as normal settlement, rechecks campaign ownership, and saves
+the reason and a combat-history event in one transaction. Repeated requests return
+the saved cancellation; completed rolls cannot be undone. The Reaction and paid
+Hit Dice stay spent, with no Energy charge or attack-roll change. Character owners
+and unrelated DMs cannot use this cleanup endpoint.
+
+Client validation rejects inconsistent identities/costs and retries the same saved
+request. Full verification passed: 4,544 unit tests, TS 193/193, entry 255.7 KB.
+SQL lint: 20 existing function findings, no errors or cancellation findings.
+All 90 desktop/mobile Telepath cases passed, plus eight focused cancellation
+checks including concurrent requests, history-write rollback and paid Hit Dice.
+Security advisor findings remain keep_warm/client_errors. Exact local ledger
+verified. Evidence: .tmp/telepath-cancel-{db,focused,gate}.log and
+.tmp/telepath-cancel-{lint,advisors}.json. Repo chain: 342; retained release
+rehearsals need 333–342. Production unchanged. The cancellation control and normal
+Telepath review/recovery UI remain next; this checkpoint adds their backend/API.
+
+
 ### Authenticated Telepath lifecycle (local backend; not released or UI-wired)
 
 Migration 20261010195500 exposes a scoped telepath_reaction dispatcher for context,

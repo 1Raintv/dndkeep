@@ -38,3 +38,15 @@ export async function getTelepathAttackContext(characterId:string,attackId:strin
  if(!validTelepathAttackContext(result,characterId,attackId,feature))throw new Error('Telepath attack context could not be verified. Refresh before rolling.');
  return result;
 }
+
+export interface TelepathCancellation {requestId:string;cancelled:true;reactionCost:1;energyCost:0;energy:null;replayed:boolean;cancelReason?:string}
+/** Original-campaign DM cleanup only. Reuse the saved declaration identity on
+ * every retry; this must never settle dice or refund the already claimed Reaction. */
+export async function cancelTelepathReactionByDm(requestId:string,reason:string):Promise<TelepathCancellation>{
+ const note=reason.trim();
+ if(!uuid(requestId)||!note||note.length>500)throw new Error('Choose the saved reaction and enter a cancellation reason (1–500 characters).');
+ const result=await psionicRpc('cancel_telepath_reaction_by_dm',{p_request:requestId,p_reason:note},true) as TelepathCancellation|null;
+ if(!result||result.requestId!==requestId||result.cancelled!==true||result.reactionCost!==1||result.energyCost!==0||result.energy!==null||typeof result.replayed!=='boolean'
+  ||result.cancelReason!==undefined&&typeof result.cancelReason!=='string')throw new Error('Cancellation could not be confirmed. Keep the saved reaction and retry; do not roll again.');
+ return result;
+}
