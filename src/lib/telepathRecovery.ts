@@ -3,6 +3,9 @@ import {psionicDieSides} from '../rules/psionicRestoration';
 export type PendingTelepath={kind:'begin';request:TelepathRequest}|{kind:'enhance';request:TelepathEnhancementRequest}|{kind:'finish'|'cancel';request:{declarationId:string}};
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 const key=(character:string)=>`dndkeep:telepath:${character}`;
+// v2.869: preserve a completed roll when the post-RNG storage write fails.
+// The unique durable marker prevents this tab from replacing another tab's draft.
+const unsaved=new Map<string,{marker:string;pending:PendingTelepath}>();
 const interrupted=()=>new Error('A saved Telepath request needs recovery. Keep this browser data; do not roll again.');
 const valid=(value:unknown,character:string):value is PendingTelepath=>{
  const p=value as PendingTelepath|null;
@@ -16,14 +19,28 @@ async function locked<T>(character:string,task:()=>Promise<T>|T):Promise<T>{
  return navigator.locks.request(key(character),task);
 }
 export function pendingTelepath(character:string):PendingTelepath|null{
- identity(character);const raw=localStorage.getItem(key(character));if(raw===null)return null;
+ identity(character);const raw=localStorage.getItem(key(character));
+ const recovery=unsaved.get(character);
+ if(recovery&&raw===recovery.marker)return structuredClone(recovery.pending);
+ unsaved.delete(character);if(raw===null)return null;
  let value:unknown;try{value=JSON.parse(raw);}catch{throw interrupted();}
  if(!valid(value,character))throw interrupted();return value;
 }
 function remember(character:string,pending:PendingTelepath){
  if(!valid(pending,character))throw new Error('Invalid Telepath request.');
  const prior=localStorage.getItem(key(character)),encoded=JSON.stringify(pending);
- if(prior!==null&&prior!==encoded)throw interrupted();localStorage.setItem(key(character),encoded);
+ const recovery=unsaved.get(character);
+ const retained=!!recovery&&prior===recovery.marker&&encoded===JSON.stringify(recovery.pending);
+ if(prior!==null&&prior!==encoded&&!retained)throw interrupted();
+ try{localStorage.setItem(key(character),encoded);}catch(cause){if(retained)throw storageInterrupted();throw cause;}
+ unsaved.delete(character);
+}
+const storageInterrupted=()=>new Error('Your exact Telepath roll is still held in this tab. Keep this tab open; do not reload or clear site data. Use the in-app Refresh and Retry saved request when browser storage is available. No new roll is needed.');
+function saveRolled(character:string,marker:string,pending:PendingTelepath){
+ // Retain an independent copy before attempting storage; no RPC may start until it succeeds.
+ unsaved.set(character,{marker,pending:structuredClone(pending)});
+ try{localStorage.setItem(key(character),JSON.stringify(pending));}catch{throw storageInterrupted();}
+ unsaved.delete(character);return pending;
 }
 /** Marker is written before RNG. If a later write fails, reload cannot erase the
  * fact that dice were rolled. No network request starts during preparation. */
@@ -32,9 +49,10 @@ export function prepareTelepath(character:string,input:Omit<TelepathRequest,'rol
  return locked(character,()=>{
   if(!validTelepathRequest({...request,roll:1},character))throw new Error('Review the Telepath target before rolling.');
   if(pendingTelepath(character))throw interrupted();
-  localStorage.setItem(key(character),JSON.stringify({kind:'preparing',requestId:request.requestId}));
+  const marker=JSON.stringify({kind:'preparing',attemptId:crypto.randomUUID(),operation:'begin',request});
+  localStorage.setItem(key(character),marker);
   const pending:PendingTelepath={kind:'begin',request:{...request,roll:roll()}};
-  if(!valid(pending,character))throw interrupted();localStorage.setItem(key(character),JSON.stringify(pending));return pending;
+  if(!valid(pending,character))throw interrupted();return saveRolled(character,marker,pending);
  });
 }
 export function prepareTelepathEnkindled(character:string,row:TelepathRecord,requestId:string,count:1|2,roll:()=>number){
@@ -42,11 +60,12 @@ export function prepareTelepathEnkindled(character:string,row:TelepathRecord,req
  return locked(character,()=>{
   if(!validTelepathRecord(saved,character)||saved.result!==null||saved.psion_level!==20||saved.enhancements.length||!uuid(requestId)||requestId===saved.request_id||![1,2].includes(count))throw new Error('Review the saved Telepath enhancement before rolling.');
   if(pendingTelepath(character))throw interrupted();
-  localStorage.setItem(key(character),JSON.stringify({kind:'preparing',requestId}));
+  const marker=JSON.stringify({kind:'preparing',attemptId:crypto.randomUUID(),operation:'enkindled',requestId,count,declaration:saved});
+  localStorage.setItem(key(character),marker);
   const extraRolls=Array.from({length:count},roll);
   const pending:PendingTelepath={kind:'enhance',request:{declarationId:saved.request_id,requestId,kind:'enkindled',extraRolls,hitDie:null}};
   if(!valid(pending,character)||extraRolls.some(n=>n>psionicDieSides(saved.psion_level)))throw interrupted();
-  localStorage.setItem(key(character),JSON.stringify(pending));return pending;
+  return saveRolled(character,marker,pending);
  });
 }
 /** Every failure retains the draft: a later permission denial cannot prove that

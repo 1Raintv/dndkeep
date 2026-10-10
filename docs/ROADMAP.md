@@ -1,5 +1,27 @@
 # DNDKeep — Two-Track Roadmap
 
+### Interrupted Telepath storage recovery (local; not released)
+
+A completed base or Enkindled roll now remains in memory if its storage write
+fails. The existing in-app Refresh/Retry controls can save and submit those exact
+faces once storage works again. Requests cannot reach the server before that save
+succeeds. A unique durable preparation marker binds the retained result to its
+original request; changed drafts cannot be overwritten and callers cannot mutate
+the retained dice. Markers now preserve the original reviewed request or declaration
+and enhancement count before RNG.
+
+This is same-tab recovery, not crash recovery. Reloading or closing the tab before
+the completed roll is saved still leaves an unresolved marker and blocks new dice;
+no missing faces are invented. Legacy/corrupt markers remain blocked. The error
+explicitly says to keep the tab open and not reload or clear site data. Next:
+explicit handling of those unresolved markers, followed by retained migration
+rehearsals and release checks. Production unchanged.
+
+Validation: 18 focused recovery tests; full gate passes with 4,606 tests,
+TS 193/193, clean hooks and 255.7 KB entry bundle. Evidence:
+.tmp/telepath-interruption-gate.log. Prior head 35cbd70c passed both GitHub gates;
+Vercel currently reports deployment rate limiting (retry in 24 hours).
+
 ### Atomic Telepath combat history (local; not released)
 
 Migration 20261010213000 records declaration, paid Enkindled/Surge and final
