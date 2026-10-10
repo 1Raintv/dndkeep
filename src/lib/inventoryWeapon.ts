@@ -1,3 +1,6 @@
+import {weaponAbilityModifier} from '../rules/weaponAbility';
+import {explicitAttackMode} from '../rules/attackMode';
+import {masteryWeaponEntry} from '../data/weaponMastery';
 // v2.266.0 — Inventory ↔ WeaponItem bridge.
 //
 // Pulled out of CharacterSheet/index.tsx (where the same conversion
@@ -70,12 +73,14 @@ export function inventoryItemToWeapon(
 
   const strMod = computed.modifiers.strength ?? 0;
   const dexMod = computed.modifiers.dexterity ?? 0;
-  const isFinesse = item.properties?.toLowerCase().includes('finesse');
-  // Finesse uses better of STR/DEX. Ranged weapons (range string isn't
-  // 'Melee') use DEX. Everything else STR. Same logic the Actions tab
-  // has been using since v2.184.
-  const isRanged = !!(item.range && !item.range.toLowerCase().includes('melee'));
-  const atkMod = isFinesse ? Math.max(strMod, dexMod) : isRanged ? dexMod : strMod;
+  const baseWeapon=masteryWeaponEntry(item.name);
+  const isFinesse=!!baseWeapon?.finesse||/\bfinesse\b/i.test(item.properties??'');
+  // v2.869: "5 ft." used to mean ranged here, incorrectly using DEX for
+  // greatswords/maces. Known weapon category also handles thrown melee weapons
+  // and ranged weapons whose inventory row has no range text.
+  const isRanged=baseWeapon?baseWeapon.group.endsWith('_ranged')
+    :explicitAttackMode(item.range)==='ranged'&&!/\bthrown\b/i.test(item.properties??'');
+  const atkMod=weaponAbilityModifier(strMod,dexMod,{ranged:isRanged,finesse:isFinesse});
 
   const pb = computed.proficiency_bonus ?? 2;
   const magicAtkBonus = typeof (item as any).attackBonus === 'number' ? (item as any).attackBonus : 0;
@@ -87,6 +92,7 @@ export function inventoryItemToWeapon(
     id: `inv_${item.id}`,
     name: item.name,
     attackBonus: atkMod + pb + magicAtkBonus,
+    attackAbilityModifier: atkMod,
     damageDice: diceMatch ? diceMatch[1] : '1d4',
     damageBonus: (bonusMatch ? parseInt(bonusMatch[0]) : atkMod) + magicDmgBonus,
     damageType: typeMatch ? typeMatch[1].toLowerCase() : 'bludgeoning',
@@ -130,6 +136,7 @@ export function naturalWeaponToWeapon(
     id: `nat_${trait.name.replace(/\s+/g, '_').toLowerCase()}`,
     name: nw.name ?? trait.name,
     attackBonus: atkMod + pb,
+    attackAbilityModifier: atkMod,
     damageDice: nw.dice,
     damageBonus: atkMod,
     damageType: nw.damageType.toLowerCase(),

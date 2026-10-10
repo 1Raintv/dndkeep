@@ -1,3 +1,4 @@
+import {weaponAbilityModifier} from '../rules/weaponAbility';
 import {advanceMasteryExpiry,MASTERY_VEX_KEY} from '../rules/masteryExpiry';
 export {MASTERY_VEX_KEY} from '../rules/masteryExpiry';
 import {characterProficiencyBonus} from '../rules/proficiency';
@@ -82,11 +83,7 @@ export async function getMasteryContext(atk: PendingAttack): Promise<MasteryCont
   if (!weaponEntry || !chosen.includes(weaponEntry.name)) return null;
 
   const isRanged = weaponEntry.group === 'simple_ranged' || weaponEntry.group === 'martial_ranged';
-  const abilityMod = isRanged
-    ? mod(ch.dexterity)
-    : weaponEntry.finesse
-      ? Math.max(mod(ch.strength), mod(ch.dexterity))
-      : mod(ch.strength);
+  const abilityMod=weaponAbilityModifier(mod(ch.strength),mod(ch.dexterity),{ranged:isRanged,finesse:weaponEntry.finesse});
   const profBonus = characterProficiencyBonus(ch);
   return { mastery: weaponEntry.mastery, abilityMod, profBonus };
 }

@@ -1,5 +1,25 @@
 # DNDKeep — Two-Track Roadmap
 
+### Weapon ability classification (local; not released)
+
+Inventory weapons now use the known weapon category instead of treating every
+range string without "Melee" as ranged. This corrects Strength-based weapons
+listed with 5/10 ft. reach and thrown melee weapons. Known ranged weapons retain
+Dexterity when range text is absent; Finesse uses the higher STR/DEX modifier even
+when inventory properties are missing. Mastery calculation shares that selection
+rule, including ranged Finesse weapons. Custom weapons still use explicit range
+and property text as a fallback.
+
+Generated weapon rows retain the ability contribution separately from proficiency
+and magic bonuses. This is not yet a saved pending-attack snapshot. Next: capture
+the reviewed modifier at declaration (including manually configured weapons), then
+move optional Graze to final-outcome damage resolution after reactions and make
+HP/history updates atomic. Current Graze timing and raw-stat lookup remain open;
+this change does not claim to fix those. Thirty focused regression cases passed.
+Full gate passed: 4,476 tests, TS 194/194, entry 255.7 KB. Evidence:
+`.tmp/weapon-ability-gate.log`. No schema or production changes.
+
+
 ### Required reaction checks before damage (local; not released)
 
 Migration 20261010175150 strengthens attack state advancement: an attack-roll

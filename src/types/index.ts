@@ -177,6 +177,8 @@ export interface WeaponItem {
   id: string;
   name: string;
   attackBonus: number;      // total to-hit modifier
+  /** Ability contribution alone; excludes proficiency, magic and other bonuses. */
+  attackAbilityModifier?: number;
   damageDice: string;       // e.g. "1d8"
   damageBonus: number;      // flat bonus to damage
   damageType: string;       // "slashing" | "piercing" | "bludgeoning" | etc.
