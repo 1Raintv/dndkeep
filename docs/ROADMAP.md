@@ -6422,3 +6422,32 @@ ESLint and diff checks are clean. All six added regressions fail against the
 original component (the five existing tests still pass), then pass with the fix.
 No visual layout or database changes. Not deployed. Campaign-sheet damage recovery
 and the shared combat-clock integration remain release work described above.
+
+
+### Campaign damage owner access (unreleased)
+
+The shared campaign damage preview, application, and cancellation functions now
+permit the target character's owner as well as the current campaign DM. Another
+campaign member has no such access. Mutations authorize against the locked current
+character before replaying a receipt or changing anything, so an old owner cannot
+recover someone else's damage after ownership changes. Removing the character
+from the campaign blocks old campaign requests for both owner and former DM.
+Existing grants, private ledger restrictions, snapshot validation, concentration
+modifiers, and idempotency are preserved.
+
+Migration 20261010070002_party_damage_owner_access.sql was created with the CLI
+and ordered after the existing future-dated definitions to keep fresh replay
+correct. Applied only to local Docker, with its ledger entry; unrelated local
+migration history was preserved. No production changes.
+
+Verification: 58 database regressions pass across the two configured projects,
+including owner preview/application, DM receipt replay, owner cancellation,
+outsider/member/anonymous rejection, ownership transfer and campaign removal.
+The full gate passes (3,259 unit tests, 197/197 TypeScript, entry255.2KB), changed-
+file ESLint and diff checks are clean, and local SQL lint/security advisors report
+no errors. These SQL tests do not certify player-sheet UI behavior.
+
+Next: wire player-sheet manual damage to this shared transaction after flushing
+queued edits; preserve saved requests across reload; safely reconcile HP and
+concentration receipts; verify interrupted requests in the real sheet. The old
+campaign-sheet damage path is still active until that integration is complete.

@@ -60,10 +60,42 @@ test.describe('Atomic party damage',()=>{
   const ctx=context();const rows=await Promise.all([parallel(auth(dm,call(ctx))),parallel(auth(dm,call(ctx,10,randomUUID(),randomUUID())))]);
   expect(rows.filter(r=>r.code===0)).toHaveLength(1);expect(rows.filter(r=>r.code!==0)[0].error).toContain('Party state changed');expect(state().hp).toBe(48);
  });
- test('permissions reject players, outsiders and anonymous clients',()=>{
-  const q=call(context());for(const user of [owner,outsider])expect(()=>sql(auth(user,q))).toThrow(/current DM only/);
-  expect(()=>sql('set role anon;'+q)).toThrow(/permission denied/);
-  expect(()=>sql(auth(owner,`select * from dndkeep_private.party_damage_events`))).toThrow(/permission denied/);expect(state().hp).toBe(50);
+ test('owner previews and applies their own damage; the DM replays the same receipt',()=>{
+  const ctx=JSON.parse(sql(auth(owner,`select get_party_damage_context('${campaign}','${char}')`)));
+  expect(ctx).toEqual(context());
+  expect(JSON.parse(sql(auth(owner,call(ctx))))).toMatchObject({afterHP:48,afterTempHP:0,checkId:save,replayed:false});
+  expect(apply(ctx)).toMatchObject({afterHP:48,checkId:save,replayed:true});
+  expect(count('pending_concentration_saves')).toBe('1');expect(count('character_history')).toBe('1');
+ });
+ test('owner cancellation fences a late DM application',()=>{
+  const ctx=context();
+  expect(JSON.parse(sql(auth(owner,call(ctx).replace('apply_party_damage','cancel_party_damage'))))).toMatchObject({canceled:true});
+  expect(()=>apply(ctx)).toThrow(/was canceled/);expect(state().hp).toBe(50);
+ });
+ test('permissions reject another campaign member, outsiders and anonymous clients on every entry point',()=>{
+  const ctx=context();
+  const queries=[`select get_party_damage_context('${campaign}','${char}')`,call(ctx),call(ctx).replace('apply_party_damage','cancel_party_damage')];
+  for(const q of queries){
+   expect(()=>sql(auth(outsider,q))).toThrow(/character owner or current DM/);
+   expect(()=>sql('set role anon;'+q)).toThrow(/permission denied/);
+  }
+  sql(`insert into campaign_members(campaign_id,user_id,role) values('${campaign}','${outsider}','player')`);
+  for(const q of queries)expect(()=>sql(auth(outsider,q))).toThrow(/character owner or current DM/);
+  expect(()=>sql(auth(owner,`select * from dndkeep_private.party_damage_events`))).toThrow(/permission denied/);
+  expect(state().hp).toBe(50);expect(count('dndkeep_private.party_damage_events')).toBe('0');
+ });
+ test('a previous owner cannot replay or cancel after ownership changes',()=>{
+  const ctx=context();sql(auth(owner,call(ctx)));
+  sql(`update characters set user_id='${outsider}' where id='${char}'`);
+  for(const q of [`select get_party_damage_context('${campaign}','${char}')`,call(ctx),call(ctx).replace('apply_party_damage','cancel_party_damage')])
+   expect(()=>sql(auth(owner,q))).toThrow(/character owner or current DM/);
+  expect(apply(ctx).replayed).toBe(true);expect(state().hp).toBe(48);
+ });
+ test('campaign removal blocks old campaign requests even for the character owner and former DM',()=>{
+  const ctx=context();sql(`update characters set campaign_id=null where id='${char}'`);
+  for(const user of [owner,dm])for(const q of [`select get_party_damage_context('${campaign}','${char}')`,call(ctx),call(ctx).replace('apply_party_damage','cancel_party_damage')])
+   expect(()=>sql(auth(user,q))).toThrow(/character owner or current DM/);
+  expect(state().hp).toBe(50);expect(count('dndkeep_private.party_damage_events')).toBe('0');
  });
  test('changed snapshots and malformed damage fail before writing',()=>{
   const ctx=context();sql(`update characters set temp_hp=9 where id='${char}'`);expect(()=>apply(ctx)).toThrow(/Party state changed/);
