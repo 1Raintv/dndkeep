@@ -1,4 +1,5 @@
 import {attackReactionOffers} from './api/attackReactionOffers';
+import {readMutableFormBenefits} from './api/mutableForm';
 import {hasTelekineticDisorient} from '../rules/telekineticTechniques';
 // v2.98.0 — Phase E of the Combat Backbone
 //
@@ -946,8 +947,15 @@ export async function offerOpportunityAttacks(
     const cellsFromStart = gapToCell(input.fromRow, input.fromCol);
     const cellsFromEnd = gapToCell(input.toRow, input.toCol);
 
-    const hadInReach = cellsFromStart <= STANDARD_REACH_CELLS;
-    const stillInReach = cellsFromEnd <= STANDARD_REACH_CELLS;
+    // v2.869 — resolve the saved form at movement time. A stale sheet badge
+    // must not offer an attack while the mover remains inside extended reach.
+    // Read failures propagate before the batched insert; never guess base reach.
+    // Weapon-specific reach selection remains a separate OA limitation.
+    const form = reactor.participant_type === 'character'
+      ? await readMutableFormBenefits(reactor.entity_id) : null;
+    const reachCells = STANDARD_REACH_CELLS + (form?.reachBonus ?? 0) / 5;
+    const hadInReach = cellsFromStart <= reachCells;
+    const stillInReach = cellsFromEnd <= reachCells;
     if (!hadInReach || stillInReach) continue;
 
     const offeredAt = new Date();

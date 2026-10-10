@@ -1,5 +1,27 @@
 # DNDKeep — Two-Track Roadmap
 
+### Mutable Form opportunity-attack boundary (local)
+
+Opportunity-attack offers now read the character reactor's saved active form
+before comparing departure against ordinary reach. While active, a 5-to-10-foot
+move stays within reach; a 10-to-15-foot move leaves it. Each movement reads the
+current effect again, so expiry restores the original boundary. Creature reactors
+skip the character read. Disengage and Disorient still suppress offers. A failed
+effect read rejects the offer calculation before any batched offers are inserted.
+This does not roll back movement that has already been recorded.
+
+Focused validation: 83 tests pass across opportunity offers, the typed active
+reader and Mutable Form rules. Coverage includes diagonals, entering reach,
+remaining outside reach, expiry, suppressed reactions and failed reads.
+Full `npm run verify` passes (4,776 tests, TS 193/193, entry 256.1 KB).
+Evidence: `.tmp/mutable-form-reach-gate.log`.
+
+This change covers the existing ordinary-reach opportunity-offer path only.
+Weapon-specific reach selection, melee target pickers/overlays, and mover-size
+handling remain separate work; it does not claim those paths are complete.
+Production unchanged.
+
+
 ### Mutable Form movement projection and realtime refresh (local)
 
 Migration `20261010231500_mutable_form_speed_projection.sql` adds a read-only
