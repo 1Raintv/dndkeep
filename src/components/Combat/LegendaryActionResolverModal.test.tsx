@@ -25,6 +25,7 @@ vi.mock('../../lib/supabase',()=>({supabase:{from:(table:string)=>{
 }}}));
 vi.mock('../../lib/battleMapGeometry',async original=>({...await original<object>(),loadActiveBattleMap:vi.fn().mockResolvedValue(null)}));
 vi.mock('../../lib/legendaryActions',()=>({spendLegendaryAction:vi.fn()}));
+vi.mock('../../lib/api/savedLegendarySaves',()=>({readSavedLegendarySave:vi.fn().mockResolvedValue(null),runSavedLegendarySave:vi.fn(),readSavedBatchAttack:vi.fn()}));
 vi.mock('../../lib/saveBatch',()=>({declareSaveBatch:vi.fn()}));
 vi.mock('../../lib/conditions',()=>({applyCondition:vi.fn()}));
 vi.mock('../../lib/pendingAttack',()=>({declareAttack:vi.fn(),rollAttackRoll:vi.fn(),rollDamage:vi.fn(),applyDamage:vi.fn(),cancelAttack:vi.fn(),rollSave:vi.fn(),getTargetSaveBonus:vi.fn()}));

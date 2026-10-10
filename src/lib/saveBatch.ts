@@ -39,6 +39,7 @@ export interface DeclareSaveBatchInput {
   conditionIntent?: {conditionName:string;sourcePrefix:'monster_action'|'legendary_action';sourceKind:string;durationRounds:number|null;saveToEnd:{ability:string;dc:number}|null}|null;
   /** Charge legendary save actions before any rolls, atomically with declaration. */
   legendaryCost?: number;
+  savedDeclaration?: {chainId:string;turnId:string};
   targets: CombatParticipant[];
 }
 
@@ -72,7 +73,7 @@ export async function declareSaveBatch(
   if (input.targets.length === 0) {
     return { chainId: newChainId(), rows: [] };
   }
-  const chainId = newChainId();
+  const chainId = input.savedDeclaration?.chainId ?? newChainId();
   // Build the targets payload. Filter dead targets defensively — the
   // picker already excludes them, but a parallel write could change
   // is_dead between picker confirmation and this call.
@@ -104,10 +105,9 @@ export async function declareSaveBatch(
   let data: unknown;
   let error: {message:string}|null = null;
   if (input.legendaryCost !== undefined) {
-    const {data: encounter,error: readError} = await supabase.from('combat_encounters').select('psionic_turn_id').eq('id',input.encounterId).single();
-    if(readError || !encounter?.psionic_turn_id) throw new Error('Could not verify the legendary action turn.');
-    const receipt = await psionicRpc('declare_paid_legendary_saves',{p_request:{...args,p_turn_id:encounter.psionic_turn_id,p_legendary_cost:input.legendaryCost}},true) as {chainId:string;turnId:string;cost:number;remaining:number;rows:unknown;replayed:boolean};
-    if(!receipt || receipt.chainId!==chainId || receipt.turnId!==encounter.psionic_turn_id || receipt.cost!==input.legendaryCost || !Number.isInteger(receipt.remaining) || receipt.remaining<0 || typeof receipt.replayed!=='boolean') throw new Error('The legendary action payment could not be verified. Review the saved attack before trying again.');
+    const turnId = input.savedDeclaration?.turnId ?? await getSaveBatchTurn(input.encounterId);
+    const receipt = await psionicRpc('declare_paid_legendary_saves',{p_request:{...args,p_turn_id:turnId,p_legendary_cost:input.legendaryCost}},true) as {chainId:string;turnId:string;cost:number;remaining:number;rows:unknown;replayed:boolean};
+    if(!receipt || receipt.chainId!==chainId || receipt.turnId!==turnId || receipt.cost!==input.legendaryCost || !Number.isInteger(receipt.remaining) || receipt.remaining<0 || typeof receipt.replayed!=='boolean') throw new Error('The legendary action payment could not be verified. Review the saved attack before trying again.');
     data=receipt.rows;
   } else {
     ({data,error}=await supabase.rpc('declare_save_batch',args));
@@ -142,4 +142,10 @@ export async function declareSaveBatch(
   }));
 
   return { chainId, rows };
+}
+
+export async function getSaveBatchTurn(encounterId:string):Promise<string>{
+ const {data,error}=await supabase.from('combat_encounters').select('psionic_turn_id').eq('id',encounterId).single();
+ if(error||!data?.psionic_turn_id)throw new Error('Could not verify the legendary action turn.');
+ return data.psionic_turn_id;
 }

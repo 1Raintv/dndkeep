@@ -10,3 +10,15 @@ export function saveResolutionOutcome(save:SaveResolutionRecord|null|undefined,a
  }
  return save.save_result as 'passed'|'failed';
 }
+
+/** Recovery follows the recorded phase; terminal attacks never authorize another roll. */
+export function savedSavePhase(save:SaveResolutionRecord,attackId:string):'roll'|'resolve'|'awaiting_resistance'|'complete'{
+ if(!save||save.id!==attackId||save.attack_kind!=='save')throw new Error('Saved attack identity changed.');
+ if(save.pending_lr_decision)return saveResolutionOutcome(save,attackId)==='awaiting_resistance'?'awaiting_resistance':'resolve';
+ if(save.state==='canceled')return 'complete';
+ if(save.state==='declared'&&save.save_result===null)return 'roll';
+ if(!['passed','failed'].includes(save.save_result??''))throw new Error('Review the saved saving throw before continuing.');
+ if(save.state==='applied')return 'complete';
+ if(save.state==='declared'||save.state==='damage_rolled')return 'resolve';
+ throw new Error('Review the saved attack phase before continuing.');
+}

@@ -8515,3 +8515,42 @@ still generate new IDs. Other legendary-action types, normal monster action/
 recharge payment, and full legendary-action timing limits retain legacy paths.
 This checkpoint guarantees one charge per same paid request, not full encounter
 or browser recovery. The rest of the release audit remains open.
+
+
+### 2026-10-10 — resume saved legendary saves after reload (unreleased)
+
+Legendary save resolution now persists the exact target snapshot, chain and turn
+before declaration. The same signed-in user's browser can resume that request
+after exhausted response retries or reload. A browser lock covers all sibling
+work; completed markers reject stale windows attempting another charge. Fresh
+review of a completed action allows an intentional new use. First definite
+payment rejection retires only a newly created request; ambiguous/history failures
+keep the original identity. Auth changes stop further work.
+
+The resolver reads each attack's recorded phase, skips closed attacks, preserves
+rolled damage and waits for Legendary Resistance. It waits for all sibling promises
+before releasing its lock. The menu exposes Resume even if the initial payment
+left too few points to declare another action. Original targets remain selected
+and frozen while resuming. Finished conditions are not resurrected after removal.
+
+Older generic HP application is not atomic with its attack-state update. A durable
+application-attempt marker prevents automatically repeating that ambiguous step;
+the DM sees a review message until its saved attack is finished. This is a safety
+stop, not completion of the remaining damage-transaction work.
+
+Eight desktop/mobile browser tests cover ordinary success, transient payment
+reply loss, exhausted replies plus reload through the actual legendary menu, and
+lost completion replies with later condition removal. Two resistance-path checks
+also passed. Resume screenshots inspected; official overflow checks run before
+resume and after completion; unexpected browser errors absent. Removing initial
+request persistence failed the reload regression; restored code passed. Units
+cover saved phases, storage failure, ownership scoping, stale windows, completed
+markers, rejection handling and ambiguous HP attempts. Full gate: 3,969 units,
+TS 194/194, entry 255.7 KB. An unrelated damage-adjustment test failed once during
+the parallel unit run, then passed its focused recheck and the full rerun.
+No migration added. Not deployed.
+
+Next: atomic generic damage settlement so ambiguous HP attempts can recover
+without manual review; ordinary monster batch action/recharge recovery; full
+legendary timing and cross-device recovery; release integration and map work.
+Local storage recovery alone does not cover cleared storage or another device.
