@@ -8731,3 +8731,24 @@ These tests use disposable local accounts. They do not validate production
 configuration or certify the older Surge/malformed-pool scenarios in the same
 file, whose old Propel selectors still need updating. PR #214 remains draft;
 Vercel deployment is rate-limited. No production deployment in this checkpoint.
+
+
+### Current Surge and malformed-pool integration (2026-10-10, unreleased)
+
+Updated the remaining old Propel interactions in psionic-restoration.spec.ts.
+The Surge cases now declare a Bonus Action, wait for the saved boosted roll,
+resolve the save, and explicitly close/end the turn before another declaration.
+Cancellation uses the persisted cancellation confirmation and retains paid Hit
+Dice. A delayed telepathy history insert is held across the next independent
+Propel and then verified, preserving that regression's original intent.
+
+Multiclass Surge now selects the real Hit Die choices: two d6 and one d10 are
+spent across the scenario, with the exact allocation verified after reload.
+The original single-class button is still checked. Malformed saved pools are
+exercised through the current dialog and cannot create a Propel declaration or
+action claim; Long Rest restores valid availability.
+
+All six desktop/mobile Surge and malformed-pool cases pass. Full gate passes:
+4,041 units, TS 194/194, entry 255.7 KB. This is test coverage of existing
+behavior, not a new feature or production deployment. The earlier note about
+stale Surge/malformed-pool selectors in this file is resolved.
