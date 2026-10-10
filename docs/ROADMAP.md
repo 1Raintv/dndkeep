@@ -1,5 +1,30 @@
 # DNDKeep — Two-Track Roadmap
 
+### Reaction windows — server-side attack barrier (local; not released)
+
+Migration 20261010162103 serializes new attack-linked reaction offers against
+advancement of their parent attack. An open offer blocks the transition into
+recorded damage or applied state; a late offer cannot attach to an already
+passed stage. Offered rows remain open until a saved decision, even when the
+wall-clock deadline has passed. Cancellation and recording terminal decisions
+remain available. Campaign/encounter mismatches are rejected.
+
+The barrier runs beneath the damage RPC, so rejection also rolls back any
+one-use damage rider consumption in that transaction. Trigger functions are
+private and not directly executable by application roles; their reads include
+other players' offers despite per-reactor RLS. Existing table RLS still governs
+who can create/update offers and attacks. No UI or production changes.
+
+This does not yet create Telepath offers or settle their conditional payments.
+It also does not make legacy client HP writes transactional, recover missing
+post-roll offers/history, or defer Graze. Those remain required follow-up work.
+Validation: all 35 local database/browser checks passed, including open-offer
+rollback, late-offer/advancement races, lost damage replies and HP settlement.
+The full gate passed (4,346 unit tests; entry 255.7 KB). SQL lint has no errors
+or new-trigger warnings; security findings remain keep_warm/client_errors.
+Repository chain is now 324; retained release rehearsals still cover 321.
+
+
 ### Attack accuracy — combine advantage sources before cancellation (not released)
 
 Condition and mastery sources now enter one rules-layer calculation before

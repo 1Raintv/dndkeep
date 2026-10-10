@@ -187,6 +187,48 @@ test.describe('saved attack outcome rules',()=>{
   }
  });
 
+ function reactionOffer(f:ReturnType<typeof masteryFixture>,point='post_attack_roll'){
+  const offer=randomUUID();sql(`insert into pending_reactions(id,campaign_id,pending_attack_id,reactor_participant_id,reactor_name,reactor_type,reaction_key,reaction_name,trigger_point,expires_at)
+   values('${offer}','${camp}','${f.id}','${f.target}','Target','monster','fixture','Fixture reaction','${point}',now()+interval '2 minutes')`);return offer;
+ }
+ test('open attack reactions block live damage recording and preserve one-use damage bonuses',async({page})=>{
+  const f=masteryFixture();f.call();
+  const buffs=[{key:'fixture-rider',name:'Fixture bonus',source:'feature',singleUse:true,damageRider:{dice:'1d4',damageType:'fire'}}];f.setBuffs(buffs);
+  sql(`update pending_attacks set damage_dice='1d6',damage_type='slashing' where id='${f.id}'`);const offer=reactionOffer(f);
+  await signInAsSeedDm(page,email);
+  const error=await page.evaluate(async id=>{const {rollDamage}=await import('/src/lib/pendingAttack.ts');try{await rollDamage(id);return null;}catch(cause){return String(cause);}},f.id);
+  expect(error).toContain('Resolve offered reactions');expect(f.readBuffs()).toEqual(buffs);
+  expect(sql(`select state from pending_attacks where id='${f.id}'`)).toBe('attack_rolled');
+  sql(`update pending_reactions set state='declined' where id='${offer}'`);
+  const saved=await page.evaluate(async id=>{const {rollDamage}=await import('/src/lib/pendingAttack.ts');return rollDamage(id);},f.id);
+  expect(saved?.state).toBe('damage_rolled');expect(f.readBuffs()).toEqual([]);
+ });
+ test('late attack offers are rejected, while damage reactions block final advancement',()=>{
+  const f=masteryFixture();f.call();
+  sql(`update pending_attacks set state='damage_rolled',damage_raw=3,damage_final=3 where id='${f.id}'`);
+  expect(()=>reactionOffer(f)).toThrow();const offer=reactionOffer(f,'post_damage_roll');
+  expect(()=>sql(`update pending_attacks set state='applied' where id='${f.id}'`)).toThrow();
+  sql(`update pending_reactions set state='expired' where id='${offer}';update pending_attacks set state='applied' where id='${f.id}'`);
+  expect(()=>reactionOffer(f,'post_damage_roll')).toThrow();
+ });
+ test('past the timer deadline still requires a recorded decision; cancel remains possible',()=>{
+  const f=masteryFixture();f.call();const offer=reactionOffer(f);
+  sql(`update pending_reactions set expires_at=now()-interval '1 minute' where id='${offer}'`);
+  expect(()=>sql(`update pending_attacks set state='damage_rolled' where id='${f.id}'`)).toThrow();
+  sql(`update pending_attacks set state='canceled' where id='${f.id}'`);
+  expect(()=>reactionOffer(f)).toThrow();sql(`update pending_reactions set state='declined' where id='${offer}'`);
+ });
+ test('late offer and damage advancement cannot both win concurrently',async()=>{
+  const f=masteryFixture();f.call();const run=promisify(execFile),offer=randomUUID();
+  const commands=[`update pending_attacks set state='damage_rolled' where id='${f.id}'`,
+   `insert into pending_reactions(id,campaign_id,pending_attack_id,reactor_participant_id,reactor_name,reactor_type,reaction_key,reaction_name,trigger_point,expires_at)
+    values('${offer}','${camp}','${f.id}','${f.target}','Target','monster','fixture','Fixture reaction','post_attack_roll',now()+interval '2 minutes')`];
+  const results=await Promise.allSettled(commands.map(q=>run('docker',['exec','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1','-c',q])));
+  expect(results.filter(r=>r.status==='fulfilled')).toHaveLength(1);
+  const state=sql(`select state from pending_attacks where id='${f.id}'`),offers=sql(`select count(*) from pending_reactions where pending_attack_id='${f.id}' and state='offered'`);
+  expect([state,offers]).toEqual(state==='attack_rolled'?['attack_rolled','1']:['damage_rolled','0']);
+ });
+
  test('target checks reject a removed scene instead of loading another campaign map',async({page})=>{
   const selected=randomUUID(),otherScene=randomUUID();
   sql(`insert into scenes(id,campaign_id,owner_id,name,grid_type,grid_size_px,width_cells,height_cells,ambient_light,is_published) values
