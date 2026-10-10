@@ -1,5 +1,5 @@
 import {afterEach,expect,it,vi} from 'vitest';
-import {rollSaveBonuses,validSaveBonusRolls} from './saveBonuses';
+import {rollSaveBonuses,validSaveBonusRolls,savedSaveBonusTotal} from './saveBonuses';
 afterEach(()=>vi.restoreAllMocks());
 it('combines actual Bless dice and equipment bonuses without an ability modifier',()=>{
  vi.spyOn(Math,'random').mockReturnValue(0);
@@ -31,4 +31,27 @@ it.each([
  {expression:'2',dice:[{die:4,value:2}],modifier:0,total:2},
 ])('rejects saved arithmetic that does not match its expression: %j',evidence=>{
  const random=vi.spyOn(Math,'random');expect(validSaveBonusRolls([{name:'Effect',...evidence}])).toBe(false);expect(random).not.toHaveBeenCalled();
+});
+
+it('validates saved bonuses against all original effects without rerolling',()=>{
+ const buffs=[{name:'Bless'},{name:'Bane'},{name:'Ward',saveBonus:2}];
+ const saved=rollSaveBonuses(buffs,0);const rng=vi.spyOn(Math,'random');
+ expect(savedSaveBonusTotal(buffs,saved.rolls)).toBe(saved.bonus);
+ for(const rolls of [saved.rolls.slice(0,2),[...saved.rolls,saved.rolls[0]],[...saved.rolls].reverse(),saved.rolls.map((r,i)=>i===1?{...r,name:'Bless'}:r)])
+  expect(()=>savedSaveBonusTotal(buffs,rolls)).toThrow();
+ expect(rng).not.toHaveBeenCalled();
+});
+it('normalizes duplicate named spells identically for rolling and recovery',()=>{
+ const buffs=[{name:' BLESS '},{name:'bless',saveBonus:0},{name:'Bane',saveBonus:0},{saveBonus:' -2 '}];
+ const saved=rollSaveBonuses(buffs,0);expect(savedSaveBonusTotal(buffs,saved.rolls)).toBe(saved.bonus);
+});
+it.each([null,true,[],[2],{},1.5])('rejects malformed source bonus %j even with plausible saved arithmetic',saveBonus=>{
+ const rolls=[{name:'Bad',expression:String(saveBonus),dice:[],modifier:2,total:2}];
+ expect(()=>savedSaveBonusTotal([{name:'Bad',saveBonus}],rolls)).toThrow();
+});
+it('allows no bonus evidence on automatic failure and bounds the combined bonus',()=>{
+ expect(savedSaveBonusTotal([{name:'Bless'}],[],true)).toBe(0);
+ const rolls=[{name:'Huge',expression:'101',dice:[],modifier:101,total:101}];
+ expect(()=>savedSaveBonusTotal([{name:'Huge',saveBonus:101}],rolls)).toThrow();
+ expect(()=>savedSaveBonusTotal([],rolls,true)).toThrow();
 });

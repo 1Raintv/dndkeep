@@ -7349,3 +7349,28 @@ deployment in this checkpoint.
 Validation: all 17 focused recharge tests pass, changed-file ESLint is clean,
 and the full gate passes (3,507 unit tests; TypeScript 195/195; hooks, RAW,
 coordinates, anchors, production build and bundle budget).
+
+
+### Deterministic aura save recovery evidence (2026-10-09)
+
+The client can now reconstruct an aura save from its original snapshot and
+recorded dice without generating random values. The pure `auraSaveEvidence`
+module shares canonical d20 selection, exhaustion and saving-throw outcome
+rules. Strict receipt comparison checks every save field while allowing JSONB
+object key reordering. Automatic failures retain null face/total and no bonus
+dice. Reviewed base modifiers remain inputs, not independently inferred stats.
+
+Save bonus rolling and recovery now share source normalization. Recovery checks
+original effect names, expressions and ordering in addition to legal dice and
+totals. It rejects omitted penalties, invented effects and reordered evidence,
+while preserving named Bless/Bane deduplication and signed modifiers.
+
+Validation: 47 focused tests pass; all 24 local database evidence cases pass,
+including exact client/server save equality for advantage/disadvantage,
+exhaustion, house-rule extremes, bonus effects and automatic failure. Changed-file
+ESLint is clean. These checks validate only the save subreceipt: full aura
+receipt/damage verification, durable client orchestration and live turn wiring
+remain outstanding. No production deployment in this checkpoint.
+
+Final gate: 3,541 unit tests; TypeScript 195/195; clean hooks, RAW, coordinates,
+anchors; production build and 255.7 KB entry budget pass.

@@ -3,6 +3,7 @@ import {test,expect} from '@playwright/test';
 import {savingThrowPassed,exhaustionPenalty} from '../../src/rules/savingThrows';
 import {parseDiceGroups,validDiceGroups} from '../../src/rules/dice';
 import {rollSaveBonuses,validSaveBonusRolls} from '../../src/rules/saveBonuses';
+import {auraSaveEvidence} from '../../src/rules/auraSaveEvidence';
 import {gateDbSuite} from './helpers';
 const sql=(q:string)=>execFileSync('docker',['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'],{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 const literal=(v:unknown)=>"'"+JSON.stringify(v).replaceAll("'","''")+"'::jsonb";
@@ -65,16 +66,19 @@ test.describe('Server aura dice evidence',()=>{
    const dice=advantage!==disadvantage?[1,20]:[20],c=context({advantage,disadvantage,naturalExtremes,exhaustion:2});
    const chosen=advantage!==disadvantage?(advantage?20:1):20,bonus=2-exhaustionPenalty(2)-3;
    const evidence=JSON.parse(sql(save(c,{baseBonus:2,dice,effectRolls:[]},3)));
+   expect(evidence).toEqual(auraSaveEvidence(c,{baseBonus:2,dice,effectRolls:[]},3));
    expect(evidence).toMatchObject({d20:chosen,dice,bonus,total:chosen+bonus,passed:savingThrowPassed(chosen,chosen+bonus,15,{naturalExtremes})});
   }
  });
  test('confirmed buff faces contribute once before the next-save penalty',()=>{
   const buffs=[{name:'Bless'},{name:'Bane'},{name:'Flat',saveBonus:2}],effects=rollSaveBonuses(buffs,0);
   const evidence=JSON.parse(sql(save(context({buffs}),{baseBonus:5,dice:[10],effectRolls:effects.rolls},4)));
+  expect(evidence).toEqual(auraSaveEvidence(context({buffs}),{baseBonus:5,dice:[10],effectRolls:effects.rolls},4));
   expect(evidence).toMatchObject({buffTotal:effects.bonus,penalty:4,bonus:5+effects.bonus-4,total:15+effects.bonus-4});
  });
  test('automatic failure keeps no cosmetic face, total or bonus dice',()=>{
   const c=context({autoFail:true,buffs:[{name:'Bless'}],naturalExtremes:true});
+  expect(JSON.parse(sql(save(c,{baseBonus:0,dice:[],effectRolls:[]})))).toEqual(auraSaveEvidence(c,{baseBonus:0,dice:[],effectRolls:[]},0));
   expect(JSON.parse(sql(save(c,{baseBonus:0,dice:[],effectRolls:[]})))).toMatchObject({d20:null,total:null,bonus:0,passed:false,automaticFailure:true});
   for(const p of [{baseBonus:0,dice:[20],effectRolls:[]},{baseBonus:1,dice:[],effectRolls:[]}])expect(()=>sql(save(c,p))).toThrow();
   expect(()=>sql(save(c,{baseBonus:0,dice:[],effectRolls:[]},1))).toThrow();
