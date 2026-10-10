@@ -1,6 +1,44 @@
 # DNDKeep — Two-Track Roadmap
 
 
+### Release rehearsal refreshed through 332 (production unchanged)
+
+Both retained databases (fresh-origin and main-upgrade-origin) applied the full
+332-file ledger through 20261010172839. Existing rehearsal migration copies
+matched repository bytes before adding files. Public/private schema dumps,
+including owners and grants, agree after CRLF-to-LF normalization only:
+`7d236cb9b98e40d611fa532b5b6ddf4777148d0bd8d42323cc1a107a8e958e79`.
+The raw dumps differed solely by line endings. Both temporary stacks are stopped
+with recoverable volumes retained; the normal Docker stack remains running.
+
+The CLI lint output is an object with a results array. Earlier summaries that
+iterated its top-level keys incorrectly reported no new-function diagnostics.
+Correct parsing found an unread receipt variable in propel_movement_api;
+migration 20261010172839 replaces those assignments with PERFORM. Both rehearsal
+lint results now report zero errors and diagnostics on 20 other functions.
+This is not a claim that all SQL warnings are resolved.
+
+Validation: the full gate passed (4,415 tests, TS 194/194, entry 255.7 KB) and all
+22 movement database cases passed after cleanup. Normal local migration text
+was verified against its exact ledger statement. Rehearsal artifacts are
+`.tmp/supabase_db_dndkeep-{release-rehearsal,main-upgrade}-332-schema.sql` and
+`.tmp/{release-rehearsal,main-upgrade-rehearsal}-332-*`.
+
+Read-only production preflight on October 10 returned zero for all seven checks.
+Production still has 233 migrations through 20261008211300; its ordered version
+MD5 `1a3de08c0a19ec990f1cd7716f389b13` matches the repository prefix (99 pending).
+Remote main remains 03671386d191e1a24b75c38d72e250fa4e4fd29a.
+
+Both GitHub CI checks and Vercel preview build succeeded for f84a3237. Preview:
+https://dndkeep-7xyrckpnl-rainontwitch-5403s-projects.vercel.app
+Opening it redirects to Vercel SSO login; hosted smoke verification is therefore
+still unproven. Do not count a successful build as a browser smoke test. Keep the
+PR draft until the final-head checks and protected preview are verified; rerun
+production preflight immediately before merge. The broader Psion and map goal
+remains active while preview access is unavailable.
+
+
+
 ### Propel post-save movement — player flow connected (unreleased)
 
 New declarations now defer movement until the final failed save. The player
