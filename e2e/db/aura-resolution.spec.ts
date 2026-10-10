@@ -1,6 +1,7 @@
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {test,expect} from '@playwright/test';
+import {verifyAuraResolutionReceipt} from '../../src/lib/auraResolutionReceipt';
 import {validAuraDamagePools} from '../../src/rules/auraDamageEvidence';
 import {validAuraSaveEvidence} from '../../src/rules/auraSaveEvidence';
 import {gateDbSuite} from './helpers';
@@ -29,6 +30,7 @@ test.describe('Atomic aura resolution',()=>{
     const {expected,proposal}=receipt.request,result=receipt.result;
     expect(validAuraSaveEvidence(expected,proposal.save,result.penalty.penalty,result.save)).toBe(true);
     expect(validAuraDamagePools(expected,proposal,result.penalty.penalty,result)).toBe(true);
+    expect(verifyAuraResolutionReceipt(expected,proposal,result.requestId,result)).toEqual(result);
    }
   }finally{sql(`delete from campaigns where id='${campaign}';delete from characters where id in('${a}','${b}');delete from homebrew_monsters where id='${b}';delete from monsters where id='${b}';delete from auth.users where id in('${dm}','${player}')`);}
  });

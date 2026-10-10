@@ -7397,3 +7397,26 @@ No production deployment in this checkpoint.
 Validation: 12 focused unit cases and 34 local database cases pass. Full gate:
 3,553 units, TypeScript 195/195, hooks/RAW/coordinates/anchors, production build
 and 255.7 KB entry budget all pass. Changed-file ESLint and diff checks pass.
+
+
+### Complete aura receipt composition (2026-10-09)
+
+`verifyAuraResolutionReceipt` composes the save and damage verifiers with the
+original request identity, once-per-turn marker, reviewed proposal flags and
+concentration outcome. It checks that next-save effects are each consumed or
+expired once, that overlapping consumed effects apply only the proposed d4,
+and that automatic failure consumes without rolling. The server remains the
+authority for the expiry classification; the client checks receipt consistency.
+Character damage additionally checks concentration automation, the expected
+check identity or broken-concentration result, participant and damage metadata.
+Creature receipts cannot claim a character concentration check. Historical
+receipts are cloned for callers and must never overwrite later live HP.
+
+The full verifier is now exercised on every committed receipt in the local
+atomic aura suite. Durable request persistence, receipt-first recovery, scope
+changes, cross-tab coordination and live turn-pipeline integration remain next.
+This checkpoint is not deployed to production.
+
+Validation: 27 focused unit cases and 34 local database cases pass. Full gate:
+3,580 units, TypeScript 195/195, clean hooks/RAW/coordinates/anchors, production
+build and 255.7 KB entry budget. Changed-file lint and diff checks pass.
