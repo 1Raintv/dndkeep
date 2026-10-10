@@ -1,4 +1,4 @@
-import {execFileSync} from 'node:child_process';
+import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {test,expect,type Page} from '@playwright/test';
@@ -101,6 +101,41 @@ test.describe('Atomic encounter completion',()=>{
     insert into combat_participants(encounter_id,campaign_id,participant_type,entity_id,name,turn_order,combatant_id) values('${enc}','${campaign}','creature','${owned}','One',2,'${x}'),('${enc}','${campaign}','creature','${owned}','Two',3,'${y}')`);
    const before=snapshot();expect(()=>finish()).toThrow(/different buffs on instances/);expect(snapshot()).toBe(before);
   }finally{sql(`delete from homebrew_monsters where id='${owned}'`);}
+ });
+
+ const attack=(state='declared',lr=false)=>`insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,attacker_name,attacker_type,target_participant_id,target_name,target_type,attack_name,attack_kind,state,pending_lr_decision,chain_id) values('${request}','${campaign}','${enc}','${pa}','A','character','${pb}','B','character','Fixture','attack_roll','${state}',${lr},'${randomUUID()}')`;
+ for(const state of ['declared','attack_rolled','damage_rolled'])test(`unfinished ${state} attack blocks completion without carry-over`,()=>{
+  sql(attack(state));const before=snapshot();expect(()=>finish()).toThrow(/Resolve pending attacks/);expect(snapshot()).toBe(before);
+  sql(`update pending_attacks set state='applied' where id='${request}'`);expect(finish().replayed).toBe(false);
+ });
+ for(const state of ['applied','canceled'])test(`terminal ${state} attack allows completion`,()=>{sql(attack(state));expect(finish().replayed).toBe(false);});
+ test('a remaining Legendary Resistance choice blocks even a terminal attack',()=>{
+  sql(attack('canceled',true));const before=snapshot();expect(()=>finish()).toThrow(/Legendary Resistance/);expect(snapshot()).toBe(before);
+ });
+ test('ended encounters reject new attacks and reopening historical attacks',()=>{
+  sql(attack('applied'));finish();expect(()=>sql(`update pending_attacks set state='declared' where id='${request}'`)).toThrow(/no longer active/);
+  expect(()=>sql(attack().replace(request,randomUUID()))).toThrow(/no longer active/);
+ });
+ test('an attack cannot evade completion review by removing its encounter',()=>{
+  sql(attack());expect(()=>sql(auth(dm,`update pending_attacks set encounter_id=null where id='${request}'`))).toThrow(/cannot be moved/);
+ });
+
+ for(const first of ['attack','completion'])test(`${first} holds the encounter lock against the competing operation`,async()=>{
+  const complete=`select end_combat_encounter('${enc}','${turn}')`;
+  const held=spawn('docker',args);let output='',error='';held.stdout.on('data',v=>output+=v);held.stderr.on('data',v=>error+=v);
+  const heldDone=new Promise<number|null>(resolve=>held.on('close',resolve));
+  let waiting:ReturnType<typeof spawn>|undefined,done:Promise<number|null>|undefined,waitError='';
+  try{
+   held.stdin.write(`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${dm}","role":"authenticated"}';${first==='attack'?attack():complete};\n\\echo DECLARED\n`);
+   await expect.poll(()=>output.includes('DECLARED'),{timeout:5000}).toBe(true);
+   const label=`propel-boundary-${enc}`;waiting=spawn('docker',args);waiting.stdout.resume();waiting.stderr.on('data',v=>waitError+=v);done=new Promise(resolve=>waiting!.on('close',resolve));
+   waiting.stdin.end(`set application_name='${label}';${auth(dm,first==='attack'?complete:attack())}`);
+   await expect.poll(()=>sql(`select count(*) from pg_stat_activity where application_name='${label}' and wait_event_type='Lock'`),{timeout:5000}).toBe('1');
+   held.stdin.end('commit;\n');expect(await heldDone,error).toBe(0);expect(await done).not.toBe(0);expect(waitError).toContain(first==='attack'?'Resolve pending attacks':'no longer active');expect(JSON.parse(snapshot()).enc.status).toBe(first==='attack'?'active':'ended');
+  }finally{
+   if(held.exitCode===null){held.stdin.end('rollback;\n');await heldDone;}
+   if(waiting&&waiting.exitCode===null){waiting.stdin.end();if(done)await done;}
+  }
  });
  async function login(page:Page){
   sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';

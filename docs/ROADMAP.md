@@ -8269,3 +8269,28 @@ then six additional desktop/mobile checks passed for reset reload recovery,
 authorization/stale turns and competing reset requests. Full project gate passed;
 new API and wrapper tests cover storage failures, uncertain responses and receipt
 validation. No rendered layout changes. Not deployed.
+
+
+### 2026-10-10 — pending attack completion guard (unreleased)
+
+Encounter completion now rejects unfinished encounter-linked attacks and pending
+Legendary Resistance choices. Declaration holds an encounter SHARE lock against
+completion's UPDATE lock: either the declaration commits first and completion
+rejects, or completion commits first and the declaration rejects. Attack rows
+cannot change campaign/encounter identity to evade the check. Terminal attack
+history remains usable; character carry-over and the completion log roll back
+on rejection. Existing completion UI displays the server failure.
+
+Migration 20261010070034 applied locally and exact ledger verified; no repository
+migrations pending, foreign history retained. Completion suite: 26 checks passed,
+plus two real concurrent-connection race-order checks. Another 49 attack save,
+declaration recovery, Counterspell and Destructive Thoughts checks passed. Required gate passed:
+3,914 units, TS 194/194, entry 255.7 KB. SQL lint clean; keep_warm and client_errors
+security advisor findings unchanged. Not deployed.
+
+Remaining: this covers attacks explicitly linked to an encounter, not standalone
+attacks, pending spell delivery without an attack, or every reaction handler.
+Turn advancement and attack declaration/payment still need consolidation. Legacy
+cancellation can strand a Legendary Resistance decision by marking its attack
+canceled; investigate cancellation and repair controls before claiming release
+readiness for all attack states. Do not silently clear that saved decision.
