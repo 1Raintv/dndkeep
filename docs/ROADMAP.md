@@ -8911,3 +8911,38 @@ a durable delivery receipt, rather than applying bare HP subtraction.
 Full gate: 4,101 unit tests, TS 194/194, entry 255.7 KB. No database change or
 player-visible effect enabled. Vercel again reports deployment rate limiting;
 production release remains pending.
+
+### Saved Propel participant identity safeguard (unreleased)
+
+New combat declarations now capture the caster and target's roster identity,
+linked combatant ID, and map-piece definition. Renames and ordinary state updates
+do not invalidate the binding. Before finalizing dice or settling an unresolved
+save, a private trigger rechecks those identities under row locks. Repointing
+any saved identity rejects the transaction; Energy Die payment, save receipt
+and action history roll back together. Cancellation still works after roster
+changes. Completed reads/retries preserve their original receipt.
+
+Migration 20261010124329 applied only to the existing local Docker database;
+exact SQL/ledger match verified and foreign local history 20261008213500
+preserved. The CLI rejected that foreign history, so only the new SQL and its
+ledger entry were committed in one local transaction. No pending repo migration
+remains. No public API or table permission was added. Helper functions are
+private, invoker-security, with fixed empty search paths and revoked execution.
+SQL lint reports no errors; security advisors retain the existing keep_warm and
+client_errors warnings only.
+
+Ten isolated DB regressions pass, including coherent entity replacement, map
+reassignment, pre-finalization rejection, payment rollback, cancellation,
+completed replay, names and helper privileges. The 42 existing Propel save
+settlement checks passed in the combined run; two new fixture assertions were
+then corrected for existing earlier guards and the map-piece uniqueness rule,
+and the full ten-case identity file passed. Required project gate passes:
+4,101 unit tests, TS 194/194, entry 255.7 KB.
+
+Legacy declarations are deliberately not backfilled: their original entities
+cannot be reconstructed from the current roster. Existing legacy behavior is
+preserved. The upcoming technique-effect transaction must require a captured
+binding; this migration does not yet expose Boost, Disorient or Bolt controls.
+No production migration or deployment performed. Fresh/main-upgrade rehearsals
+from the previous checkpoint predate this new migration and need updating before
+release.
