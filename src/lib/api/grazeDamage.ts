@@ -21,7 +21,7 @@ export async function recordGrazeDamage(attack:PendingAttack,useGraze:boolean):P
 }
 
 export interface GrazeDefenseReview {immune:boolean;resistant:boolean;vulnerable:boolean;note:string}
-export interface GrazeDamageContext {attack:PendingAttack;target?:{definitionType:string;definition:Record<string,unknown>}|null}
+export interface GrazeDamageContext {attacker?:{definition?:{weapon_masteries?:string[]|null}}|null;attack:PendingAttack;target?:{definitionType:string;definition:Record<string,unknown>}|null}
 export async function readGrazeDamageContext(attackId:string):Promise<GrazeDamageContext>{
  const ctx=await psionicRpc('get_pending_damage_context',{p_attack_id:attackId},true) as GrazeDamageContext;
  if(ctx?.attack?.id!==attackId)throw new Error('Graze target could not be confirmed. Refresh this attack.');return ctx;
@@ -45,4 +45,9 @@ export async function applyGrazeDamage(attack:PendingAttack,review?:{decision:Gr
   ||!(s.characterId===null||typeof s.characterId==='string')||!(s.concentrationCheckId===null||typeof s.concentrationCheckId==='string')
   ||!['off','prompt','auto'].includes(s.concentrationMode))throw new Error('Graze application could not be confirmed. Resume this attack; do not apply another hit.');
  await finishDamageConcentration(s);return saved;
+}
+
+export async function readGrazeChoice(attackId:string):Promise<boolean|null>{
+ const value=await psionicRpc('read_graze_choice',{p_attack_id:attackId},true);
+ if(value!==null&&typeof value!=='boolean')throw new Error('Graze choice could not be confirmed. Refresh combat.');return value;
 }

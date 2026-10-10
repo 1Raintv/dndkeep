@@ -19,7 +19,7 @@ it('returns a paid declaration while history remains pending',async()=>{
 it('stores attack mode independently of the weapon source',async()=>{
  const q={insert:vi.fn(()=>q),select:vi.fn(()=>q),single:async()=>({data:{id:'hit',state:'declared'},error:null})};mocks.from.mockReturnValue(q);
  await declareAttack({...input,attackKind:'attack_roll',attackSource:'weapon',attackMode:'ranged'});
- expect(q.insert).toHaveBeenCalledWith(expect.objectContaining({attack_source:'weapon',attack_mode:'ranged'}));
+ expect(q.insert).toHaveBeenCalledWith(expect.objectContaining({attack_source:'weapon',attack_mode:'ranged',graze_resolution_version:1}));
 });
 
 it('the shared cancellation entry point propagates server failures',async()=>{

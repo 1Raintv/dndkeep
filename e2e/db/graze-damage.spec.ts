@@ -154,6 +154,7 @@ test.describe('recorded optional Graze damage',()=>{
   prepare();apply();const stranger=randomUUID();
   expect(()=>sql(`begin;set local request.jwt.claims='{"sub":"${stranger}","role":"authenticated"}';set local role authenticated;select public.apply_graze_damage('${attack}');commit;`)).toThrow(/current DM only/);
   expect(()=>sql(`begin;set local role authenticated;select * from dndkeep_private.graze_damage_applications;rollback;`)).toThrow();
+  expect(()=>sql(`begin;set local request.jwt.claims='{"sub":"${stranger}","role":"authenticated"}';set local role authenticated;select public.read_graze_choice('${attack}');commit;`)).toThrow(/current DM only/);
   expect(sql(`select has_function_privilege('anon','public.apply_graze_damage(uuid,jsonb,integer,jsonb)','execute')`)).toBe('f');
   expect(pools()).toBe('19|0');
  });

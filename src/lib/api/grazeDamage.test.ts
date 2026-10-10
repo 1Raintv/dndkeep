@@ -3,7 +3,7 @@ import type {PendingAttack} from '../../types';
 const rpc=vi.hoisted(()=>vi.fn());vi.mock('./psionicTurns',()=>({psionicRpc:rpc}));
 const finish=vi.hoisted(()=>vi.fn());
 vi.mock('./psionicDamageApplication',()=>({psionicTargetConModifier:()=>2,finishDamageConcentration:finish}));
-import {recordGrazeDamage,applyGrazeDamage} from './grazeDamage';
+import {recordGrazeDamage,applyGrazeDamage,readGrazeChoice} from './grazeDamage';
 const attack={id:'attack',state:'attack_rolled',attack_kind:'attack_roll',hit_result:'miss',graze_resolution_version:1,attack_ability_modifier:4,damage_type:'Slashing'} as PendingAttack;
 function saved(use=true,modifier=4){const amount=use?Math.max(0,modifier):0;return {...attack,state:'damage_rolled',attack_ability_modifier:modifier,damage_rolls:[],damage_raw:amount,damage_final:amount,
  damage_components:{version:1,components:use?[{key:'base',source:'base',label:'Graze',damageType:'slashing',expression:String(amount),rolls:[],dieKinds:[],modifier:amount,rawTotal:amount}]:[]}};}
@@ -53,3 +53,8 @@ it('automatic application fetches current defenses only when no review was suppl
  await applyGrazeDamage(attack);expect(rpc.mock.calls[1][0]).toBe('get_pending_damage_context');
  expect(rpc).toHaveBeenLastCalledWith('apply_graze_damage',expect.objectContaining({p_expected:ctx,p_defense_review:null}),true);
 });
+
+it.each([true,false,null])('reads saved Graze choice %s without conflating decline and absence',async(choice)=>{
+ rpc.mockResolvedValue(choice);expect(await readGrazeChoice('attack')).toBe(choice);
+});
+it('rejects an unverified choice response',async()=>{rpc.mockResolvedValue({});await expect(readGrazeChoice('attack')).rejects.toThrow(/could not be confirmed/);});

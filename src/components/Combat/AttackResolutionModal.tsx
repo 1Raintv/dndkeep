@@ -1,3 +1,6 @@
+import GrazeChoiceControls from './GrazeChoiceControls';
+import GrazeDamagePanel from './GrazeDamagePanel';
+import {readGrazeChoice} from '../../lib/api/grazeDamage';
 import {offerReactionsFor} from '../../lib/pendingReaction';
 import SavedAttackSaveControls from './SavedAttackSaveControls';
 import {psychicDamageRoll} from '../../rules/psychicDamageRoll';
@@ -34,6 +37,7 @@ function AttackResolutionContent({ campaignId, isDM }: Props) {
   const [atk, setAtk] = useState<PendingAttack | null>(null);
   const [reactions, setReactions] = useState<PendingReaction[]>([]);
   const [loading, setLoading] = useState(false);
+  const [grazeChoice,setGrazeChoice]=useState<boolean|null>(null);
   const busy=useRef(false),alive=useRef(true),loadSequence=useRef(0);
   const [actionError,setActionError]=useState('');
   const [loadError,setLoadError]=useState('');
@@ -56,11 +60,13 @@ function AttackResolutionContent({ campaignId, isDM }: Props) {
         .order('declared_at',{ascending:false}).limit(1).maybeSingle();
       if(error)throw error;
       const next=(data as PendingAttack)??null;
+      let savedGraze:boolean|null=null;
       let offers:PendingReaction[]=[],progress:{remaining:number;total:number}|null=null;
       if(next){
         // v2.869: a resumed damage preview must recover its reaction window too.
         if(isDM&&current()&&next.state==='attack_rolled')await offerReactionsFor(next,'post_attack_roll');
         if(isDM&&current()&&next.state==='damage_rolled')await offerReactionsFor(next,'post_damage_roll');
+        if(isDM&&next.state==='damage_rolled'&&next.graze_resolution_version===1)savedGraze=await readGrazeChoice(next.id);
         if(!current())return;
         const {data:rdata,error:reactionError}=await supabase.from('pending_reactions').select('*')
           .eq('pending_attack_id',next.id).order('offered_at',{ascending:false});
@@ -77,7 +83,7 @@ function AttackResolutionContent({ campaignId, isDM }: Props) {
       }
       // Publish attack and reactions together; a failed reaction read must not
       // masquerade as no reactions and unlock Apply Damage.
-      if(current()){setAtk(next);setReactions(offers);setGroupProgress(progress);setLoadError('');}
+      if(current()){setAtk(next);setGrazeChoice(savedGraze);setReactions(offers);setGroupProgress(progress);setLoadError('');}
     } catch {
       if(current())setLoadError('Combat state could not be refreshed. Refresh before continuing.');
     }
@@ -380,6 +386,8 @@ function AttackResolutionContent({ campaignId, isDM }: Props) {
                     ⚄ Roll Damage
                   </button>
                 </div>
+              ) : atk.attack_source==='weapon'&&atk.attacker_type==='character' ? (
+                <GrazeChoiceControls key={`${atk.id}:${atk.updated_at}`} attack={atk} disabled={controlsDisabled} runAction={runAction} onSkip={onRollDamage}/>
               ) : (
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <button onClick={onRollDamage} disabled={controlsDisabled} style={{ fontSize: 12, padding: '6px 14px' }}>
@@ -396,7 +404,7 @@ function AttackResolutionContent({ campaignId, isDM }: Props) {
               {isWaitingForReactions&&<div role="status" style={{fontSize:12,color:'var(--c-gold-l)',overflowWrap:'anywhere'}}>
                 Waiting on reactions: {outstandingOffers.map(o=>`${o.reactor_name} (${o.reaction_name})`).join(', ')}
               </div>}
-              {psychicDamageRoll(atk)
+              {grazeChoice!==null?<GrazeDamagePanel key={`${atk.id}:${atk.updated_at}`} attack={atk} choice={grazeChoice} disabled={controlsDisabled||isWaitingForReactions} runAction={runAction}/>:psychicDamageRoll(atk)
                ?<PsionicDamageResolutionPanel key={atk.id} attack={atk} disabled={controlsDisabled||isWaitingForReactions} runAction={runAction} onCancel={onCancel}/>
                :<>
               <div style={{

@@ -1,5 +1,43 @@
 # DNDKeep — Two-Track Roadmap
 
+### Graze combat dialog integrated (local; not released)
+
+New weapon declarations opt into the saved Graze path. The eager grazeOnMiss HP
+writer has been deleted: attack rolling only determines the outcome and offers
+reactions. Once reactions finish, the DM combat dialog checks mastery and offers
+Use Graze / Decline Graze for a final miss. A later hit hides that choice; a later
+miss restores it. Older attacks or missing ability snapshots show manual-review
+text and can continue without adding Graze; they are never guessed or backfilled.
+
+A saved use/decline opens the dedicated application panel, which shows the typed
+base damage and recorded defenses. Conditional/missing defenses can receive a
+noted ruling tied to the inspected context. Graze bypasses the generic fudge/HP
+path and settles atomically. The immutable decline is distinct from an ordinary
+miss via migration 20261010185000's DM-only choice reader. Generic applyDamage
+also routes saved Graze choices to the atomic endpoint. The compact form keeps
+checkboxes beside labels and its action buttons reachable on mobile.
+
+Validation: final gate passed (4,514 tests, TS 194/194, entry 255.7 KB). All four
+use/decline browser flows passed on desktop/mobile with the official overflow
+probe and screenshots inspected. The final four-case browser rerun also checked
+console errors and HTTP failures, allowing the deliberately aborted choice replies.
+They assert unchanged HP after rolling and
+choosing, no choice when the final outcome becomes a hit, recovery after two lost
+choice replies, conditional resistance application, and exactly one HP/history
+settlement. These simulate the changed final outcome; they do not certify the
+still-unexposed Telepath reaction UI. Removing the choice made the test fail at
+Use Graze; exact restoration passed. All 53 broader attack-outcome, Graze and
+combat-dialog recovery cases passed. SQL lint has no Graze diagnostics (20 other
+existing function warnings). Exact local migration ledger verified.
+
+Evidence: `.tmp/graze-ui-{release-gate,polished-e2e,console-e2e,mutation,restored,regression}.log`,
+`.tmp/graze-ui-lint.json`, and `.tmp/graze-{choice,damage}-*.png`.
+Remaining: reviewed ability selection for manually configured weapon/declaration
+rows; Telepath numerical reaction integration and subsequent reaction windows;
+durable attack history; release rehearsals through migration 338. No production
+migration or deployment performed in this work.
+
+
 ### Atomic Graze application — stage 2 (local; not released or wired into UI)
 
 Migration 20261010184800 records participant bindings with the Graze choice and

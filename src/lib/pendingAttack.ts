@@ -162,6 +162,7 @@ export async function declareAttack(input: DeclareAttackInput): Promise<PendingA
       attack_kind: input.attackKind,
       attack_bonus: input.attackBonus ?? null,
       attack_ability_modifier: input.attackAbilityModifier ?? null,
+      graze_resolution_version: input.attackKind==='attack_roll'&&input.attackSource==='weapon'?1:null,
       target_ac: input.targetAC ?? null,
       save_dc: input.saveDC ?? null,
       save_ability: input.saveAbility ?? null,
@@ -228,6 +229,7 @@ export async function declareAttack(input: DeclareAttackInput): Promise<PendingA
       attack_source: input.attackSource ?? null,
       attack_bonus: input.attackBonus ?? null,
       attack_ability_modifier: input.attackAbilityModifier ?? null,
+      graze_resolution_version: input.attackKind==='attack_roll'&&input.attackSource==='weapon'?1:null,
       target_ac: input.targetAC ?? null,
       save_dc: input.saveDC ?? null,
       save_ability: input.saveAbility ?? null,
@@ -306,6 +308,7 @@ export async function declareMultiTargetAttack(
     attack_kind: input.attackKind,
     attack_bonus: input.attackBonus ?? null,
     attack_ability_modifier: input.attackAbilityModifier ?? null,
+    graze_resolution_version: input.attackKind==='attack_roll'&&input.attackSource==='weapon'?1:null,
     target_ac: input.targetAC ?? null,
     save_dc: input.saveDC ?? null,
     save_ability: input.saveAbility ?? null,
@@ -599,15 +602,7 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
     });
   }
 
-  // v2.631.0 — Weapon Mastery Graze: on a miss with a mastered Graze
-  // weapon, the target still takes ability-modifier damage (SRD
-  // 5.2.1). Fires on the initial miss only — a hit later turned into
-  // a miss by a Shield-style reaction skips this (reactions can't
-  // turn a miss into a hit, so true misses are always covered).
-  if (hitResult === 'miss' || hitResult === 'fumble') {
-    const { grazeOnMiss } = await import('./masteryRiders');
-    await grazeOnMiss(atk);
-  }
+  // v2.869: Graze is chosen after reactions, never an eager HP write here.
 
   // v2.98.0 — Phase E: offer reactions (Shield, etc.) to the target now that
   // we have a hit/miss. If any offers are created, the resolution pauses on
@@ -915,6 +910,11 @@ export async function applyDamage(attackId: string, beforeLegacyApply?:()=>void)
   const atk = row as PendingAttack;
 
   if(atk.state==='damage_rolled')await offerReactionsFor(atk,'post_damage_roll');
+
+  if(atk.graze_resolution_version===1&&atk.attack_kind==='attack_roll'&&['miss','fumble'].includes(atk.hit_result??'')){
+    const {readGrazeChoice,applyGrazeDamage}=await import('./api/grazeDamage');
+    if(await readGrazeChoice(atk.id)!==null)return applyGrazeDamage(atk);
+  }
 
   // Bolt's saved die is Force damage, so it must not use the legacy HP writes.
   if(atk.attack_kind==='auto_hit'&&atk.attack_name==='Telekinetic Bolt'){
