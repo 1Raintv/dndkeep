@@ -120,6 +120,26 @@ test.describe('Atomic party damage',()=>{
   sql(`update characters set current_hp=0,temp_hp=8,death_saves_failures=1 where id='${char}'`);
   apply(undefined,1);expect(state()).toMatchObject({hp:0,temp:7,failures:2});
  });
+ for(const combat of [false,true])for(const damage of [49,50])test(`zero-HP massive threshold ignores temp HP (${combat}/${damage})`,()=>{
+  sql(`update characters set current_hp=0,temp_hp=80,death_saves_failures=0,is_stable=true where id='${char}'`);
+  let participant:string|null=null;
+  if(combat){const encounter=randomUUID();participant=randomUUID();sql(`insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaign}','active',1,0);
+   insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values('${participant}','${encounter}','${campaign}','character','${char}','Damage fixture',0);
+   update combatants set current_hp=0,max_hp=50,temp_hp=80,death_save_failures=0,is_stable=true where id=(select combatant_id from combat_participants where id='${participant}')`);}
+  const ctx=context();apply(ctx,damage);expect(state()).toMatchObject({hp:0,temp:80-damage,failures:damage===50?3:1,spell:''});
+  if(participant)expect(sql(`select is_dead::text||':'||is_stable::text from combatants where id=(select combatant_id from combat_participants where id='${participant}')`)).toBe(`${damage===50}:false`);
+  const after=state();expect(apply(ctx,damage).replayed).toBe(true);expect(state()).toEqual(after);expect(count('dndkeep_private.party_damage_events')).toBe('1');
+ });
+ for(const damage of [62,63])test(`positive-HP massive threshold still subtracts temp HP (${damage})`,()=>{
+  sql(`update characters set current_hp=5,temp_hp=8 where id='${char}'`);apply(undefined,damage);expect(state()).toMatchObject({hp:0,temp:0,failures:damage===63?3:0});
+ });
+ test('massive zero-HP history failure rolls back death state and concentration',()=>{
+  sql(`update characters set current_hp=0,temp_hp=80,death_saves_failures=0 where id='${char}'`);const before=state(),ctx=context(),fn='reject_massive_'+request.replaceAll('-','');
+  sql(`create function public.${fn}() returns trigger language plpgsql as $$ begin if new.id='${request}' then raise exception 'fixture history failure';end if;return new;end $$;create trigger ${fn} before insert on character_history for each row execute function public.${fn}()`);
+  try{expect(()=>apply(ctx,50)).toThrow(/fixture history failure/);expect(state()).toEqual(before);expect(count('dndkeep_private.party_damage_events')).toBe('0');}
+  finally{sql(`drop trigger ${fn} on character_history;drop function public.${fn}()`);}
+  apply(ctx,50);expect(state().failures).toBe(3);
+ });
  test('massive excess damage records death',()=>{
   apply(undefined,108);expect(state()).toMatchObject({hp:0,temp:0,failures:3});
  });

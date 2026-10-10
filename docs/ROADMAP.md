@@ -7141,3 +7141,35 @@ represented in these fields are not inferred from prose. The same transaction
 must eventually validate all captured defenses/save inputs, apply one-use save
 penalties, commit HP/concentration/events and consume the per-turn marker once.
 The current separate writes remain an explicit release blocker.
+
+### Shared damage-at-zero threshold corrected before aura composition (unreleased)
+
+Reviewing apply_party_damage for reuse in atomic aura settlement found that it
+subtracted temporary HP before testing massive damage even when the character
+was already at zero HP. That contradicted the verified non-attack damage rule:
+at zero, damage taken is compared directly with maximum HP, including damage
+absorbed by temporary HP. From positive HP, only remaining overflow after temp
+HP and current HP is compared with the maximum.
+Source: [2024 Damage and Healing](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game).
+
+Migration20261010070013 corrects that branch only, retaining the existing
+owner/DM authorization, snapshot checks, receipt identity, concentration
+cleanup and transaction boundaries. New regressions reproduced two failures
+before the migration (campaign-sheet and active-combat targets). With maximum
+50 and80 temporary HP at zero,49 damage adds one failure;50 damage is fatal,
+even though30 temporary HP remain. Positive-HP boundary cases remain unchanged.
+
+All72 party-damage transaction cases pass across desktop/mobile, including
+replay and forced-history-failure rollback. Two real character-sheet browser
+cases click Take5damage at0HP/max5/temp8, verify three failures, remaining temp3,
+lost stability, cleared concentration, one receipt and no concentration offer.
+Full gate passes (3,467 units,195/195 TypeScript,255.2 KB entry); changed-file
+ESLint, SQL lint and security advisors pass. Migration applied/recorded only
+locally, preserving unrelated history. No production deployment.
+
+Atomic aura composition remains next: the existing party damage transaction
+can supply character HP/death/concentration within the caller transaction, but
+its snapshot and target identity must match the aura target. Aura save evidence,
+one-use penalties, creature damage, logs and its per-turn receipt/marker still
+need to commit together. This checkpoint fixes a prerequisite, not that whole
+transaction or the broader durable turn controller.

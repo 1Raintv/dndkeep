@@ -90,6 +90,16 @@ test.describe('Campaign sheet damage recovery (local stack)', () => {
   expect(sql(`select temp_hp from characters where id='${charId}'`)).toBe('1');
   await expect(page.getByRole('region',{name:'Saved campaign damage'})).toContainText('Damage confirmed.');
  });
+ test('damage at zero HP can be instantly fatal despite remaining temporary HP',async({page})=>{
+  sql(`update characters set current_hp=0,max_hp=5,temp_hp=8,death_saves_failures=0,is_stable=true where id='${charId}'`);
+  await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+  await page.getByTitle('Take 5 damage',{exact:true}).locator('visible=true').first().click();
+  await expect.poll(()=>sql(`select death_saves_failures from characters where id='${charId}'`)).toBe('3');
+  expect(sql(`select current_hp||':'||temp_hp||':'||is_stable::text from characters where id='${charId}'`)).toBe('0:3:false');
+  expect(sql(`select concentration_spell from characters where id='${charId}'`)).toBe('');
+  expect(sql(`select count(*) from dndkeep_private.party_damage_events where character_id='${charId}'`)).toBe('1');
+  expect(sql(`select count(*) from pending_concentration_saves where character_id='${charId}'`)).toBe('0');
+ });
  test('zero HP ends concentration without creating a saving throw',async({page})=>{
   sql(`update characters set current_hp=5,temp_hp=0 where id='${charId}'`);
   await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
