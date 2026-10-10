@@ -1,5 +1,45 @@
 # DNDKeep — Two-Track Roadmap
 
+### Typed damage calculation on the server (private preparation)
+
+The remaining general-hit gap is confirmed in `pendingAttack.applyDamage`: its
+legacy branch applies `damage_final`, with another Petrified reduction, rather
+than resolving each saved type. `apply_saved_save_damage` also retains that flat
+contract for non-psychic monster saves. Therefore the earlier Stony context
+projection is NOT proof that these routes apply its resistance. Do not expose
+complete Mutable Form activation on that assumption.
+
+Migration `20261011000500_typed_damage_affinity_calculation.sql` adds a private,
+immutable calculation matching `rules/typedDamage.ts`. It validates the original
+component/dice evidence, groups same-type damage before rounding, applies explicit
+save adjustments before immunity/resistance/vulnerability, handles blanket and
+per-type resistance without stacking, and restricts Sharpened bypass by source.
+Ambiguous half-damage allocation across bypass/resisted sources fails closed.
+Unknown defenses/types and unsafe totals also fail closed; the client rules now
+reject unknown defense strings instead of silently treating them as absent.
+
+66 database parity cases cover every damage type and independently assert totals,
+plus mixed fire/psychic damage, immunity, duplicate resistance, rounding, Sharpened,
+malformed evidence, overflow and private privileges. This function does not read
+HP or prove eligibility: its future enclosing transaction must derive defenses,
+adjustments and source provenance from locked state, never arbitrary client flags.
+No public grant, caller wiring or HP behavior change is claimed here.
+
+Next: derive known/explicitly reviewed defense inputs from the saved context and
+wire the complete monster-save transaction first; then ordinary hits together
+with mastery, retaliation, concentration and replay. Never feed the existing
+flattened `damage_final` into this calculator and apply resistance a second time.
+The normal aura UI already supplies the reviewed resolver; the old direct aura
+function is only an optional fallback/test path and still needs retirement.
+Evidence: `.tmp/typed-damage-calculation-{apply,db,gate,lint}.log`.
+Full gate passed (4,839 unit tests, TS 193/193, entry 256.1 KB). The final
+66-case database run passes after restoration. Removing resistance makes the
+mixed Stony/fire regression fail (expected 9, received 12). Local SQL lint has no
+new-function findings; reapplying in a rolled-back transaction succeeds.
+Additional evidence: `.tmp/typed-damage-calculation-{mutation,db-final,idempotence}.log`.
+Local migration count is now 351; production and retained rehearsals unchanged.
+
+
 ### Aura defense suggestions from saved context (unreleased)
 
 The live end-turn/movement aura review now preselects a defense when its saved
