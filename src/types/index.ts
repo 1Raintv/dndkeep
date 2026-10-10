@@ -982,6 +982,7 @@ export interface PendingAttack {
 
   attack_bonus: number | null;
   attack_ability_modifier?: number | null;
+  graze_resolution_version?: 1 | null;
   target_ac: number | null;
   attack_d20: number | null;
   attack_total: number | null;

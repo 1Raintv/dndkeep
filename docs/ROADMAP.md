@@ -1,5 +1,37 @@
 # DNDKeep — Two-Track Roadmap
 
+### Graze choice recording — stage 1 (local; not released or wired into UI)
+
+Migration 20261010183300 adds an opt-in resolution version that must be supplied
+at declaration and cannot later change. Legacy attacks remain null because the
+old Graze handler may already have written HP. The new DM-scoped recording RPC
+accepts use/decline only for a final missed mastered weapon attack against a
+current creature target, with a known captured ability modifier and weapon damage
+type. It checks encounter/participant/character bindings and the exact attack
+snapshot. Total cover, missing mastery, unknown modifiers/types and stale attacks
+are rejected. The existing reaction barrier must pass before recording.
+
+A private damage receipt preserves the optional choice. Same-choice retries return
+the winner; opposite choices cannot replace it, including concurrent requests.
+The stored typed component contains only the nonnegative ability contribution,
+no dice or magic/proficiency bonuses. Declining records zero with no components.
+This stage neither writes HP nor consumes hit-only buffs. The API verifies saved
+evidence and surfaces errors. Rule reference: [2024 Basic Rules, Graze](https://www.dndbeyond.com/sources/dnd/br-2024/equipment/#Graze).
+
+Validation: 18 local database cases passed (13 initial + 5 additional cases for
+zero/negative/unknown modifiers, legacy declarations and simultaneous choices).
+Full gate passed (4,499 tests, TS 194/194, entry 255.7 KB); SQL lint has no new Graze diagnostics (20 existing function
+warnings). Exact local ledger statement verified. Evidence:
+`.tmp/graze-record-{db,extra,gate}.log`, `.tmp/graze-record-lint.json`.
+
+NEXT, required before release: atomic Graze HP/life/concentration/history
+application with reviewed damage defenses; optional use/decline controls after
+reactions; new-client declaration opt-in; remove eager grazeOnMiss writes. The
+existing UI still uses that legacy path, so this stage alone does not repair the
+player experience. Also test hit-to-miss/miss-to-hit reactions and lost responses.
+Release rehearsals must now include migrations 333–336.
+
+
 ### Declared attack ability snapshot (local; not released)
 
 Migration 20261010182115 saves an optional integer ability contribution on each

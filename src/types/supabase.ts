@@ -1589,6 +1589,7 @@ export type Database = {
           attack_total: number | null;
           attack_roll_snapshot: Json | null;
           attack_ability_modifier: number | null;
+          graze_resolution_version: number | null;
           hit_result: string | null;
           save_dc: number | null;
           save_ability: string | null;
@@ -1636,6 +1637,7 @@ export type Database = {
           attack_total?: number | null;
           attack_roll_snapshot?: Json | null;
           attack_ability_modifier?: number | null;
+          graze_resolution_version?: number | null;
           hit_result?: string | null;
           save_dc?: number | null;
           save_ability?: string | null;
@@ -1683,6 +1685,7 @@ export type Database = {
           attack_total?: number | null;
           attack_roll_snapshot?: Json | null;
           attack_ability_modifier?: number | null;
+          graze_resolution_version?: number | null;
           hit_result?: string | null;
           save_dc?: number | null;
           save_ability?: string | null;
