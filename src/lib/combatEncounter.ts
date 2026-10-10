@@ -752,15 +752,15 @@ async function advanceTurnOnce(encounterId: string): Promise<CombatActionResult>
   const active = rows.filter((r: { is_dead?: boolean | null }) => !r.is_dead);
   if (active.length === 0) return { ok: false, reason: 'All participants are dead' };
 
-  const currentIdx = encounter.current_turn_index ?? 0;
-  let nextIdx = currentIdx + 1;
-  let nextRound = encounter.round_number;
-  let roundIncremented = false;
-  if (nextIdx >= active.length) {
-    nextIdx = 0;
-    nextRound = encounter.round_number + 1;
-    roundIncremented = true;
-  }
+  // v2.869: an end-effect receipt anchors the outgoing actor even if its
+  // damage killed them. The compressed living roster cannot identify that turn.
+  const {getCurrentUserId}=await import('./supabase');
+  const userId=await getCurrentUserId();
+  if(!userId)return {ok:false,reason:'Sign in before advancing combat.'};
+  const {getCombatClockContext}=await import('./api/combatClock');
+  const initialClock=await getCombatClockContext(userId,encounterId,enc.psionic_turn_id);
+  let nextIdx=initialClock.nextIndex,nextRound=initialClock.nextRound;
+  let roundIncremented=initialClock.roundWrapped;
 
   // v2.445.0 — End-of-turn condition processing for the OUTGOING
   // participant. Re-rolls saves for any condition with a save_to_end
@@ -769,7 +769,8 @@ async function advanceTurnOnce(encounterId: string): Promise<CombatActionResult>
   // on success/expiry. Runs BEFORE we write the encounter row so
   // any condition_resave events appear in the log right before
   // turn_ended (matches the natural narrative order).
-  const outgoingForConditions = active[currentIdx] ?? null;
+  const outgoingForConditions = rows.find((r:{id:string})=>r.id===initialClock.outgoingId) ?? null;
+  if(!outgoingForConditions)return {ok:false,reason:'The outgoing actor changed. Refresh combat before advancing.'};
   if (outgoingForConditions) {
     try {
       const { processEndOfTurnConditions } = await import('./endOfTurnConditions');
@@ -789,19 +790,18 @@ async function advanceTurnOnce(encounterId: string): Promise<CombatActionResult>
       return {ok:false,reason:err instanceof Error?err.message:'Condition save could not be confirmed'};
     }
 
-    // v2.602.0 — automation arc ship 4b: END-OF-TURN buff ticks for
-    // the outgoing participant (Acid Arrow's delayed 2d4 lands at the
-    // end of the target's next turn, per SRD 5.2.1). Runs in the same
-    // slot as the condition re-saves; never blocks turn advance.
+    // v2.869: persist end-of-turn ticks before allowing the clock to move.
+    // A lost reply is recovered by the same turn identity, never a second roll.
     try {
-      const { processTurnTicks } = await import('./buffs');
-      await processTurnTicks({
+      const { processCurrentUserTurnEffects } = await import('./api/turnEffects');
+      await processCurrentUserTurnEffects({
         participantId: outgoingForConditions.id,
         encounterId,
+        turnId: enc.psionic_turn_id,
         timing: 'turn_end',
       });
     } catch (err) {
-      console.error('[advanceTurn] end-of-turn buff ticks failed', err);
+      return {ok:false,reason:err instanceof Error?err.message:'End-of-turn effects could not be confirmed. Retry before advancing.'};
     }
 
     // v2.634.0 — Aura/Emanation "ends its turn there" trigger (2024
@@ -848,7 +848,15 @@ async function advanceTurnOnce(encounterId: string): Promise<CombatActionResult>
   }
 
   // Reset per-turn budgets for the incoming actor
-  const incomingParticipant = active[nextIdx];
+  const refreshedClock=await getCombatClockContext(userId,encounterId,enc.psionic_turn_id);
+  nextIdx=refreshedClock.nextIndex;nextRound=refreshedClock.nextRound;roundIncremented=refreshedClock.roundWrapped;
+  const incomingParticipant=rows.find((r:{id:string})=>r.id===refreshedClock.incomingId);
+  if(!incomingParticipant)return {ok:false,reason:'The next actor changed. Refresh combat before advancing.'};
+  // v2.869: the legacy clock write below cannot rotate the turn UUID when a
+  // dead actor's successor occupies the same index/round. Keep this pending
+  // until the atomic clock adapter takes over; never reuse the old turn's dice.
+  if(nextIdx===encounter.current_turn_index&&nextRound===encounter.round_number)
+    return {ok:false,reason:'The outgoing actor died and the next turn needs clock recovery. Keep this encounter open; do not repeat its effects.'};
 
   // v2.126.0 — Phase J: refill legendary action pool on the creature's own
   // turn. RAW 2024: LA pool refills at the START of the legendary creature's
@@ -1193,7 +1201,7 @@ async function advanceTurnOnce(encounterId: string): Promise<CombatActionResult>
   }
 
   // Emit turn_ended (for outgoing) + turn_started (for incoming)
-  const outgoing = active[currentIdx] ?? null;
+  const outgoing = outgoingForConditions;
   const chain: Parameters<typeof emitCombatEventChain>[0] = [];
   if (outgoing) {
     chain.push({

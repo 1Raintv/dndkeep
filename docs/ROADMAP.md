@@ -7738,3 +7738,31 @@ Removing the selected identity makes the regression suite fail; restoring it
 passes. Full verify: 3,785 tests, TypeScript 194/194, hooks/RAW/coordinates/
 anchors, build and 255.7 KB entry budget. New test file lint clean.
 No production changes. Durable aura/turn orchestration remains unfinished.
+
+
+### Live outgoing turn-effect integration (2026-10-10, unreleased)
+
+advanceTurn now uses the atomic saved batch for outgoing buff ticks and stops
+before aura processing, budget resets or clock writes when acknowledgement
+fails. Retrying/reloading recovers the recorded batch without repeating damage.
+The live adapter binds recovery to the signed-in user, releases its auth listener,
+and rejects session changes. Same-origin browser locks serialize preparation;
+an interruption marker precedes the first die so a storage failure cannot reroll.
+
+The live handler now reads the authoritative clock context to identify the
+outgoing actor and refresh the successor after outgoing effects. This preserves
+the original actor when lethal tick damage compresses the living initiative list.
+A remaining legacy-clock limitation is explicitly blocked: if death leaves the
+successor at the same index and round, the old direct clock write would reuse the
+turn UUID. The encounter remains pending in that case. Replace the remaining
+legacy clock/budget/reset sequence with the atomic clock adapter and durable
+incoming-phase recovery next; then remove this temporary guard. This branch
+must not be released while that transition work remains unfinished.
+
+Validation: 56 focused unit cases, full verify (3,793 units; TypeScript 194/194;
+hooks/RAW/coordinates/anchors/build; entry 255.7 KB), no new lint diagnostics.
+All 34 local turn-effect DB cases passed before the final actor-anchor change;
+six final desktop/mobile browser cases verify API recovery and live ordinary/
+lethal lost-reply recovery after that change. No production writes or deployment.
+Concentration/typed defenses for buff ticks and live aura/incoming orchestration
+remain separate unfinished work; this does not claim those paths are complete.

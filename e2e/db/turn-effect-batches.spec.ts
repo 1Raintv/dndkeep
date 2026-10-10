@@ -20,7 +20,7 @@ test.describe('Atomic turn effect batches',()=>{
   turn=sql(`select psionic_turn_id from combat_encounters where id='${encounter}'`);combatant=sql(`select combatant_id from combat_participants where id='${participant}'`);
   sql(`update combatants set current_hp=40,max_hp=50,temp_hp=6,active_buffs='[{"key":"acid","name":"Delayed acid","turnTick":{"kind":"damage","timing":"turn_end","flat":10,"oneShot":true}}]' where id='${combatant}'`);
  });
- test.afterEach(()=>sql(`delete from campaigns where id='${campaign}';delete from characters where id='${char}';delete from auth.users where id in('${owner}','${dm}')`));
+ test.afterEach(()=>sql(`delete from campaigns where id='${campaign}';delete from characters where user_id='${owner}';delete from auth.users where id in('${owner}','${dm}')`));
  const context=()=>JSON.parse(sql(`select dndkeep_private.turn_effect_state('${combatant}')`));
  const updates=()=>({current_hp:36,temp_hp:0,death_save_failures:0,death_save_successes:0,is_stable:false,is_dead:false,active_buffs:[]});
  const events=[{eventType:'damage_applied',payload:{amount:10,tick:true}},{eventType:'spell_effect_removed',payload:{source_buff:'Delayed acid'}}];
@@ -121,6 +121,33 @@ test.describe('Atomic turn effect batches',()=>{
    return {receipt,saved:api.savedTurnEffect(user,identity)};
   },{user:dm,identity});
   expect(recovered.receipt).toMatchObject({requestId:first.saved!.requestId,replayed:true,state:{current_hp:36}});expect(recovered.saved).toBeNull();expect(context().current_hp).toBe(49);expect(repeatedPreparation).toBe(0);
+  expect(sql(`select count(*) from combat_events where encounter_id='${encounter}' and event_type in('damage_applied','spell_effect_removed')`)).toBe('2');
+ });
+
+ for(const lethal of [false,true])test(`live advance preserves the original outgoing effects across reload (lethal ${lethal})`,async({page})=>{
+  if(lethal){
+   const survivor=randomUUID(),survivorParticipant=randomUUID();
+   sql(`insert into characters(id,user_id,campaign_id,name,species,class_name,background,level,current_hp,max_hp) values('${survivor}','${owner}','${campaign}','Survivor','Human','Fighter','Sage',5,30,30);
+    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values('${survivorParticipant}','${encounter}','${campaign}','character','${survivor}','Survivor',1);
+    update combatants set active_buffs='[{"key":"acid","name":"Delayed acid","turnTick":{"kind":"damage","timing":"turn_end","flat":100,"oneShot":true}}]' where id='${combatant}';`);
+  }
+  sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}','{"sub":"${dm}","email":"${dm}@tick.local"}','email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${dm}@tick.local`);
+  let commits=0;await page.route('**/rest/v1/rpc/commit_turn_effect_batch',async route=>{await route.fetch();commits++;await route.abort('failed');});
+  const advance=()=>page.evaluate(async encounterId=>{const {advanceTurn}=await import('/src/lib/combatEncounter.ts');return advanceTurn(encounterId);},encounter);
+  const before=sql(`select jsonb_build_object('turn',psionic_turn_id,'round',round_number,'index',current_turn_index) from combat_encounters where id='${encounter}'`);
+  expect((await advance()).ok).toBe(false);expect(commits).toBe(2);expect(context().current_hp).toBe(lethal?0:36);
+  expect(sql(`select jsonb_build_object('turn',psionic_turn_id,'round',round_number,'index',current_turn_index) from combat_encounters where id='${encounter}'`)).toBe(before);
+  expect(sql(`select count(*) from combat_events where encounter_id='${encounter}' and event_type in('turn_ended','turn_started')`)).toBe('0');
+  await page.unroute('**/rest/v1/rpc/commit_turn_effect_batch');await page.reload();
+  let preparation=0;await page.route('**/rest/v1/rpc/get_turn_effect_context',async route=>{preparation++;await route.abort('failed');});
+  const resumed=await advance();
+  if(lethal)expect(resumed).toMatchObject({ok:false,reason:expect.stringContaining('clock recovery')});else expect(resumed).toEqual({ok:true});
+  expect(preparation).toBe(0);expect(context().current_hp).toBe(lethal?0:36);
+  expect(sql(`select round_number from combat_encounters where id='${encounter}'`)).toBe(lethal?'1':'2');
+  if(lethal){expect(context().is_dead).toBe(true);expect(sql(`select count(*) from combat_events where encounter_id='${encounter}' and event_type in('turn_ended','turn_started')`)).toBe('0');}
+  expect(sql(`select count(*) from dndkeep_private.turn_effect_batches where participant_id='${participant}'`)).toBe('1');
   expect(sql(`select count(*) from combat_events where encounter_id='${encounter}' and event_type in('damage_applied','spell_effect_removed')`)).toBe('2');
  });
 

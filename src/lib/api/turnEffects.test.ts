@@ -1,15 +1,18 @@
 // @vitest-environment happy-dom
 import {beforeEach,afterEach,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({rpc:vi.fn(),roll:vi.fn()}));
+const m=vi.hoisted(()=>({rpc:vi.fn(),roll:vi.fn(),session:vi.fn(),subscribe:vi.fn(),unsubscribe:vi.fn()}));
+vi.mock('../supabase',()=>({supabase:{auth:{getSession:m.session,onAuthStateChange:m.subscribe}}}));
 vi.mock('./psionicTurns',()=>({psionicRpc:m.rpc}));
 vi.mock('../../rules/dice',()=>({rollDiceExpr:m.roll}));
-import {processSavedTurnEffects,runTurnEffects,savedTurnEffect,savedTurnEffects,readTurnEffect,type TurnEffectPlan} from './turnEffects';
+import {processCurrentUserTurnEffects,processSavedTurnEffects,runTurnEffects,savedTurnEffect,savedTurnEffects,readTurnEffect,type TurnEffectPlan} from './turnEffects';
 const id=(n:number)=>`${n}${'0'.repeat(7)}-0000-4000-8000-000000000000`;
 const user=id(1),i={participantId:id(2),encounterId:id(3),turnId:id(4),timing:'turn_end' as const};
 const expected={current_hp:40,max_hp:50,temp_hp:6,death_save_failures:0,death_save_successes:0,is_stable:false,is_dead:false,active_buffs:[{key:'acid',turnTick:{kind:'damage',timing:'turn_end',flat:10}}]};
 const plan:TurnEffectPlan={combatantId:id(5),expected,updates:{current_hp:36,temp_hp:0,death_save_failures:0,death_save_successes:0,is_stable:false,is_dead:false,active_buffs:[]},events:[{eventType:'damage_applied',payload:{amount:10}}]};
 const receipt=(requestId=id(6))=>({...i,requestId,combatantId:plan.combatantId,state:{...plan.updates,max_hp:50},eventCount:1,replayed:false});
-beforeEach(()=>{vi.resetAllMocks();localStorage.clear();m.rpc.mockImplementation(async(name:string,args:Record<string,unknown>)=>name==='read_turn_effect_batch'?null:receipt(args.p_request as string));});
+beforeEach(()=>{vi.resetAllMocks();
+ Object.defineProperty(navigator,'locks',{configurable:true,value:{request:(_key:string,_options:unknown,run:()=>unknown)=>Promise.resolve().then(run)}});
+ m.session.mockResolvedValue({data:{session:{user:{id:user}}},error:null});m.subscribe.mockReturnValue({data:{subscription:{unsubscribe:m.unsubscribe}}});localStorage.clear();m.rpc.mockImplementation(async(name:string,args:Record<string,unknown>)=>name==='read_turn_effect_batch'?null:receipt(args.p_request as string));});
 afterEach(()=>vi.restoreAllMocks());
 it('persists the full original outcome before submitting',async()=>{
  const prepare=vi.fn(async()=>plan);m.rpc.mockImplementation(async(name,args)=>{
@@ -82,7 +85,7 @@ function preparedRpc(context:unknown=freshContext()){
 it('prepares canonical dice from authorized context and persists the complete computed proposal',async()=>{
  preparedRpc();const guard=vi.fn();const r=await processSavedTurnEffects(user,i,guard);
  expect(m.rpc.mock.calls.map(([name])=>name)).toEqual(['read_turn_effect_batch','get_turn_effect_context','commit_turn_effect_batch']);
- expect(m.roll.mock.calls).toEqual([['1d6']]);expect(guard).toHaveBeenCalledTimes(3);
+ expect(m.roll.mock.calls).toEqual([['1d6']]);expect(guard.mock.calls.length).toBeGreaterThanOrEqual(3);
  expect(r.state).toMatchObject({current_hp:40,temp_hp:0,active_buffs:[]});expect(r.eventCount).toBe(2);
  expect(m.rpc.mock.calls[2][1].p_expected).toEqual(freshContext().state);
 });
@@ -116,4 +119,33 @@ it('validates all effect shapes before rolling the first one',async()=>{
 it('context errors stop preparation without saving a new request',async()=>{
  m.rpc.mockImplementation(async name=>{if(name==='read_turn_effect_batch')return null;throw new Error('Turn changed');});
  await expect(processSavedTurnEffects(user,i,()=>{})).rejects.toThrow('Turn changed');expect(m.roll).not.toHaveBeenCalled();expect(savedTurnEffect(user,i)).toBeNull();
+});
+
+it('retains an interruption marker if the final proposal write fails after dice',async()=>{
+ preparedRpc();const original=localStorage.setItem.bind(localStorage);
+ vi.spyOn(localStorage,'setItem').mockImplementation((k,v)=>{if(k.startsWith('dndkeep:turn-effects:')&&JSON.parse(v).events)throw new Error('Storage full');original(k,v);});
+ await expect(processSavedTurnEffects(user,i,()=>{})).rejects.toThrow('Storage full');expect(m.roll).toHaveBeenCalledTimes(1);
+ await expect(processSavedTurnEffects(user,i,()=>{})).rejects.toThrow('could not be verified');expect(m.roll).toHaveBeenCalledTimes(1);
+ expect(m.rpc.mock.calls.some(([name])=>name==='commit_turn_effect_batch')).toBe(false);
+});
+it('blocked browser locking does not prepare or submit',async()=>{
+ Object.defineProperty(navigator,'locks',{configurable:true,value:undefined});preparedRpc();
+ await expect(processSavedTurnEffects(user,i,()=>{})).rejects.toThrow('browser locking');expect(m.rpc).not.toHaveBeenCalled();expect(m.roll).not.toHaveBeenCalled();
+});
+it('the live adapter binds the saved batch to the session and releases its listener',async()=>{
+ preparedRpc();expect((await processCurrentUserTurnEffects(i)).state.current_hp).toBe(40);expect(m.unsubscribe).toHaveBeenCalledTimes(1);
+});
+it('sign-out during receipt lookup prevents preparation and cleans up the listener',async()=>{
+ preparedRpc();const original=m.rpc.getMockImplementation()!;
+ m.rpc.mockImplementation(async(name,args)=>{if(name==='read_turn_effect_batch')m.subscribe.mock.calls[0][0]('SIGNED_OUT',null);return original(name,args);});
+ await expect(processCurrentUserTurnEffects(i)).rejects.toThrow('Sign-in changed');expect(m.roll).not.toHaveBeenCalled();expect(m.rpc).toHaveBeenCalledTimes(1);expect(m.unsubscribe).toHaveBeenCalledTimes(1);
+});
+it('a session switch while loading the session never resolves another account’s batch',async()=>{
+ m.session.mockImplementation(async()=>{m.subscribe.mock.calls[0][0]('SIGNED_IN',{user:{id:id(8)}});return {data:{session:{user:{id:user}}},error:null};});
+ await expect(processCurrentUserTurnEffects(i)).rejects.toThrow('Sign-in changed');expect(m.rpc).not.toHaveBeenCalled();expect(m.unsubscribe).toHaveBeenCalledTimes(1);
+});
+it('a scope change while a saved batch submits keeps its recovery request',async()=>{
+ preparedRpc();let current=true;const original=m.rpc.getMockImplementation()!;
+ m.rpc.mockImplementation(async(name,args)=>{if(name==='commit_turn_effect_batch')current=false;return original(name,args);});
+ await expect(processSavedTurnEffects(user,i,()=>{if(!current)throw new Error('Scope changed');})).rejects.toThrow('Scope changed');expect(savedTurnEffect(user,i)).not.toBeNull();
 });

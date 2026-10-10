@@ -1,5 +1,7 @@
 import {planTurnTicks,type TickingBuff,type TurnTick} from '../../rules/turnTicks';
 import {psionicRpc} from './psionicTurns';
+import {rollDiceExpr} from '../../rules/dice';
+import {supabase} from '../supabase';
 export interface TurnEffectIdentity {participantId:string;encounterId:string;turnId:string;timing:'turn_start'|'turn_end'}
 export interface TurnEffectState {current_hp:number;max_hp:number;temp_hp:number;death_save_failures:number;death_save_successes:number;is_stable:boolean;is_dead:boolean;active_buffs:Record<string,unknown>[]|null}
 export type TurnEffectUpdates=Omit<TurnEffectState,'max_hp'|'active_buffs'>&{active_buffs:Record<string,unknown>[]};
@@ -59,8 +61,10 @@ function equal(a:unknown,b:unknown):boolean{
  if(a===b)return true;if(Array.isArray(a)&&Array.isArray(b))return a.length===b.length&&a.every((x,n)=>equal(x,b[n]));
  if(object(a)&&object(b))return Object.keys(a).length===Object.keys(b).length&&Object.keys(a).every(k=>Object.prototype.hasOwnProperty.call(b,k)&&equal(a[k],b[k]));return false;
 }
-async function submit(r:TurnEffectRequest){
+async function submit(r:TurnEffectRequest,assertCurrentScope:()=>void){
+ assertCurrentScope();
  const value=await psionicRpc('commit_turn_effect_batch',{...args(r),p_request:r.requestId,p_expected:r.expected,p_updates:r.updates,p_events:r.events},true);
+ assertCurrentScope();
  const receipt=verifyReceipt(value,r);
  if(receipt.requestId!==r.requestId||receipt.combatantId!==r.combatantId||receipt.eventCount!==r.events.length
   ||!equal(receipt.state,{...r.updates,max_hp:r.expected.max_hp}))throw invalid();
@@ -70,26 +74,34 @@ const active=new Map<string,Promise<TurnEffectReceipt>>();
 /** v2.869: read the authoritative batch before preparing any dice. A recovered
  * receipt describes the original event, NOT current HP for a client-store patch.
  * The callback must verify fresh turn/context and the current UI scope itself. */
-export function runTurnEffects(user:string,input:TurnEffectIdentity,prepare:()=>Promise<TurnEffectPlan>):Promise<TurnEffectReceipt>{
+export function runTurnEffects(user:string,input:TurnEffectIdentity,prepare:(beforeRoll:()=>void)=>Promise<TurnEffectPlan>,assertCurrentScope:()=>void=()=>{}):Promise<TurnEffectReceipt>{
  if(!uuid(user)||!identity(input))return Promise.reject(invalid());
  const i=structuredClone(input),k=key(user,i),existing=active.get(k);if(existing)return existing;
- const work=(async()=>{
+ if(!navigator.locks?.request)return Promise.reject(new Error('Safe turn effects require browser locking. Use a supported browser before advancing.'));
+ const work=Promise.resolve(navigator.locks.request(k,{mode:'exclusive'},async()=>{
+  assertCurrentScope();
   const receipt=await readTurnEffect(i);
+  assertCurrentScope();
   if(receipt){forget(user,i);return receipt;}
   let request=savedTurnEffect(user,i);
   if(!request){
    // Probe storage before preparing effect dice; blocked storage must not roll.
    const probe='dndkeep:storage-probe:'+crypto.randomUUID();localStorage.setItem(probe,'1');localStorage.removeItem(probe);
-   const plan=await prepare();
+   const requestId=crypto.randomUUID();let preparing=false;
+   const plan=await prepare(()=>{
+    assertCurrentScope();
+    if(!preparing){localStorage.setItem(k,JSON.stringify({...i,version:1,userId:user,requestId,phase:'preparing'}));preparing=true;}
+   });
+   assertCurrentScope();
    // Another tab may have persisted while the fresh context was loading.
-   request=savedTurnEffect(user,i);
+   request=preparing?null:savedTurnEffect(user,i);
    if(!request){
-    request={...structuredClone(plan),...i,version:1,userId:user,requestId:crypto.randomUUID()};
+    request={...structuredClone(plan),...i,version:1,userId:user,requestId};
     if(!validRequest(request))throw invalid();localStorage.setItem(k,JSON.stringify(request));changed();
    }
   }
-  return submit(request);
- })();active.set(k,work);void work.finally(()=>{if(active.get(k)===work)active.delete(k);}).catch(()=>{});return work;
+  return submit(request,assertCurrentScope);
+ }));active.set(k,work);void work.finally(()=>{if(active.get(k)===work)active.delete(k);}).catch(()=>{});return work;
 }
 
 interface TurnEffectContext extends TurnEffectIdentity {
@@ -113,14 +125,29 @@ function tickingBuff(value:Record<string,unknown>):value is Record<string,unknow
 export function processSavedTurnEffects(user:string,input:TurnEffectIdentity,assertCurrentScope:()=>void):Promise<TurnEffectReceipt>{
  const i=structuredClone(input);
  assertCurrentScope();
- return runTurnEffects(user,i,async()=>{
+ return runTurnEffects(user,i,async beforeRoll=>{
   assertCurrentScope();
   const value=await psionicRpc('get_turn_effect_context',{...args(i),p_encounter:i.encounterId},true);
   assertCurrentScope();
   const c=value as TurnEffectContext|null;
   if(!c||!same(c,i)||c.userId!==user||!uuid(c.combatantId)||typeof c.isCharacter!=='boolean'||!state(c.state)
    ||c.state.active_buffs?.some(b=>!tickingBuff(b)))throw invalid();
-  const {updates,events}=planTurnTicks({...c.state,active_buffs:c.state.active_buffs as (Record<string,unknown>&TickingBuff)[]|null},c.isCharacter,i.timing);
+  const {updates,events}=planTurnTicks({...c.state,active_buffs:c.state.active_buffs as (Record<string,unknown>&TickingBuff)[]|null},c.isCharacter,i.timing,expression=>{beforeRoll();return rollDiceExpr(expression).total;});
   return {combatantId:c.combatantId,expected:c.state,updates,events};
+ },assertCurrentScope);
+}
+
+/** Live turn caller: bind browser recovery to the signed-in DM. Server RPCs
+ * independently authorize that DM; auth events only prevent cross-session UI work. */
+export async function processCurrentUserTurnEffects(input:TurnEffectIdentity):Promise<TurnEffectReceipt>{
+ let observed:string|null|undefined,user:string|null=null,changed=false;
+ const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,session)=>{
+  observed=session?.user.id??null;if(user!==null&&observed!==user)changed=true;
  });
+ try{
+  const {data:{session},error}=await supabase.auth.getSession();
+  user=session?.user.id??null;
+  const guard=()=>{if(error||!user||changed||(observed!==undefined&&observed!==user))throw new Error('Sign-in changed. Sign in again before resolving turn effects.');};
+  guard();return await processSavedTurnEffects(user!,input,guard);
+ }finally{subscription.unsubscribe();}
 }

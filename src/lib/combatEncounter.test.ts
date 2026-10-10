@@ -16,6 +16,8 @@ type Resp = { data?: unknown; error?: unknown; count?: number | null };
 const h = vi.hoisted(() => {
   const state = {
     ticks: vi.fn(async () => {}),
+    endTicks: vi.fn(async () => {}),
+    clock:vi.fn(),
     calls: [] as Call[],
     respond: ((_c: Call) => ({ data: [], error: null })) as (c: Call) => Resp | Promise<Resp>,
   };
@@ -40,13 +42,15 @@ const h = vi.hoisted(() => {
   };
 });
 
-vi.mock('./supabase', () => ({ supabase: h.supabase }));
+vi.mock('./supabase', () => ({ supabase: h.supabase,getCurrentUserId:async()=> 'dm' }));
+vi.mock('./api/combatClock',()=>({getCombatClockContext:h.state.clock}));
 vi.mock('./combatEvents', () => ({
   emitCombatEvent: vi.fn(async () => null),
   emitCombatEventChain: vi.fn(async () => null),
   newChainId: () => 'chain',
 }));
 vi.mock('./endOfTurnConditions',()=>({processEndOfTurnConditions:vi.fn(async()=>{})}));
+vi.mock('./api/turnEffects',()=>({processCurrentUserTurnEffects:h.state.endTicks}));
 vi.mock('./buffs',()=>({processTurnTicks:h.state.ticks}));
 vi.mock('./auras',()=>({evaluateAurasOnTurnEnd:vi.fn(async()=>{})}));
 vi.mock('./movementGatedFeatures',()=>({resetMovementGatedFeatures:vi.fn(async()=>{})}));
@@ -67,7 +71,8 @@ const opOf = (c: Call, name: string) => c.ops.find(o => o.op === name);
 
 beforeEach(() => {
   vi.mocked(recoverInitiativeResources).mockClear();
-  h.state.ticks.mockClear();
+  h.state.clock.mockReset().mockResolvedValue({outgoingId:'p0',incomingId:'p1',nextIndex:1,nextRound:1,roundWrapped:false});
+  h.state.ticks.mockClear();h.state.endTicks.mockReset().mockResolvedValue();
   vi.mocked(emitCombatEvent).mockClear();
   h.state.calls.length = 0;
   h.state.respond = () => ({ data: [], error: null });
@@ -242,9 +247,23 @@ describe('shared live turn advancement',()=>{
   release({data:encounter,error:null});
   expect(await first).toEqual({ok:true});expect(await second).toEqual({ok:true});
   expect(encounterWrites()).toHaveLength(1);
-  expect(h.state.ticks.mock.calls).toHaveLength(2);
-  expect(h.state.ticks).toHaveBeenNthCalledWith(1,{participantId:'p0',encounterId:'guard-enc',timing:'turn_end'});
-  expect(h.state.ticks).toHaveBeenNthCalledWith(2,{participantId:'p1',encounterId:'guard-enc',timing:'turn_start'});
+  expect(h.state.ticks.mock.calls).toHaveLength(1);
+  expect(h.state.endTicks).toHaveBeenCalledTimes(1);expect(h.state.endTicks).toHaveBeenCalledWith({participantId:'p0',encounterId:'guard-enc',turnId:'turn',timing:'turn_end'});
+  expect(h.state.ticks).toHaveBeenNthCalledWith(1,{participantId:'p1',encounterId:'guard-enc',timing:'turn_start'});
+ });
+ it('uses the recorded outgoing actor after lethal tick damage compresses the roster',async()=>{
+  h.state.respond=c=>c.table==='combat_encounters'?successful(c):{data:actors.map((a,n)=>({...a,is_dead:n===0})),error:null};
+  h.state.clock.mockResolvedValue({outgoingId:'p0',incomingId:'p1',nextIndex:0,nextRound:1,roundWrapped:false});
+  expect(await advanceTurn('guard-enc')).toMatchObject({ok:false,reason:expect.stringContaining('clock recovery')});
+  expect(encounterWrites()).toHaveLength(0);
+  expect(h.state.endTicks).toHaveBeenCalledWith(expect.objectContaining({participantId:'p0',turnId:'turn'}));
+  expect(vi.mocked(emitCombatEvent)).not.toHaveBeenCalledWith(expect.objectContaining({eventType:'damage_applied'}));
+ });
+ it('an unconfirmed outgoing tick stops every budget and clock write, then retries the same identity',async()=>{
+  h.state.respond=successful;h.state.endTicks.mockRejectedValueOnce(new Error('Reply lost'));
+  expect(await advanceTurn('guard-enc')).toEqual({ok:false,reason:'Reply lost'});
+  expect(h.state.calls.some(c=>opOf(c,'update'))).toBe(false);expect(h.state.ticks).not.toHaveBeenCalled();
+  expect(await advanceTurn('guard-enc')).toEqual({ok:true});expect(h.state.endTicks.mock.calls[0]).toEqual(h.state.endTicks.mock.calls[1]);expect(encounterWrites()).toHaveLength(1);
  });
  it.each([false,true])('logs the actual legendary refill including the lair adjustment (%s)',async inLair=>{
   h.state.respond=c=>{
