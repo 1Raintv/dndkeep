@@ -8418,3 +8418,22 @@ still lack captured rider intent. Non-resistance batch condition application and
 batch payment still use legacy paths. Damage remains in the existing attack
 resolution flow; this does not auto-finish all attacks or claim all immunity
 sources/riders are covered. Continue consolidating those paths before release.
+
+
+### 2026-10-10 — shared settlement for immediate save-batch riders (unreleased)
+
+Both monster and legendary batch handlers now settle captured conditions before
+closing their attacks, including batches without a Legendary Resistance pause.
+Removed duplicated browser-side condition writes. The server receipt supplies
+applied/immune outcomes; an absent or mismatched expected rider fails visibly.
+Combined damage/condition batches retain their rider instead of dropping it in
+the damage-only branch. Damage and batch payment remain separate legacy steps.
+
+Four desktop/mobile browser checks passed across immediate and resistance paths;
+the immediate no-damage case verifies Prone, one receipt, a closed attack and one
+legendary-action spend. Screenshots inspected; official overflow probe and browser
+error checks passed. Removing settlement failed the regression test; restoring
+it passed again. Full project verification passed. No schema changes this turn.
+Not deployed. Continue with single-target metadata/settlement and durable batch
+request/payment recovery; replay guarantees here apply to the same saved attack,
+not a fresh declaration from a repeated batch button click.

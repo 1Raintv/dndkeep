@@ -1,3 +1,4 @@
+import {settleAttackCondition} from '../../lib/api/attackConditions';
 import {saveResolutionOutcome} from '../../rules/saveResolution';
 import {verifiedTargetSaves,UnverifiedSaveBonusError} from '../../lib/verifiedTargetSaves';
 import {explicitAttackMode} from '../../rules/attackMode';
@@ -1691,7 +1692,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       // The DM still has the dice modal turned on for single-target
       // attacks; multi-save batches instead get a summary toast.
       await Promise.all(batch.rows.map(async (row) => {
-        const { target, pendingAttackId, immuneToCondition } = row;
+        const { target, pendingAttackId } = row;
         try {
           const sb = saveBonuses.get(target.id)!;
           const rolled = await rollSave(pendingAttackId, sb.bonus);
@@ -1706,6 +1707,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
             return;
           }
 
+          if (conditionName) {
+            const condition = await settleAttackCondition(pendingAttackId, conditionName);
+            if (condition?.outcome === 'applied') conditionAppliedCount++;
+            if (condition?.outcome === 'immune') immuneCount++;
+          }
+
           if (a.damage_dice) {
             // Save-with-damage path. rollDamage halves automatically
             // when save_result='passed' AND saveSuccessEffect='half'.
@@ -1716,43 +1723,9 @@ export default function MonsterActionPanel({ isDM }: Props) {
             if (passed) passedCount++;
             else failedCount++;
           } else {
-            // Save-or-condition path (FP). Apply inferred condition on
-            // failed save unless the target is immune.
-            if (passed) {
-              passedCount++;
-            } else if (immuneToCondition && conditionName) {
-              // v2.604.0 — RAW: immunity suppresses the CONDITION, not
-              // the targeting. The save still rolled and failed; the
-              // creature just isn't affected. Count it so the DM toast
-              // explains why nothing stuck. Players see nothing —
-              // this toast renders only in the DM's action panel, and
-              // no condition_applied event hits the shared log.
-              immuneCount++;
-              failedCount++;
-            } else if (conditionName) {
-              try {
-                await applyCondition({
-                  participantId: target.id,
-                  conditionName,
-                  source: `monster_action:${a.name}:${currentActor.id}`,
-                  casterParticipantId: currentActor.id,
-                  campaignId: encounter.campaign_id,
-                  encounterId: encounter.id,
-                  // v2.445.0 — Duration tracking + end-of-turn re-save.
-                  // Same metadata for every target in the batch.
-                  ...(durationRounds ? { durationRounds, currentRound: encounter.round_number } : {}),
-                  ...(saveToEnd ? { saveToEnd } : {}),
-                  sourceKind,
-                  sourceAttackerId: currentActor.id,
-                });
-                conditionAppliedCount++;
-              } catch (err) {
-                console.error('[MonsterActionPanel] applyCondition failed', err);
-              }
-              failedCount++;
-            } else {
-              failedCount++;
-            }
+            // The captured rider already settled, including source immunity.
+            if (passed) passedCount++;
+            else failedCount++;
             await cancelAttack(rolled?.id ?? pendingAttackId);
           }
         } catch (err) {

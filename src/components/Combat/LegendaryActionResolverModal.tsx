@@ -1,3 +1,4 @@
+import {settleAttackCondition} from '../../lib/api/attackConditions';
 import {saveResolutionOutcome} from '../../rules/saveResolution';
 import {verifiedTargetSaves,UnverifiedSaveBonusError} from '../../lib/verifiedTargetSaves';
 // v2.446.0 — Legendary Action resolution modal.
@@ -43,7 +44,6 @@ import {
   rollSave,
 } from '../../lib/pendingAttack';
 import { declareSaveBatch } from '../../lib/saveBatch';
-import { applyCondition } from '../../lib/conditions';
 import { rollDie, abilityModifier } from '../../lib/gameUtils';
 import {
   loadActiveBattleMap,
@@ -505,6 +505,12 @@ export default function LegendaryActionResolverModal({
         // v2.869: never apply riders, cancel or count a failure before the DM decides.
         if (outcome === 'awaiting_resistance') { resistancePending++; return; }
         const ok = outcome === 'passed';
+        // Settle before damage/cancellation can close the attack. The saved receipt
+        // also prevents a retry from reapplying a rider removed in the meantime.
+        if (sv.conditionName) {
+          const condition = await settleAttackCondition(row.pendingAttackId, sv.conditionName);
+          if (condition?.outcome === 'applied') conditionApplied++;
+        }
         if (sv.damageDice) {
           const damaged = await rollDamage(r?.id ?? row.pendingAttackId);
           if (damaged && damaged.state === 'damage_rolled') {
@@ -514,31 +520,7 @@ export default function LegendaryActionResolverModal({
           await cancelAttack(r?.id ?? row.pendingAttackId);
         }
         if (ok) passed++;
-        else {
-          failed++;
-          if (!row.immuneToCondition && sv.conditionName) {
-            try {
-              await applyCondition({
-                participantId: row.target.id,
-                conditionName: sv.conditionName,
-                source: `legendary_action:${laOption.name}:${participant.id}`,
-                casterParticipantId: participant.id,
-                campaignId,
-                encounterId,
-                sourceKind: laOption.name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-                sourceAttackerId: participant.id,
-                // LAs typically don't carry duration phrasing in their
-                // brief desc, so we don't infer durationRounds here.
-                // Wing Attack's Prone is until-stand-up, which the
-                // existing condition system handles correctly without
-                // a duration field.
-              });
-              conditionApplied++;
-            } catch (err) {
-              console.error('[LegendaryActionResolverModal] applyCondition failed', err);
-            }
-          }
-        }
+        else failed++;
       }));
       window.dispatchEvent(new Event('dndkeep:hp-applied'));
       await spend();
