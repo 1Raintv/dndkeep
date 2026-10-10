@@ -1,3 +1,4 @@
+import {verifiedTargetSaves,UnverifiedSaveBonusError} from '../../lib/verifiedTargetSaves';
 // v2.446.0 — Legendary Action resolution modal.
 //
 // Opens when the DM clicks an LA option in LegendaryActionPopover.
@@ -38,7 +39,7 @@ import { supabase } from '../../lib/supabase';
 import { spendLegendaryAction } from '../../lib/legendaryActions';
 import {
   declareAttack, rollAttackRoll, rollDamage, applyDamage, cancelAttack,
-  rollSave, getTargetSaveBonus,
+  rollSave,
 } from '../../lib/pendingAttack';
 import { declareSaveBatch } from '../../lib/saveBatch';
 import { applyCondition } from '../../lib/conditions';
@@ -237,6 +238,7 @@ export default function LegendaryActionResolverModal({
 
   // Resolution state.
   const [busy, setBusy] = useState(false);
+  const [saveError,setSaveError]=useState<string|null>(null);
   // For ability checks: the rolled d20 + total + bonus.
   const [checkRoll, setCheckRoll] = useState<{ d20: number; bonus: number; total: number } | null>(null);
   // For attack: which target was clicked + the attack-chain progress
@@ -468,9 +470,11 @@ export default function LegendaryActionResolverModal({
       showToast('Pick at least one target.', 'info');
       return;
     }
+    setSaveError(null);
     setBusy(true);
     try {
       const inferredCondition = sv.conditionName ? sv.conditionName.toLowerCase() : null;
+      const saveBonuses=await verifiedTargetSaves(targets,sv.ability);
       const batch = await declareSaveBatch({
         campaignId,
         encounterId,
@@ -492,7 +496,7 @@ export default function LegendaryActionResolverModal({
       let failed = 0;
       let conditionApplied = 0;
       await Promise.all(batch.rows.map(async (row) => {
-        const sb = await getTargetSaveBonus(row.target.id, sv.ability);
+        const sb = saveBonuses.get(row.target.id)!;
         const r = await rollSave(row.pendingAttackId, sb.bonus);
         const ok = (r as any)?.save_result === 'passed';
         if (sv.damageDice) {
@@ -537,8 +541,8 @@ export default function LegendaryActionResolverModal({
       showToast(parts.join(' · '), failed > 0 ? 'info' : 'success');
       onClose();
     } catch (err) {
-      console.error('[LegendaryActionResolverModal] save batch failed', err);
-      showToast('Save resolution failed. Check console.', 'error');
+      if(!(err instanceof UnverifiedSaveBonusError))console.error('[LegendaryActionResolverModal] save batch failed', err);
+      setSaveError(err instanceof Error ? err.message : 'Save resolution failed.');
     } finally {
       setBusy(false);
     }
@@ -745,6 +749,7 @@ export default function LegendaryActionResolverModal({
                   );
                 })}
               </div>
+              {saveError&&<div role="alert" style={{padding:10,border:'1px solid #fbbf24',borderRadius:6,color:'#fde68a',background:'#302819',fontSize:13,lineHeight:1.5}}>{saveError}</div>}
               <button
                 onClick={resolveSaveBatch}
                 disabled={busy || selectedSaveTargets.size === 0}

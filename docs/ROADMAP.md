@@ -7613,3 +7613,31 @@ missing scores. Full gate: 3,722 unit tests, TypeScript 195/195, hooks/RAW/
 coordinates/anchors, build and entry budget. Changed API/tests lint clean.
 Local SQL lint reports existing function warnings; this additive migration
 introduces no functions or changes to those warned function bodies.
+
+
+### Stop unverified automatic saves (2026-10-10, unreleased)
+
+Reviewing manual save displays exposed a higher-priority automation gap:
+monster single-target/batch attacks, legendary save actions and Topple ignored
+the save reader's low-confidence marker and used its zero placeholder.
+`verifiedTargetSaves` now requires a verified finite integer bonus for every
+target before returning a batch. Monster attacks preflight before recharge
+spending/declaration; legendary actions preflight before declaration, dice,
+damage or point spending. Topple checks before rolling or applying Prone.
+Known zero and negative bonuses remain valid. Read errors are not replaced by zero.
+
+The legendary action dialog keeps a persistent accessible review message inside
+the dialog (the former toast was dimmed behind its overlay). Monster-action
+errors also identify the target/ability for review. Existing manual bonus entry
+remains separate. This does not make entire attack chains atomic or repair the
+older independent manual-save stat displays; those and aura/turn integration
+remain outstanding. No production deployment.
+
+Validation: 14 focused helper/legendary-control/mastery tests; removing the
+confidence guard makes the regression fail, restored version passes. Two real
+local desktop/mobile browser cases confirm unchanged combat state, no pending
+attack, events, penalties or resource writes. Both screenshots inspected,
+console and scoped overflow checks clean. Full gate passes: 3,731 units,
+TypeScript 195/195, hooks/RAW/coordinates/anchors, build and entry budget.
+Changed legacy files retain identical pre-existing lint counts against HEAD;
+new helper/tests lint clean.

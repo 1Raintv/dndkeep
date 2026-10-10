@@ -209,8 +209,9 @@ export async function applyOnHitMasteryRiders(input: {
     case 'Topple': {
       if (targetIsDead) return;
       const dc = 8 + ctx.abilityMod + ctx.profBonus;
-      const { getTargetSaveBonus } = await import('./pendingAttack');
-      const { bonus, breakdown, naturalExtremes } = await getTargetSaveBonus(atk.target_participant_id, 'CON');
+      const {verifiedTargetSaves}=await import('./verifiedTargetSaves');
+      const bonuses=await verifiedTargetSaves([{id:atk.target_participant_id,name:atk.target_name}],'CON');
+      const {bonus,breakdown,naturalExtremes}=bonuses.get(atk.target_participant_id)!;
       const d20 = rollDie(20);
       const total = d20 + bonus;
       const failed = !savingThrowPassed(d20, total, dc, { naturalExtremes });

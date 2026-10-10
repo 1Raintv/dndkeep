@@ -283,4 +283,22 @@ test.describe('Atomic aura resolution',()=>{
   sql(`update homebrew_monsters set saving_throws='{}',int=null where id='${b}'`);expect(await read()).toMatchObject({int:{confidence:'low'},wis:{bonus:-1,confidence:'high'}});
  });
 
+ test('legendary saves require verified target bonuses before any writes',async({page},info)=>{
+  monster();await signInFixtureDm(page);
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
+  const before=state();
+  await page.evaluate(async({campaign,enc,actor,entity,combatant})=>{
+   const reactPath='/node_modules/.vite/deps/react.js',domPath='/node_modules/.vite/deps/react-dom_client.js',modalPath='/src/components/Combat/LegendaryActionResolverModal.tsx',toastPath='/src/components/shared/Toast.tsx';
+   const [React,dom,modal,toast]=await Promise.all([import(reactPath),import(domPath),import(modalPath),import(toastPath)]);
+   const host=document.createElement('div');document.body.appendChild(host);
+   dom.default.createRoot(host).render(React.default.createElement(toast.ToastProvider,null,React.default.createElement(modal.default,{participant:{id:actor,name:'Dragon',participant_type:'creature',entity_id:entity,combatant_id:combatant},campaignId:campaign,encounterId:enc,laOption:{name:'Wing Attack',desc:'Each creature within 15 feet must succeed on a DC 20 Dexterity saving throw or take 15 (2d6 + 8) bludgeoning damage.',cost:2},cost:2,onClose:()=>{}})));
+  },{campaign,enc,actor:pa,entity:a,combatant:ca});
+  const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();
+  await dialog.locator('button[data-target-group]').first().click();await dialog.getByRole('button',{name:'Resolve 1 target & spend 2'}).click();
+  await expect(dialog.getByRole('alert')).toHaveText('Review B’s DEX saving throw bonus before resolving.');
+  await page.screenshot({path:`.tmp/unverified-save-${info.project.name}.png`});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[role=dialog], [role=dialog] *, .toast, .toast *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
+  expect(state()).toBe(before);expect(sql(`select count(*) from pending_attacks where encounter_id='${enc}'`)).toBe('0');expect(counts()).toEqual({receipt:0,penalty:0,events:0,marker:0});expect(errors).toEqual([]);
+ });
+
 });

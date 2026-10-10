@@ -3,13 +3,14 @@
 // combatants (a bare select('*') has carried no is_dead / current_hp since
 // v2.321, so the dead filter was a no-op and HP could not render), and a
 // dead participant renders LAST with a DEAD chip instead of vanishing.
-import {cleanup,render,screen,waitFor} from '@testing-library/react';
+import {cleanup,render,screen,waitFor,fireEvent} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 import LegendaryActionResolverModal from './LegendaryActionResolverModal';
 import {JOINED_COMBATANT_FIELDS} from '../../lib/combatParticipantNormalize';
 import type {CombatParticipant,MonsterLegendaryAction} from '../../types';
 
-const h=vi.hoisted(()=>({selects:[] as Array<[string,string]>}));
+const h=vi.hoisted(()=>({selects:[] as Array<[string,string]>,toast:vi.fn()}));
+vi.mock('../shared/Toast',()=>({useToast:()=>({showToast:h.toast})}));
 vi.mock('../../lib/supabase',()=>({supabase:{from:(table:string)=>{
   const query={
     select:(s:string)=>{h.selects.push([table,s]);return query;},
@@ -27,7 +28,7 @@ vi.mock('../../lib/legendaryActions',()=>({spendLegendaryAction:vi.fn()}));
 vi.mock('../../lib/saveBatch',()=>({declareSaveBatch:vi.fn()}));
 vi.mock('../../lib/conditions',()=>({applyCondition:vi.fn()}));
 vi.mock('../../lib/pendingAttack',()=>({declareAttack:vi.fn(),rollAttackRoll:vi.fn(),rollDamage:vi.fn(),applyDamage:vi.fn(),cancelAttack:vi.fn(),rollSave:vi.fn(),getTargetSaveBonus:vi.fn()}));
-afterEach(()=>{cleanup();h.selects.length=0;});
+afterEach(()=>{cleanup();h.selects.length=0;vi.clearAllMocks();});
 
 it('joins combatants and lists the dead participant last with a DEAD chip',async()=>{
   const dragon={id:'dragon',name:'Dragon',participant_type:'creature',entity_id:'drg',combatant_id:'cb-drg'} as CombatParticipant;
@@ -42,4 +43,16 @@ it('joins combatants and lists the dead participant last with a DEAD chip',async
   expect(rows[1].querySelector('[data-target-group="dead"]')?.textContent).toBe('DEAD');
   // Fail-open: no map → in range → clickable.
   expect((rows[1] as HTMLButtonElement).disabled).toBe(false);
+});
+
+it('unverified target prevents declaration, damage and legendary resource spending',async()=>{
+ const pending=await import('../../lib/pendingAttack'),batch=await import('../../lib/saveBatch'),legendary=await import('../../lib/legendaryActions');
+ vi.mocked(pending.getTargetSaveBonus).mockResolvedValue({bonus:0,breakdown:'unknown',confidence:'low'});
+ const dragon={id:'dragon',name:'Dragon',participant_type:'creature',entity_id:'drg',combatant_id:'cb-drg'} as CombatParticipant;
+ const la={name:'Wing Attack',desc:'Each creature within 15 feet must succeed on a DC 20 Dexterity saving throw or take 15 (2d6 + 8) bludgeoning damage.',cost:2} as MonsterLegendaryAction;
+ render(<LegendaryActionResolverModal participant={dragon} campaignId="camp" encounterId="enc" laOption={la} cost={2} onClose={()=>{}}/>);
+ await waitFor(()=>expect(screen.getByText('Ranger')).toBeTruthy());
+ fireEvent.click(screen.getByText('Ranger'));fireEvent.click(screen.getByRole('button',{name:'Resolve 1 target & spend 2'}));
+ await waitFor(()=>expect(screen.getByRole('alert').textContent).toBe('Review Ranger’s DEX saving throw bonus before resolving.'));
+ expect(batch.declareSaveBatch).not.toHaveBeenCalled();expect(pending.rollSave).not.toHaveBeenCalled();expect(pending.applyDamage).not.toHaveBeenCalled();expect(legendary.spendLegendaryAction).not.toHaveBeenCalled();
 });

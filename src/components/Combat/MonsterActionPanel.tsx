@@ -1,3 +1,4 @@
+import {verifiedTargetSaves,UnverifiedSaveBonusError} from '../../lib/verifiedTargetSaves';
 import {explicitAttackMode} from '../../rules/attackMode';
 import './MonsterActionPanel.css';
 import {MultiTargetSavePicker} from './MultiTargetSavePicker';
@@ -52,7 +53,7 @@ import { useFastCombatRolls } from '../../lib/useFastCombatRolls';
 import { parseMultiattackDesc, type MultiattackStep } from '../../lib/multiattack';
 import { supabase } from '../../lib/supabase';
 import { checkedWrite } from '../../lib/api/checked';
-import { declareAttack, rollAttackRoll, rollDamage, applyDamage, cancelAttack, rollSave, getTargetSaveBonus } from '../../lib/pendingAttack';
+import { declareAttack, rollAttackRoll, rollDamage, applyDamage, cancelAttack, rollSave } from '../../lib/pendingAttack';
 import {
   loadActiveBattleMap,
   distanceBetweenParticipantsFtUsingMap,
@@ -1141,7 +1142,6 @@ export default function MonsterActionPanel({ isDM }: Props) {
     }
     setPickingFor(null);
     setBusy(true);
-    await spendRecharge(a);   // v2.628.0
     // v2.420.0 — Diagnostic. Tells us exactly which action+target pair
     // is being resolved AND what the multiattack state looks like at
     // entry. Pairs with the advanceMultiattack logs to trace
@@ -1157,6 +1157,12 @@ export default function MonsterActionPanel({ isDM }: Props) {
       });
     }
     try {
+      const flavor = classifyAction(a);
+      const saveAbility = flavor==='save'?normalizeSaveAbility(a.dc_type):null;
+      if(flavor==='save'&&!saveAbility)throw new Error('Review this action’s saving throw ability.');
+      const saveBonuses=saveAbility?await verifiedTargetSaves([target],saveAbility):null;
+      await spendRecharge(a);
+
       // v2.415.0 — Flavor-aware resolution. Attacks use the
       // declareAttack → rollAttackRoll → rollDamage → applyDamage
       // chain (kind='attack_roll'). Save-vs-DC actions (Frightening
@@ -1172,8 +1178,6 @@ export default function MonsterActionPanel({ isDM }: Props) {
       // the condition manually (auto-condition-on-fail is a
       // future ship; the bestiary data doesn't currently carry
       // structured condition info).
-      const flavor = classifyAction(a);
-
       if (flavor === 'save') {
         const ability = normalizeSaveAbility(a.dc_type);
         if (!ability) {
@@ -1234,7 +1238,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
           if (attack) {
             // Look up the target's save bonus (CR-based for
             // creatures, level-based for PCs, both with prof check).
-            const sb = await getTargetSaveBonus(target.id, ability);
+            const sb = saveBonuses!.get(target.id)!;
             const rolled = await rollSave(attack.id, sb.bonus);
 
             // v2.414.0 — Show Combat Rolls. Animate the d20 +
@@ -1539,7 +1543,8 @@ export default function MonsterActionPanel({ isDM }: Props) {
         advanceMultiattack();
       }
     } catch (err) {
-      console.error('[MonsterActionPanel] attack declare/roll failed', err);
+      if(!(err instanceof UnverifiedSaveBonusError))console.error('[MonsterActionPanel] attack declare/roll failed', err);
+      showToast(err instanceof Error ? err.message : 'Attack resolution failed.', 'error');
     } finally {
       setBusy(false);
     }
@@ -1596,7 +1601,6 @@ export default function MonsterActionPanel({ isDM }: Props) {
     if (targets.length === 0) return; // DM cancelled / no picks
     setBusy(true);
     try {
-      await spendRecharge(a);   // v2.628.0
       const ability = normalizeSaveAbility(a.dc_type);
       if (!ability) {
         showToast(`Couldn't parse save ability: "${a.dc_type}".`, 'error');
@@ -1640,6 +1644,8 @@ export default function MonsterActionPanel({ isDM }: Props) {
         showToast(`${liveTargets.length} target${liveTargets.length === 1 ? '' : 's'} · ${deadSkipped} dead skipped`, 'info');
       }
       if (liveTargets.length === 0) return;
+      const saveBonuses=await verifiedTargetSaves(liveTargets,ability);
+      await spendRecharge(a);
       const batch = await declareSaveBatch({
         campaignId: encounter.campaign_id,
         encounterId: encounter.id,
@@ -1680,7 +1686,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       await Promise.all(batch.rows.map(async (row) => {
         const { target, pendingAttackId, immuneToCondition } = row;
         try {
-          const sb = await getTargetSaveBonus(target.id, ability);
+          const sb = saveBonuses.get(target.id)!;
           const rolled = await rollSave(pendingAttackId, sb.bonus);
           const passed = (rolled as any)?.save_result === 'passed';
 
@@ -1789,8 +1795,8 @@ export default function MonsterActionPanel({ isDM }: Props) {
       }
       if (multiattack) advanceMultiattack();
     } catch (err) {
-      console.error('[MonsterActionPanel] multi-save resolution failed', err);
-      showToast('Something went wrong resolving the multi-target save. Check console.', 'error');
+      if(!(err instanceof UnverifiedSaveBonusError))console.error('[MonsterActionPanel] multi-save resolution failed', err);
+      showToast(err instanceof Error ? err.message : 'Save resolution failed.', 'error');
     } finally {
       setBusy(false);
     }
