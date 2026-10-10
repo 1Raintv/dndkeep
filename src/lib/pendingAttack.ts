@@ -1,6 +1,5 @@
-import {catalogSaveBonus} from '../rules/catalogSaveBonus';
+import {creatureSaveBonus} from '../rules/creatureSaveBonus';
 import {readCreatureSaveDefinition} from './api/creatureSaveDefinition';
-import {creatureSaveInputs} from '../rules/creatureSaveInputs';
 import {resolveAttackSave,forgetAttackSave} from './api/attackSaves';
 import {psychicDamageRoll} from '../rules/psychicDamageRoll';
 import {attackIsMelee,type AttackMode} from '../rules/attackMode';
@@ -31,7 +30,7 @@ import { supabase } from './supabase';
 import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { offerReactionsFor } from './pendingReaction';
-import { abilityModifier, characterProficiencyBonus, crToProficiencyBonus, computeActiveBonuses } from './gameUtils';
+import { abilityModifier, characterProficiencyBonus, computeActiveBonuses } from './gameUtils';
 import { getAdvantageState, meleeAutoCritApplies, conditionsResistAll } from './conditions';
 import {
   getAttackRollBonuses, getDamageRiders, removeBuff,
@@ -1440,30 +1439,8 @@ export async function getTargetSaveBonus(
 
   // v2.869: catalog totals and custom snapshots follow their linked source.
   if (isCreatureParticipantType(part.participant_type)) {
-    const cr=await readCreatureSaveDefinition(part);
-    if(cr&&Object.prototype.hasOwnProperty.call(cr,'saving_throws')){
-      const bonus=catalogSaveBonus(ability,cr);
-      return bonus===null?{bonus:0,breakdown:'Review creature saving throw data',confidence:'low'}:
-        {bonus,breakdown:`${bonus>=0?'+':''}${bonus} (${ability}, stat block)`,confidence:'high'};
-    }
-    const inputs=creatureSaveInputs(ability,cr?.ability_scores,cr?.save_proficiencies,cr?.cr);
-    if(!inputs)return {bonus:0,breakdown:`Review creature ${ability} score, save proficiencies and challenge rating`,confidence:'low'};
-    const mod=abilityModifier(inputs.score),isProficient=inputs.proficient;
-    if (!isProficient) {
-      return {
-        bonus: mod,
-        breakdown: `${mod >= 0 ? '+' : ''}${mod} (${ability}, creature)`,
-        confidence: 'high',
-      };
-    }
-    // Proficient — derive PB from the CR stored on the same row.
-    const pb = crToProficiencyBonus(inputs.cr);
-    const total = mod + pb;
-    return {
-      bonus: total,
-      breakdown: `${mod >= 0 ? '+' : ''}${mod} (${ability}) + ${pb} (prof) = ${total >= 0 ? '+' : ''}${total}`,
-      confidence: 'high',
-    };
+    const value=creatureSaveBonus(ability,await readCreatureSaveDefinition(part));
+    return value?{...value,confidence:'high'}:{bonus:0,breakdown:`Review creature ${ability} saving throw data`,confidence:'low'};
   }
 
   if (part.participant_type !== 'character') {

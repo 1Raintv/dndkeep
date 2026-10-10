@@ -40,7 +40,7 @@ import {useLiveBattleMap} from '../../lib/hooks/useLiveBattleMap';
 //     melee, "range X/Y ft." for ranged) with a generous 60ft
 //     fallback when parsing fails (better than blocking valid plays).
 
-import { abilityModifier } from '../../rules/abilities';
+import {ParticipantSaveSummary} from './CreatureSaveSummary';
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useCombat } from '../../context/CombatContext';
@@ -2063,8 +2063,8 @@ export default function MonsterActionPanel({ isDM }: Props) {
         {/* v2.409.0 — Stat block at-a-glance. HP / AC / Saves for
             the active monster. Same data flow as NpcTokenQuickPanel:
             HP comes from currentActor (joined from combatants), AC
-            from monsterStats (template), saves computed from CR-
-            derived PB plus ability mods plus save_proficiencies.
+            from monsterStats (template), saves from the linked definition
+            using the same verified calculation as automation.
             Hidden when collapsed or when stats haven't loaded yet. */}
         {!collapsed && currentActor && (() => {
           const currHp = (currentActor as any).current_hp ?? 0;
@@ -2072,33 +2072,6 @@ export default function MonsterActionPanel({ isDM }: Props) {
           const pct = maxHp > 0 ? Math.max(0, Math.min(1, currHp / maxHp)) : 0;
           const hpColor = pct > 0.5 ? '#34d399' : pct > 0.25 ? '#fbbf24' : pct > 0 ? '#f87171' : '#6b7280';
           const ac = monsterStats?.ac ?? (currentActor as any).ac ?? null;
-          // Same PB-from-CR table as NpcTokenQuickPanel.
-          const parseCR = (raw: unknown): number => {
-            if (typeof raw === 'number') return raw;
-            if (typeof raw !== 'string') return 0;
-            const s = raw.trim();
-            if (s.includes('/')) {
-              const [n, d] = s.split('/').map(Number);
-              return d ? n / d : 0;
-            }
-            const n = Number(s);
-            return Number.isFinite(n) ? n : 0;
-          };
-          const cr = parseCR(monsterStats?.cr);
-          const pb = cr >= 29 ? 9 : cr >= 25 ? 8 : cr >= 21 ? 7 : cr >= 17 ? 6
-                   : cr >= 13 ? 5 : cr >= 9 ? 4 : cr >= 5 ? 3 : 2;
-          const mod = (s: number | null) => abilityModifier(s ?? 10);
-          const profSaves = monsterStats?.save_proficiencies ?? [];
-          const isProf = (a: string) => profSaves.includes(a) || profSaves.includes(a.toLowerCase());
-          const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
-          const abilities: Array<['STR'|'DEX'|'CON'|'INT'|'WIS'|'CHA', number | null]> = [
-            ['STR', monsterStats?.str ?? null],
-            ['DEX', monsterStats?.dex ?? null],
-            ['CON', monsterStats?.con ?? null],
-            ['INT', monsterStats?.int ?? null],
-            ['WIS', monsterStats?.wis ?? null],
-            ['CHA', monsterStats?.cha ?? null],
-          ];
           return (
             <div style={{
               padding: '8px 10px',
@@ -2131,37 +2104,8 @@ export default function MonsterActionPanel({ isDM }: Props) {
                   <span style={{ color: 'var(--t-1)', fontWeight: 700, fontFamily: 'var(--ff-stat)' }}>{ac}</span>
                 </div>
               )}
-              {/* Saves grid (only if stats loaded) */}
-              {monsterStats && (
-                <div>
-                  <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 3 }}>
-                    Saves <span style={{ color: 'var(--t-2)', fontWeight: 700 }}>· PB +{pb}</span>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 2 }}>
-                    {abilities.map(([label, score]) => {
-                      const m = mod(score);
-                      const prof = isProf(label);
-                      const total = prof ? m + pb : m;
-                      return (
-                        <div key={label} style={{
-                          padding: '2px 1px',
-                          background: prof ? 'rgba(212,160,23,0.14)' : 'var(--c-raised)',
-                          border: `1px solid ${prof ? 'rgba(212,160,23,0.45)' : 'var(--c-border)'}`,
-                          borderRadius: 3,
-                          textAlign: 'center' as const,
-                        }}>
-                          <div style={{ fontSize: 7, color: 'var(--t-3)', fontWeight: 700, letterSpacing: '0.04em' }}>{label}</div>
-                          <div style={{
-                            fontSize: 11, fontWeight: 700,
-                            color: prof ? 'var(--c-gold-l)' : 'var(--t-1)',
-                            fontFamily: 'var(--ff-stat)',
-                          }}>{fmt(total)}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+              <ParticipantSaveSummary participant={currentActor}/>
+
             </div>
           );
         })()}

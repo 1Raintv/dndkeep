@@ -7641,3 +7641,28 @@ console and scoped overflow checks clean. Full gate passes: 3,731 units,
 TypeScript 195/195, hooks/RAW/coordinates/anchors, build and entry budget.
 Changed legacy files retain identical pre-existing lint counts against HEAD;
 new helper/tests lint clean.
+
+
+### Unified creature save summaries (2026-10-10, unreleased)
+
+Monster action and NPC token panels now render the same pure save calculation
+used by `getTargetSaveBonus`. Catalog/imported totals remain totals, verified
+homebrew uses the canonical CR proficiency table, and unknown data displays
+`?` with a review note rather than an invented zero. The canonical CR function
+moved to the pure proficiency module with its gameUtils re-export preserved.
+The combat summary follows the linked definition and ignores stale replies
+when switching actors. The NPC panel was not selecting any ability/save fields;
+its SELECT now includes the source data and speed. Correct speed typing also
+lowers the enforced TypeScript baseline from 195 to 194.
+
+Validation: 55 focused calculation/display/live-reader unit cases; ten local
+browser cases across save-source/import/display coverage, plus the expanded
+actual NPC panel test on both desktop/mobile. Removing saving_throws from the
+NPC query fails specifically at its INT +9 display assertion; restored query
+passes. Four screenshots inspected, scoped summary/panel overflow checks and
+console checks clean. Full gate: 3,760 units, TypeScript 194/194, hooks/RAW/
+coordinates/anchors, build and entry budget. Existing lint debt unchanged
+except four removed NPC warnings; new modules/tests clean.
+
+This unifies base save summaries, not temporary combat-effect previews or the
+remaining durable aura/turn orchestration. No production deployment.

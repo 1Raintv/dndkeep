@@ -301,4 +301,30 @@ test.describe('Atomic aura resolution',()=>{
   expect(state()).toBe(before);expect(sql(`select count(*) from pending_attacks where encounter_id='${enc}'`)).toBe('0');expect(counts()).toEqual({receipt:0,penalty:0,events:0,marker:0});expect(errors).toEqual([]);
  });
 
+ test('creature save summaries match live automation and mark unknown data',async({page},info)=>{
+  monster();sql(`update homebrew_monsters set str=null,int=18,wis=9,saving_throws=${literal({Intelligence:9})} where id='${b}'`);await signInFixtureDm(page);
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
+  await page.evaluate(async({campaign,participant,entity,combatant})=>{
+   const reactPath='/node_modules/.vite/deps/react.js',domPath='/node_modules/.vite/deps/react-dom_client.js',viewPath='/src/components/Combat/CreatureSaveSummary.tsx',apiPath='/src/lib/api/creatureSaveDefinition.ts';
+   const [React,dom,view,api]=await Promise.all([import(reactPath),import(domPath),import(viewPath),import(apiPath)]);
+   const part={id:participant,campaign_id:campaign,entity_id:entity,combatant_id:combatant},definition=await api.readCreatureSaveDefinition(part);
+   const host=document.createElement('div');host.id='save-summary-fixture';host.style.cssText='position:fixed;top:90px;left:12px;width:min(420px,calc(100vw - 24px));padding:16px;box-sizing:border-box;background:var(--c-raised);z-index:1000;border:1px solid var(--c-border);border-radius:8px';document.body.appendChild(host);
+   dom.default.createRoot(host).render(React.default.createElement(React.default.Fragment,null,React.default.createElement('h3',null,'Combat saves'),React.default.createElement(view.ParticipantSaveSummary,{participant:part}),React.default.createElement('h3',null,'Creature sheet'),React.default.createElement(view.CreatureSaveSummary,{definition})));
+  },{campaign,participant:pb,entity:b,combatant:cb});
+  const host=page.locator('#save-summary-fixture');await expect(host.getByLabel('INT +9')).toHaveCount(2);await expect(host.getByLabel('WIS -1')).toHaveCount(2);await expect(host.getByLabel('STR review needed')).toHaveCount(2);
+  const bonuses=await page.evaluate(async id=>{const path='/src/lib/pendingAttack.ts',api=await import(path);return [await api.getTargetSaveBonus(id,'INT'),await api.getTargetSaveBonus(id,'WIS')];},pb);expect(bonuses).toMatchObject([{bonus:9,confidence:'high'},{bonus:-1,confidence:'high'}]);
+  await host.screenshot({path:`.tmp/save-summary-${info.project.name}.png`});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('#save-summary-fixture, #save-summary-fixture *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
+  // Exercise the actual NPC panel's SELECT as well as the shared renderer.
+  await page.evaluate(async({entity,combatant})=>{
+   const reactPath='/node_modules/.vite/deps/react.js',domPath='/node_modules/.vite/deps/react-dom_client.js',panelPath='/src/components/Campaign/NpcTokenQuickPanel.tsx',contextPath='/src/context/CombatContext.tsx';
+   const [React,dom,panel,context]=await Promise.all([import(reactPath),import(domPath),import(panelPath),import(contextPath)]);
+   const host=document.createElement('div');document.body.appendChild(host);dom.default.createRoot(host).render(React.default.createElement(context.CombatProvider,{campaignId:null},React.default.createElement(panel.default,{npcId:entity,tokenId:combatant,anchorX:16,anchorY:100,isDM:false,onClose:()=>{}})));
+  },{entity:b,combatant:cb});
+  const npc=page.getByRole('dialog',{name:/Creature token:/});await expect(npc.getByLabel('INT +9')).toBeVisible();await expect(npc.getByLabel('WIS -1')).toBeVisible();await expect(npc.getByLabel('STR review needed')).toBeVisible();
+  await npc.screenshot({path:`.tmp/npc-save-summary-${info.project.name}.png`});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[role=dialog], [role=dialog] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
+  expect(errors).toEqual([]);
+ });
+
 });
