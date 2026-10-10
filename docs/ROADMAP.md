@@ -9423,3 +9423,26 @@ match its recorded original die. This protects existing callers as well as the
 new planner. Tests cover threshold equality, natural extremes, failed bonuses,
 range expiry, malformed resources, subclass levels and Surge/Enkindled totals.
 No new migration; no production deployment. Vercel preview remains rate-limited.
+
+
+### Attack outcome parity for Telepath reactions
+
+Extracted the live attack result calculation into the domain layer and reused it
+in Telepath reaction planning. Numeric modifiers can turn a condition-based
+critical hit into a miss; natural 20s remain critical, total cover prevents a hit,
+and the captured natural-1 house rule controls whether a 1 can be bolstered.
+The planner now returns the resulting hit/miss/critical classification alongside
+the conditional cost. Invalid evidence stops before consuming mastery markers.
+
+Verification: full gate, 4,286 units across 345 files, TS 194/194 and entry within
+budget. A local authenticated browser regression invokes the real attack engine
+and verifies six saved outcomes for natural extremes, house rules and cover.
+
+Integration findings: pending_attacks keeps the effective AC and selected d20,
+but does not yet persist the natural-1 setting or why a hit was critical. Those
+must be captured with the original event before reaction settlement; do not
+infer an automatic hit from hit_result=crit. Existing roll_requests keep a total
+and DC but no comparable immutable reaction window. Graze currently applies on
+the initial miss before reactions; Bolstering must resolve before that damage.
+These event-window and ordering changes remain required before Telepath controls
+can safely ship. No new database migration or production deployment.

@@ -1,3 +1,4 @@
+import {attackRollOutcome} from '../rules/attackRollOutcome';
 import {cancelPendingAttack} from './api/attackCancellation';
 import {creatureSaveBonus} from '../rules/creatureSaveBonus';
 import {readCreatureSaveDefinition} from './api/creatureSaveDefinition';
@@ -42,7 +43,7 @@ import { resolveAutomation } from './automations';
 import { CONDITION_MAP } from '../data/conditions';
 import { effectiveCombatAC } from './armorClass';
 import { getEffectiveAbilityScores } from './attunement';
-import type { PendingAttack, HitResult, InventoryItem } from '../types';
+import type { PendingAttack, InventoryItem } from '../types';
 
 // v2.316: HP/conditions/buffs/death-save reads come from combatants
 // via JOIN. See src/lib/combatParticipantNormalize.ts.
@@ -471,12 +472,6 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
 
   const total = d20 + bonus + buffAttackTotal + exhaustionPenalty;
 
-  // v2.630.0 — consume spent mastery markers (Sap always; Vex only
-  // when this roll targeted the vexed creature).
-  if (masteryMarkers.consumeKeys.length > 0) {
-    await consumeMasteryMarkers(atk, masteryMarkers.consumeKeys);
-  }
-
   // v2.103.0 — Phase F: cover mechanics per 2024 PHB.
   //   half cover:           +2 AC (still targetable)
   //   three-quarters cover: +5 AC (still targetable)
@@ -502,20 +497,16 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   // attacker is within 5 ft melee range. Still bypassed by total cover.
   const autoCrit = meleeAutoCritApplies(targetConditions, distanceCells);
 
-  let hitResult: HitResult;
-  if (coverLevel === 'total') hitResult = 'miss';
-  else if (d20 === 20) hitResult = 'crit';
-  // v2.419.0 — Nat-1 house rule. RAW (and our default): a 1 on the
-  // d20 attack roll is an automatic miss regardless of modifiers.
-  // Some tables prefer "1 is just a 1" (modifiers can still connect
-  // against low AC). The DM toggles this in Settings → House Rules.
-  // Lazy import to avoid a top-of-file circular dep with the
-  // settings hook (which imports React).
-  else if (d20 === 1 && getNat1AutoFails()) hitResult = 'fumble';
-  else if (autoCrit && total >= effectiveAc) hitResult = 'crit';   // hit + auto-crit trigger
-  else if (autoCrit && total < effectiveAc) hitResult = 'miss';    // miss stays a miss
-  else if (total >= effectiveAc) hitResult = 'hit';
-  else hitResult = 'miss';
+  const hitResult=attackRollOutcome({d20,total,targetAC:effectiveAc,
+    automatic:coverLevel==='total'?'failure':'none',criticalOnHit:autoCrit,naturalOneAutoFails:getNat1AutoFails()});
+  if(!hitResult)throw new Error('Attack result could not be verified. Review the roll and target AC.');
+
+  // v2.630.0 — consume spent mastery markers (Sap always; Vex only
+  // when this roll targeted the vexed creature).
+  if (masteryMarkers.consumeKeys.length > 0) {
+    await consumeMasteryMarkers(atk, masteryMarkers.consumeKeys);
+  }
+
 
   const { data: updated } = await supabase
     .from('pending_attacks')

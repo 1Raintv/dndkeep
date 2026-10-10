@@ -60,3 +60,19 @@ it('validates Energy Die sides and saved enhancement totals',()=>{
  c.character.level=20;c.event.total=30;
  expect(planTelepathicReaction(c,'distraction',19,{originalRoll:2,enkindledRolls:[6,9],surged:true})).toMatchObject({ok:true,total:11,energyCost:1});
 });
+
+it('Distraction can prevent a condition-based critical hit but cannot prevent a natural 20',()=>{
+ const c=context();c.event.criticalOnHit=true;
+ expect(planTelepathicReaction(c,'distraction',2)).toMatchObject({ok:true,attackResult:'crit',energyCost:0});
+ expect(planTelepathicReaction(c,'distraction',3)).toMatchObject({ok:true,attackResult:'miss',energyCost:1});
+ c.event.d20=20;
+ expect(planTelepathicReaction(c,'distraction',8)).toMatchObject({ok:true,attackResult:'crit',energyCost:0});
+});
+it('Bolstering honors the captured natural-1 house rule and conditional critical damage',()=>{
+ const c=context();c.event={...c.event,d20:1,total:12,successful:false,naturalOneAutoFails:false,criticalOnHit:true};
+ expect(planTelepathicReaction(c,'bolstering',3)).toMatchObject({ok:true,attackResult:'crit',energyCost:1});
+ c.event.naturalOneAutoFails=true;
+ expect(planTelepathicReaction(c,'bolstering',3)).toMatchObject({ok:true,attackResult:'fumble',energyCost:0});
+ c.event.automatic='failure';
+ expect(planTelepathicReaction(c,'bolstering',3)).toMatchObject({ok:true,attackResult:'miss',energyCost:0});
+});
