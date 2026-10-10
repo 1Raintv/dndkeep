@@ -1,5 +1,31 @@
 # DNDKeep — Two-Track Roadmap
 
+### Connection recovers interrupted roll preparation (local; not released)
+
+Connection now saves versioned entropy, Energy Die size and the original
+turn/free-use choice before deriving a face through canonical dice utilities.
+A failed final write can be recovered after reload with the exact same roll.
+Every send/retry first durably saves the complete request; continued storage
+failure never reaches the server or consumes an action, die or free use.
+Existing complete requests stay compatible. Legacy seedless/corrupt markers
+remain blocked, and changing recovered dice, turn or free-use evidence is refused.
+
+26 unit cases cover all four die sizes for free/paid extensions, initial and
+repeated storage failure, legacy compatibility and invalid evidence. Four real
+browser reload cases verify the original roll, no payment before storage recovers,
+then one action/receipt and the correct Energy Die/free-use counters. Disabling
+seed decoding and separately omitting the send durability guard both fail the new
+browser regression; original source restored before final verification.
+
+Validation: full `npm run verify` passes (4,666 tests, TS 193/193, 256.1 KB entry).
+Final 12 desktop/mobile checks cover storage recovery, rejected retries, duration
+and the existing overflow probe. Screenshots inspected. Evidence:
+`.tmp/connection-seed-{unit,browser,restored,gate}.log` and
+`.tmp/connection-seed-{decode,durability}-mutation.log`.
+No schema changes; production unchanged. Prior head 1e7b4f38 has both CI gates
+green; Vercel preview remains build-rate-limited. Broader subclass state automation
+(Bulwark Mind, Mutable Form, Destructive Trance) is still incomplete.
+
 ### Connection preserves committed-but-unconfirmed extensions (local; not released)
 
 Connection now distinguishes freshly generated first sends from saved retries.

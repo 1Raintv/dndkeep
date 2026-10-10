@@ -255,4 +255,50 @@ test.describe('saved Connection private lifecycle',()=>{
   await page.screenshot({path:info.outputPath('connection-retry-confirmed.png')});expect(errors).toEqual([]);
  });
 
+ for(const free of [true,false])test(`Connection seed survives storage failure and reload (free=${free})`,async({page},info)=>{
+  sql(`update characters set level=5,feature_uses='${free?'{}':'{"Telepathic Connection":1}'}' where id='${character}';
+   update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${owner}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${owner}','${owner}',jsonb_build_object('sub','${owner}','email','${owner}@connection.local'),'email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${owner}@connection.local`);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(`/e2e/fixtures/connection.html?character=${character}`);
+  const panel=page.getByRole('region',{name:'Telepathic Connection controls'});
+  await expect(panel).toContainText('Telepathy · 30 ft');
+  await page.evaluate(character=>{
+   const write=Storage.prototype.setItem;
+   crypto.randomUUID=()=> '40000000-0000-4000-8000-c00000000000';
+   Storage.prototype.setItem=function(key,value){
+    if(key==='dndkeep:connection:'+character&&JSON.parse(value).kind!=='preparing')throw new DOMException('Storage full','QuotaExceededError');
+    write.call(this,key,value);
+   };
+  },character);
+  await panel.getByRole('button',{name:free?'Extend telepathy (free)':'Extend telepathy (1 die)',exact:true}).click();
+  await page.getByRole('button',{name:'Roll and extend',exact:true}).click();
+  await expect(panel.getByRole('alert')).toContainText('Your original Connection roll is saved.');
+  const confirm=panel.getByRole('button',{name:'Confirm saved extension'});await expect(confirm).toBeEnabled();
+  // Even a retry cannot send until the full request is durably saved.
+  await confirm.click();await expect(panel.getByRole('alert')).toContainText('Your original Connection roll is saved.');
+  expect(sql(`select count(*) from dndkeep_private.connection_declarations where character_id='${character}'`)).toBe('0');
+  expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${character}'`)).toBe('0');
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('6');
+  await page.screenshot({path:info.outputPath('connection-seed-interrupted.png')});
+  await page.reload();
+  const saved=await page.evaluate(async character=>{
+   const random=crypto.randomUUID;crypto.randomUUID=()=>{throw new Error('No new seed during recovery');};
+   try{
+    // @ts-ignore browser Vite import
+    const {pendingConnection}=await import('/src/lib/connectionRecovery.ts');return pendingConnection(character);
+   }finally{crypto.randomUUID=random;}
+  },character);
+  expect(saved).toMatchObject({roll:3,free,requestId:'40000000-0000-4000-8000-c00000000000'});
+  await confirm.click();await expect(panel).toContainText('Telepathy · 60 ft');await expect(panel).toContainText('60m 0s remaining');
+  await expect(confirm).toHaveCount(0);
+  expect(sql(`select base_roll from dndkeep_private.connection_declarations where character_id='${character}'`)).toBe('3');
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe(free?'6':'5');
+  expect(sql(`select feature_uses->>'Telepathic Connection' from characters where id='${character}'`)).toBe(free?'1':'2');
+  expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${character}'`)).toBe('1');
+  expect(sql(`select count(*) from psionic_energy_uses where character_id='${character}' and request->>'operation'='connection'`)).toBe('1');
+  expect(await page.evaluate(id=>localStorage.getItem(`dndkeep:connection:${id}`),character)).toBeNull();
+  await page.screenshot({path:info.outputPath('connection-seed-recovered.png')});expect(errors).toEqual([]);
+ });
+
 });

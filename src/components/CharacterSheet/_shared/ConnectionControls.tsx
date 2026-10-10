@@ -1,7 +1,7 @@
 import {useEffect,useRef,useState} from 'react';
 import type {Character} from '../../../types';
 import {beginConnection,finishConnection,getConnectionTurn,listConnections,type ConnectionRecord,type ConnectionRequest} from '../../../lib/api/telepathicConnection';
-import {forgetConnection,pendingConnection,prepareConnection} from '../../../lib/connectionRecovery';
+import {forgetConnection,pendingConnection,prepareConnection,rememberConnection} from '../../../lib/connectionRecovery';
 import {pendingPsionicPayments,PSIONIC_PAYMENT_CHANGED} from '../../../lib/psionicPaymentRecovery';
 import {acceptPsionicEnergyReceipt,acceptPsionicHitDiceReceipt} from '../../../lib/characterRealtime';
 import {PsionicRequestError,type PsionicEnhancementPersistence} from '../../../lib/api/psionicTurns';
@@ -9,7 +9,6 @@ import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharact
 import {psionicPowerState} from '../../../rules/psionicPowers';
 import {psionProgression} from '../../../rules/psionProgression';
 import {connectionRangeDisplay} from '../../../rules/telepathicConnection';
-import {rollDie} from '../../../rules/dice';
 import {useModal} from '../../shared/Modal';
 import {offerPsionicRollEnhancements} from './offerPsionicRollEnhancements';
 const button={minHeight:36,padding:'6px 10px',borderRadius:6,border:'1px solid #806bb2',background:'#29213d',color:'#e4d8ff',fontSize:12};
@@ -50,6 +49,7 @@ export default function ConnectionControls({character,persistence}:{character:Ch
   forgetConnection(id,declarationId);if(active())setTick(n=>n+1);
  }
  async function send(request:ConnectionRequest,id:string,active:()=>boolean,enhance:boolean,freshDeclaration=false){
+  rememberConnection(id,request);
   let saved:ConnectionRecord;
   try{saved=await beginConnection(id,request);}catch(cause){
    // v2.869: a later rejection cannot disprove an earlier committed extension
@@ -76,7 +76,7 @@ export default function ConnectionControls({character,persistence}:{character:Ch
   const turnId=await getConnectionTurn(id);if(!active())return;
   const current=psionicPowerState(latest.current);
   if(!current.valid||!current.connectionValid||current.dice<1||current.connectionFree!==before.connectionFree)throw new Error('Resources changed. Review Connection and try again.');
-  const request=prepareConnection(id,{requestId:crypto.randomUUID(),turnId,free:current.connectionFree},()=>rollDie(current.sides));setPending(request);
+  const request=prepareConnection(id,{requestId:crypto.randomUUID(),turnId,free:current.connectionFree},current.sides);setPending(request);
   await send(request,id,active,true,true);
  });}
  const state=psionicPowerState(latest.current),unfinished=rows.filter(r=>!r.roll_result&&r.request_id!==pending?.requestId);
