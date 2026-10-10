@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {test,expect,type Page} from '@playwright/test';
@@ -217,6 +218,35 @@ test.describe('Atomic aura resolution',()=>{
   const active=seedPenalty(),expected=read(),p=proposal();p.save.dice=[15];
   expect(auraReviewPreview(expected,p)).toMatchObject({penalty:2,normal:{save:{passed:false},damage:15}});
   expect(run(commit(expected,p))).toMatchObject({penalty:{expiredIds:[expired],consumedIds:[active],penalty:2},save:{passed:false},damage:15});
+ });
+
+ test('aura review controls display saved outcomes and postpone without spending',async({page},info)=>{
+  monster();writeAura([{...aura(),aura:{...aura().aura,name:'Spirit Guardians'}}]);
+  sql(`update combatants set name='Young Red Dragon',temp_hp=2 where id='${cb}'`);
+  await signInFixtureDm(page);const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
+  await page.evaluate(async({user,identity,proposal})=>{
+   const reactPath='/node_modules/.vite/deps/react.js',domPath='/node_modules/.vite/deps/react-dom_client.js',modalPath='/src/components/shared/Modal.tsx',reviewPath='/src/components/Combat/reviewAuraResolution.ts',apiPath='/src/lib/api/auraResolution.ts';
+   const [React,dom,modal,review,api]=await Promise.all([import(reactPath),import(domPath),import(modalPath),import(reviewPath),import(apiPath)]);
+   function Harness(){const controls=modal.useModal();return React.default.createElement('button',{onClick:async()=>{
+    delete document.body.dataset.auraReviewOutcome;delete document.body.dataset.auraReviewError;
+    try{const result=await api.processSavedAuraResolution(user,identity,'turn_end',()=>proposal,()=>{},(request:unknown)=>review.reviewAuraResolution(controls,request));document.body.dataset.auraReviewOutcome=JSON.stringify(result);}
+    catch(error){document.body.dataset.auraReviewError=String(error);}
+   }},'Review saved aura');}
+   const host=document.createElement('div');host.style.cssText='position:fixed;top:80px;left:12px;z-index:1000';document.body.appendChild(host);dom.default.createRoot(host).render(React.default.createElement(modal.ModalProvider,null,React.default.createElement(Harness)));
+  },{user:dm,identity:{encounterId:enc,turnId:turn,originId:pa,targetId:pb,auraKey:'fixture'},proposal:proposal()});
+  await page.getByRole('button',{name:'Review saved aura',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Spirit Guardians: review save'});await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Young Red Dragon');await expect(dialog).toContainText('Total 1.');await expect(dialog).toContainText('15 radiant damage');await expect(dialog).toContainText('7 radiant damage');
+  await dialog.getByRole('button',{name:'Use resistance',exact:true}).click({trial:true});
+  await dialog.screenshot({path:`.tmp/aura-review-${info.project.name}.png`});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[role=dialog], [role=dialog] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
+  await page.keyboard.press('Escape');await expect(dialog).toBeHidden();
+  await expect.poll(()=>page.evaluate(()=>document.body.dataset.auraReviewError??'')).toContain('postponed');expect(counts()).toEqual({receipt:0,penalty:0,events:0,marker:0});
+  await page.getByRole('button',{name:'Review saved aura',exact:true}).click();await expect(dialog).toContainText('Total 1.');
+  await dialog.getByRole('button',{name:'Use resistance',exact:true}).click();await expect(dialog).toBeHidden();
+  await expect.poll(()=>page.evaluate(()=>document.body.dataset.auraReviewOutcome??'')).not.toBe('');
+  const result=await page.evaluate(()=>JSON.parse(document.body.dataset.auraReviewOutcome!));expect(result).toMatchObject({acceptedResistance:true,damage:7,damageResult:{afterHP:15,afterTempHP:0}});
+  expect(sql(`select legendary_resistance_used from combat_participants where id='${pb}'`)).toBe('1');expect(errors).toEqual([]);
  });
 
 });

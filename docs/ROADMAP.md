@@ -7522,3 +7522,25 @@ real caster-turn expiry and mixed active/expired effects. All 3,620 unit tests
 and the full gate pass (TypeScript 195/195; hooks/RAW/coordinates/anchors; build
 and entry budget). Migration 20261010070017 is recorded locally with verified
 SQL contents; the unrelated ledger entry remains unchanged.
+
+
+### Aura review controls (2026-10-10)
+
+`reviewAuraResolution` connects persisted review requests to the existing
+accessible modal. It shows the target, DC, saved d20s and chosen face, complete
+modifier/total, applicable Mind Sliver penalty, damage and temporary/real HP
+changes. Eligible failed saves offer explicit Accept failure / Use resistance
+choices with charges remaining and the alternate damage. Other outcomes require
+Apply result; Review later or dismissal retains the request. No control rolls
+or writes resources itself; the recovery API saves the decision before the
+atomic transaction. Submitted requests cannot reopen as editable choices.
+
+Desktop/mobile browser tests mount the real modal and use real local combat
+RPCs: postpone without spending, reopen with the same roll, then consume exactly
+one resistance charge and apply the expected damage. Both screenshots inspected;
+scoped overflow checks pass. This reusable control is not yet mounted by live
+aura orchestration or the turn pipeline. No production deployment.
+
+Validation: seven focused control tests, both real-browser control cases, clean
+console/overflow checks and the full gate pass: 3,627 unit tests, TypeScript
+195/195, hooks/RAW/coordinates/anchors, production build and entry budget.
