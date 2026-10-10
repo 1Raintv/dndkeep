@@ -249,4 +249,13 @@ test.describe('Atomic aura resolution',()=>{
   expect(sql(`select legendary_resistance_used from combat_participants where id='${pb}'`)).toBe('1');expect(errors).toEqual([]);
  });
 
+ test('live creature save bonuses recognize stored proficiency names and require a known CR',async({page})=>{
+  monster();sql(`update homebrew_monsters set ability_scores='{"int":18,"wis":10}',save_proficiencies=${literal(['Intelligence'])},cr='9' where id='${b}'`);
+  await signInFixtureDm(page);
+  const readBonus=()=>page.evaluate(async target=>{const path='/src/lib/pendingAttack.ts',api=await import(/* @vite-ignore */ path);return api.getTargetSaveBonus(target,'INT');},pb);
+  expect(await readBonus()).toMatchObject({bonus:8,confidence:'high'});
+  sql(`update homebrew_monsters set cr=null where id='${b}'`);expect(await readBonus()).toMatchObject({confidence:'low'});
+  sql(`update homebrew_monsters set cr='9',save_proficiencies=null where id='${b}'`);expect(await readBonus()).toMatchObject({confidence:'low'});
+ });
+
 });

@@ -61,3 +61,16 @@ it('does not silently accept malformed equipment save values',async()=>{
  characterReads({level:5,intelligence:18,inventory:[{...ring(true,true),saveBonus:'unknown'}]});
  await expect(getTargetSaveBonus('participant','INT')).rejects.toThrow('Review equipment');
 });
+
+function creatureReads(creature:Record<string,unknown>){
+ mocks.from.mockImplementation((table:string)=>{const result=()=>({data:table==='combat_participants'?{participant_type:'creature',entity_id:'creature',campaign_id:'campaign'}:creature});const q={select:()=>q,eq:()=>q,single:async()=>result(),maybeSingle:async()=>result()};return q;});
+}
+it.each([null,'', '5th','unknown'])('does not invent proficient creature PB from CR %s',cr=>{
+ creatureReads({ability_scores:{int:18},save_proficiencies:['int'],cr});return expect(getTargetSaveBonus('participant','INT')).resolves.toMatchObject({confidence:'low'});
+});
+it.each([['INT',5,7],['intelligence',9,8],['int','1/2',6]])('uses normalized creature proficiency %s at CR %s',async(prof,cr,bonus)=>{
+ creatureReads({ability_scores:{int:18},save_proficiencies:[prof],cr});expect(await getTargetSaveBonus('participant','INT')).toMatchObject({bonus,confidence:'high'});
+});
+it.each([NaN,Infinity,10.5])('does not pass malformed creature score %s to automation',async int=>{
+ creatureReads({ability_scores:{int},save_proficiencies:[],cr:1});expect(await getTargetSaveBonus('participant','INT')).toMatchObject({confidence:'low'});
+});

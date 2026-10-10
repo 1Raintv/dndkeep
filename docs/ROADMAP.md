@@ -7544,3 +7544,26 @@ aura orchestration or the turn pipeline. No production deployment.
 Validation: seven focused control tests, both real-browser control cases, clean
 console/overflow checks and the full gate pass: 3,627 unit tests, TypeScript
 195/195, hooks/RAW/coordinates/anchors, production build and entry budget.
+
+
+### Creature save confidence correction (2026-10-10)
+
+Live integration review found that `getTargetSaveBonus` could mark missing or
+malformed creature data as high confidence: missing CR fell back to PB +2,
+missing proficiency lists became empty, and non-finite scores passed a numeric
+type check. The new pure input validator requires a supported creature score,
+an explicit recognized proficiency list, and a known CR when proficiency is
+used. It recognizes abbreviated/full ability names case-insensitively and does
+not partially parse strings such as `5th`. A nonproficient save needs no CR.
+Canonical modifier/PB arithmetic remains shared; unsupported homebrew data
+returns low confidence for manual review rather than inventing a modifier.
+
+Score bounds checked against the official [2024 Playing the Game rules](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game).
+This improves the live save reader; catalog/custom save source support and the
+reviewed aura/turn integration remain unfinished. No production deployment.
+
+Validation: 65 focused rules/save-reader cases and two real desktop/mobile
+browser cases pass. Full gate passes: 3,676 units, TypeScript 195/195,
+hooks/RAW/coordinates/anchors, production build and entry budget. New code/tests
+lint clean; pendingAttack retains the same pre-existing one style error and
+27 warnings, confirmed against HEAD.

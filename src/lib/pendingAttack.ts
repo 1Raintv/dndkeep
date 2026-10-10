@@ -1,3 +1,4 @@
+import {creatureSaveInputs} from '../rules/creatureSaveInputs';
 import {resolveAttackSave,forgetAttackSave} from './api/attackSaves';
 import {psychicDamageRoll} from '../rules/psychicDamageRoll';
 import {attackIsMelee,type AttackMode} from '../rules/attackMode';
@@ -1456,14 +1457,9 @@ export async function getTargetSaveBonus(
       .select('ability_scores, save_proficiencies, name, cr')
       .eq('id', part.entity_id)
       .maybeSingle();
-    const scores = (cr?.ability_scores ?? {}) as Record<string, number | undefined>;
-    const score = scores[ability.toLowerCase()];
-    if (typeof score !== 'number') {
-      return { bonus: 0, breakdown: `0 (creature, ${ability} score not stored)`, confidence: 'low' };
-    }
-    const mod = abilityModifier(score);
-    const profs = (cr?.save_proficiencies ?? []) as string[];
-    const isProficient = profs.includes(ability.toLowerCase());
+    const inputs=creatureSaveInputs(ability,cr?.ability_scores,cr?.save_proficiencies,cr?.cr);
+    if(!inputs)return {bonus:0,breakdown:`Review creature ${ability} score, save proficiencies and challenge rating`,confidence:'low'};
+    const mod=abilityModifier(inputs.score),isProficient=inputs.proficient;
     if (!isProficient) {
       return {
         bonus: mod,
@@ -1472,7 +1468,7 @@ export async function getTargetSaveBonus(
       };
     }
     // Proficient — derive PB from the CR stored on the same row.
-    const pb = crToProficiencyBonus(cr?.cr);
+    const pb = crToProficiencyBonus(inputs.cr);
     const total = mod + pb;
     return {
       bonus: total,
