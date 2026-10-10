@@ -139,6 +139,62 @@ test.describe('Atomic encounter completion',()=>{
  });
 
  const saveBatch=(actor=pa,targets=[{participant_id:pb,name:'Spoofed',type:'creature',entity_id:'not-a-uuid'}])=>`select row_to_json(r) from declare_save_batch('${campaign}','${enc}','${request}','${actor}','Spoofed actor','creature','Batch fixture',15,'DEX','none','1d6','Bludgeoning',null,'${JSON.stringify(targets)}'::jsonb) r`;
+ const damageFixture=()=>{
+  sql(`update characters set current_hp=20,max_hp=20 where id in('${a}','${b}')`);
+  const id=JSON.parse(sql(auth(dm,saveBatch()))).pending_attack_id;
+  sql(`update pending_attacks set state='damage_rolled',save_result='failed',damage_final=6 where id='${id}'`);
+  return id as string;
+ };
+ const damageContext=(id:string)=>JSON.parse(sql(auth(dm,`select get_pending_damage_context('${id}')`)));
+ const applySavedDamage=(id:string,ctx:unknown,user=dm)=>JSON.parse(sql(auth(user,`select apply_saved_save_damage('${id}','${JSON.stringify(ctx).replaceAll("'","''")}'::jsonb,0)`)));
+ test('atomic save damage replays once and preserves later healing',()=>{
+  const id=damageFixture(),ctx=damageContext(id),first=applySavedDamage(id,ctx);
+  expect(first).toMatchObject({replayed:false,attack:{state:'applied',damage_final:6},settlement:{afterHP:14}});
+  sql(`update combatants set current_hp=19 where id='${cb}'`);
+  expect(applySavedDamage(id,ctx)).toEqual({...first,replayed:true});
+  expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe('19');
+  expect(sql(`select count(*) from combat_events where chain_id='${request}' and event_type='damage_applied'`)).toBe('1');
+ });
+ test('atomic save damage rejects changed snapshots and unauthorized callers',()=>{
+  const id=damageFixture(),ctx=damageContext(id);
+  expect(()=>applySavedDamage(id,ctx,player)).toThrow(/current DM/);
+  sql(`update combatants set temp_hp=3 where id='${cb}'`);
+  expect(()=>applySavedDamage(id,ctx)).toThrow(/changed/i);
+  expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe('20');
+  expect(applySavedDamage(id,damageContext(id)).settlement).toMatchObject({afterHP:17,afterTempHP:0});
+ });
+ test('atomic save damage excludes interrupted legacy batches',()=>{
+  const id=damageFixture();sql(`update dndkeep_private.save_batch_declarations set atomic_damage=false where chain_id='${request}'`);
+  expect(sql(auth(dm,`select supports_saved_save_damage('${id}')`))).toBe('f');
+  expect(()=>applySavedDamage(id,damageContext(id))).toThrow(/legacy or unsupported/);
+ });
+ test('atomic save damage rolls back HP if the final receipt fails',()=>{
+  const id=damageFixture(),ctx=damageContext(id),fn='reject_damage_'+randomUUID().replaceAll('-','');
+  sql(`create function public.${fn}() returns trigger language plpgsql as $$begin if new.attack_id='${id}' then raise exception 'fixture damage failure';end if;return new;end$$;create trigger ${fn} before insert on dndkeep_private.saved_save_damage_applications for each row execute function public.${fn}()`);
+  try{expect(()=>applySavedDamage(id,ctx)).toThrow(/fixture damage failure/);
+   expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe('20');
+   expect(sql(`select state from pending_attacks where id='${id}'`)).toBe('damage_rolled');
+   expect(sql(`select count(*) from combat_events where chain_id='${request}' and event_type='damage_applied'`)).toBe('0');
+  }finally{sql(`drop trigger ${fn} on dndkeep_private.saved_save_damage_applications;drop function public.${fn}()`);}
+  expect(applySavedDamage(id,ctx).settlement.afterHP).toBe(14);
+ });
+ test('atomic save damage applies Petrified resistance once and hides private combat logs',()=>{
+  const id=damageFixture();sql(`update combatants set active_conditions=array['Petrified'] where id='${cb}';update combat_participants set hidden_from_players=true where id='${pa}'`);
+  const ctx=damageContext(id),first=applySavedDamage(id,ctx);
+  expect(first.settlement).toMatchObject({damage:3,afterHP:17});expect(applySavedDamage(id,ctx).settlement).toEqual(first.settlement);
+  expect(sql(`select count(*) from combat_events where chain_id='${request}' and event_type in('damage_applied','resistance_applied') and visibility='hidden_from_players'`)).toBe('2');
+ });
+ test('atomic save damage permits a successful zero-damage save without losing HP',()=>{
+  const id=damageFixture();sql(`update pending_attacks set save_result='passed',damage_final=0 where id='${id}'`);
+  expect(applySavedDamage(id,damageContext(id))).toMatchObject({attack:{state:'applied'},settlement:{damage:0,afterHP:20}});
+ });
+ test('atomic save damage competing applications return one winner',async()=>{
+  const id=damageFixture(),ctx=damageContext(id),q=auth(dm,`select apply_saved_save_damage('${id}','${JSON.stringify(ctx).replaceAll("'","''")}'::jsonb,0)`);
+  const run=()=>new Promise<{code:number|null,out:string,error:string}>(resolve=>{const child=spawn('docker',args);let out='',error='';child.stdout.on('data',v=>out+=v);child.stderr.on('data',v=>error+=v);child.on('close',code=>resolve({code,out,error}));child.stdin.end(q);});
+  const results=await Promise.all([run(),run()]);expect(results.map(r=>r.code),JSON.stringify(results)).toEqual([0,0]);
+  const receipts=results.map(r=>JSON.parse(r.out));expect(receipts.map(r=>r.replayed).sort()).toEqual([false,true]);
+  expect(receipts[0].settlement).toEqual(receipts[1].settlement);expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe('14');
+ });
  test('save batches use canonical actor and target identities',()=>{
   const r=JSON.parse(sql(auth(player,saveBatch())));expect(r.target_name).toBe('B');
   expect(JSON.parse(sql(`select jsonb_build_object('actor',attacker_name,'actorType',attacker_type,'target',target_name,'targetType',target_type) from pending_attacks where id='${r.pending_attack_id}'`))).toEqual({actor:'A',actorType:'character',target:'B',targetType:'character'});

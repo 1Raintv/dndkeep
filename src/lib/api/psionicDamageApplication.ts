@@ -28,10 +28,13 @@ export async function applyDestructiveThoughtsDamage(attack:PendingAttack):Promi
 }
 export async function finishPsionicDamageApplication(value:unknown,attackId:string):Promise<PendingAttack>{
  const result=verified(value,attackId),s=result.settlement;
+ await finishDamageConcentration(s);
+ return result.attack;
+}
+export async function finishDamageConcentration(s:{concentrationMode:string;concentrationCheckId:string|null;characterId:string|null}):Promise<void>{
  if(s.concentrationMode==='auto'&&s.concentrationCheckId&&s.characterId){
   await readConcentrationResult(s.characterId,s.concentrationCheckId)??await resolveConcentrationSave(s.characterId,s.concentrationCheckId,'player');
  }
- return result.attack;
 }
 
 export function psionicTargetConModifier(ctx:{target?:{definitionType:string;definition:Record<string,unknown>}|null}):number {

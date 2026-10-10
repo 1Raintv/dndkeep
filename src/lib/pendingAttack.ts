@@ -915,7 +915,7 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
 }
 
 // ─── Apply damage ────────────────────────────────────────────────
-export async function applyDamage(attackId: string): Promise<PendingAttack | null> {
+export async function applyDamage(attackId: string, beforeLegacyApply?:()=>void): Promise<PendingAttack | null> {
   const { data: row } = await supabase
     .from('pending_attacks')
     .select('*')
@@ -931,7 +931,15 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
     return applyDestructiveThoughtsDamage(atk);
   }
 
+  // v2.869: new save-batch declarations settle HP, life state, concentration,
+  // events and applied state together. Old interrupted writes require review.
+  if(atk.attack_kind==='save'&&atk.attack_source==='monster_action'&&atk.state!=='canceled'){
+    const {supportsSavedSaveDamage,applySavedSaveDamage}=await import('./api/savedSaveDamage');
+    if(await supportsSavedSaveDamage(atk.id))return applySavedSaveDamage(atk);
+  }
+
   if (atk.state !== 'damage_rolled') return atk;
+  beforeLegacyApply?.();
 
   // If no target participant (e.g., target was free-text) we still mark applied
   if (atk.target_participant_id && atk.damage_final != null && atk.damage_final > 0) {

@@ -506,11 +506,16 @@ export default function LegendaryActionResolverModal({
             attack=rolled;phase=savedSavePhase(attack,row.pendingAttackId);
           }
           if(phase==='roll')throw new Error('The saving throw has not been recorded. Resume its saved request before continuing.');
-          if(phase==='complete'){finished++;return;}
+          if(phase==='complete'){
+            // v2.869: HP may have committed before the reply was lost. Replaying
+            // its receipt also resumes automatic concentration without another hit.
+            if(attack.state==='applied'&&saved.damageDice){await applyDamage(attack.id);guard();}
+            finished++;return;
+          }
           if(phase==='awaiting_resistance'){resistancePending++;return;}
           const conditionName=saved.conditionIntent?.conditionName;
           if(conditionName){guard();const receipt=await settleAttackCondition(row.pendingAttackId,conditionName);guard();if(receipt?.outcome==='applied')conditionApplied++;}
-          if(saved.damageDice){guard();const damaged=await rollDamage(row.pendingAttackId);guard();if(!damaged)throw new Error('The saved damage could not be verified.');if(damaged.state==='damage_rolled'){beforeDamage(damaged.id);await applyDamage(damaged.id);guard();}}
+          if(saved.damageDice){guard();const damaged=await rollDamage(row.pendingAttackId);guard();if(!damaged)throw new Error('The saved damage could not be verified.');if(damaged.state==='damage_rolled'){await applyDamage(damaged.id,()=>beforeDamage(damaged.id));guard();}}
           else {guard();await cancelAttack(row.pendingAttackId);guard();}
           guard();const final=await readSavedBatchAttack(row.pendingAttackId,batch.chainId);guard();
           if(savedSavePhase(final,row.pendingAttackId)!=='complete')throw new Error('This attack is still pending. Finish its prompt, then resume the saved action.');

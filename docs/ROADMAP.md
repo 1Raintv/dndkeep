@@ -8554,3 +8554,34 @@ Next: atomic generic damage settlement so ambiguous HP attempts can recover
 without manual review; ordinary monster batch action/recharge recovery; full
 legendary timing and cross-device recovery; release integration and map work.
 Local storage recovery alone does not cover cleared storage or another device.
+
+
+### Atomic saved monster-save damage checkpoint (2026-10-10)
+
+New save-batch declarations now settle HP, temporary HP, death state,
+concentration prompts, combat logs and the applied attack receipt together.
+Retries return the saved result, including after later healing. Existing batches
+retain the legacy review guard because they might contain a partial HP write.
+Legendary-save recovery resumes automatic concentration from the committed
+receipt even when the attack already reads applied. Private actors/targets keep
+these settlement logs hidden.
+
+Migration 20261010070041 applied only to local Docker; ledger text matches.
+Seven isolated database checks cover replay, stale context, authorization,
+legacy exclusion, final-write rollback, Petrified/hidden logs, zero damage and
+concurrent requests. Six desktop/mobile save controls tests passed, including
+lost damage replies followed by reload. Screenshots inspected and official
+overflow checks passed; unexpected browser errors absent. Disabling atomic
+routing failed the new browser regression; restored code passed. Four existing
+Propel desktop/mobile checks reconfirm Bonus Action payment, Energy Die spending
+only on a failed save, reload recovery, and Psi Warper rule details.
+
+Full gate: 3,979 unit tests; TS 194/194; entry 255.7 KB; build, rules, coordinates,
+anchors and hooks pass. Database lint clean; advisors retain only the existing
+keep_warm search-path and client_errors INSERT warnings. Not deployed.
+
+Still pending: typed damage-defense planning beyond the existing final-damage
+contract/Petrified, weapon retaliation and mastery transactions, ordinary
+monster action/recharge recovery, full legendary timing and cross-device
+recovery, release integration and map polish. This checkpoint does not certify
+all ability automation or production behavior.

@@ -393,7 +393,7 @@ test.describe('Atomic aura resolution',()=>{
   expect(errors).toEqual([]);
  });
 
- for(const mode of ['none','retry','reload','finished'] as const) test('legendary save recovery '+mode,async({page},info)=>{
+ for(const mode of ['none','retry','reload','finished','damage'] as const) test('legendary save recovery '+mode,async({page},info)=>{
   const lostReply=mode!=='none';
   monster();sql(`update homebrew_monsters set dex=10,saving_throws='{}' where id='${b}';update combat_participants set legendary_actions_total=3,legendary_actions_remaining=3 where id='${pa}';update combat_participants set legendary_resistance=0 where id='${pb}'`);await signInFixtureDm(page);
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error' && !(lostReply && message.text().includes('503')))errors.push(message.text());});
@@ -408,19 +408,27 @@ test.describe('Atomic aura resolution',()=>{
    if(route.request().method()==='PATCH' && route.request().postDataJSON()?.state==='canceled'){const response=await route.fetch();expect(response.ok()).toBe(true);await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Simulated lost completion reply'})});}
    else await route.continue();
   });
-  const mount=(popover=false)=>page.evaluate(async({campaign,enc,actor,entity,combatant,popover})=>{
+  if(mode==='damage'){
+   let replies=0;
+   await page.route('**/rest/v1/rpc/apply_saved_save_damage',async route=>{
+    const response=await route.fetch();const request=route.request().postDataJSON();
+    if(request.p_expected&&++replies<=2){expect(response.ok()).toBe(true);await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Simulated lost damage reply'})});}
+    else await route.fulfill({response});
+   });
+  }
+  const mount=(popover=false)=>page.evaluate(async({campaign,enc,actor,entity,combatant,popover,damage})=>{
    Math.random=()=>0.01;
    const reactPath='/node_modules/.vite/deps/react.js',domPath='/node_modules/.vite/deps/react-dom_client.js',modalPath=popover?'/src/components/Combat/LegendaryActionPopover.tsx':'/src/components/Combat/LegendaryActionResolverModal.tsx',toastPath='/src/components/shared/Toast.tsx';
    const [React,dom,modal,toast]=await Promise.all([import(reactPath),import(domPath),import(modalPath),import(toastPath)]);
    const host=document.createElement('div');document.body.appendChild(host);
-   const root=dom.default.createRoot(host),option={name:'Wing Attack',desc:'Each creature within 15 feet must succeed on a DC 20 Dexterity saving throw or be knocked prone.',cost:2};
+   const root=dom.default.createRoot(host),option={name:'Wing Attack',desc:damage?'Each creature within 15 feet must succeed on a DC 20 Dexterity saving throw or take 1 (1d4) bludgeoning damage and be knocked prone.':'Each creature within 15 feet must succeed on a DC 20 Dexterity saving throw or be knocked prone.',cost:2};
    const part={id:actor,name:'Dragon',participant_type:'creature',entity_id:entity,combatant_id:combatant,legendary_actions_total:3,legendary_actions_remaining:popover?1:3,legendary_actions_config:[option]};
    root.render(React.default.createElement(toast.ToastProvider,null,React.default.createElement(modal.default,{participant:part,campaignId:campaign,encounterId:enc,laOption:option,cost:2,anchor:{x:12,y:60},onClose:()=>root.render(React.default.createElement(toast.ToastProvider))})));
-  },{campaign,enc,actor:pa,entity:a,combatant:ca,popover});
+  },{campaign,enc,actor:pa,entity:a,combatant:ca,popover,damage:mode==='damage'});
   await mount();
   const dialog=page.getByRole('dialog');await expect(dialog).toBeVisible();
   await dialog.locator('button[data-target-group]').first().click();await dialog.getByRole('button',{name:'Resolve 1 target & spend 2'}).click();
-  if(mode==='reload'||mode==='finished'){
+  if(mode==='reload'||mode==='finished'||mode==='damage'){
    await expect(dialog.getByRole('alert')).toBeVisible();
    const original=sql(`select id from pending_attacks where encounter_id='${enc}'`);
    if(mode==='finished')sql(`update combatants set active_conditions='{}',condition_sources='{}' where id='${cb}';update characters set active_conditions='{}',condition_sources='{}' where id='${b}'`);
@@ -432,12 +440,13 @@ test.describe('Atomic aura resolution',()=>{
    expect(sql(`select id from pending_attacks where encounter_id='${enc}'`)).toBe(original);
   }
   await expect(dialog).toBeHidden();
-  await expect(page.getByText(mode==='finished'?/Wing Attack: 0 saved · 0 failed · 1 already finished/:/Wing Attack: 0 saved · 1 failed · Prone ×1/)).toBeVisible();
+  await expect(page.getByText((mode==='finished'||mode==='damage')?/Wing Attack: 0 saved · 0 failed · 1 already finished/:/Wing Attack: 0 saved · 1 failed · Prone ×1/)).toBeVisible();
   await page.screenshot({path:`.tmp/legendary-save-settled-${mode}-${info.project.name}.png`});
   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[role=dialog], [role=dialog] *, .toast, .toast *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
-  expect(JSON.parse(sql(`select jsonb_build_object('state',state,'pending',pending_lr_decision,'damage',damage_final) from pending_attacks where encounter_id='${enc}'`))).toMatchObject({state:'canceled',pending:false,damage:null});
+  expect(JSON.parse(sql(`select jsonb_build_object('state',state,'pending',pending_lr_decision,'damage',damage_final) from pending_attacks where encounter_id='${enc}'`))).toMatchObject(mode==='damage'?{state:'applied',pending:false,damage:1}:{state:'canceled',pending:false,damage:null});
+  if(mode==='damage')expect(sql(`select count(*) from combat_events where encounter_id='${enc}' and event_type='damage_applied'`)).toBe('1');
   expect(JSON.parse(sql(`select recipe from dndkeep_private.attack_condition_intents where encounter_id='${enc}'`))).toMatchObject({conditionName:'Prone',sourcePrefix:'legendary_action',durationRounds:null,saveToEnd:null});
-  expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe('20');expect(sql(`select coalesce(active_conditions,'{}'::text[]) @> array['Prone'] from combatants where id='${cb}'`)).toBe(mode==='finished'?'f':'t');expect(sql(`select legendary_actions_remaining from combat_participants where id='${pa}'`)).toBe('1');expect(sql(`select count(*) from dndkeep_private.attack_condition_resolutions r join pending_attacks a on a.id=r.attack_id where a.encounter_id='${enc}'`)).toBe('1');expect(requests).toHaveLength(mode==='none'?1:mode==='reload'?3:2);expect(new Set(requests).size).toBe(1);expect(sql(`select count(*) from dndkeep_private.legendary_save_payments p join dndkeep_private.save_batch_declarations d using(chain_id) where d.encounter_id='${enc}'`)).toBe('1');expect(errors).toEqual([]);
+  expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe(mode==='damage'?'19':'20');expect(sql(`select coalesce(active_conditions,'{}'::text[]) @> array['Prone'] from combatants where id='${cb}'`)).toBe(mode==='finished'?'f':'t');expect(sql(`select legendary_actions_remaining from combat_participants where id='${pa}'`)).toBe('1');expect(sql(`select count(*) from dndkeep_private.attack_condition_resolutions r join pending_attacks a on a.id=r.attack_id where a.encounter_id='${enc}'`)).toBe('1');expect(requests).toHaveLength(mode==='none'?1:mode==='reload'?3:2);expect(new Set(requests).size).toBe(1);expect(sql(`select count(*) from dndkeep_private.legendary_save_payments p join dndkeep_private.save_batch_declarations d using(chain_id) where d.encounter_id='${enc}'`)).toBe('1');expect(errors).toEqual([]);
  });
 
  test('creature save summaries match live automation and mark unknown data',async({page},info)=>{
