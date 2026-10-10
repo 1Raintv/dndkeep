@@ -93,3 +93,44 @@ it('does not prepare without browser locking or when reading receipts fails',asy
  await expect(processSavedAuraResolution(user,identity,'turn_end',prepare,guard)).rejects.toThrow('unavailable');
  vi.stubGlobal('navigator',{});await expect(processSavedAuraResolution(user,identity,'turn_end',prepare,guard)).rejects.toThrow(/browser locking/);expect(prepare).not.toHaveBeenCalled();
 });
+
+it('saves dice before review and resumes a postponed decision without preparing again',async()=>{
+ const prepare=vi.fn(proposal),review=vi.fn(async()=>null);
+ await expect(processSavedAuraResolution(user,identity,'turn_end',prepare,guard,review)).rejects.toThrow('postponed');
+ expect(savedAuraResolution(user,identity)?.phase).toBe('review');
+ expect(h.rpc.mock.calls.filter(c=>c[0]==='commit_aura_resolution')).toHaveLength(0);
+ const saved=savedAuraResolution(user,identity)!;
+ await expect(processSavedAuraResolution(user,identity,'turn_end',prepare,guard)).rejects.toThrow('requires review');
+ await processSavedAuraResolution(user,identity,'turn_end',prepare,guard,async request=>{
+  expect(request).toEqual(saved);return {useResistance:false};
+ });
+ expect(prepare).toHaveBeenCalledTimes(1);
+});
+it('review cannot mutate saved dice or identity and its decision is saved before submission',async()=>{
+ h.rpc.mockImplementation(async(fn,args)=>{
+  if(fn==='read_aura_resolution')return null;if(fn==='get_aura_resolution_context')return context();
+  expect(savedAuraResolution(user,identity)).toMatchObject({phase:'ready',proposal:proposal()});return reply(args);
+ });
+ await processSavedAuraResolution(user,identity,'turn_end',proposal,guard,async request=>{
+  request.requestId=id(99);request.proposal.save={baseBonus:99,dice:[20],effectRolls:[]};return {useResistance:false};
+ });
+});
+it('never asks for a new decision after an ambiguous submitted response',async()=>{
+ const review=vi.fn(async()=>({useResistance:false}));
+ h.rpc.mockImplementation(async fn=>fn==='read_aura_resolution'?null:fn==='get_aura_resolution_context'?context():Promise.reject(new Error('offline')));
+ await expect(processSavedAuraResolution(user,identity,'turn_end',proposal,guard,review)).rejects.toThrow('offline');
+ expect(savedAuraResolution(user,identity)?.phase).toBe('ready');
+ h.rpc.mockImplementation(async(fn,args)=>fn==='read_aura_resolution'?null:reply(args));
+ await processSavedAuraResolution(user,identity,'turn_end',proposal,guard,review);expect(review).toHaveBeenCalledTimes(1);
+});
+it('keeps unsubmitted review when account scope changes while deciding',async()=>{
+ let changed=false;
+ await expect(processSavedAuraResolution(user,identity,'turn_end',proposal,()=>{if(changed)throw new Error('scope changed');},async()=>{changed=true;return {useResistance:false};})).rejects.toThrow('scope changed');
+ expect(savedAuraResolution(user,identity)?.phase).toBe('review');expect(h.rpc.mock.calls.filter(c=>c[0]==='commit_aura_resolution')).toHaveLength(0);
+});
+it('does not submit if saving the reviewed choice fails',async()=>{
+ const set=localStorage.setItem.bind(localStorage);
+ vi.spyOn(localStorage,'setItem').mockImplementation((k,v)=>{if(JSON.parse(v).phase==='ready')throw new Error('quota');set(k,v);});
+ await expect(processSavedAuraResolution(user,identity,'turn_end',proposal,guard,async()=>({useResistance:false}))).rejects.toThrow('quota');
+ expect(savedAuraResolution(user,identity)?.phase).toBe('review');expect(h.rpc.mock.calls.filter(c=>c[0]==='commit_aura_resolution')).toHaveLength(0);
+});

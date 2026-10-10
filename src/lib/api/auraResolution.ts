@@ -2,7 +2,7 @@ import {verifyAuraResolutionReceipt,type AuraResolutionReceipt} from '../auraRes
 import {psionicRpc} from './psionicTurns';
 export interface AuraIdentity {encounterId:string;turnId:string;originId:string;targetId:string;auraKey:string}
 export type AuraTrigger='creature_entered'|'emanation_entered'|'turn_end';
-interface SavedAuraRequest {version:1;phase:'ready';userId:string;requestId:string;identity:AuraIdentity;expected:Record<string,unknown>;proposal:Record<string,unknown>}
+export interface SavedAuraRequest {version:1;phase:'review'|'ready';userId:string;requestId:string;identity:AuraIdentity;expected:Record<string,unknown>;proposal:Record<string,unknown>}
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 const validIdentity=(i:AuraIdentity)=>!!i&&[i.encounterId,i.turnId,i.originId,i.targetId].every(uuid)&&typeof i.auraKey==='string'&&!!i.auraKey;
@@ -17,7 +17,7 @@ export function savedAuraResolution(user:string,i:AuraIdentity):SavedAuraRequest
  if(!uuid(user)||!validIdentity(i))throw invalid();
  const raw=localStorage.getItem(key(user,i));if(raw===null)return null;
  let r:unknown;try{r=JSON.parse(raw);}catch{throw invalid();}
- if(!object(r)||r.version!==1||r.phase!=='ready'||r.userId!==user||!uuid(r.requestId)||!object(r.identity)
+ if(!object(r)||r.version!==1||!['review','ready'].includes(String(r.phase))||r.userId!==user||!uuid(r.requestId)||!object(r.identity)
   ||!same(r.identity as unknown as AuraIdentity,i)||!matchesSnapshot(r.expected,i)||!object(r.proposal))throw invalid();
  return r as unknown as SavedAuraRequest;
 }
@@ -29,7 +29,8 @@ const active=new Map<string,Promise<AuraResolutionReceipt>>();
  * Scope checks concern the current user/view, not whether an old turn ended.
  * Callers refresh live state; historical result pools must never patch stores. */
 export function processSavedAuraResolution(user:string,input:AuraIdentity,trigger:AuraTrigger,
- prepare:(context:Record<string,unknown>,requestId:string)=>Record<string,unknown>,assertCurrentScope:()=>void):Promise<AuraResolutionReceipt>{
+ prepare:(context:Record<string,unknown>,requestId:string)=>Record<string,unknown>,assertCurrentScope:()=>void,
+ review?:(request:SavedAuraRequest)=>Promise<{useResistance:boolean}|null>):Promise<AuraResolutionReceipt>{
  assertCurrentScope();
  if(!uuid(user)||!validIdentity(input)||!['creature_entered','emanation_entered','turn_end'].includes(trigger))return Promise.reject(invalid());
  const i=structuredClone(input),k=key(user,i),pending=active.get(k);if(pending)return pending;
@@ -53,8 +54,18 @@ export function processSavedAuraResolution(user:string,input:AuraIdentity,trigge
    const proposal=prepare(structuredClone(context),requestId);assertCurrentScope();
    if(!object(proposal)||'then' in proposal)throw invalid();
    // JSON round-trip fixes the exact wire representation before any RPC.
-   const serialized=JSON.stringify({version:1,phase:'ready',userId:user,requestId,identity:i,expected:context,proposal});
+   const serialized=JSON.stringify({version:1,phase:review?'review':'ready',userId:user,requestId,identity:i,expected:context,proposal});
    localStorage.setItem(k,serialized);request=savedAuraResolution(user,i);if(!request)throw invalid();
+  }
+  if(request.phase==='review'){
+   // Persist the dice before opening a decision UI. Cancel/reload may reopen
+   // that decision, but a submitted ('ready') request is never edited again.
+   if(!review)throw new Error('This saved aura requires review before it can be applied.');
+   const choice=await review(structuredClone(request));assertCurrentScope();
+   if(choice===null)throw new Error('Aura decision postponed. The original rolls are saved for review.');
+   if(!object(choice)||Object.keys(choice).length!==1||typeof choice.useResistance!=='boolean')throw invalid();
+   const reviewed={...request,phase:'ready',proposal:{...request.proposal,useResistance:choice.useResistance}};
+   localStorage.setItem(k,JSON.stringify(reviewed));request=savedAuraResolution(user,i);if(!request)throw invalid();
   }
   assertCurrentScope();
   let result:unknown;

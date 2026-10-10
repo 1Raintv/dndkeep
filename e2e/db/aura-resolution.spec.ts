@@ -178,4 +178,26 @@ test.describe('Atomic aura resolution',()=>{
   expect(result).toEqual({radiant:{resistant:true,immune:false,vulnerable:false},fire:{resistant:false,immune:false,vulnerable:true}});
  });
 
+ test('a postponed resistance decision survives reload with the original save and damage dice',async({page})=>{
+  monster();await signInFixtureDm(page);
+  const identity={encounterId:enc,turnId:turn,originId:pa,targetId:pb,auraKey:'fixture'};
+  const pending=await page.evaluate(async({user,identity,proposal})=>{
+   const path='/src/lib/api/auraResolution.ts',api=await import(/* @vite-ignore */ path);let error='';
+   try{await api.processSavedAuraResolution(user,identity,'turn_end',()=>proposal,()=>{},async()=>null);}catch(e){error=String(e);}
+   return {error,saved:api.savedAuraResolution(user,identity)};
+  },{user:dm,identity,proposal:proposal()});
+  expect(pending.error).toContain('postponed');expect(pending.saved.phase).toBe('review');
+  expect(counts()).toEqual({receipt:0,penalty:0,events:0,marker:0});
+  expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe('20');
+  await page.reload();
+  const result=await page.evaluate(async({user,identity})=>{
+   const path='/src/lib/api/auraResolution.ts',api=await import(/* @vite-ignore */ path);
+   return api.processSavedAuraResolution(user,identity,'turn_end',()=>{throw new Error('Unexpected replacement roll');},()=>{},async()=>({useResistance:true}));
+  },{user:dm,identity});
+  expect(result).toMatchObject({requestId:pending.saved.requestId,save:{dice:[1],passed:false},passed:true,acceptedResistance:true,damage:7,damageResult:{afterHP:13}});
+  expect(run(lookup()).request.proposal.damageRoll).toEqual(pending.saved.proposal.damageRoll);
+  expect(sql(`select legendary_resistance_used from combat_participants where id='${pb}'`)).toBe('1');
+  expect(counts()).toEqual({receipt:1,penalty:1,events:3,marker:1});
+ });
+
 });

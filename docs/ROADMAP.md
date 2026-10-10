@@ -7469,3 +7469,28 @@ personal homebrew sources; 24 focused defense unit cases pass. No deployment.
 
 Full gate passes: 3,607 units, TypeScript 195/195, hooks/RAW/coordinates/anchors,
 production build and entry budget. Changed-file lint and diff checks pass.
+
+
+### Persisted aura review decisions (2026-10-10)
+
+Aura recovery can now pause between saved rolls and submission. With a review
+callback, the exact proposal is saved in a `review` phase before opening the
+decision. Postponing or reloading retains the original request and dice; a
+caller without the required reviewer cannot silently apply it. Review receives
+a clone and may return only the Legendary Resistance choice. The choice is
+saved in the `ready` phase before submission. An ambiguously submitted request
+never asks for a replacement decision, which could otherwise disagree with a
+server result whose reply was lost.
+
+Scope changes or storage failure during review leave it unsubmitted. A missing
+or interrupted preparation still requires explicit review rather than rerolling.
+This is the durable decision seam for the upcoming controls, not a completed
+live modal or turn-pipeline integration. No production deployment.
+
+Validation: 18 recovery unit cases pass. Four desktop/mobile browser cases
+cover both lost commit responses and postponing resistance through reload;
+the latter verifies the original save/damage dice, one resistance charge and
+one damage application. Changed-file ESLint and diff checks pass.
+
+Full gate passes: 3,612 unit tests, TypeScript 195/195, clean hooks/RAW/coordinates/
+anchors, production build and 255.7 KB entry budget.
