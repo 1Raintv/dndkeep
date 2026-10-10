@@ -8,7 +8,7 @@
 // initiative for everyone as opposed to it opening a window — anyone
 // on the battle map will then roll initiative."
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useCombatSelector } from '../../context/CombatContext';
 // v2.486.0 — In-app confirm via the existing useModal() system
 // (v2.241). Replaces the short-lived v2.485 ConfirmDialog helper,
@@ -41,6 +41,8 @@ export default function StartCombatButton({ campaignId, onStarted }: Props) {
   const encounter = useCombatSelector(s => s.encounter);
   const refresh = useCombatSelector(s => s.load);
   const [starting, setStarting] = useState(false);
+  const [ending,setEnding]=useState(false),endClick=useRef(false);
+  const latestEncounter=useRef(encounter?.id);latestEncounter.current=encounter?.id;
   // v2.486.0 — In-app confirm hook (see useModal docstring in Modal.tsx).
   const { confirm: confirmModal } = useModal();
   // Inline error/info banner. Auto-clears after a few seconds so it
@@ -104,7 +106,9 @@ export default function StartCombatButton({ campaignId, onStarted }: Props) {
   }
 
   async function onEnd() {
-    if (!encounter) return;
+    if (!encounter || endClick.current) return;
+    const id=encounter.id;endClick.current=true;setEnding(true);
+    try {
     // v2.486.0 — In-app confirm via useModal. Replaces v2.485's
     // ConfirmDialog helper (now deleted as duplicate of the
     // pre-existing v2.241 system).
@@ -114,14 +118,18 @@ export default function StartCombatButton({ campaignId, onStarted }: Props) {
       confirmLabel: 'End Combat',
       danger: true,
     });
-    if (!ok) return;
-    await endEncounter(encounter.id);
+    if (!ok || latestEncounter.current!==id) return;
+    setMessage(null);
+    const result=await endEncounter(id);
+    if(latestEncounter.current!==id)return;
+    if(!result.ok){setMessage({kind:'error',text:result.reason});return;}
     await refresh();
+    } finally {endClick.current=false;setEnding(false);}
   }
 
   if (encounter && encounter.status === 'active') {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
         <span style={{
           fontFamily: 'var(--ff-body)', fontSize: 10, fontWeight: 800,
           letterSpacing: '0.1em', textTransform: 'uppercase',
@@ -133,11 +141,13 @@ export default function StartCombatButton({ campaignId, onStarted }: Props) {
         </span>
         <button
           onClick={onEnd}
+          disabled={ending}
           className="btn-danger btn-sm"
           style={{ fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 700 }}
         >
-          End Combat
+          {ending ? 'Ending…' : 'End Combat'}
         </button>
+        {message?.kind==='error' && <span role="alert" style={{color:'#fca5a5',fontSize:12}}>{message.text}</span>}
       </div>
     );
   }

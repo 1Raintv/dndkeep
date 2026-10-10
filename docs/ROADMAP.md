@@ -8056,3 +8056,39 @@ Remaining: recorded map/path preview and teleport intent, insertion/resize
 capture, legacy partial effects and actions or combat ending while effects are
 pending. Counts refresh within the polling interval plus request time; this is
 not a realtime subscription or an automatic geometry decision.
+
+
+### Atomic End Combat (2026-10-10, unreleased)
+
+End Combat now saves character HP, temporary HP, death counters, stability,
+conditions, buffs and immunity snapshots in the same transaction as the ended
+status and combat log. Failure rolls everything back. The former browser loop
+marked combat ended first and swallowed carry-over failures; it is removed.
+Both controls report failures, reject repeated clicks and check encounter scope.
+The character-sheet entry keeps an accessible, wrapping error until retry.
+
+Migration 20261010070027 adds a private completion receipt and checked-DM RPCs.
+Retries recover the receipt before inspecting live turn state, because ending
+combat rotates the turn ID. Recovery never overwrites subsequent healing.
+Authenticated direct status changes cannot bypass completion; completed combat
+cannot be reopened. Pending movement reviews and incomplete incoming-turn work
+block completion. Character identities must match their campaign and combatant.
+Creature templates retain only the existing DM-owned buff/immunity carry-over;
+instance HP never overwrites template HP. Conflicting buffs on multiple instances
+of one template block completion rather than selecting an arbitrary winner.
+
+Verified: 18 distinct local database/browser cases, plus mobile error rendering;
+late character/log/status failures roll back all state; dropped responses recover
+after reload; ownership, stable/dead state and immunity snapshots are covered.
+Desktop/mobile screenshots inspected; official overflow and console/network
+checks passed. Removing the error deliberately failed the UI regression;
+restoring it passed. Required gate: 3,894 units, TS 194/194, 255.7 KB entry.
+The 57 focused Propel/description/rule tests also pass. SQL lint clean; security
+advisors retain the existing keep_warm and client_errors warnings. Exact local
+migration ledger verified; database-only history preserved. Not deployed.
+
+Remaining: creature effects need true per-instance carry-over instead of shared
+homebrew-template storage. Other unfinished actions (including pending Propel,
+attack/reaction declarations and death-save offers) need a completion audit;
+this change does not claim to gate all of them. Continue source-based Psion
+ability checks and map path/teleport intent work before release.

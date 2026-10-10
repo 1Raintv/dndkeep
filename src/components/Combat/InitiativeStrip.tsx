@@ -232,19 +232,20 @@ export default function InitiativeStrip({ isDM, characterId }: Props) {
   }
 
   async function onEndCombat() {
-    if (!encounter) return;
-    // v2.486.0 — In-app confirm via useModal.
-    const ok = await confirmModal({
-      title: 'End combat?',
-      message: 'Ends the current encounter. Conditions, buffs, and cross-encounter immunities will carry over to character sheets.',
-      confirmLabel: 'End Combat',
-      danger: true,
-    });
-    if (!ok) return;
-    const result = await endEncounter(encounter.id);
-    if (!result.ok) {
-      showToast(`Couldn't end combat: ${result.reason}`, 'error');
-    }
+    if (!encounter || turnClick.current) return;
+    const started=encounter.id;turnClick.current=true;
+    try {
+      const ok = await confirmModal({
+        title: 'End combat?',
+        message: 'Ends the current encounter. Conditions, buffs, and cross-encounter immunities will carry over to character sheets.',
+        confirmLabel: 'End Combat', danger: true,
+      });
+      if (!ok || !mounted.current || latestEncounter.current!==started) return;
+      const result = await endEncounter(started);
+      if (mounted.current && latestEncounter.current===started && !result.ok) {
+        showToast(`Couldn't end combat: ${result.reason}`, 'error', {duration:0});
+      }
+    } finally {turnClick.current=false;}
   }
 
   // v2.108.0 — Phase G: Dash + Disengage action buttons. Apply to the current
