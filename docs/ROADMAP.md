@@ -8752,3 +8752,20 @@ All six desktop/mobile Surge and malformed-pool cases pass. Full gate passes:
 4,041 units, TS 194/194, entry 255.7 KB. This is test coverage of existing
 behavior, not a new feature or production deployment. The earlier note about
 stale Surge/malformed-pool selectors in this file is resolved.
+
+
+### Map refresh deletion race (2026-10-10, unreleased)
+
+A scene refresh could put a token back after a newer deletion removed it from
+the live store. Refresh reconciliation now drops rows present when the request
+started but removed before its response. Later authoritative refreshes can still
+restore a row, and existing held/pending-position protection is unchanged.
+
+Two new unit cases cover the race and later reconciliation. Eleven focused map
+refresh/reconnect cases pass; full gate passes 4,043 units, TS 194/194 and entry
+255.7 KB. Desktop/mobile actual-canvas tests hold an old response, simulate the
+store update made by a newer deletion event, and verify the token stays absent
+in both state and Pixi. Shared database fixture rows remain untouched. Screenshots
+inspected. Removing the guard resurrects the token and fails the browser test;
+restored code passes. This does not certify all creation/deletion/reconnect races
+or replace actual multiplayer delivery tests. No production deployment.

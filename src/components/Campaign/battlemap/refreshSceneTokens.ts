@@ -14,10 +14,14 @@ export async function refreshSceneTokens(sceneId:string,campaignId:string,cancel
   const list=await tokensApi.listTokens(sceneId,{campaignId});
   const current=useBattleMapStore.getState();
   if(cancelled() || current.currentSceneId!==sceneId || requests.get(sceneId)!==request)return;
-  current.setTokensBulk(list.map(token=>{
+  current.setTokensBulk(list.flatMap(token=>{
     const old=before.tokens[token.id],live=current.tokens[token.id];
+    // v2.869 — a delete received during this fetch is newer than its snapshot.
+    // Do not resurrect that token. A subsequent refresh can still adopt server
+    // truth because its starting snapshot no longer contains the removed row.
+    if(old && !live)return [];
     const changed=live && old && (live.x!==old.x || live.y!==old.y);
     const held=protectedIds.has(token.id) || isTokenHeld(current,token.id);
-    return live && (changed || held)?{...token,x:live.x,y:live.y}:token;
+    return [live && (changed || held)?{...token,x:live.x,y:live.y}:token];
   }));
 }

@@ -56,3 +56,19 @@ it('rewinds an unlocked, non-pending token to the snapshot — why the lease mus
 it('removes rows no longer returned rather than retaining inaccessible tokens',async()=>{
   vi.mocked(api.listTokens).mockResolvedValue([]);await refreshSceneTokens('s','c');expect(useBattleMapStore.getState().tokens).toEqual({});
 });
+
+it('does not resurrect a token removed while its snapshot was loading',async()=>{
+ let finish!:(tokens:Token[])=>void;vi.mocked(api.listTokens).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+ const pending=refreshSceneTokens('s','c');
+ useBattleMapStore.getState().removeToken('a');
+ finish([token,{id:'b',x:105,y:105} as Token]);await pending;
+ expect(useBattleMapStore.getState().tokens.a).toBeUndefined();
+ expect(useBattleMapStore.getState().tokens.b).toMatchObject({x:105,y:105});
+});
+it('allows a later authoritative refresh to restore a previously removed row',async()=>{
+ let finish!:(tokens:Token[])=>void;vi.mocked(api.listTokens).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+ const pending=refreshSceneTokens('s','c');useBattleMapStore.getState().removeToken('a');finish([token]);await pending;
+ expect(useBattleMapStore.getState().tokens.a).toBeUndefined();
+ vi.mocked(api.listTokens).mockResolvedValue([{...token,x:245}]);await refreshSceneTokens('s','c');
+ expect(useBattleMapStore.getState().tokens.a.x).toBe(245);
+});

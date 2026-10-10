@@ -105,6 +105,26 @@ test.describe('token gestures (local stack)', () => {
       await page.evaluate(async original=>{const p='/src/lib/api/tokensApiRouter.ts';const api=await import(/* @vite-ignore */ p);if((window as any).__moveCampaignId)await api.updateTokenPos(original.id,original.x,original.y,{campaignId:(window as any).__moveCampaignId});},token);
     }
   });
+  test('a delayed refresh does not redraw a token removed by a newer event',async({page},info)=>{
+    await openMap(page);const token=await ilyana(page),campaignId=await campaignIdOf(page);
+    let captured!:()=>void,release!:()=>void;const ready=new Promise<void>(r=>captured=r),held=new Promise<void>(r=>release=r);let first=true;
+    await page.route('**/rest/v1/scene_token*',async route=>{
+      if(first&&route.request().method()==='GET'){first=false;const response=await route.fetch();captured();await held;await route.fulfill({response});}else await route.continue();
+    });
+    const drawn=()=>page.evaluate(id=>{
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+      return vp.children.flatMap((c:any)=>c.children??[]).some((c:any)=>c.__tokenId===id);
+    },token.id);
+    try{
+      await page.evaluate(async campaignId=>{const p='/src/components/Campaign/battlemap/refreshSceneTokens.ts';const {refreshSceneTokens}=await import(/* @vite-ignore */ p);const s='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ s);(window as any).__lateDeleteRefresh=refreshSceneTokens(useBattleMapStore.getState().currentSceneId,campaignId);},campaignId);
+      await ready;
+      // Simulate the store update made by a newer deletion event; preserve the shared fixture in the database.
+      await page.evaluate(async id=>{const s='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ s);useBattleMapStore.getState().removeToken(id);},token.id);
+      await expect.poll(drawn).toBe(false);release();await page.evaluate(()=>(window as any).__lateDeleteRefresh);
+      expect((await state(page)).tokens[token.id]).toBeUndefined();await expect.poll(drawn).toBe(false);
+      await page.screenshot({path:info.outputPath('deleted-token-stays-absent.png')});
+    }finally{release();await page.unroute('**/rest/v1/scene_token*');}
+  });
   test('map help uses the roomier side of a raised navigation dock',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
     await openMap(page);
