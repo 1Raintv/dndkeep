@@ -1,5 +1,35 @@
 # DNDKeep — Two-Track Roadmap
 
+### Mutable Form saved backend (private; not yet player-accessible)
+
+Migration `20261010220000_saved_mutable_form.sql` adds an owner-checked private
+activation ledger. Declaration atomically claims the shared Bonus Action, pays
+one/two Energy Dice, stores one original face and the ability/inventory context,
+and binds the selected improvement. Exact retries recover the same receipt;
+changed requests fail. New forms replace earlier timed forms. Saved Enkindled
+and Surge payments finalize one repeatable total without rerolling or extra
+Energy Dice. Durations use the existing game clock; Restoration consumes 60
+seconds, a completed rest ends the form, and unknown clock state stays unknown.
+
+16 local database tests pass, including simultaneous requests, rollback on failed
+payment, class order, level/choice restrictions, ownership/private privileges,
+replacement, time boundaries, rest/Restoration and enhanced roll recovery.
+Full `npm run verify` passes (4,730 tests, TS 193/193, 256.1 KB entry). Local lint
+has 20 existing entries and no Mutable Form findings; advisors likewise report
+no Mutable Form findings. Migration reapplication succeeds inside a rolled-back
+transaction. Evidence: `.tmp/mutable-form-{db,saved-gate,lint,advisors,idempotence}.log`.
+
+Normal local DB has all 344 repo migrations plus the preserved foreign
+20261008213500 entry. CLI refused that foreign history, so only the new file and
+its ledger entry were applied together in a local transaction. Production remains
+unchanged. The earlier fresh/upgrade rehearsals stop at 343 migrations and need
+this migration before their comparisons can certify the current branch.
+
+The backend deliberately has no public dispatcher yet. Remaining before rollout:
+finalize effective INT and temporary-HP application/replacement, timed combat
+modifiers, atomic history, typed API/receipts, player choices and durable recovery.
+Private declaration/payment tests do NOT prove playable Mutable Form automation.
+
 ### Mutable Form rules foundation (not yet wired to activation)
 
 The owner-provided UA update pp.7–8 is now represented by pure rules in
