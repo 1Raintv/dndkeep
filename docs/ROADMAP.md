@@ -1,5 +1,39 @@
 # DNDKeep — Two-Track Roadmap
 
+### Next Psion integration: saved Telepathic Connection range
+
+Code audit on 2026-10-10 confirms the current extension saves its Energy Die
+payment and emits a range/history message, but does not persist a timed range
+state. `ClassAbilitiesSection.finalizeAbilityUse` pays the base original roll;
+`PsionicPowerButton` separately offers Surge/Enkindled. The active telepathy
+range must not be reconstructed from unlinked enhancement history or toast text.
+Existing numeric rules match the owner UA update: base 30 ft (Telepath level 6:
+60 ft), plus ten times the final roll, one hour, Bonus Action, first extension
+per Long Rest free but requiring an available Energy Die.
+
+Implementation requirements for the next integration:
+- Save a Connection declaration before enhancements; bind every enhancement to
+  that declaration, as Propel already does. Preserve the final verified roll.
+- Settle the shared Bonus Action, first-free claim/die cost and timed effect
+  together. A lost reply or reload must recover the same result without a new
+  roll, die spend, action claim or fresh duration.
+- Use campaign/standalone game-time clocks, not elapsed browser wall time.
+  Store the original clock context; handle campaign transfers, clock recovery,
+  and overlapping extensions explicitly rather than silently stacking them.
+  In particular, the existing Sharpened Mind recovery token changes on
+  one-minute Restoration; reusing that invalidation would incorrectly end a
+  one-hour Connection. Its elapsed-seconds clock can be shared, but rest/time
+  advancement and effect expiration need their own verified policy.
+- Read the active range on the sheet and in future Telepath reaction targeting.
+  Do not claim Distraction/Bolstering automation: neither has a dedicated row in
+  the current class combat ability catalog.
+- Verify base and level-six ranges, Surge/Enkindled totals, first-free/paid uses,
+  short/long rest behavior, overlapping uses, exact expiry, reload, lost replies,
+  ownership, multiclass context and desktop/mobile display.
+
+This remains unfinished automation. No timed Connection effect or Telepath
+reaction implementation was added by the audit.
+
 ### Production data preflight (2026-10-10; not released)
 
 Production's exact 233-version ledger matches the repository through
