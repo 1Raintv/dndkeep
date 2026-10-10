@@ -167,3 +167,11 @@ it('manual upcast damage pays, consumes the action, and starts concentration onc
  await waitFor(()=>expect(mocks.log).toHaveBeenCalledOnce());expect(update).toHaveBeenCalledOnce();expect(action).toHaveBeenCalledOnce();expect(concentration).toHaveBeenCalledOnce();
  expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({diceExpression:'1d6',notes:'Level 3 slot'}));
 });
+
+it.each(['grant:class:Psion','class:Wizard'] as const)('logs Stronger Telekinesis casting range for source %s without changing the base spell',async source=>{
+ const mageHand={...spell,id:'mage-hand',name:'Mage Hand',range:'30 feet',save_type:undefined,damage_at_char_level:undefined};
+ render(<SpellCastButton spell={mageHand} character={{...character,subclass:'Psykinetic',secondary_class:'Wizard',secondary_level:1,spell_sources:{'mage-hand':[source]}}} userId="owner" onUpdateSlots={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Cast'}));
+ await waitFor(()=>expect(mocks.log).toHaveBeenCalledWith(expect.objectContaining({notes:expect.stringContaining('60 feet')})));
+ expect(mageHand.range).toBe('30 feet');
+});

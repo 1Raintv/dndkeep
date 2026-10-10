@@ -1,3 +1,4 @@
+import {hasStrongerTelekinesis,psionSpellRange} from '../../rules/psionSpellRange';
 import {canUpcastSpell} from '../../rules/spellSlots';
 import type {ConcentrationCastSource} from '../../rules/concentrationCasting';
 import {useSpellCasting} from './SpellCastingContext';
@@ -757,7 +758,7 @@ function SpellCard({ spell, damageCharacter, computed, effectiveLevel, isUpcast,
  <div className="srow-time" style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const }}>{timeAbbr}</div>
 
  {/* Col 4: RANGE */}
- <div className="srow-range" style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{spell.range}</div>
+ <div className="srow-range" style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', textAlign: 'center', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{psionSpellRange(damageCharacter,spell)}</div>
 
  {/* Col 5: TAGS — concentration / AoE indicator chips. v2.373.0
      replaces the inline ● CONC text in the NAME cell. Compact chip
@@ -852,7 +853,7 @@ function SpellCard({ spell, damageCharacter, computed, effectiveLevel, isUpcast,
  <div style={{ borderTop: `1px solid ${schoolColor}20`, padding: '12px 14px', background: 'rgba(255,255,255,0.015)' }}>
  {/* Stats row */}
  <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 10 }}>
- {[['Casting Time', spell.casting_time], ['Range', spell.range], ['Duration', spell.duration], [psionicCasting ? 'Base components' : 'Components', spell.components]].map(([k, v]) => v ? (
+ {[['Casting Time', spell.casting_time], ['Range', psionSpellRange(damageCharacter,spell)], ['Duration', spell.duration], [psionicCasting ? 'Base components' : 'Components', spell.components]].map(([k, v]) => v ? (
  <div key={k}>
  <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 2 }}>{k}</div>
  <div style={{ fontSize: 12, color: 'var(--t-2)', fontWeight: 500 }}>{v}</div>
@@ -860,7 +861,7 @@ function SpellCard({ spell, damageCharacter, computed, effectiveLevel, isUpcast,
  ) : null)}
  </div>
 
- {psionicCasting && <PsionCastingNote subtle={subtleTelekinesis}/>}
+ <PsionCastingNote psionic={psionicCasting} subtle={subtleTelekinesis} stronger={hasStrongerTelekinesis(damageCharacter,spell)}/>
  {damageProfile.bonus!==0&&<p>Potent Thoughts: {damageProfile.bonus>0?'+':''}{damageProfile.bonus} Intelligence damage included.</p>}
  {damageProfile.needsSourceReview&&<p>Review this spell’s sources to apply Potent Thoughts if it is a Psion cantrip.</p>}
  {/* Description */}

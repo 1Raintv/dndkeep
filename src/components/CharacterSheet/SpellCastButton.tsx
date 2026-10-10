@@ -1,3 +1,5 @@
+import {hasStrongerTelekinesis,psionSpellRange} from '../../rules/psionSpellRange';
+import PsionCastingNote from './_shared/PsionCastingNote';
 import {canUpcastSpell,availableSpellSlots} from '../../rules/spellSlots';
 import {createSpellDeclarationRequest,createTeleporterCantripRequest} from '../../lib/spellDeclarationRequest';
 import {declarationParticipant,saveSpellDeclaration} from '../../lib/api/declaredSpells';
@@ -299,7 +301,7 @@ function ResolvedSpellCastButton({
  flashCast(slotLevel);
  await logAction({ campaignId, characterId: character.id, characterName: character.name,
  actionType: 'spell', actionName: spell.name, targetName,
- notes: `${isCantrip ? 'Cantrip' : `Level ${slotLevel} slot`} · ${spell.range} · ${spell.duration}` });
+ notes: `${isCantrip ? 'Cantrip' : `Level ${slotLevel} slot`} · ${psionSpellRange(character,spell)} · ${spell.duration}` });
  }
 
  /** Cast utility spell (no dice). Composed of burnSlot + applyEffect so
@@ -352,7 +354,7 @@ function ResolvedSpellCastButton({
    character={character} spell={spell} userId={userId} casting={casting} slotLevel={0}
    teleporterCombatParent={teleporterCombatParent} onSaved={onTeleporterDeclared}
    attackKind={mechanics.isAttack?'attack_roll':'save'} attackMode={mechanics.attackType}
-   maxRangeFt={parseRangeToFt(spell.range)} attackBonus={spellAttack}
+   maxRangeFt={parseRangeToFt(psionSpellRange(character,spell))} attackBonus={spellAttack}
    saveAbility={mechanics.saveType as 'STR'|'DEX'|'CON'|'INT'|'WIS'|'CHA'|undefined}
    saveSuccessEffect="none" damageDice={damageForSlot(0)!} damageType={mechanics.damageType??''} label="Choose follow-up target"/>;
   return <div style={{display:'grid',gap:8}}><label>Target or point (optional)<input aria-label="Follow-up target" value={target} onChange={e=>setTarget(e.target.value)} maxLength={300}/></label>
@@ -437,7 +439,7 @@ function ResolvedSpellCastButton({
  <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' as const, marginRight: -8, paddingRight: 8 }}>
  {/* v2.63.0: full spell description (one big block) so player has full
      context on what the spell does without closing the modal. */}
- <SpellDescription spell={spell} />
+ <PsionCastingNote psionic={false} stronger={hasStrongerTelekinesis(character,spell)}/><SpellDescription spell={spell} />
  {!spell.higher_levels?.trim()&&<p style={{fontSize:12,color:'var(--t-2)'}}>A higher slot is allowed. Apply extra effects only when the spell description specifies them.</p>}
  {/* v2.64.0: Unified slot picker. When the spell has per-tier damage/healing
      data, show a rich grid where each tile = one slot tier with the rolled
@@ -806,7 +808,7 @@ function ResolvedSpellCastButton({
    <SpellAttackCastButton
      character={character} spell={spell} userId={userId} casting={casting} slotLevel={effSlot}
      attackKind="attack_roll" attackMode={mechanics.attackType}
-     maxRangeFt={parseRangeToFt(spell.range)}
+     maxRangeFt={parseRangeToFt(psionSpellRange(character,spell))}
      attackBonus={spellAttack}
      damageDice={dice}
      damageType={mechanics.damageType ?? ''}
@@ -868,7 +870,7 @@ function ResolvedSpellCastButton({
  <SpellAttackCastButton
  character={character} spell={spell} userId={userId} casting={casting} slotLevel={effSlot}
  attackKind="save"
- maxRangeFt={parseRangeToFt(spell.range)}
+ maxRangeFt={parseRangeToFt(psionSpellRange(character,spell))}
  saveAbility={mechanics.saveType as any}
  saveSuccessEffect={isCantrip?'none':'half'}
  damageDice={dice}
@@ -1031,7 +1033,7 @@ function ResolvedSpellCastButton({
  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
  <span style={{ fontSize: 10, color: 'var(--t-3)', background: 'var(--c-raised)',
  border: '1px solid var(--c-border)', borderRadius: 999, padding: '2px 7px' }}>
- {spell.range}
+ {psionSpellRange(character,spell)}
  </span>
  {mechanics.saveType && (
  <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 999, padding: '2px 8px',
@@ -1172,7 +1174,7 @@ function ResolvedSpellCastButton({
  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
  <span style={{ fontSize: 10, color: 'var(--t-3)', background: 'var(--c-raised)',
  border: '1px solid var(--c-border)', borderRadius: 999, padding: '2px 7px' }}>
- {spell.range}
+ {psionSpellRange(character,spell)}
  </span>
  <span style={{ fontSize: 10, color: 'var(--t-3)', background: 'var(--c-raised)',
  border: '1px solid var(--c-border)', borderRadius: 999, padding: '2px 7px' }}>
@@ -1242,7 +1244,7 @@ function ResolvedSpellCastButton({
  </div>
  <div style={{ padding: 8, background: '#080d14', borderRadius: 'var(--r-md)',
  marginBottom: 12, fontSize: 10, color: 'var(--t-2)', lineHeight: 1.4,
- maxHeight: 240, overflowY: 'auto' }}><SpellDescription spell={spell} /></div>
+ maxHeight: 240, overflowY: 'auto' }}><PsionCastingNote psionic={false} stronger={hasStrongerTelekinesis(character,spell)}/><SpellDescription spell={spell} /></div>
  <div style={{ display: 'flex', gap: 8 }}>
  <button className="btn-secondary" onClick={() => setShowModal(false)}
  style={{ flex: 1, justifyContent: 'center' }}>Cancel</button>

@@ -1,5 +1,24 @@
 # DNDKeep — Two-Track Roadmap
 
+### Psykinetic Mage Hand range and carrying guidance (local; not released)
+
+Stronger Telekinesis now adds 30 feet to Mage Hand's casting range in Actions,
+Spells, cast details and utility history. Canonical Psion progression gates the
+modifier at Psykinetic level 3 in either multiclass order, for any casting source.
+The character's spell details also show the 20-pound carrying limit. Shared SRD
+spell data and attribution remain intact; no increased hand movement or tether
+is inferred from the owner's UA update (p.9).
+
+Validation: full `npm run verify` passes (4,684 tests, TS 193/193, 256.1 KB entry).
+16 pure-rule cases and two cast-history cases cover eligibility and unchanged
+base data. Four desktop/mobile browser cases cover primary/secondary Psion,
+Actions/Spells and removal of the modifier after changing subclass. Screenshots
+and scoped overflow checks pass. Disabling the range modifier fails the browser
+regression at 30 instead of 60 feet; original source restored and all checks rerun.
+Evidence: `.tmp/psion-mage-hand-{unit,browser,mutation,restored,gate}.log`.
+No schema changes or production writes. Prior head 285f25d4 now has both hosted
+CI gates and Vercel deployment green; authenticated preview smoke remains pending.
+
 ### Connection recovers interrupted roll preparation (local; not released)
 
 Connection now saves versioned entropy, Energy Die size and the original

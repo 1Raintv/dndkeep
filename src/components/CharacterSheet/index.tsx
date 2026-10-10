@@ -1,3 +1,4 @@
+import {hasStrongerTelekinesis,psionSpellRange} from '../../rules/psionSpellRange';
 import {unarmedSaveDC} from '../../rules/unarmedStrike';
 import {CampaignDamageRecovery} from './CampaignDamageRecovery';
 import {useCampaignSheetDamage} from '../../lib/hooks/useCampaignSheetDamage';
@@ -3288,7 +3289,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
 
                      {/* Col 4: range */}
                      <div className="arow-range" style={{ textAlign: 'center', minWidth: 0, lineHeight: 1.1 }}>
-                       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatRange(spell.range)}</div>
+                       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatRange(psionSpellRange(character,spell))}</div>
                      </div>
 
                      {/* Col 5: hit/DC */}
@@ -3368,7 +3369,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
                    {isExpanded && (
                      <div style={{ borderTop: `1px solid ${sc}20`, padding: '12px 14px', background: 'rgba(255,255,255,0.015)' }}>
                        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' as const, marginBottom: 10, alignItems: 'center' }}>
-                         {[['Casting Time', spell.casting_time], ['Range', spell.range], ['Duration', spell.duration], ['Components', spell.components]].map(([k, v]) => v ? (
+                         {[['Casting Time', spell.casting_time], ['Range', psionSpellRange(character,spell)], ['Duration', spell.duration], ['Components', spell.components]].map(([k, v]) => v ? (
                            <div key={k}>
                              <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase' as const, letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 2 }}>{k}</div>
                              <div style={{ fontSize: 12, color: 'var(--t-1)' }}>{v}</div>
@@ -3873,12 +3874,12 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
 
  {/* Col 4: RANGE + TARGET (v2.63.0 stacked) */}
  <div className="arow-range" style={{ textAlign: 'center', minWidth: 0, lineHeight: 1.1 }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatRange(spell.range)}</div>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatRange(psionSpellRange(character,spell))}</div>
  {(() => {
  // Derive target description: AoE first, else parse description, else "1 target" for ranged spells
  const aoe = (spell as any).area_of_effect as { type: string; size: number } | undefined;
  if (aoe) return <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--t-3)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{aoe.size}-ft {aoe.type}</div>;
- const rng = (spell.range || '').toLowerCase();
+ const rng = (psionSpellRange(character,spell) || '').toLowerCase();
  if (rng === 'self') return null; // self-buff spells don't need a target line
  if (rng === 'touch' || rng === '—' || rng === '') return null;
  const desc = (spell.description || '').toLowerCase();
@@ -3979,7 +3980,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  <div style={{ borderTop: `1px solid ${sc}20`, padding: '12px 14px', background: 'rgba(255,255,255,0.015)' }}>
  {/* Stats row */}
  <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' as const, marginBottom: 10, alignItems: 'center' }}>
- {[['Casting Time', spell.casting_time], ['Range', spell.range], ['Duration', spell.duration], ['Components', spell.components]].map(([k, v]) => v ? (
+ {[['Casting Time', spell.casting_time], ['Range', psionSpellRange(character,spell)], ['Duration', spell.duration], ['Components', spell.components]].map(([k, v]) => v ? (
  <div key={k}>
  <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase' as const, letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 2 }}>{k}</div>
  <div style={{ fontSize: 12, color: 'var(--t-2)', fontWeight: 500 }}>{v}</div>
@@ -3996,7 +3997,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  }}>{effectLabel}</span>
  </div>
  </div>
- {spellCasting?.className === 'Psion' && <PsionCastingNote subtle={spell.id === 'mage-hand'}/>}
+ <PsionCastingNote psionic={spellCasting?.className === 'Psion'} subtle={spellCasting?.className === 'Psion'&&spell.id === 'mage-hand'} stronger={hasStrongerTelekinesis(character,spell)}/>
  <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: 0 }}>{spell.description}</p>
 
  {/* v2.49.0: Upcast trigger button — appears for spells that support
