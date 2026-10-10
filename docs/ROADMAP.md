@@ -6827,3 +6827,31 @@ SQL lint, security advisors, changed-file ESLint and diff checks pass. Migration
 20261010070008 was applied and recorded only in the existing local Docker stack;
 no reset or changes to unrelated migration history. Supabase function guidance
 and the current database changelog were reviewed; no new API dependency.
+
+### Recharge rules prerequisite for durable incoming turns (unreleased)
+
+Review found the legacy advanceTurn loop and MonsterActionPanel labels assume
+all roll-recharge actions succeed on 5–6. That is not the rule: the action's
+listed d6 result/range controls success. The generic usage flag alone does not
+supply that range. The current local catalog has no roll-recharge examples, so
+it cannot establish whether production retained every needed threshold.
+
+Added a pure rules planner that reads explicit action title/usage ranges,
+recognizes single-face recharge, rejects malformed/conflicting data, validates
+all expended actions before rolling and uses the canonical d6 roller once per
+expended action. Its returned plan carries the exact ranges, dice, outcomes and
+remaining actions for a future saved transaction. Unknown thresholds require
+review; none default to 5–6. Prose is deliberately not scanned for unrelated
+ability references. Source: [2024 Basic Rules, Limited Usage](https://www.dndbeyond.com/sources/dnd/br-2024/how-to-use-a-monster#LimitedUsage).
+
+This planner has no live caller yet. Next integration must persist the proposal,
+commit recharge changes/events once per participant/turn, recover receipts before
+rolling, read actual catalog action data and update the panel's hard-coded labels.
+Rest-based recharge is also separate. The existing live recharge loop remains
+incorrect until replaced; this entry does not claim that loop is fixed. No UI,
+database migration or production deployment in this change.
+
+Verification:27 new rule cases pass, including exact-face success, mixed ranges,
+malformed data, conflicting labels, duplicate/missing actions, pre-roll batch
+validation, invalid die values and no-op batches. Final required gate passes
+(3,382 units,195/195 TypeScript,255.2 KB entry); ESLint and diff checks clean.
