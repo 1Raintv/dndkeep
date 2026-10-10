@@ -1,4 +1,4 @@
-import {commitCombatClock,validCombatClockReceipt,validCombatClockRequest,type CombatClockRequest,type CombatClockReceipt} from './combatClock';
+import {getCombatClockContext,commitCombatClock,validCombatClockReceipt,validCombatClockRequest,type CombatClockRequest,type CombatClockReceipt} from './combatClock';
 /** A clock acknowledgement is not proof that start/end-of-turn effects ran.
  * Keep the saved request until the caller has explicitly finished its follow-up.
  * v2.869 audit: unknown post-clock work must never be blindly replayed. */
@@ -56,4 +56,21 @@ export function finishCombatTransition(user:string,encounter:string,requestId:st
  const r=savedCombatTransition(user,encounter);
  if(!r||r.request.requestId!==requestId||r.stage!=='effects-started')throw invalid();
  localStorage.removeItem(key(user,encounter));
+}
+
+const preparing=new Map<string,Promise<SavedCombatTransition>>();
+/** v2.869: after outgoing work finishes, obtain and persist the authoritative
+ * successor before sending any clock mutation. Existing work always wins over
+ * a fresh proposal. The guard prevents an asynchronous response crossing users
+ * or UI scopes; it must not require a recovered old turn to remain current. */
+export function prepareCombatTransition(user:string,encounter:string,turn:string,assertCurrentScope:()=>void):Promise<SavedCombatTransition>{
+ assertCurrentScope();const k=key(user,encounter),pending=preparing.get(k);if(pending)return pending;
+ const work=(async()=>{
+  const old=savedCombatTransition(user,encounter);if(old)return old;
+  const context=await getCombatClockContext(user,encounter,turn);
+  assertCurrentScope();
+  const existing=savedCombatTransition(user,encounter);if(existing)return existing;
+  return saveCombatTransition(user,{requestId:crypto.randomUUID(),encounterId:context.encounterId,
+   expectedTurn:context.expectedTurn,incomingId:context.incomingId,nextIndex:context.nextIndex,nextRound:context.nextRound});
+ })();preparing.set(k,work);void work.finally(()=>{if(preparing.get(k)===work)preparing.delete(k);}).catch(()=>{});return work;
 }

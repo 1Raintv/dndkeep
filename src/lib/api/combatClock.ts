@@ -20,3 +20,17 @@ export async function commitCombatClock(input:CombatClockRequest):Promise<Combat
  if(!validCombatClockReceipt(value,r))throw new PsionicRequestError('Combat transition could not be confirmed. Keep the saved request.',false);
  return value;
 }
+
+export interface CombatClockContext extends Omit<CombatClockRequest,'requestId'> {
+ userId:string;outgoingId:string;roundWrapped:boolean;campaignRounds:number;
+}
+/** Snapshot only: commit rechecks the same calculation under database locks. */
+export async function getCombatClockContext(user:string,encounter:string,turn:string):Promise<CombatClockContext>{
+ if(![user,encounter,turn].every(uuid))throw new PsionicRequestError('Invalid combat turn identity. No request was sent.',true);
+ const value=await psionicRpc('get_combat_clock_context',{p_encounter_id:encounter,p_expected_turn:turn},true);
+ const c=value as CombatClockContext|null;
+ if(!c||c.userId!==user||c.encounterId!==encounter||c.expectedTurn!==turn||!uuid(c.outgoingId)
+  ||!validCombatClockRequest({...c,requestId:c.outgoingId})||typeof c.roundWrapped!=='boolean'
+  ||c.nextIndex!==0&&c.roundWrapped||!count(c.campaignRounds))throw new PsionicRequestError('The next combat turn could not be verified. Refresh before advancing.',true);
+ return c;
+}

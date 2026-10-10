@@ -2,7 +2,7 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 const m=vi.hoisted(()=>({rpc:vi.fn()}));
 vi.mock('../supabase',()=>({supabase:{rpc:m.rpc}}));
-import {saveCombatTransition,savedCombatTransition,confirmCombatTransition,beginCombatTransitionEffects,finishCombatTransition} from './combatTransitionRecovery';
+import {prepareCombatTransition,saveCombatTransition,savedCombatTransition,confirmCombatTransition,beginCombatTransitionEffects,finishCombatTransition} from './combatTransitionRecovery';
 const id=(n:number)=>`${n}${'0'.repeat(7)}-0000-4000-8000-000000000000`;
 const request={requestId:id(1),encounterId:id(2),expectedTurn:id(3),incomingId:id(4),nextIndex:0,nextRound:2};
 const receipt={requestId:request.requestId,encounterId:request.encounterId,incomingId:request.incomingId,turnId:id(5),index:0,round:2,roundWrapped:true,campaignRounds:12,replayed:false};
@@ -43,4 +43,31 @@ it('preserves the original request if storing the acknowledgement fails',async()
 });
 it('cannot finish another request or start effects before confirmation',()=>{
  saveCombatTransition(user,request);expect(()=>beginCombatTransitionEffects(user,enc,request.requestId)).toThrow();expect(()=>finishCombatTransition(user,enc,id(9))).toThrow();
+});
+
+const context={userId:user,encounterId:enc,expectedTurn:request.expectedTurn,outgoingId:id(7),incomingId:request.incomingId,nextIndex:0,nextRound:2,roundWrapped:true,campaignRounds:12};
+it('persists the server-selected successor before any advance RPC',async()=>{
+ m.rpc.mockResolvedValue({data:context,error:null});const saved=await prepareCombatTransition(user,enc,request.expectedTurn,()=>{});
+ expect(savedCombatTransition(user,enc)).toEqual(saved);expect(saved.request).toMatchObject({encounterId:enc,incomingId:request.incomingId,nextIndex:0,nextRound:2});
+ expect(m.rpc.mock.calls.map(([name])=>name)).toEqual(['get_combat_clock_context']);
+});
+it('returns existing recovery work without preparing another turn',async()=>{
+ const original=saveCombatTransition(user,request);expect(await prepareCombatTransition(user,enc,id(8),()=>{})).toEqual(original);expect(m.rpc).not.toHaveBeenCalled();
+});
+it('simultaneous preparations share one saved request',async()=>{
+ m.rpc.mockResolvedValue({data:context,error:null});const a=prepareCombatTransition(user,enc,request.expectedTurn,()=>{}),b=prepareCombatTransition(user,enc,request.expectedTurn,()=>{});
+ expect(a).toBe(b);expect(await a).toEqual(await b);expect(m.rpc).toHaveBeenCalledTimes(1);
+});
+it('a scope change during the read prevents saving a request',async()=>{
+ let current=true;m.rpc.mockImplementation(async()=>{current=false;return {data:context,error:null};});
+ await expect(prepareCombatTransition(user,enc,request.expectedTurn,()=>{if(!current)throw new Error('Scope changed');})).rejects.toThrow('Scope changed');expect(savedCombatTransition(user,enc)).toBeNull();
+});
+it('does not replace another tab request saved during the context read',async()=>{
+ const other={...request,requestId:id(8)};m.rpc.mockImplementation(async()=>{saveCombatTransition(user,other);return {data:context,error:null};});
+ expect((await prepareCombatTransition(user,enc,request.expectedTurn,()=>{})).request).toEqual(other);
+});
+it('storage failure cannot submit a clock mutation',async()=>{
+ m.rpc.mockResolvedValue({data:context,error:null});const spy=vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw new Error('Full');});
+ try{await expect(prepareCombatTransition(user,enc,request.expectedTurn,()=>{})).rejects.toThrow('Full');}finally{spy.mockRestore();}
+ expect(m.rpc.mock.calls.map(([name])=>name)).toEqual(['get_combat_clock_context']);expect(savedCombatTransition(user,enc)).toBeNull();
 });

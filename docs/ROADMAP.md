@@ -6682,3 +6682,34 @@ per project, saved-request replay, rollback, next-save expiry, concurrency and
 lost replies. Full gate passes (3,320 units,196/196 TypeScript,entry255.2KB);
 changed-file ESLint, SQL lint, security advisors and diff checks pass. No UI
 layout change or production deployment.
+
+### Server-selected clock preparation (unreleased)
+
+Migration20261010070006 extracts the successor/round calculation into one private
+selector shared by the locked commit and the DM-only get_combat_clock_context
+reader. Preparation includes the recorded outgoing actor after lethal end effects,
+so the client does not duplicate filtered-roster arithmetic. The private selector
+is not executable by authenticated clients. Commit still rechecks the current
+roster and rejects a stale proposal; reading a context does not reserve a turn.
+
+getCombatClockContext validates the returned owner, turn, actor identities,
+positions and counters. prepareCombatTransition saves the server-selected request
+before any clock mutation, coalesces concurrent preparation in a tab, preserves
+existing pending/confirmed work, checks caller scope after the read, and rechecks
+for a request saved by another tab while waiting. Storage failures cannot submit
+a clock mutation. A recovered receipt remains historical; it must not replace
+current encounter state or authorize old effects against a later turn.
+
+This remains a prerequisite for the live controller, not a turn-button rollout.
+Stale saved proposals and losing requests from concurrent tabs still need an
+explicit reconciliation path. Remaining non-atomic aura, recharge, mastery and
+budget operations must be coordinated with outgoing/incoming recovery before
+replacing advanceTurn's legacy clock writes. No production deployment.
+
+Verification:94 local clock/expiry/database/browser cases pass across desktop and
+mobile, including the new preparation, permissions, stale-position and lost-reply
+recovery cases. A recovered old advance leaves a subsequently advanced encounter
+unchanged and performs no new preparation. Full gate passes (3,338 units,
+196/196 TypeScript,entry255.2KB); changed-file ESLint, SQL lint, security advisors
+and diff checks pass. Only the new reviewed migration was applied locally with
+its ledger entry; unrelated local history remains intact.

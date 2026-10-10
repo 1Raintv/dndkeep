@@ -1,6 +1,6 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({rpc:vi.fn()}));vi.mock('../supabase',()=>({supabase:{rpc:mocks.rpc}}));
-import {commitCombatClock} from './combatClock';
+import {getCombatClockContext,commitCombatClock} from './combatClock';
 const id=(n:number)=>`${n}${'0'.repeat(7)}-0000-4000-8000-000000000000`;
 const request={requestId:id(1),encounterId:id(2),expectedTurn:id(3),incomingId:id(4),nextIndex:0,nextRound:2};
 const receipt={requestId:request.requestId,encounterId:request.encounterId,incomingId:request.incomingId,turnId:id(5),index:0,round:2,roundWrapped:true,campaignRounds:12,replayed:false};
@@ -25,4 +25,16 @@ it('accepts slot zero without a round wrap when the outgoing actor died',async()
 it('still rejects a claimed wrap into a nonzero slot',async()=>{
  mocks.rpc.mockResolvedValue({data:{...receipt,index:1},error:null});
  await expect(commitCombatClock({...request,nextIndex:1})).rejects.toMatchObject({definitelyNotPaid:false});
+});
+
+const context={userId:id(6),encounterId:request.encounterId,expectedTurn:request.expectedTurn,outgoingId:id(7),incomingId:request.incomingId,nextIndex:0,nextRound:1,roundWrapped:false,campaignRounds:0};
+it('reads and validates a non-wrapping successor at slot zero',async()=>{
+ mocks.rpc.mockResolvedValue({data:context,error:null});expect(await getCombatClockContext(id(6),request.encounterId,request.expectedTurn)).toEqual(context);
+ expect(mocks.rpc).toHaveBeenCalledWith('get_combat_clock_context',{p_encounter_id:request.encounterId,p_expected_turn:request.expectedTurn});
+});
+it.each([{userId:id(8)},{encounterId:id(8)},{expectedTurn:id(8)},{outgoingId:'bad'},{incomingId:'bad'},{nextIndex:-1},{nextRound:0},{roundWrapped:null},{nextIndex:1,roundWrapped:true},{campaignRounds:-1}])('rejects invalid preparation context %j',async bad=>{
+ mocks.rpc.mockResolvedValue({data:{...context,...bad},error:null});await expect(getCombatClockContext(id(6),request.encounterId,request.expectedTurn)).rejects.toMatchObject({definitelyNotPaid:true});
+});
+it('rejects invalid context identity before requesting any data',async()=>{
+ await expect(getCombatClockContext('bad',request.encounterId,request.expectedTurn)).rejects.toMatchObject({definitelyNotPaid:true});expect(mocks.rpc).not.toHaveBeenCalled();
 });

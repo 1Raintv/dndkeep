@@ -1,7 +1,7 @@
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {test,expect} from '@playwright/test';
-import {gateDbSuite} from './helpers';
+import {gateDbSuite,signInAsSeedDm} from './helpers';
 const args=['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'];
 const sql=(q:string)=>execFileSync('docker',args,{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 const auth=(u:string,q:string)=>`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${u}","role":"authenticated"}';${q};commit;`;
@@ -33,6 +33,54 @@ test.describe('Atomic combat clock transitions',()=>{
    .replaceAll(`dndkeep_private.turn_effect_state('${combatant}')`,
     `'${sql(`select dndkeep_private.turn_effect_state('${combatant}')`).replaceAll("'","''")}'::jsonb`));
  }
+ const prepare=()=>`select get_combat_clock_context('${enc}','${turn}')`;
+ test('preparation and commit agree on the exact next actor without changing time',()=>{
+  const before=state(),context=JSON.parse(sql(auth(dm,prepare())));
+  expect(context).toEqual({userId:dm,encounterId:enc,expectedTurn:turn,outgoingId:pa,incomingId:pb,nextIndex:1,nextRound:1,roundWrapped:false,campaignRounds:0});expect(state()).toEqual(before);
+  expect(run(call(request,context.expectedTurn,context.incomingId,context.nextIndex,context.nextRound))).toMatchObject({incomingId:pb,index:1,round:1});
+ });
+ test('preparation follows the saved outgoing actor after a lethal end effect',()=>{
+  endEffects(pa,ca);expect(JSON.parse(sql(auth(dm,prepare())))).toMatchObject({outgoingId:pa,incomingId:pb,nextIndex:0,nextRound:1,roundWrapped:false});
+ });
+ test('preparation is DM-only and the internal selector is not client-callable',()=>{
+  expect(()=>sql(auth(player,prepare()))).toThrow(/only to its DM/);expect(()=>sql('set role anon;'+prepare())).toThrow(/permission denied/);
+  expect(()=>sql(auth(dm,`select dndkeep_private.combat_clock_context('${enc}','${turn}')`))).toThrow(/permission denied/);
+  sql(`update campaigns set owner_id='${player}' where id='${campaign}'`);expect(()=>sql(auth(dm,prepare()))).toThrow(/only to its DM/);
+ });
+ test('stale prepared positions are rechecked at commit rather than silently retargeted',()=>{
+  const context=JSON.parse(sql(auth(dm,prepare())));endEffects(pa,ca);
+  expect(()=>run(call(request,context.expectedTurn,context.incomingId,context.nextIndex,context.nextRound))).toThrow(/Initiative roster changed/);expect(state().turn).toBe(turn);
+  const refreshed=JSON.parse(sql(auth(dm,prepare())));expect(run(call(request,refreshed.expectedTurn,refreshed.incomingId,refreshed.nextIndex,refreshed.nextRound)).index).toBe(0);
+ });
+ test('preparation rejects stale and ended turns without changing the clock',()=>{
+  run();expect(()=>sql(auth(dm,prepare()))).toThrow(/Combat turn changed/);
+  turn=state().turn;sql(`update combat_encounters set status='ended' where id='${enc}'`);
+  expect(()=>sql(auth(dm,prepare()))).toThrow(/Combat turn changed/);expect(state().clock).toBe(0);
+ });
+ test('browser preparation survives lost clock replies and does not advance a later turn',async({page})=>{
+  endEffects(pa,ca);
+  sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}','{"sub":"${dm}","email":"${dm}@turn.local"}','email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${dm}@turn.local`);
+  let commits=0;await page.route('**/rest/v1/rpc/commit_combat_clock_transition',async route=>{await route.fetch();commits++;await route.abort('failed');});
+  const first=await page.evaluate(async({user,encounter,turn})=>{
+   const api=await import('/src/lib/api/combatTransitionRecovery.ts');
+   const prepared=await api.prepareCombatTransition(user,encounter,turn,()=>{});
+   try{await api.confirmCombatTransition(user,encounter);return {failed:false,prepared,saved:null};}
+   catch{return {failed:true,prepared,saved:api.savedCombatTransition(user,encounter)};}
+  },{user:dm,encounter:enc,turn});
+  expect(first.failed).toBe(true);expect(commits).toBe(2);expect(first.prepared.request).toMatchObject({nextIndex:0,nextRound:1,incomingId:pb});expect(first.saved?.stage).toBe('clock-pending');
+  run(call(randomUUID(),state().turn,pb,0,2));const later=state();
+  await page.unroute('**/rest/v1/rpc/commit_combat_clock_transition');await page.reload();
+  let reads=0;await page.route('**/rest/v1/rpc/get_combat_clock_context',async route=>{reads++;await route.abort('failed');});
+  const recovered=await page.evaluate(async({user,encounter,turn})=>{
+   const api=await import('/src/lib/api/combatTransitionRecovery.ts');
+   await api.prepareCombatTransition(user,encounter,turn,()=>{});
+   return api.confirmCombatTransition(user,encounter);
+  },{user:dm,encounter:enc,turn:later.turn});
+  expect(recovered).toMatchObject({stage:'clock-confirmed',request:first.prepared.request,receipt:{replayed:true,index:0,round:1,roundWrapped:false}});
+  expect(reads).toBe(0);expect(state()).toEqual(later);
+ });
  test('a lethal first-actor effect hands slot zero to the next actor without ticking a round',()=>{
   endEffects(pa,ca);const first=run(call(request,turn,pb,0,1));
   expect(first).toMatchObject({incomingId:pb,index:0,round:1,roundWrapped:false,campaignRounds:0});
