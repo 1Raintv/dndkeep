@@ -15,6 +15,32 @@ test.describe('saved attack outcome rules',()=>{
    insert into campaigns(id,owner_id,name) values('${camp}','${owner}','Attack outcome fixture');`);
  });
  test.afterEach(()=>{sql(`delete from campaigns where id='${camp}';delete from auth.users where id='${owner}'`);});
+ test('Mutable Form refreshes the combat movement preview and live move check on activation, Dash and expiry',async({page})=>{
+  const character=randomUUID(),target=randomUUID(),enc=randomUUID(),declaration=randomUUID();
+  sql(`insert into characters(id,user_id,campaign_id,name,species,class_name,subclass,background,level,intelligence,class_resources) values('${character}','${owner}','${camp}','Moving Metamorph','Human','Psion','Metamorph','Sage',7,16,'{"psionic-energy-dice":6}');
+   insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${enc}','${camp}','active',1,0);
+   insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,movement_used_ft,max_speed_ft) values('${target}','${enc}','${camp}','character','${character}','Moving Metamorph',0,5,30)`);
+  await signInAsSeedDm(page,email);
+  await page.evaluate(async({camp,target})=>{
+   const React=(await import('/node_modules/.vite/deps/react.js')).default,{createRoot}=(await import('/node_modules/.vite/deps/react-dom_client.js')).default;
+   const {CombatProvider,useCombatSelector}=await import('/src/context/CombatContext.tsx');const {movementAllowanceForParticipant}=await import('/src/lib/movement.ts');
+   function Probe(){const row=useCombatSelector(s=>s.participants.find(p=>p.id===target));return React.createElement('output',{'data-testid':'movement-probe'},row?String(movementAllowanceForParticipant(row)):'loading');}
+   const host=document.createElement('div');document.body.appendChild(host);(window as any).__movementRoot=createRoot(host);(window as any).__movementRoot.render(React.createElement(CombatProvider,{campaignId:camp},React.createElement(Probe)));
+  },{camp,target});
+  const probe=page.getByTestId('movement-probe');await expect(probe).toHaveText('30');
+  // Wait for the real provider subscription, not a fixed sleep.
+  await expect.poll(()=>page.evaluate(async camp=>{const {supabase}=await import('/src/lib/supabase.ts');return supabase.getChannels().some(c=>c.topic===`realtime:combat:${camp}`&&c.state==='joined');},camp)).toBe(true);
+  sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';select dndkeep_private.begin_mutable_form('${character}','${declaration}',dndkeep_private.action_turn_context('${character}')->>'turnId',2,false,'null');commit;`);
+  await expect(probe).toHaveText('35');
+  const check=(distance:number)=>page.evaluate(async({target,distance})=>{const {canMove}=await import('/src/lib/movement.ts');return canMove(target,distance);},{target,distance});
+  expect(await check(30)).toMatchObject({allowed:true,maxSpeed:35,remaining:30});expect(await check(31)).toMatchObject({allowed:false});
+  sql(`update combat_participants set dash_used_this_turn=true where id='${target}'`);await expect(probe).toHaveText('70');
+  expect(await check(65)).toMatchObject({allowed:true,maxSpeed:70,remaining:65});
+  sql(`update campaigns set combat_rounds_elapsed=combat_rounds_elapsed+10 where id='${camp}'`);await expect(probe).toHaveText('60');
+  expect(await check(65)).toMatchObject({allowed:false,maxSpeed:60,remaining:55});
+  expect(sql(`select max_speed_ft from combat_participants where id='${target}'`)).toBe('30');
+  await page.evaluate(()=>{(window as any).__movementRoot.unmount();delete (window as any).__movementRoot;});
+ });
  for(const bonus of [1,2,3])test(`live attacks include Mutable Form AC +${bonus}, cover and other buffs`,async({page})=>{
   const character=randomUUID(),declaration=randomUUID(),target=randomUUID(),enc=randomUUID(),id=randomUUID();
   const level=bonus===2?7:10,choice=bonus===2?null:{kind:'flexibility'};

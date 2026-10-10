@@ -8,7 +8,7 @@ vi.mock('./supabase',()=>({supabase:{from:()=>({select:()=>({eq:()=>({single:asy
 vi.mock('./pendingReaction',()=>({offerOpportunityAttacks:vi.fn()}));
 vi.mock('./combatEvents',()=>({emitCombatEvent:vi.fn(),newChainId:()=>''}));
 import {canMove,takeDash,takeDisengage,resetMovement} from './movement';
-beforeEach(()=>{m.row={movement_used_ft:5,max_speed_ft:30,dash_used_this_turn:false,combatants:{active_conditions:['Stunned','Incapacitated'],exhaustion_level:0,active_buffs:[]}};});
+beforeEach(()=>{m.row={mutable_form_speed_bonus:0,movement_used_ft:5,max_speed_ft:30,dash_used_this_turn:false,combatants:{active_conditions:['Stunned','Incapacitated'],exhaustion_level:0,active_buffs:[]}};});
 it('a Stunned actor can spend its remaining movement without gaining extra movement',async()=>{
  expect(await canMove('actor',25)).toMatchObject({allowed:true,maxSpeed:30,remaining:25});expect(await canMove('actor',26)).toMatchObject({allowed:false,maxSpeed:30});
 });
@@ -44,4 +44,12 @@ it('joined Boost effects increase validated movement once and removal restores t
  m.row.dash_used_this_turn=true;expect(await canMove('actor',75)).toMatchObject({allowed:true,maxSpeed:80,remaining:75});
  m.row.combatants={active_conditions:[],exhaustion_level:0,active_buffs:[]};
  expect(await canMove('actor',56)).toMatchObject({allowed:false,maxSpeed:60,remaining:55});
+});
+
+it('uses the same projected Mutable Form speed as the map and loses it after expiry',async()=>{
+ m.row.mutable_form_speed_bonus=5;expect(await canMove('actor',30)).toMatchObject({allowed:true,maxSpeed:35,remaining:30});
+ m.row.mutable_form_speed_bonus=0;expect(await canMove('actor',30)).toMatchObject({allowed:false,maxSpeed:30,remaining:25});
+});
+it.each([undefined,null,10,'5'])('refuses an unverifiable computed movement bonus %s',async value=>{
+ m.row.mutable_form_speed_bonus=value;await expect(canMove('actor',1)).rejects.toThrow('could not be verified');
 });

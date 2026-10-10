@@ -37,7 +37,7 @@ export function computeChebyshevFt(
 }
 
 /** Adapter shared by the map, initiative strip, validator and movement log. */
-export function movementAllowanceForParticipant(row:{is_dead?:boolean|null;max_speed_ft?:number|null;active_conditions?:string[]|null;exhaustion_level?:number|null;active_buffs?:unknown;dash_used_this_turn?:boolean|null}):number {
+export function movementAllowanceForParticipant(row:{is_dead?:boolean|null;max_speed_ft?:number|null;active_conditions?:string[]|null;exhaustion_level?:number|null;active_buffs?:unknown;dash_used_this_turn?:boolean|null;mutable_form_speed_bonus?:unknown}):number {
  const conditions=row.active_conditions??[];
  return combatMovementAllowance({baseSpeed:row.max_speed_ft??30,
   immobilized:row.is_dead===true||conditionsSpeedZero(conditions),halved:conditionsSpeedHalved(conditions),
@@ -45,6 +45,7 @@ export function movementAllowanceForParticipant(row:{is_dead?:boolean|null;max_s
   masterySlowed:Array.isArray(row.active_buffs)&&row.active_buffs.some(b=>b?.key==='mastery_slowed'),
   dashed:row.dash_used_this_turn===true,
   telekineticBoost:hasTelekineticBoost(row.active_buffs),
+  mutableForm:row.mutable_form_speed_bonus===5,
  });
 }
 
@@ -65,12 +66,13 @@ export async function canMove(
   participantId: string,
   distanceFt: number,
 ): Promise<MovementCheck> {
-  const { data: dataRaw } = await (supabase as any)
+  const { data: dataRaw,error } = await (supabase as any)
     .from('combat_participants')
     .select('movement_used_ft, max_speed_ft, dash_used_this_turn, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', participantId)
     .single();
-  const data = dataRaw ? normalizeParticipantRow(dataRaw) : dataRaw;
+  if(error||!dataRaw?.combatants||![0,5].includes(dataRaw.mutable_form_speed_bonus))throw new Error('Movement effects could not be verified. Refresh before moving.');
+  const data = normalizeParticipantRow(dataRaw);
 
   const currentUsed = (data?.movement_used_ft as number | null) ?? 0;
   const maxSpeed=movementAllowanceForParticipant(data??{});

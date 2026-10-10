@@ -7,3 +7,5 @@ it.each([NaN,Infinity,-1])('rejects an invalid speed %s',baseSpeed=>expect(comba
 it.each([[{},40],[{dashed:true},80],[{masterySlowed:true},30],[{halved:true},20],[{halved:true,dashed:true},40],[{exhaustionLevel:2},30],[{immobilized:true,dashed:true},0],[{exhaustionLevel:6},0]] as const)('applies Boost before reductions, halving and Dash: %j',(change,expected)=>{
  expect(combatMovementAllowance({...base,...change,telekineticBoost:true})).toBe(expected);
 });
+
+it.each([[{},35],[{dashed:true},70],[{halved:true},17],[{halved:true,dashed:true},34],[{telekineticBoost:true},45],[{exhaustionLevel:1,masterySlowed:true,halved:true,dashed:true},20],[{immobilized:true,dashed:true},0]] as const)('applies Mutable Form before other speed changes: %j',(change,expected)=>expect(combatMovementAllowance({...base,...change,mutableForm:true})).toBe(expected));

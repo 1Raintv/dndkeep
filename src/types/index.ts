@@ -863,6 +863,8 @@ export interface CombatParticipant {
   bonus_used: boolean;
   reaction_used: boolean;
   movement_used_ft: number;
+  /** Read-only projection from the current saved form; never persist to base Speed. */
+  mutable_form_speed_bonus?: 0 | 5;
   /** v2.399.0 — Multiattack support. attacks_per_action is the
    *  multiattack budget (1 by default; 3 for a creature with a
    *  Multiattack action; 2 for Fighters L5+). attacks_remaining

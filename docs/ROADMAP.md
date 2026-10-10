@@ -1,5 +1,34 @@
 # DNDKeep — Two-Track Roadmap
 
+### Mutable Form movement projection and realtime refresh (local)
+
+Migration `20261010231500_mutable_form_speed_projection.sql` adds a read-only
+computed participant field from the saved active form. Shared participant reads
+now carry its 0/+5 Speed modifier into the existing map, initiative and movement
+allowance calculation. The bonus precedes reductions, halving and Dash; it never
+rewrites max_speed_ft. `canMove` refuses missing/invalid effect reads instead of
+falling back to an unverified 30-foot allowance.
+
+CombatProvider reloads on character and campaign updates as well as combat rows.
+The live test exposed that campaigns were not in supabase_realtime, preventing
+this subscription from refreshing. The migration adds campaigns idempotently;
+existing campaign RLS still controls visibility. Actual provider/selector and
+PostgREST checks now verify 30 -> 35 -> 70 -> 60 on activation, Dash and expiry,
+with the same fresh pre-move allowance and unchanged stored base Speed.
+
+Validation: 50 focused unit cases pass; full `npm run verify` passes (4,768 tests,
+TS 193/193, 256.1 KB entry). All 27 attack/movement browser cases pass after the
+publication fix. Lint/advisors have no Mutable Form findings; reapplication passes
+in rollback. Evidence: `.tmp/mutable-form-speed-{unit,browser,regression,
+final-gate,final-lint,final-advisors,idempotence}.log`.
+All 348 repo migrations are local; foreign 20261008213500 is preserved. Production
+and the old release-rehearsal stacks are unchanged.
+
+This updates displayed allowances and fresh pre-move checks, not a new atomic
+server-side movement-budget transaction. Remaining Mutable Form work includes
+sheet stats, reach, resistances, concentration, Touch casting, Stride/Flexibility
+and Flesh Weaver actions, activation history and public controls with recovery.
+
 ### Mutable Form AC participates in shared attack resolution (local)
 
 `rollAttackRoll` now reads the target character's active Mutable Form before any
