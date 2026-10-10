@@ -9446,3 +9446,33 @@ and DC but no comparable immutable reaction window. Graze currently applies on
 the initial miss before reactions; Bolstering must resolve before that damage.
 These event-window and ordering changes remain required before Telepath controls
 can safely ship. No new database migration or production deployment.
+
+
+### Original attack evidence — saved and immutable
+
+Migration 20261010153840 adds attack_roll_snapshot to pending_attacks. The live
+attack engine saves original dice/total/effective AC, natural-1 setting,
+critical-on-hit condition, total-cover outcome and original participant bindings
+in the same update as the first roll. A database trigger verifies the snapshot
+against the saved outcome and prevents erasure or rewriting. Later AC/result
+changes preserve the original evidence. Legacy attacks remain null and cannot
+receive guessed snapshots after rolling. No permission grants were added.
+
+Recording now checks the original row timestamp and declared state, and reports
+failed writes before logging a successful attack. A lost response keeps the
+committed original roll; refresh reads that result without rolling again.
+This is captured client evidence, not a new server-authoritative derivation of
+conditions/visibility. Shared mastery-marker spending and reaction-offer creation
+still need transactional integration with the attack window; this checkpoint
+must not be presented as the complete Telepath transaction.
+
+Full gate passes: 4,298 units, TS 194/194, entry 255.7 KB. Three local browser/DB
+checks cover six attack outcomes, rejected mismatched/rewritten evidence, legacy
+rows and lost-response recovery. SQL lint has no errors or new trigger warnings;
+security advisors retain only existing keep_warm/client_errors warnings.
+
+Applied locally only, with exact file/ledger equality verified. CLI again refused
+foreign local history 20261008213500; preserved it and applied only the new SQL
+and ledger together. Repo has 321 migrations; release rehearsals need refreshing.
+No production deployment. Next: authoritative reaction window, linked payment,
+and delaying Graze until the final attack outcome.

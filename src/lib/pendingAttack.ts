@@ -1,3 +1,4 @@
+import type {AttackRollSnapshot} from '../rules/attackRollSnapshot';
 import {attackRollOutcome} from '../rules/attackRollOutcome';
 import {cancelPendingAttack} from './api/attackCancellation';
 import {creatureSaveBonus} from '../rules/creatureSaveBonus';
@@ -497,9 +498,13 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   // attacker is within 5 ft melee range. Still bypassed by total cover.
   const autoCrit = meleeAutoCritApplies(targetConditions, distanceCells);
 
+  const naturalOneAutoFails=getNat1AutoFails();
   const hitResult=attackRollOutcome({d20,total,targetAC:effectiveAc,
-    automatic:coverLevel==='total'?'failure':'none',criticalOnHit:autoCrit,naturalOneAutoFails:getNat1AutoFails()});
+    automatic:coverLevel==='total'?'failure':'none',criticalOnHit:autoCrit,naturalOneAutoFails});
   if(!hitResult)throw new Error('Attack result could not be verified. Review the roll and target AC.');
+  const snapshot:AttackRollSnapshot={version:1,attackId:atk.id,campaignId:atk.campaign_id,encounterId:atk.encounter_id,
+    attackerId:atk.attacker_participant_id,targetId:atk.target_participant_id,d20,total,targetAC:effectiveAc,
+    naturalOneAutoFails,criticalOnHit:autoCrit,automatic:coverLevel==='total'?'failure':'none',result:hitResult};
 
   // v2.630.0 — consume spent mastery markers (Sap always; Vex only
   // when this roll targeted the vexed creature).
@@ -508,11 +513,12 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   }
 
 
-  const { data: updated } = await supabase
+  const { data: updated,error:rollError } = await supabase
     .from('pending_attacks')
     .update({
       attack_d20: d20,
       attack_total: total,
+      attack_roll_snapshot: asJsonb(snapshot),
       hit_result: hitResult,
       // Store effective AC (with cover bonus baked in) so the log and the
       // resolution modal both show what the attacker actually had to beat.
@@ -520,8 +526,11 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
       state: 'attack_rolled',
     })
     .eq('id', attackId)
+    .eq('state','declared')
+    .eq('updated_at',atk.updated_at)
     .select()
     .single();
+  if(rollError||!updated)throw new Error(rollError?.message??'Attack roll could not be confirmed. Refresh this attack before retrying.');
 
   // Emit a dedicated cover event first so the log reads naturally:
   //   1. Cover applied (half / three-quarters / total)

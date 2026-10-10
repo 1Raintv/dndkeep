@@ -2,7 +2,7 @@ import {execFileSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {expect,test} from '@playwright/test';
 import {gateDbSuite,signInAsSeedDm} from './helpers';
-const sql=(q:string)=>execFileSync('docker',['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'],{input:q,encoding:'utf8'}).trim();
+const sql=(q:string)=>execFileSync('docker',['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'],{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 test.describe('saved attack outcome rules',()=>{
  gateDbSuite();
  let owner:string,camp:string,email:string;
@@ -34,6 +34,50 @@ test.describe('saved attack outcome rules',()=>{
    },{id,die:entry.die,nat1:entry.nat1});
    expect(result).toMatchObject({state:'attack_rolled',attack_d20:entry.die,attack_total:entry.die+entry.bonus,hit_result:entry.result,target_ac:entry.ac+(entry.cover==='half'?2:0)});
    expect(JSON.parse(sql(`select jsonb_build_object('hit',hit_result,'total',attack_total) from pending_attacks where id='${id}'`))).toEqual({hit:entry.result,total:entry.die+entry.bonus});
+   const snapshot=JSON.parse(sql(`select attack_roll_snapshot from pending_attacks where id='${id}'`));
+   expect(snapshot).toMatchObject({version:1,attackId:id,campaignId:camp,d20:entry.die,total:entry.die+entry.bonus,targetAC:entry.ac+(entry.cover==='half'?2:0),naturalOneAutoFails:entry.nat1,criticalOnHit:false,result:entry.result,automatic:entry.cover==='total'?'failure':'none'});
+   expect(await page.evaluate(async value=>{const {readAttackRollSnapshot}=await import('/src/rules/attackRollSnapshot.ts');return readAttackRollSnapshot(value);},snapshot)).toEqual(snapshot);
+   // A reaction may change current AC/result; original evidence stays intact.
+   sql(`update pending_attacks set target_ac=target_ac+5 where id='${id}'`);
+   expect(JSON.parse(sql(`select attack_roll_snapshot from pending_attacks where id='${id}'`))).toEqual(snapshot);
+   expect(()=>sql(`update pending_attacks set attack_roll_snapshot=null where id='${id}'`)).toThrow();
+   expect(()=>sql(`update pending_attacks set attack_roll_snapshot=jsonb_set(attack_roll_snapshot,'{naturalOneAutoFails}','${entry.nat1?'false':'true'}') where id='${id}'`)).toThrow();
+
   }
  });
+ test('refuses inconsistent evidence and later backfilling of a legacy roll',()=>{
+  const id=randomUUID();
+  sql(`insert into pending_attacks(id,campaign_id,attacker_name,attacker_type,target_name,target_type,attack_name,attack_kind,attack_bonus,target_ac,chain_id)
+   values('${id}','${camp}','Fixture attacker','system','Fixture target','object','Fixture strike','attack_roll',5,15,'${randomUUID()}')`);
+  const snapshot={version:1,attackId:id,campaignId:camp,encounterId:null,attackerId:null,targetId:null,d20:10,total:15,targetAC:15,naturalOneAutoFails:true,criticalOnHit:false,automatic:'none',result:'hit'};
+  const record=(value:unknown)=>`update pending_attacks set attack_d20=10,attack_total=15,hit_result='hit',state='attack_rolled',attack_roll_snapshot='${JSON.stringify(value)}' where id='${id}'`;
+  expect(()=>sql(record({...snapshot,total:16}))).toThrow();
+  expect(sql(`select state from pending_attacks where id='${id}'`)).toBe('declared');
+  sql(`update pending_attacks set attack_d20=10,attack_total=15,hit_result='hit',state='attack_rolled' where id='${id}'`);
+  expect(()=>sql(record(snapshot))).toThrow();
+  expect(sql(`select attack_roll_snapshot is null from pending_attacks where id='${id}'`)).toBe('t');
+ });
+ test('a lost save response keeps the original dice and evidence on refresh',async({page})=>{
+  await signInAsSeedDm(page,email);const id=randomUUID();
+  sql(`insert into pending_attacks(id,campaign_id,attacker_name,attacker_type,target_name,target_type,attack_name,attack_kind,attack_bonus,target_ac,chain_id)
+   values('${id}','${camp}','Fixture attacker','system','Fixture target','object','Fixture strike','attack_roll',5,15,'${randomUUID()}')`);
+  let dropped=0;await page.route('**/rest/v1/pending_attacks?*',async route=>{
+   if(route.request().method()!=='PATCH'){await route.continue();return;}
+   const response=await route.fetch();expect(response.ok()).toBe(true);dropped++;await route.abort('failed');
+  });
+  const error=await page.evaluate(async id=>{
+   const {rollAttackRoll}=await import('/src/lib/pendingAttack.ts');const random=Math.random;Math.random=()=>0.475;
+   try{await rollAttackRoll(id);return null;}catch(cause){return String(cause);}finally{Math.random=random;}
+  },id);
+  expect(error).not.toBeNull();expect(dropped).toBe(1);
+  const saved=JSON.parse(sql(`select attack_roll_snapshot from pending_attacks where id='${id}'`));
+  expect(saved).toMatchObject({d20:10,total:15,result:'hit'});
+  await page.unroute('**/rest/v1/pending_attacks?*');await page.reload();
+  const recovered=await page.evaluate(async id=>{
+   const {rollAttackRoll}=await import('/src/lib/pendingAttack.ts');const random=Math.random;let rolls=0;Math.random=()=>{rolls++;return 0.975;};
+   try{return {attack:await rollAttackRoll(id),rolls};}finally{Math.random=random;}
+  },id);
+  expect(recovered.rolls).toBe(0);expect(recovered.attack?.attack_roll_snapshot).toEqual(saved);
+ });
+
 });

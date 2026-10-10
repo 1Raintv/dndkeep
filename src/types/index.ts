@@ -982,6 +982,7 @@ export interface PendingAttack {
   target_ac: number | null;
   attack_d20: number | null;
   attack_total: number | null;
+  attack_roll_snapshot?: import('../rules/attackRollSnapshot').AttackRollSnapshot | null;
   hit_result: HitResult | null;
 
   save_dc: number | null;

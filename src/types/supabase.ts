@@ -1587,6 +1587,7 @@ export type Database = {
           target_ac: number | null;
           attack_d20: number | null;
           attack_total: number | null;
+          attack_roll_snapshot: Json | null;
           hit_result: string | null;
           save_dc: number | null;
           save_ability: string | null;
@@ -1632,6 +1633,7 @@ export type Database = {
           target_ac?: number | null;
           attack_d20?: number | null;
           attack_total?: number | null;
+          attack_roll_snapshot?: Json | null;
           hit_result?: string | null;
           save_dc?: number | null;
           save_ability?: string | null;
@@ -1677,6 +1679,7 @@ export type Database = {
           target_ac?: number | null;
           attack_d20?: number | null;
           attack_total?: number | null;
+          attack_roll_snapshot?: Json | null;
           hit_result?: string | null;
           save_dc?: number | null;
           save_ability?: string | null;
