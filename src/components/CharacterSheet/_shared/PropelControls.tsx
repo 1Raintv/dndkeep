@@ -68,12 +68,15 @@ export default function PropelControls({character,persistence,warp=false,campaig
   await refresh(active,characterId);
  }
  function launch(){setOpen(true);setRow(null);setTarget('');setConfirmed(false);setMode('free');void run(async(active,id)=>{
-  setContext(null);setPending(pendingPropel(id));setSaveDrafts(pendingPropelSaves(id));await refresh(active,id);if(!active())return;
-  const ctx=await getPropelContext(id);if(!active())return;setContext(ctx);
+  setContext(null);setTargets([]);setPending(pendingPropel(id));setSaveDrafts(pendingPropelSaves(id));await refresh(active,id);if(!active())return;
+  const ctx=await getPropelContext(id);if(!active())return;
   if(ctx.encounterId){const combat=await loadPsionicDamageContext(latest.current.campaign_id,id);if(!active())return;
    if(!combat||combat.encounterId!==ctx.encounterId)throw new Error('The encounter changed. Reopen Propel to choose its target.');
    setTargets(combat.participants.filter(p=>p.id!==ctx.participantId));
   }else setTargets([]);
+  // v2.869: failed roster reads must not authorize a new use with old targets.
+  // Saved declarations remain recoverable independently of this fresh context.
+  setContext(ctx);
   await refresh(active,id);
  });}
  async function send(p:PendingPropel,active:()=>boolean,id:string,freshDeclaration=false){

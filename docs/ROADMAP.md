@@ -1,5 +1,29 @@
 # DNDKeep — Two-Track Roadmap
 
+### Propel target loading fails closed (unreleased)
+
+Rechecked the requested Propel contract: adjacent Bonus Action entries, optional
+Energy Die, payment only on a failed save, and Warp destination within 30 ft of
+the caster on the same horizontal plane. Warp does not add Prone or another
+Bonus Action. Target size, visibility and range still require explicit review;
+movement instructions do not automatically relocate map tokens.
+
+Found a client readiness gap: reopening after a failed/mismatched combat roster
+read retained the old target options and an actionable turn context. The dialog
+now clears old targets and publishes the new declaration context only after the
+roster is successfully loaded for that encounter. Existing saved uses retain
+their independent recovery path. Server validation remains the final authority.
+
+Three regression cases cover a failed read, missing encounter and changed
+encounter, no roll/declaration, and successful reopening. All three fail against
+the original implementation. Evidence: `.tmp/propel-roster-{unit,mutation}.log`.
+Full gate passes (4,817 unit tests, TS 193/193, entry 256.1 KB), along with
+eight real-sheet desktop/mobile cases for adjacent Bonus Actions, optional rolls,
+conditional spending and reload recovery. Evidence:
+`.tmp/propel-roster-{gate,browser}.log`. No database schema change or production
+write. Stony resistance remains the next broader Psion integration.
+
+
 ### Readable concentration status card on narrow sheets (local)
 
 The active-spell card now reserves readable width for spell details and wraps the

@@ -139,3 +139,28 @@ it('retains the saved outcome after a lost reply followed by a permission reject
  expect(m.finish.mock.calls[0]).toEqual(m.finish.mock.calls[1]);expect(m.finish.mock.calls[0]).toEqual(m.finish.mock.calls[2]);
  expect(m.roll).toHaveBeenCalledTimes(1);expect(pendingPropel(character.id)).toEqual([]);
 });
+
+// Reopening must not reuse a previously loaded roster after a failed read.
+it.each(['network','missing','changed'])('blocks new uses after a %s combat roster failure',async failure=>{
+ const combatContext={bonusAvailable:true,turnId:'turn',encounterId:'encounter',participantId:'self'};
+ m.context.mockResolvedValue(combatContext);
+ m.combat.mockResolvedValue({encounterId:'encounter',participants:[{id:'self',name:'Hero'},{id:'enemy',name:'Goblin'}]});
+ render(<PropelControls character={character}/>);await open();
+ expect(screen.getByRole('option',{name:'Goblin'})).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Close for later'}));
+ if(failure==='network')m.combat.mockRejectedValueOnce(new Error('Could not load combat targets'));
+ else m.combat.mockResolvedValueOnce(failure==='missing'?null:{encounterId:'other',participants:[]});
+ await open();await screen.findByRole('alert');
+ expect(screen.queryByRole('option',{name:'Goblin'})).toBeNull();
+ // Even filling a stale/manually supplied target cannot enable declaration.
+ fireEvent.change(screen.getByLabelText('Target'),{target:{value:'enemy'}});
+ fireEvent.click(screen.getByRole('checkbox'));
+ const declare=screen.getByRole('button',{name:'Declare Bonus Action'}) as HTMLButtonElement;
+ expect(declare.disabled).toBe(true);fireEvent.click(declare);
+ expect(m.roll).not.toHaveBeenCalled();expect(m.begin).not.toHaveBeenCalled();
+ // A successful reopen recovers normally, without a stuck loading state.
+ fireEvent.click(screen.getByRole('button',{name:'Close for later'}));await open();
+ fireEvent.change(screen.getByLabelText('Target'),{target:{value:'enemy'}});
+ fireEvent.click(screen.getByRole('checkbox'));
+ expect((screen.getByRole('button',{name:'Declare Bonus Action'}) as HTMLButtonElement).disabled).toBe(false);
+});
