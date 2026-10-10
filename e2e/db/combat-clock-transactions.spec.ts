@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {test,expect,type Page} from '@playwright/test';
@@ -80,6 +81,44 @@ test.describe('Atomic combat clock transitions',()=>{
  test('ambiguous historical clock winners are not guessed',()=>{
   run();sql(`insert into dndkeep_private.combat_clock_transitions(request_id,encounter_id,request,result) select gen_random_uuid(),encounter_id,request,result from dndkeep_private.combat_clock_transitions where request_id='${request}'`);
   expect(()=>sql(auth(dm,readClock()))).toThrow(/Conflicting saved combat transitions/);
+ });
+ test('map End Turn shows pending work and retains failure feedback',async({page},info)=>{
+  // Clock fixtures use minimal duration-only buffs; a rendered strip needs
+  // displayable buff metadata. This view tests controls, so keep its buffs empty.
+  sql(`update combatants set active_buffs='[]' where id in('${ca}','${cb}');
+   insert into scenes(id,campaign_id,owner_id,name,grid_type,grid_size_px,width_cells,height_cells,ambient_light,is_published)
+   values('${randomUUID()}','${campaign}','${dm}','Turn controls','square',70,12,8,'bright',true);`);
+  const errors:string[]=[],badResponses:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  page.on('console',m=>{if(m.type()==='error'&&!m.text().includes('status of 409')&&!m.text().includes('[advanceTurn] encounter fetch failed'))errors.push(m.text());});
+  page.on('response',r=>{if(r.status()>=400&&!(r.status()===409&&r.url().includes('/rest/v1/combat_encounters?')))badResponses.push(`${r.status()} ${r.url()}`);});
+  await signInFixtureDm(page);await page.goto('/campaigns');
+  await page.getByText('Turn fixture',{exact:true}).locator('visible=true').first().click();
+  const strip=page.getByRole('region',{name:'Combat initiative'});
+  const end=strip.getByRole('button',{name:'End Turn',exact:true});await expect(end).toBeVisible();
+  let release!:()=>void;const held=new Promise<void>(resolve=>{release=resolve;});let requests=0;
+  await page.route(/\/rest\/v1\/combat_encounters(?:\?|$)/,async route=>{
+   if(route.request().method()==='GET'&&new URL(route.request().url()).searchParams.get('id')===`eq.${enc}`){
+    requests++;await held;await route.fulfill({status:409,contentType:'application/json',body:JSON.stringify({message:'Turn state changed'})});return;
+   }
+   await route.continue();
+  });
+  try{
+   await end.click();const pending=strip.getByRole('button',{name:'Ending…',exact:true});
+   await expect(pending).toBeDisabled();await expect(pending).toHaveAttribute('aria-busy','true');
+   await pending.dispatchEvent('click');await expect.poll(()=>requests).toBe(1);
+   await strip.screenshot({path:info.outputPath('turn-pending.png')});
+  }finally{release();}
+  const failure=page.getByRole('alert').filter({hasText:"Couldn't end turn: Turn state changed"});
+  await expect(failure).toBeVisible();await expect(end).toBeEnabled();
+  await page.waitForTimeout(4200);await expect(failure).toBeVisible();
+  await failure.screenshot({path:info.outputPath('turn-failure.png')});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
+   const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8'),body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
+   const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('.initiative-controls, .initiative-controls *, .toast-container, .toast-container *')");
+   const report=await page.evaluate('('+scoped+'\n})()');expect(report.sideways,JSON.stringify(report)).toBe(false);expect(report.clipped).toEqual([]);expect(report.pastEdge).toEqual([]);
+  }
+  expect(state()).toMatchObject({index:0,round:1,clock:0});expect(requests).toBe(1);expect(errors).toEqual([]);expect(badResponses).toEqual([]);
+  await failure.getByRole('button',{name:'Dismiss',exact:true}).click();await expect(failure).toHaveCount(0);
  });
  test('live turn handler coalesces overlapping controls into one database advance',async({page})=>{
   await signInFixtureDm(page);let reads=0,writes=0;let release!:()=>void;

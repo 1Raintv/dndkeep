@@ -76,6 +76,11 @@ export default function InitiativeStrip({ isDM, characterId }: Props) {
   // every handler did `await fn(...)` and discarded the result, so an
   // RLS rejection / network error / stale state was completely silent.
   const { showToast } = useToast();
+  const [endingTurn,setEndingTurn]=useState(false);
+  const turnClick=useRef(false),mounted=useRef(false),latestEncounter=useRef(encounter?.id);
+  latestEncounter.current=encounter?.id;
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
+
   // v2.486.0 — In-app confirm hook (replaces v2.485 ConfirmDialog).
   const { confirm: confirmModal } = useModal();
   // v2.416.0 — Shared preference, also read/written from
@@ -181,10 +186,18 @@ export default function InitiativeStrip({ isDM, characterId }: Props) {
   const inLair = (encounter as { in_lair?: boolean }).in_lair === true;
 
   async function onEndTurn() {
-    if (!encounter) return;
-    const result = await advanceTurn(encounter.id);
-    if (!result.ok) {
-      showToast(`Couldn't end turn: ${result.reason}`, 'error');
+    if (!encounter || turnClick.current) return;
+    const started=encounter.id;
+    turnClick.current=true;setEndingTurn(true);
+    try {
+      const result = await advanceTurn(started);
+      if (mounted.current&&latestEncounter.current===started&&!result.ok) {
+        // v2.869: a delayed/failed advance may have partially applied effects.
+        // Keep the explanation until dismissed instead of inviting rapid retries.
+        showToast(`Couldn't end turn: ${result.reason}. Check combat before trying again.`, 'error', {duration:0});
+      }
+    } finally {
+      turnClick.current=false;if(mounted.current)setEndingTurn(false);
     }
   }
 
@@ -967,17 +980,19 @@ export default function InitiativeStrip({ isDM, characterId }: Props) {
               Removing the orphaned button + its modal mount + state. */}
           <button
             onClick={onEndTurn}
+            disabled={endingTurn}
+            aria-busy={endingTurn}
             style={{
               fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
               padding: '6px 14px', borderRadius: 6,
               border: '1px solid var(--c-gold-bdr)',
               background: 'var(--c-gold-bg)',
               color: 'var(--c-gold-l)',
-              cursor: 'pointer', minHeight: 0,
+              cursor: endingTurn ? 'wait' : 'pointer', opacity: endingTurn ? 0.65 : 1, minHeight: 0,
               letterSpacing: '0.06em', textTransform: 'uppercase',
             }}
           >
-            End Turn
+            {endingTurn ? 'Ending…' : 'End Turn'}
           </button>
           <button
             onClick={onEndCombat}

@@ -6774,3 +6774,29 @@ has no errors (34 pre-existing warnings in combatEncounter.ts); diff checks pass
 No production deployment. Remaining work includes durable incoming/outgoing
 phases, explicit stale/observed-request reconciliation and non-atomic turn
 operations before the legacy clock writes can be replaced.
+
+### Map turn-button feedback (unreleased)
+
+The active InitiativeStrip now disables End Turn while its advance is pending,
+shows Ending… with aria-busy, and blocks repeated clicks immediately. A failure
+stays visible until dismissed and asks the DM to check combat before retrying,
+because the legacy sequence can already have applied partial effects. Delayed
+feedback is suppressed after unmount or switching encounters.
+
+Correction to the preceding entry: DMScreen still imports the shared handler but
+its dashboard tab is retired (absent from navigation and restored-tab whitelist).
+The reachable controls are InitiativeStrip and character-sheet ActionEconomy;
+this change deliberately targets the active map control.
+
+The new local browser regression passes on desktop and mobile: one held request,
+disabled pending control, repeated click ignored, persistent/dismissible failure,
+unchanged turn and clock, no unexpected browser/network errors. Screenshots were
+inspected and the skill overflow probe passes for the controls and toast. Reverting
+the UI fix makes the regression fail on the missing disabled Ending… control;
+restoring it passes both viewports. Changed-file ESLint has zero errors and four
+existing InitiativeStrip warnings. No production deployment; durable turn-phase
+integration and reconciliation remain release prerequisites.
+
+Full required gate passes: 3,355 unit tests, 195/195 TypeScript diagnostics,
+React hooks, RAW, coordinates, anchors, production build and 255.2 KB entry
+budget. Final browser run: two passed; diff check clean.
