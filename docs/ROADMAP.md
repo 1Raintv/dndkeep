@@ -8887,3 +8887,27 @@ connect movement allowance and Opportunity Attack eligibility readers rather
 than displaying an inert buff. Verify different caster/target initiative
 positions, passed/cancelled saves, retries, permissions and level/subclass
 changes. Keep the private UA content restrictions intact.
+
+### Telekinetic Techniques automation — effect planning checkpoint
+
+Added the pure effect planner and 21 tests. It requires Psykinetic level 3+
+(primary or secondary Psion), a settled failed push, distinct combat participants,
+and a valid finalized roll. Boost grants +10 ft and expires on the caster's next
+start; Disorient prevents Opportunity Attacks and expires on the target's next
+start. Bolt preserves the saved Force damage total, including valid Energy Die
+enhancements or the substitute d4. A no-die 5-foot use offers the two non-damage
+effects without inventing a Bolt roll. Existing turn-expiry code was exercised
+against both planned durations, including unrelated end/start events.
+
+This is an implementation dependency, not finished player automation: the new
+planner has no production caller yet. The next checkpoint must connect the saved
+choice transaction, player controls and movement/reaction consumers described
+above. Current Propel declarations preserve only the target participant ID and
+name. Capture the original entity/combatant binding for new declarations before
+allowing the new effect write; do not guess the original target for old rows.
+Bolt should enter the existing typed damage pipeline from its saved roll, with
+a durable delivery receipt, rather than applying bare HP subtraction.
+
+Full gate: 4,101 unit tests, TS 194/194, entry 255.7 KB. No database change or
+player-visible effect enabled. Vercel again reports deployment rate limiting;
+production release remains pending.
