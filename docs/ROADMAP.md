@@ -8630,7 +8630,7 @@ The sheet now declares synthesized unarmed strikes as abilities, preventing
 weapon-only Divine Favor from applying. Flat unarmed damage uses a plain number
 instead of invalid 1d0 notation. Hunter's Mark's reference text now says attack
 roll and permits moving the mark without the obsolete later-turn restriction.
-Rules source: SRD 5.2.1, Divine Favor p.122, Hex p.140, Hunter's Mark p.141:
+Rules source: SRD 5.2.1, Divine Favor p.125, Hex p.140, Hunter's Mark p.141:
 https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
 
 Both client and server calculate the same rider eligibility; original buff rows
