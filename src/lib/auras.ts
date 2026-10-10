@@ -263,7 +263,7 @@ export async function resolveAuraSave(input: {
   const marker = auraSaveMarkerKey(aura.originParticipantId, aura.spec.key);
   if (await alreadySavedThisTurn(input.targetParticipantId, marker)) return false;
 
-  const state=await readAuraSaveState(input.campaignId,input.encounterId,input.targetParticipantId);
+  const state=await readAuraSaveState(input.campaignId,input.encounterId,input.targetParticipantId,aura.spec.saveAbility);
   const {conditionsAutoFailSave,conditionsDisadvantageSave}=await import('./conditions');
   const automaticFailure=conditionsAutoFailSave(state.conditions,aura.spec.saveAbility);
   const disadvantage=conditionsDisadvantageSave(state.conditions,aura.spec.saveAbility);
@@ -275,7 +275,7 @@ export async function resolveAuraSave(input: {
   const penalty=automaticFailure?0:exhaustionPenalty(state.exhaustion);
   const bonus=base.bonus+effects.bonus-penalty;
   const breakdown=[base.breakdown,...effects.rolls.map(r=>`${r.name} ${r.total>=0?'+':''}${r.total}`),...(penalty?[`Exhaustion -${penalty}`]:[])].join('; ');
-  const save=rollSavingThrow(bonus,aura.spec.saveDC,{disadvantage,naturalExtremes:base.naturalExtremes,forceFailure:automaticFailure});
+  const save=rollSavingThrow(bonus,aura.spec.saveDC,{advantage:state.advantage,disadvantage,naturalExtremes:base.naturalExtremes,forceFailure:automaticFailure});
   const {d20,total,passed}=save;
 
   let damage = 0;
@@ -314,7 +314,7 @@ export async function resolveAuraSave(input: {
       ability: aura.spec.saveAbility,
       dc: aura.spec.saveDC,
       d20: automaticFailure ? null : d20,
-      rolls:save.rolls,disadvantage,automatic_failure:automaticFailure,effect_rolls:effects.rolls,exhaustion:state.exhaustion,
+      rolls:save.rolls,advantage:state.advantage??false,disadvantage,automatic_failure:automaticFailure,effect_rolls:effects.rolls,exhaustion:state.exhaustion,
       bonus,
       breakdown,
       total: automaticFailure ? null : total,

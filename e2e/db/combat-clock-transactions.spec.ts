@@ -295,6 +295,27 @@ test.describe('Atomic combat clock transitions',()=>{
    expect(result.bonus).toBe(result.effect_rolls[0].total+result.effect_rolls[1].total-4);expect(result.total).toBe(result.d20+result.bonus);
    expect(result.success).toBe(result.total>=15);if(mode==='restrained')expect(result.d20).toBe(Math.min(...result.rolls));}
  });
+ test('live aura Intelligence saves use active Guards and stop using it at the next own turn',async({page})=>{
+  sql(`update characters set level=5,intelligence=18,class_resources='{"psionic-energy-dice":6,"psion-disciplines":["psionic-guards"]}' where id='${a}'`);
+  const guardTurn=JSON.parse(sql(auth(player,`select get_psionic_discipline_turn('${a}')`))).turn;
+  const expected=sql(`select jsonb_build_object('class_name',class_name,'level',level,'secondary_class',secondary_class,'secondary_level',secondary_level,'intelligence',intelligence,'inventory',inventory,'disciplines',class_resources->'psion-disciplines') from characters where id='${a}'`);
+  sql(auth(player,`select begin_psionic_discipline('${a}','${randomUUID()}','${JSON.stringify(guardTurn)}','psionic-guards',array[]::integer[],1,4,'${expected}')`));
+  await signInFixtureDm(page);
+  const invoke=(key:string)=>page.evaluate(async({campaign,enc,pa,pb,key})=>{
+   const api=await import('/src/lib/auras.ts');try{return {ok:await api.resolveAuraSave({campaignId:campaign,encounterId:enc,targetParticipantId:pa,targetName:'A',targetType:'character',trigger:'turn_end',
+    aura:{originParticipantId:pb,originName:'B',originSize:1,originRow:0,originCol:0,spec:{key,name:key,radiusFt:15,saveAbility:'INT',saveDC:15,damageDice:null,damageType:null,halfOnSave:true,triggers:['turn_end'],exemptParticipantIds:[],speedInside:null,affects:'all'}}})};}catch(e){return {error:String(e)};}
+  },{campaign,enc,pa,pb,key});
+  await page.route('**/rest/v1/rpc/get_psionic_guards_active',route=>route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({message:'Protection unavailable',code:'42501'})}));
+  expect(await invoke('guards-active')).toHaveProperty('error');expect(sql(`select cardinality(once_per_turn_used) from combat_participants where id='${pa}'`)).toBe('0');
+  expect(sql(`select count(*) from combat_events where encounter_id='${enc}' and event_type='save_rolled'`)).toBe('0');
+  await page.unroute('**/rest/v1/rpc/get_psionic_guards_active');
+  const evidence=(key:string)=>JSON.parse(sql(`select payload from combat_events where encounter_id='${enc}' and event_type='save_rolled' and payload->>'aura'='${key}'`));
+  expect(await invoke('guards-active')).toEqual({ok:true});await expect.poll(()=>sql(`select count(*) from combat_events where encounter_id='${enc}' and event_type='save_rolled'`)).toBe('1');
+  const active=evidence('guards-active');expect(active.advantage).toBe(true);expect(active.rolls).toHaveLength(2);expect(active.d20).toBe(Math.max(...active.rolls));
+  run();run(call(randomUUID(),state().turn,pa,0,2));
+  expect(await invoke('guards-expired')).toEqual({ok:true});await expect.poll(()=>sql(`select count(*) from combat_events where encounter_id='${enc}' and event_type='save_rolled'`)).toBe('2');
+  const expired=evidence('guards-expired');expect(expired.advantage).toBe(false);expect(expired.rolls).toHaveLength(1);
+ });
  const recoverMovement=()=>`select recover_turn_movement_features('${pa}','${turn}')`;
  const featureUses=()=>JSON.parse(sql(`select feature_uses from characters where id='${a}'`));
  const movementFixture=()=>{sql(`update characters set feature_uses='{"Feline Agility":1,"species:Feline Agility":1,"Psionic Restoration":1,"custom":4}' where id='${a}'`);endEffects(pa,ca,false);};

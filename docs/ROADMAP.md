@@ -7084,3 +7084,28 @@ one-use save penalties, Legendary Resistance/reaction choices, and server-side
 snapshot validation with an atomic aura receipt/HP/event/marker transaction.
 Do not connect the new durable turn controller while those gaps can be hidden.
 Final gate:3,449 units pass;195/195 TypeScript;255.2 KB entry;changed-file ESLint has zero errors (15 existing aura warnings).
+
+### Psionic Guards applies to live aura saves (unreleased)
+
+Intelligence aura saves now consult the existing get_psionic_guards_active
+read-only protection API through getPsionicGuardsSaveAdvantage. Active Guards
+rolls two d20s and keeps the higher; the server's existing turn-start identity
+expires protection at the next own start. Other abilities and creature targets
+do not query or acquire Guards. No private discipline ledger is returned, and
+no new grant or copied duration rule was introduced. The canonical save roller
+also preserves normal advantage/disadvantage cancellation.
+Source checked: [UA2025 Psion, p.5](https://media.dndbeyond.com/compendium-images/ua/the-psion/mXCPWlh2yy5tBKqP/UA2025-ThePsion.pdf).
+This remains owner-restricted playtest content, not an SRD catalog addition.
+
+A failed protection read stops before the save dice and once-per-turn marker.
+Two desktop/mobile cases activate the real discipline, simulate a rejected
+protection read, confirm no save/event/marker was consumed, then verify the
+active higher-die save and expiry after a complete round. All twelve live aura
+browser cases pass; four additional unit cases and the full gate pass (3,453
+units,195/195 TypeScript,255.2 KB entry). Changed-file lint has no errors and
+15 existing aura warnings. No migration or production deployment.
+
+This fixes live Guards eligibility at preparation time. Aura settlement still
+needs to recheck save inputs and protection inside its commit transaction;
+one-use save penalties, damage defenses and durable multi-step recovery remain
+unfinished. The broader turn-controller release remains gated on that work.

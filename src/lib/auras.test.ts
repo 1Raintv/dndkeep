@@ -63,3 +63,9 @@ it('Bless and Bane dice are included once with their signed contributions',async
 it('failed once-per-turn read cannot reroll or consume an uncertain prior use',async()=>{
  m.markerError={message:'offline'};await expect(run()).rejects.toThrow('previous use');expect(m.saveState).not.toHaveBeenCalled();expect(m.mark).not.toHaveBeenCalled();expect(m.die).not.toHaveBeenCalled();
 });
+
+it('active Guards retains the higher Intelligence save die',async()=>{
+ m.damage=0;m.die.mockReturnValueOnce(4).mockReturnValueOnce(18);m.saveState.mockResolvedValue({conditions:[],buffs:[],exhaustion:0,advantage:true});
+ await resolveAuraSave({campaignId:'campaign',encounterId:'encounter',aura:{...aura,spec:{...aura.spec,saveAbility:'INT'}},targetParticipantId:'target',targetName:'Target',targetType:'character',trigger:'turn_end'});
+ expect(m.event).toHaveBeenCalledWith(expect.objectContaining({payload:expect.objectContaining({d20:18,rolls:[4,18],advantage:true,success:true})}));
+});
