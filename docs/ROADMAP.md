@@ -1,5 +1,39 @@
 # DNDKeep — Two-Track Roadmap
 
+### Authenticated Telepath lifecycle (local backend; not released or UI-wired)
+
+Migration 20261010195500 exposes a scoped telepath_reaction dispatcher for context,
+per-attack list, read, begin, enhance, finish and cancel. Fresh declarations retain
+the existing DM-only distance/visibility review. The character's owning campaign
+member can recover and finish a reviewed use; strangers, departed members and
+foreign declaration identities are rejected. Original campaign scope is checked
+on replay as well as first use. Low-level functions and saved tables stay private.
+The read surface returns linked enhancement identities and original/adjusted dice
+without applying another payment. Changed subclasses can still recover/cancel.
+
+Eight focused database/browser cases passed after fixing two fixtures (an attack
+cannot legally move campaigns; browser Auth needs non-null creation timestamps).
+They cover DM review, member revocation, malformed requests, campaign separation,
+Surge/Enkindled recovery and cancellation, and two lost responses each for begin
+and finish followed by list recovery after reload. Exactly one Reaction claim and
+one conditional Energy Die payment remain. All 40 Telepath database/browser
+cases passed on the full rerun. The full gate passed: 4,534 tests,
+TS 193/193, entry 255.7 KB. SQL lint has no new diagnostics (20 existing functions);
+security findings remain keep_warm/client_errors. Exact local ledger verified.
+
+Still required before enabling controls: client receipt validation, DM spatial
+review and player saved-use controls, integration with enhancement/recovery UI,
+and durable Telepath reaction history. In particular, the original DM needs a
+narrow orphan-cancellation path if the character leaves/moves campaign while a
+saved reaction is unresolved: current authorization correctly denies departed
+members, but the current-campaign character helper also denies the former DM.
+Do not relax general membership checks to address that. Ability-check Bolstering
+remains separate from this attack lifecycle. Repo chain: 341; retained release
+rehearsals still need 333–341. Production unchanged.
+Evidence: .tmp/telepath-dispatcher-{verified-db,full-db,gate}.log and
+.tmp/telepath-dispatcher-{lint,advisors}.json.
+
+
 ### Revised post-roll reaction checks (local; not released)
 
 Migration 20261010193500 adds private, server-owned attack outcome revisions and

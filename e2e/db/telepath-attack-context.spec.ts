@@ -90,6 +90,101 @@ test.describe('Telepath attack context',()=>{
  const beginSaved=(roll:number,feature='distraction',review:unknown={distanceFeet:30,visible:true,confirmed:true},request=randomUUID())=>JSON.parse(sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';
   select dndkeep_private.begin_telepath_reaction('${character}','${request}','${attack}','${feature}',dndkeep_private.telepath_attack_context('${character}','${attack}','${feature}'),${roll},'${JSON.stringify(review)}');commit;`));
  const finishSaved=(request:string,cancel=false)=>JSON.parse(sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';select dndkeep_private.finish_telepath_reaction('${character}','${request}',${cancel});commit;`));
+
+ const dispatch=(operation:string,payload:unknown,user=owner,actor=character)=>{
+  const result=sql(`begin;set local request.jwt.claims='{"sub":"${user}","role":"authenticated"}';set local role authenticated;select public.telepath_reaction('${actor}','${operation}','${JSON.stringify(payload).replace(/'/g,"''")}');commit;`);
+  return JSON.parse(result);
+ };
+ const beginPayload=(roll=3)=>({requestId:randomUUID(),attackId:attack,feature:'distraction',expected:context(),roll,review:{distanceFeet:30,visible:true,confirmed:true}});
+ test('authenticated dispatcher recovers the declaration and conditional payment without spending twice',()=>{
+  const input=beginPayload();expect(dispatch('context',{attackId:attack,feature:'distraction'})).toEqual(context());expect(dispatch('list',{attackId:attack})).toEqual([]);
+  const first=dispatch('begin',input);expect(first).toMatchObject({request_id:input.requestId,result:null,base_roll:3,enhancements:[]});
+  expect(dispatch('begin',input).operationResult.replayed).toBe(true);
+  expect(dispatch('read',{declarationId:input.requestId})).toMatchObject({request_id:input.requestId,result:null});
+  expect(dispatch('list',{attackId:attack})).toHaveLength(1);
+  expect(dispatch('finish',{declarationId:input.requestId})).toMatchObject({result:{energyCost:1,total:14,result:'miss'},operationResult:{replayed:false}});
+  expect(dispatch('finish',{declarationId:input.requestId})).toMatchObject({operationResult:{replayed:true}});
+  expect(dispatch('read',{declarationId:input.requestId}).result.energyCost).toBe(1);
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('7');
+  expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${input.requestId}'`)).toBe('1');
+ });
+ test('only DM can begin; the owning member can recover and finish reviewed uses',()=>{
+  sql(`update characters set user_id='${other}' where id='${character}';insert into campaign_members(campaign_id,user_id,role) values('${campaign}','${other}','player')`);
+  const input=beginPayload();expect(()=>dispatch('begin',input,other)).toThrow(/DM review/);
+  dispatch('begin',input);expect(dispatch('list',{attackId:attack},other)).toHaveLength(1);
+  expect(dispatch('finish',{declarationId:input.requestId},other).result.energyCost).toBe(1);
+  sql(`delete from campaign_members where campaign_id='${campaign}' and user_id='${other}'`);
+  for(const op of ['read','finish','cancel'])expect(()=>dispatch(op,{declarationId:input.requestId},other)).toThrow(/Campaign access/);
+  expect(()=>dispatch('list',{attackId:attack},other)).toThrow(/Campaign access/);
+ });
+ test('dispatcher rejects strangers, malformed input and foreign declaration identities',()=>{
+  const input=beginPayload();dispatch('begin',input);
+  expect(()=>dispatch('read',{declarationId:input.requestId},other)).toThrow();
+  expect(()=>dispatch('read',{declarationId:randomUUID()})).toThrow();
+  expect(()=>dispatch('finish',{declarationId:input.requestId,energyCost:0})).toThrow(/Unexpected/);
+  expect(()=>dispatch('begin',{...input,requestId:randomUUID(),roll:1.5})).toThrow(/Invalid/);
+  expect(()=>dispatch('destroy',{})).toThrow(/Invalid/);
+  expect(()=>dispatch('read',null)).toThrow(/Invalid/);
+  expect(sql(`select count(*) from public.psionic_energy_uses where request_id='${input.requestId}'`)).toBe('0');
+ });
+ test('moving a character removes old campaign recovery and attacks cannot move',()=>{
+  const input=beginPayload(),next=randomUUID();dispatch('begin',input);
+  sql(`insert into campaigns(id,owner_id,name) values('${next}','${other}','Another campaign');insert into campaign_members(campaign_id,user_id,role) values('${next}','${owner}','player')`);
+  try{
+   expect(()=>sql(`update pending_attacks set campaign_id='${next}' where id='${attack}'`)).toThrow(/cannot be moved/);
+   sql(`update characters set campaign_id='${next}' where id='${character}'`);
+   expect(()=>dispatch('begin',input)).toThrow(/unavailable/);expect(()=>dispatch('read',{declarationId:input.requestId})).toThrow(/unavailable/);
+   expect(()=>dispatch('list',{attackId:attack})).toThrow(/unavailable/);
+  }finally{sql(`update characters set campaign_id='${campaign}' where id='${character}';delete from campaigns where id='${next}'`);}
+ });
+ test('dispatcher recovers linked enhancements and canceled uses without new costs',()=>{
+  sql(`update characters set level=20,class_resources='{"psionic-energy-dice":12}',hit_dice_spent=0 where id='${character}'`);
+  const input=beginPayload(1);dispatch('begin',input);
+  const enkindled={declarationId:input.requestId,requestId:randomUUID(),kind:'enkindled',extraRolls:[2,3],hitDie:null};
+  const surge={declarationId:input.requestId,requestId:randomUUID(),kind:'surge',extraRolls:null,hitDie:6};
+  dispatch('enhance',enkindled);const enhanced=dispatch('enhance',surge);
+  expect(enhanced.enhancements).toMatchObject([{kind:'enkindled',originalRolls:[1,2,3],extraRolls:[2,3]},{kind:'surge',originalRolls:[1,2,3],rolls:[4,4,4]}]);
+  expect(()=>dispatch('enhance',{...surge,requestId:randomUUID(),hitDie:1.5})).toThrow(/Invalid/);
+  expect(()=>dispatch('enhance',{...enkindled,requestId:randomUUID(),extraRolls:[1.5]})).toThrow(/Invalid/);
+  const before=sql(`select hit_dice_spent||'|'||class_resources from characters where id='${character}'`);
+  expect(dispatch('cancel',{declarationId:input.requestId}).result).toMatchObject({cancelled:true,energyCost:0,reactionCost:1});
+  expect(dispatch('enhance',surge).operationResult.replayed).toBe(true);
+  expect(dispatch('read',{declarationId:input.requestId}).enhancements).toEqual(enhanced.enhancements);
+  expect(sql(`select hit_dice_spent||'|'||class_resources from characters where id='${character}'`)).toBe(before);
+  expect(()=>dispatch('finish',{declarationId:input.requestId})).toThrow(/decision changed/);
+ });
+ test('dispatcher recovery does not require current subclass eligibility',()=>{
+  const input=beginPayload();dispatch('begin',input);sql(`update characters set subclass='Psi Warper' where id='${character}'`);
+  expect(dispatch('read',{declarationId:input.requestId}).result).toBeNull();expect(()=>dispatch('finish',{declarationId:input.requestId})).toThrow(/progression changed/);
+  expect(dispatch('cancel',{declarationId:input.requestId}).result.cancelled).toBe(true);
+ });
+
+ test('browser dispatcher recovers lost begin and finish replies from saved records',async({page})=>{
+  sql(`update auth.users set instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),created_at=now(),updated_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${owner}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${owner}','${owner}',jsonb_build_object('sub','${owner}','email','${owner}@action.local'),'email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${owner}@action.local`);const input=beginPayload();
+  for(const operation of ['begin','finish']){
+   let dropped=0;await page.route('**/rest/v1/rpc/telepath_reaction',async route=>{
+    if(route.request().method()!=='POST'||route.request().postDataJSON().p_operation!==operation){await route.continue();return;}
+    const response=await route.fetch();expect(response.ok()).toBe(true);dropped++;await route.abort('failed');
+   });
+   const failed=await page.evaluate(async({character,operation,payload})=>{
+    const {psionicRpc}=await import('/src/lib/api/psionicTurns.ts');try{await psionicRpc('telepath_reaction',{p_character:character,p_operation:operation,p_payload:payload},true);return false;}catch{return true;}
+   },{character,operation,payload:operation==='begin'?input:{declarationId:input.requestId}});
+   expect(failed).toBe(true);expect(dropped).toBe(2);await page.unroute('**/rest/v1/rpc/telepath_reaction');await page.reload();
+   const records=await page.evaluate(async({character,attack})=>{
+    const {psionicRpc}=await import('/src/lib/api/psionicTurns.ts');return await psionicRpc('telepath_reaction',{p_character:character,p_operation:'list',p_payload:{attackId:attack}}) as {request_id:string;result:null|{energyCost:number}}[];
+   },{character,attack});
+   expect(records).toHaveLength(1);expect(records[0].request_id).toBe(input.requestId);
+   if(operation==='begin')expect(records[0].result).toBeNull();else expect(records[0].result?.energyCost).toBe(1);
+  }
+  expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${input.requestId}'`)).toBe('1');
+  expect(sql(`select count(*) from public.psionic_energy_uses where request_id='${input.requestId}'`)).toBe('1');
+  await page.close();
+ });
+ test('dispatcher does not expose private records or helper functions directly',()=>{
+  expect(sql(`select has_function_privilege('anon','public.telepath_reaction(uuid,text,jsonb)','execute') or has_function_privilege('authenticated','dndkeep_private.telepath_reaction_record(uuid,uuid)','execute') or has_table_privilege('authenticated','dndkeep_private.telepath_declarations','select')`)).toBe('f');
+ });
  test('saved Distraction spends Reaction once and charges energy only when the hit becomes a miss',()=>{
   const d=beginSaved(3);expect(d).toMatchObject({base_roll:3,result:null});
   expect(sql(`select reaction_used from combat_participants where id='${participant}'`)).toBe('t');
@@ -231,7 +326,7 @@ test.describe('Telepath attack context',()=>{
   expect(sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('1');
  });
 
- test('the unfinished lifecycle is private and cannot be called by app roles',()=>{
+ test('low-level lifecycle functions remain private behind the dispatcher',()=>{
   for(const role of ['anon','authenticated']){
    expect(sql(`select has_function_privilege('${role}','dndkeep_private.begin_telepath_reaction(uuid,uuid,uuid,text,jsonb,integer,jsonb)','execute') or has_function_privilege('${role}','dndkeep_private.finish_telepath_reaction(uuid,uuid,boolean)','execute') or has_function_privilege('${role}','dndkeep_private.enhance_telepath_reaction(uuid,uuid,uuid,text,integer[],integer)','execute') or has_table_privilege('${role}','dndkeep_private.telepath_enhancements','select') or has_table_privilege('${role}','dndkeep_private.telepath_declarations','select') or has_table_privilege('${role}','dndkeep_private.attack_reaction_origins','select')`)).toBe('f');
   }
