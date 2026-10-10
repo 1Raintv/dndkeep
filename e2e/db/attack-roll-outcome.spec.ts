@@ -84,7 +84,7 @@ test.describe('saved attack outcome rules',()=>{
   await signInAsSeedDm(page,email);const id=randomUUID();
   sql(`insert into pending_attacks(id,campaign_id,attacker_name,attacker_type,target_name,target_type,attack_name,attack_kind,attack_bonus,target_ac,chain_id)
    values('${id}','${camp}','Fixture attacker','system','Fixture target','object','Fixture strike','attack_roll',5,15,'${randomUUID()}')`);
-  let dropped=0;await page.route('**/rest/v1/rpc/record_pending_attack_roll',async route=>{
+  let dropped=0;await page.route('**/rest/v1/rpc/record_pending_attack_roll_with_history',async route=>{
    if(route.request().method()!=='POST'){await route.continue();return;}
    const response=await route.fetch();expect(response.ok()).toBe(true);dropped++;await route.abort('failed');
   });
@@ -95,12 +95,14 @@ test.describe('saved attack outcome rules',()=>{
   expect(error).not.toBeNull();expect(dropped).toBe(2);
   const saved=JSON.parse(sql(`select attack_roll_snapshot from pending_attacks where id='${id}'`));
   expect(saved).toMatchObject({d20:10,total:15,result:'hit'});
-  await page.unroute('**/rest/v1/rpc/record_pending_attack_roll');await page.reload();
+  await page.unroute('**/rest/v1/rpc/record_pending_attack_roll_with_history');await page.reload();
   const recovered=await page.evaluate(async id=>{
    const {rollAttackRoll}=await import('/src/lib/pendingAttack.ts');const random=Math.random;let rolls=0;Math.random=()=>{rolls++;return 0.975;};
    try{return {attack:await rollAttackRoll(id),rolls};}finally{Math.random=random;}
   },id);
   expect(recovered.rolls).toBe(0);expect(recovered.attack?.attack_roll_snapshot).toEqual(saved);
+  const events=JSON.parse(sql(`select coalesce(jsonb_agg(payload),'[]') from combat_events where chain_id=(select chain_id from pending_attacks where id='${id}') and event_type='attack_roll'`));
+  expect(events).toHaveLength(1);expect(events[0]).toMatchObject({individual_results:[10],total:15,hit_result:'hit'});
  });
 
  function masteryFixture(){
@@ -120,6 +122,61 @@ test.describe('saved attack outcome rules',()=>{
   const readBuffs=()=>JSON.parse(sql(`select active_buffs from combatants where id=(select combatant_id from combat_participants where id='${actor}')`));
   return {id,actor,target,enc,buffs,snapshot,call,readBuffs,setBuffs};
  }
+
+ const history={advantageState:'normal',d20Alt:null,exhaustionLevel:0,buffContributions:[]};
+ function historyCall(f:ReturnType<typeof masteryFixture>,h:unknown=history,snap:unknown=f.snapshot){
+  return `select public.record_pending_attack_roll_with_history('${f.id}',(select updated_at from pending_attacks where id='${f.id}'),'${JSON.stringify(snap)}','${JSON.stringify(f.buffs)}','${JSON.stringify(h)}')`;
+ }
+ const asOwner=(q:string)=>`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';set local role authenticated;${q};commit;`;
+ function historyEvents(id:string){return JSON.parse(sql(`select coalesce(jsonb_agg(jsonb_build_object('type',event_type,'payload',payload) order by sequence),'[]') from combat_events where chain_id=(select chain_id from pending_attacks where id='${id}')`));}
+ test('atomic history preserves advantage, cover, buff dice and exhaustion exactly once',()=>{
+  const f=masteryFixture();sql(`update pending_attacks set cover_level='half' where id='${f.id}'`);
+  const h={advantageState:'advantage',d20Alt:7,exhaustionLevel:1,buffContributions:[{key:'bless',name:'Bless',source:'spell:bless',dice:'1d4',rolls:[4],total:4}]};
+  const snap={...f.snapshot,total:17,targetAC:17};
+  expect(JSON.parse(sql(asOwner(historyCall(f,h,snap))))).toMatchObject({replayed:false});
+  const events=historyEvents(f.id);expect(events.map((e:{type:string})=>e.type)).toEqual(['cover_applied','attack_roll','buff_contributed']);
+  expect(events[0].payload).toMatchObject({base_ac:15,effective_ac:17,ac_bonus:2});
+  expect(events[1].payload).toMatchObject({individual_results:[10,7],total:17,target_ac:15,buff_total:4,exhaustion_penalty:-2,advantage_state:'advantage'});
+  expect(events[2].payload).toMatchObject({source:'spell:bless',rolls:[4],total:4});
+  expect(JSON.parse(sql(asOwner(historyCall(f))))).toMatchObject({replayed:true});expect(historyEvents(f.id)).toEqual(events);
+ });
+
+ test('buff history validates flat bonuses, die bounds and signed modifiers',()=>{
+  for(const [dice,rolls,total] of [['1d4+2',[4],6],['3',[],3],['1d4-6',[4],-2]] as const){
+   const f=masteryFixture(),h={...history,buffContributions:[{key:'bonus',name:'Bonus',source:'fixture',dice,rolls,total}]};
+   const snap={...f.snapshot,total:15+total,result:total<0?'miss':'hit'};
+   expect(JSON.parse(sql(asOwner(historyCall(f,h,snap))))).toMatchObject({replayed:false});expect(historyEvents(f.id)[0].payload.buff_total).toBe(total);
+  }
+  for(const [dice,rolls,total] of [['1d4',[5],5],['1d4',[3],4],['1d4',[],0]] as const){
+   const f=masteryFixture(),h={...history,buffContributions:[{key:'bonus',name:'Bonus',source:'fixture',dice,rolls,total}]};
+   expect(()=>sql(asOwner(historyCall(f,h,{...f.snapshot,total:15+total})))).toThrow();expect(historyEvents(f.id)).toEqual([]);expect(f.readBuffs()).toEqual(f.buffs);
+  }
+ });
+ test('invalid history rolls back the attack and one-use markers',()=>{
+  for(const h of [null,{...history,advantageState:'bad'},{...history,d20Alt:2},{...history,advantageState:'advantage',d20Alt:11},{...history,exhaustionLevel:2},{...history,buffContributions:[{}]}]){
+   const f=masteryFixture();expect(()=>sql(asOwner(historyCall(f,h)))).toThrow();
+   expect(sql(`select state from pending_attacks where id='${f.id}'`)).toBe('declared');expect(f.readBuffs()).toEqual(f.buffs);expect(historyEvents(f.id)).toEqual([]);
+  }
+ });
+ test('a history insert failure rolls back the already-recorded roll and mastery consumption',()=>{
+  const f=masteryFixture();
+  expect(()=>sql(`begin;
+   create function pg_temp.reject_attack_history() returns trigger language plpgsql as $$begin if new.event_type='attack_roll' and new.campaign_id='${camp}' then raise exception 'history unavailable';end if;return new;end;$$;
+   create trigger test_reject_history before insert on combat_events for each row execute function pg_temp.reject_attack_history();
+   set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';set local role authenticated;${historyCall(f)};commit;`)).toThrow('history unavailable');
+  expect(sql(`select state from pending_attacks where id='${f.id}'`)).toBe('declared');expect(f.readBuffs()).toEqual(f.buffs);expect(historyEvents(f.id)).toEqual([]);
+ });
+ test('concurrent history recording preserves only the winning roll',async()=>{
+  const f=masteryFixture(),run=promisify(execFile);
+  const attempts=await Promise.all([10,11].map(d20=>run('docker',['exec','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1','-c',asOwner(historyCall(f,history,{...f.snapshot,d20,total:d20+5}))])));
+  const results=attempts.map(r=>JSON.parse(r.stdout));expect(results.map(r=>r.replayed).sort()).toEqual([false,true]);
+  expect(results[0].attack.attack_roll_snapshot).toEqual(results[1].attack.attack_roll_snapshot);
+  const events=historyEvents(f.id);expect(events).toHaveLength(1);expect(events[0].payload.total).toBe(results[0].attack.attack_total);
+ });
+ test('history wrapper retains anonymous and unrelated-user restrictions',()=>{
+  const f=masteryFixture();expect(sql(`select has_function_privilege('anon','public.record_pending_attack_roll_with_history(uuid,timestamptz,jsonb,jsonb,jsonb)','execute')`)).toBe('f');
+  expect(()=>sql(asOwner(historyCall(f)).replace(owner,randomUUID()))).toThrow();expect(historyEvents(f.id)).toEqual([]);expect(f.readBuffs()).toEqual(f.buffs);
+ });
  test('records the roll and only its applicable mastery markers together, with exact replay',()=>{
   const f=masteryFixture();expect(f.call()).toMatchObject({replayed:false,attack:{attack_roll_snapshot:f.snapshot}});
   expect(f.readBuffs()).toEqual(f.buffs.slice(2));
@@ -161,7 +218,7 @@ test.describe('saved attack outcome rules',()=>{
    insert into campaign_members(campaign_id,user_id,role) values('${camp}','${player}','player');
    insert into characters(id,user_id,campaign_id,name,species,class_name,background,level) values('${character}','${player}','${camp}','Player','Human','Psion','Sage',3);`);
   const call=()=>sql(`begin;set local request.jwt.claims='{"sub":"${player}","role":"authenticated"}';set local role authenticated;
-   select public.record_pending_attack_roll('${f.id}',(select updated_at from pending_attacks where id='${f.id}'),'${JSON.stringify(f.snapshot)}','${JSON.stringify(f.buffs)}');commit;`);
+   select public.record_pending_attack_roll_with_history('${f.id}',(select updated_at from pending_attacks where id='${f.id}'),'${JSON.stringify(f.snapshot)}','${JSON.stringify(f.buffs)}','${JSON.stringify(history)}');commit;`);
   try{
    expect(call).toThrow();
    sql(`update combatants set definition_type='character',definition_id='${character}' where id=(select combatant_id from combat_participants where id='${f.actor}');

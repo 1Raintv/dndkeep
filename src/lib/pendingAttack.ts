@@ -512,95 +512,18 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
     attackerId:atk.attacker_participant_id,targetId:atk.target_participant_id,d20,total,targetAC:effectiveAc,
     naturalOneAutoFails,criticalOnHit:autoCrit,automatic:coverLevel==='total'?'failure':'none',result:hitResult};
 
-  const saved=await recordPendingAttackRoll(atk,snapshot,atk.attacker_participant_id?attackerBuffs:null);
+  const saved=await recordPendingAttackRoll(atk,snapshot,atk.attacker_participant_id?attackerBuffs:null,{
+    advantageState,d20Alt,exhaustionLevel:attackerExhaustion,
+    buffContributions:rolledAttackBonuses.map(r=>({key:r.buff.key,name:r.buff.name,source:r.buff.source,dice:r.dice,rolls:r.rolls,total:r.total})),
+  });
   if(saved.replayed){
     if(saved.attack.state==='attack_rolled')await offerReactionsFor(saved.attack,'post_attack_roll');
     return saved.attack;
   }
   const updated=saved.attack;
 
-  // Emit a dedicated cover event first so the log reads naturally:
-  //   1. Cover applied (half / three-quarters / total)
-  //   2. Attack roll
-  if (coverLevel !== 'none') {
-    await emitCombatEvent({
-      campaignId: atk.campaign_id,
-      encounterId: atk.encounter_id,
-      chainId: atk.chain_id,
-      sequence: 0,
-      actorType: 'system',
-      actorName: 'System',
-      targetType: atk.target_type,
-      targetName: atk.target_name,
-      eventType: 'cover_applied',
-      payload: {
-        level: coverLevel,
-        ac_bonus: coverAcBonus,
-        auto_miss: coverLevel === 'total',
-        base_ac: atk.target_ac,
-        effective_ac: effectiveAc,
-      },
-    });
-  }
-
-  await emitCombatEvent({
-    campaignId: atk.campaign_id,
-    encounterId: atk.encounter_id,
-    chainId: atk.chain_id,
-    sequence: 1,
-    actorType: atk.attacker_type === 'system' ? 'system' : atk.attacker_type === 'character' ? 'player' : 'monster',
-    actorName: atk.attacker_name,
-    targetType: atk.target_type,
-    targetName: atk.target_name,
-    eventType: 'attack_roll',
-    payload: {
-      action_name: atk.attack_name,
-      dice_expression: `1d20${bonus >= 0 ? '+' : ''}${bonus}`,
-      individual_results: d20Alt != null ? [d20, d20Alt] : [d20],
-      total,
-      hit_result: hitResult,
-      target_ac: atk.target_ac,
-      // v2.110.0 — Phase H condition integration
-      advantage_state: advantageState,
-      auto_crit: autoCrit && (hitResult === 'crit' || hitResult === 'hit'),
-      // v2.113.0 — Phase H pt 4 buff contributions
-      buff_contributions: rolledAttackBonuses.map(r => ({
-        key: r.buff.key,
-        name: r.buff.name,
-        dice: r.dice,
-        rolls: r.rolls,
-        total: r.total,
-      })),
-      buff_total: buffAttackTotal,
-      // v2.116.0 — Phase H pt 7 exhaustion penalty
-      exhaustion_level: attackerExhaustion,
-      exhaustion_penalty: exhaustionPenalty,
-    },
-  });
-
-  // v2.113.0 — Phase H pt 4: emit a dedicated buff_contributed event per
-  // buff so the log can render "Bless contributed 3 to the hit" inline.
-  for (const r of rolledAttackBonuses) {
-    await emitCombatEvent({
-      campaignId: atk.campaign_id,
-      encounterId: atk.encounter_id,
-      chainId: atk.chain_id,
-      sequence: 2,
-      actorType: 'system',
-      actorName: r.buff.name,
-      targetType: atk.attacker_type,
-      targetName: atk.attacker_name,
-      eventType: 'buff_contributed',
-      payload: {
-        key: r.buff.key,
-        source: r.buff.source,
-        applies_to: 'attack_roll',
-        dice: r.dice,
-        rolls: r.rolls,
-        total: r.total,
-      },
-    });
-  }
+  // v2.869: cover, roll and buff history now commit with the winning roll.
+  // A dropped response cannot strand history or publish a losing contender.
 
   // v2.869: Graze is chosen after reactions, never an eager HP write here.
 

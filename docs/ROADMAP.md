@@ -1,5 +1,37 @@
 # DNDKeep — Two-Track Roadmap
 
+### Durable attack-roll history (local; not released)
+
+New live attack rolls use record_pending_attack_roll_with_history. It composes
+existing authorization, shared-actor locking, original-roll evidence and Sap/Vex
+consumption with cover, attack-roll and buff-contribution events in one database
+transaction. Failed history inserts undo the roll and marker consumption. Replays
+and concurrent callers return the saved winner without duplicate or losing-die
+history. Advantage/disadvantage retains both d20s; original target AC, effective
+cover AC, exhaustion and buff dice remain visible. The canonical SQL dice-evidence
+checker rejects impossible buff faces/totals, and the wrapper checks overall math.
+The client no longer performs separate fire-and-forget writes for these events.
+
+Legacy rolls recorded through the older endpoint replay as-is; missing historical
+roll details are not invented or backfilled. This closes history loss for the new
+live roll transaction, not every legacy combat event writer. Telepath reaction
+controls still require subsequent reaction windows and authenticated integration;
+ability-check Bolstering remains separate work. The previous manual-declaration
+follow-up was stale: DeclareAttackModal has no live importer or mounted path.
+
+Validation: full gate passed (4,534 tests, TS 193/193, entry 255.7 KB). All 23 local
+attack cases passed, plus final wrapper checks for player authorization and exact
+history. Coverage includes two dropped responses after commit, concurrent winners,
+forced history failure rollback, invalid dice, and original/alternate d20 evidence.
+All eight desktop/mobile combat-dialog and Graze recovery flows passed.
+SQL lint adds no diagnostics (20 existing warning functions, no errors); security
+advisor findings remain keep_warm/client_errors. Exact local migration ledger
+verified for 20261010191500. Repo chain is now 339; retained fresh/main-upgrade
+rehearsals still need 333–339. Production unchanged.
+Evidence: .tmp/attack-history-{final-gate,final-db,final-auth,dialog}.log,
+.tmp/attack-history-final-lint.json, .tmp/attack-history-advisors.json.
+
+
 ### Manual attack ability review (local; not released)
 
 The sheet now exposes Add Custom Attack and named Edit/Remove controls. Its
@@ -7,8 +39,8 @@ optional ability-modifier field is independent of total attack/damage bonuses:
 zero and negative values persist, blank stays unknown, and fractional/invalid
 values cannot save. Editing preserves the reviewed value instead of dropping it.
 Saving/removing manual attacks excludes generated inventory, species and unarmed
-rows, preventing copies in character.weapons. The combat declaration modal's
-separate manual-entry path remains a follow-up.
+rows, preventing copies in character.weapons. The old DeclareAttackModal has no live importer (its mount was removed in
+v2.411); it is not an active manual-entry gap.
 
 Validation: full gate passed (4,533 unit tests, TS baseline lowered 194 to 193,
 entry 255.7 KB). Local desktop/mobile browser flows verify persistence across
