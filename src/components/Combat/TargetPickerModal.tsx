@@ -38,6 +38,7 @@ import { TargetGroupChip, rowStyleFor } from './TargetGroupChip';
 
 interface Props {
   participants: CombatParticipant[];
+  selectionDisabled?: boolean;
   excludeParticipantId?: string | null;
   allowSelfTarget?: boolean;
   title?: string;
@@ -67,6 +68,7 @@ interface Props {
 
 export default function TargetPickerModal({
   participants,
+  selectionDisabled = false,
   excludeParticipantId,
   allowSelfTarget = false,
   title = 'Pick a target',
@@ -178,7 +180,7 @@ export default function TargetPickerModal({
               && distanceFt !== null
               && normalRangeFt != null
               && distanceFt > normalRangeFt;
-            const blocked = outOfRange || movementBusy || rangeLoading || rangeFailed;
+            const blocked = selectionDisabled || outOfRange || movementBusy || rangeLoading || rangeFailed;
             return (
               <button
                 key={p.id}

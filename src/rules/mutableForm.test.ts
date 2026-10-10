@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {validMutableFormSpec,MUTABLE_FORM_RESISTANCES,mutableFormBenefits,mutableFormEligibility,mutableFormSpellRange,planMutableForm,type MutableFormChoice} from './mutableForm';
+import {mutableFormAttackRange,validMutableFormSpec,MUTABLE_FORM_RESISTANCES,mutableFormBenefits,mutableFormEligibility,mutableFormSpellRange,planMutableForm,type MutableFormChoice} from './mutableForm';
 const hero={class_name:'Psion',subclass:'Metamorph',level:3,class_resources:{'psionic-energy-dice':4}};
 const base={fleshWeaver:false,improvement:null};
 it('uses the Bonus Action activation cost and one rolled die for temporary HP',()=>{
@@ -67,4 +67,15 @@ it.each([null,undefined,[],{},0,{durationSeconds:600,fleshWeaver:false,improveme
 it('validates base and improved saved form specs',()=>{
  expect(validMutableFormSpec({durationSeconds:60,fleshWeaver:false,improvement:null})).toBe(true);
  expect(validMutableFormSpec({durationSeconds:600,fleshWeaver:true,improvement:{kind:'stony',resistance:'Cold'}})).toBe(true);
+});
+
+it.each([5,10,15])('adds to existing melee reach %s',reach=>{
+ expect(mutableFormAttackRange(reach,'melee',{...base,durationSeconds:60})).toBe(reach+5);
+ expect(mutableFormAttackRange(reach,'melee',null)).toBe(reach);
+});
+it.each(['ranged',null,undefined] as const)('preserves ranges without an explicit melee mode %s',mode=>{
+ expect(mutableFormAttackRange(60,mode,{...base,durationSeconds:60})).toBe(60);
+});
+it.each([null,0,-5,Infinity,NaN])('does not invent a known reach for %s',reach=>{
+ expect(mutableFormAttackRange(reach,'melee',{...base,durationSeconds:60})).toBe(reach);
 });

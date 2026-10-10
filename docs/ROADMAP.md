@@ -1,5 +1,31 @@
 # DNDKeep — Two-Track Roadmap
 
+### Mutable Form melee weapon targeting (local)
+
+PlayerAttackButton now reads the saved active form before opening a melee
+weapon/unarmed target picker and adds its reach bonus to the weapon's base reach
+(5 -> 10 feet; Reach 10 -> 15). It rechecks before creating an attack request.
+If reach changed or the read failed, selection stops without declaring or paying;
+the player reopens the picker with current reach. Cancellation invalidates an
+outstanding read so its eventual response cannot submit the abandoned selection.
+Ranged weapons and spell ranges are unchanged; Touch casting is a separate rule.
+
+Validation: full `npm run verify` passes (4,795 tests, TS 193/193, entry 256.1 KB).
+Four actual-sheet browser cases cover normal/Reach weapons on desktop/mobile,
+selectable extended-boundary targets, expiry rejection with zero pending attacks,
+and disabled targets after reopening. Removing the reach bonus makes the new
+browser case fail on its boundary target; restoring it passes all four cases.
+Screenshots reviewed at both viewports. The official overflow probe reports no
+mobile findings or sideways scrolling. Desktop reports pre-existing sidebar
+label/email truncation and a clipped `Self (30-ft radius)` ability label behind
+the modal; the ability-range label is queued for the polish pass.
+Evidence: `.tmp/mutable-form-picker-{gate,browser,mutation,layout}.log`.
+
+This is target-picker validation, not an atomic server-side range constraint.
+Map reach overlays, weapon-specific opportunity reach, and the other unfinished
+Mutable Form integrations remain open. Production unchanged.
+
+
 ### Mutable Form opportunity-attack boundary (local)
 
 Opportunity-attack offers now read the character reactor's saved active form

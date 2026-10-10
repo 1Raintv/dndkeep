@@ -15,6 +15,42 @@ test.describe('saved attack outcome rules',()=>{
    insert into campaigns(id,owner_id,name) values('${camp}','${owner}','Attack outcome fixture');`);
  });
  test.afterEach(()=>{sql(`delete from campaigns where id='${camp}';delete from auth.users where id='${owner}'`);});
+ for(const baseReach of [5,10])test(`Mutable Form weapon picker extends ${baseReach}-foot reach and rejects expiry`,async({page},info)=>{
+  const hero=randomUUID(),target=randomUUID(),scene=randomUUID(),enc=randomUUID(),declaration=randomUUID();
+  sql(`begin;
+   alter table characters disable trigger check_character_limit;
+   insert into characters(id,user_id,campaign_id,name,species,class_name,subclass,background,level,intelligence,class_resources,weapons) values
+    ('${hero}','${owner}','${camp}','Reach Metamorph','Human','Psion','Metamorph','Sage',7,16,'{"psionic-energy-dice":6}','[{"id":"spear","name":"Reach Fixture Weapon","attackBonus":5,"damageDice":"1d6","damageBonus":3,"damageType":"piercing","range":"Melee","properties":"${baseReach===10?'Reach':''}"}]'),
+    ('${target}','${owner}','${camp}','Boundary Target','Human','Fighter',null,'Soldier',1,10,'{}','[]');
+   alter table characters enable trigger check_character_limit;
+   set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';
+   select dndkeep_private.begin_mutable_form('${hero}','${declaration}',dndkeep_private.action_turn_context('${hero}')->>'turnId',2,false,'null');
+   insert into scenes(id,campaign_id,owner_id,name,grid_type,grid_size_px,width_cells,height_cells,ambient_light,is_published)
+    values('${scene}','${camp}','${owner}','Reach Arena','square',70,15,12,'bright',true);
+   insert into scene_tokens(id,scene_id,character_id,name,size,x,y,visible_to_all) values
+    ('${randomUUID()}','${scene}','${hero}','Reach Metamorph','medium',35,35,true),
+    ('${randomUUID()}','${scene}','${target}','Boundary Target','medium',${35+(baseReach+5)/5*70},35,true);
+   insert into combat_encounters(id,campaign_id,status,current_turn_index) values('${enc}','${camp}','active',0);
+   insert into combat_participants(encounter_id,campaign_id,participant_type,entity_id,name,turn_order,combatant_id)
+    select '${enc}','${camp}','character',c.definition_id::uuid,c.name,case when c.definition_id='${hero}' then 0 else 1 end,c.id
+    from scene_token_placements p join combatants c on c.id=p.combatant_id where p.scene_id='${scene}';
+   commit;`);
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
+  await signInAsSeedDm(page,email);await page.goto(`/character/${hero}`);
+  await page.getByRole('button',{name:'Actions',exact:true}).locator('visible=true').first().click();
+  const attack=page.getByTitle('Attack a target with Reach Fixture Weapon — runs full combat resolution',{exact:true});
+  await attack.click();const row=page.getByRole('button',{name:/Boundary Target/});
+  await expect(row).toBeEnabled();await expect(row).toContainText(`${baseReach+5} ft`);
+  await expect(row).toBeInViewport({ratio:1});
+  await page.screenshot({path:info.outputPath('mutable-form-reach.png')});
+  sql(`update campaigns set combat_rounds_elapsed=combat_rounds_elapsed+10 where id='${camp}'`);
+  await row.click();await expect(page.getByRole('alert')).toContainText('Reach changed');
+  expect(sql(`select count(*) from pending_attacks where campaign_id='${camp}'`)).toBe('0');
+  await attack.click();await expect(row).toBeDisabled();await expect(row).toContainText('out of range');
+  await expect(row).toHaveAttribute('title',`Out of range — ${baseReach+5} ft (max ${baseReach} ft)`);
+  await page.screenshot({path:info.outputPath('mutable-form-reach-expired.png')});
+  expect(errors).toEqual([]);
+ });
  test('Mutable Form refreshes the combat movement preview and live move check on activation, Dash and expiry',async({page})=>{
   const character=randomUUID(),target=randomUUID(),enc=randomUUID(),declaration=randomUUID();
   sql(`insert into characters(id,user_id,campaign_id,name,species,class_name,subclass,background,level,intelligence,class_resources) values('${character}','${owner}','${camp}','Moving Metamorph','Human','Psion','Metamorph','Sage',7,16,'{"psionic-energy-dice":6}');

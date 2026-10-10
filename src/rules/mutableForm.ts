@@ -77,3 +77,10 @@ export function validMutableFormSpec(value:unknown):value is MutableFormSpec {
  return typeof v.fleshWeaver==='boolean'&&(v.durationSeconds===60||v.durationSeconds===600)
   &&validImprovement(v.improvement as MutableFormChoice|null,v.durationSeconds===600);
 }
+
+/** Extend melee reach, never a ranged attack or a spell's printed range.
+ * The caller supplies a freshly verified active form, not a proposed activation. */
+export function mutableFormAttackRange(baseRange:number|null,mode:'melee'|'ranged'|null|undefined,form:MutableFormSpec|null):number|null {
+ return mode==='melee'&&form&&baseRange!==null&&Number.isFinite(baseRange)&&baseRange>0
+  ?baseRange+mutableFormBenefits(form,false).reachBonus:baseRange;
+}
