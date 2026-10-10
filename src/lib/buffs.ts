@@ -20,6 +20,7 @@ import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { rollDiceExpr } from '../rules/dice';
 import { applyDamageToPools } from '../rules/hp';
+import {resolveDamageAtZero} from '../rules/deathSaves';
 // v2.315: active_buffs reads come from combatants via JOIN.
 import {
   JOINED_COMBATANT_FIELDS,
@@ -637,13 +638,15 @@ export async function processTurnTicks(opts: {
           // RAW: damage while at 0 HP = one death-save failure (ticks
           // aren't attacks, so no crit doubling); it also breaks
           // stability.
-          failures = Math.min(3, failures + 1);
-          isStable = false;
-          if (failures >= 3) isDead = true;
+          // v2.869 audit: damage still consumes temp HP at zero, and a
+          // sufficiently large hit kills immediately even on the first failure.
+          tempHp = applyDamageToPools(hp,tempHp,amount).tempAfter;
+          const damageState=resolveDamageAtZero(amount,maxHp,failures);
+          failures=damageState.failures;isStable=damageState.isStable;isDead=damageState.isDead;
           events.push({
             ...base, chainId: newChainId(), sequence: 0,
             eventType: 'damage_at_0_hp_failure_added',
-            payload: { source_buff: buff.name, tick: true, failures, became_dead: isDead },
+            payload: { source_buff: buff.name, tick: true, amount, temp_hp_after:tempHp, failures, became_dead: isDead, massive_damage_death:damageState.massiveDamage },
           });
         } else if (hp > 0 || !isCharacter) {
           const hpBefore = hp;

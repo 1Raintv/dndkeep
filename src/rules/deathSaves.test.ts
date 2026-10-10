@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveDeathSave } from './deathSaves';
+import { resolveDeathSave,resolveDamageAtZero } from './deathSaves';
 
 describe('2024 death-save outcomes', () => {
   it('stabilizes at zero HP and clears both counters on the third success', () => {
@@ -30,4 +30,20 @@ describe('2024 death-save outcomes', () => {
   it('rejects nonfinite totals', () => {
     expect(() => resolveDeathSave(10, NaN, 0, 0)).toThrow();
   });
+});
+
+
+describe('damage at zero HP',()=>{
+ it('breaks stability and adds one failure for noncritical damage',()=>{
+  expect(resolveDamageAtZero(1,20,0)).toEqual({failures:1,isStable:false,isDead:false,massiveDamage:false});
+  expect(resolveDamageAtZero(1,20,2)).toMatchObject({failures:3,isDead:true,massiveDamage:false});
+ });
+ it('damage equal to the maximum kills immediately, without waiting for three separate hits',()=>{
+  expect(resolveDamageAtZero(20,20,0)).toMatchObject({failures:3,isDead:true,massiveDamage:true});
+  expect(resolveDamageAtZero(21,20,1)).toMatchObject({failures:3,isDead:true,massiveDamage:true});
+  expect(resolveDamageAtZero(19,20,0)).toMatchObject({failures:1,isDead:false});
+ });
+ it.each([[0,20,0],[-1,20,0],[1.5,20,0],[1,0,0],[1,20,3],[1,20,-1]])('rejects invalid damage/state %j',(damage,max,failures)=>{
+  expect(()=>resolveDamageAtZero(damage,max,failures)).toThrow();
+ });
 });

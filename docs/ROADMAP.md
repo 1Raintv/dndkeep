@@ -6482,3 +6482,32 @@ console/HTTP errors; desktop/mobile recovery screenshots inspected and overflow
 checks passed. The unit regressions cover queue ordering, request persistence,
 automatic-save recovery, group/other-character rejection and scope changes.
 The full gate passes; TypeScript debt dropped to196 and CI is ratcheted accordingly.
+
+
+### Turn-effect damage at zero HP (unreleased)
+
+The live buff-tick caller now consumes temporary HP when a character is already
+at zero HP, while still adding the required death-save failure and breaking
+stability. A tick at least as large as maximum HP now records immediate death;
+subsequent healing ticks in that same processing pass cannot revive the dead
+character. The event records the amount, remaining temporary HP and fatal-hit
+reason. Positive-HP overflow handling is preserved.
+
+The death-state calculation lives in rules/deathSaves.ts and uses the canonical
+HP pool helper at the caller. Source: 2024 Basic Rules, Damage at 0 Hit Points
+and Temporary Hit Points:
+https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game#DeathSavingThrows
+No imported rule text or UA licensing change.
+
+Verification: 3,284 unit tests and all required gates pass (196/196 TypeScript,
+entry255.2KB). Five live-caller regression cases fail against the old implementation
+and all six pass with the correction; eight pure rule cases cover fatal/nonfatal
+thresholds and invalid state. Existing buffs.ts lint warnings remain, with no lint
+errors. No UI/database change or production deployment.
+
+The turn-clock audit is not complete. advanceTurn still performs multiple writes
+and non-idempotent effect ticks around its clock update; failed tick writes are
+not yet a durable recovery boundary. Mind Sliver expiry still requires a complete
+transition ledger. Those remain release work, not certified by these arithmetic
+tests. Next integration must cover both outgoing and incoming effects rather than
+just swapping the clock call and risking duplicate damage after a lost reply.
