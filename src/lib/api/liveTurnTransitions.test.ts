@@ -17,6 +17,7 @@ beforeEach(()=>{
  m.clock.mockResolvedValue({incomingId:incoming,nextIndex:0,nextRound:2});
  m.rpc.mockImplementation(async(name,args)=>{
   if(name==='read_live_turn_transition')return server;
+  if(name==='reconcile_live_turn_request')return args.p_prepare===false?{status:'uncommitted'}:{status:'ready',request:args.p_original};
   if(name==='begin_live_turn_transition'){server={...context(),requestId:args.p_request,clock:{...context().clock,requestId:args.p_request}};return server;}
   if(name==='mark_live_turn_death_complete'){server={...server!,deathComplete:true};return server;}
   if(name==='finish_live_turn_transition'){server={...server!,complete:true};return server;}
@@ -69,6 +70,44 @@ it('reviews movement before retrying an uncommitted saved clock request',async()
  await expect(advanceLiveTurnTransition(user,enc,turn,()=>{})).rejects.toThrow('Movement pending');
  const review=vi.fn(async()=>{throw new Error('Review postponed');});m.rpc.mockClear();
  await expect(recoverLiveTurnTransition(user,enc,()=>{},review)).rejects.toThrow('Review postponed');
- expect(m.rpc.mock.calls.map(([name])=>name)).toEqual(['read_live_turn_transition']);expect(localStorage.length).toBe(1);
+ expect(m.rpc.mock.calls.map(([name])=>name)).toEqual(['read_live_turn_transition','reconcile_live_turn_request']);expect(localStorage.length).toBe(1);
  m.rpc.mockImplementation(original);await recoverLiveTurnTransition(user,enc,()=>{},async()=>{});expect(localStorage.length).toBe(0);
+});
+
+it('saves a server replacement before submitting the corrected next actor',async()=>{
+ const old={requestId:req,encounterId:enc,expectedTurn:turn,incomingId:id(8),nextIndex:1,nextRound:1};
+ localStorage.setItem(`dndkeep:live-turn:${user}:${enc}`,JSON.stringify(old));const next={...old,requestId:id(6),incomingId:incoming,nextIndex:0,nextRound:2};
+ const original=m.rpc.getMockImplementation()!;m.rpc.mockImplementation(async(name,args)=>{
+  if(name==='reconcile_live_turn_request'&&args.p_prepare)return {status:'replaced',original:old,request:next};
+  if(name==='begin_live_turn_transition')expect(JSON.parse(localStorage.getItem(`dndkeep:live-turn:${user}:${enc}`)!)).toEqual(next);
+  return original(name,args);
+ });
+ expect(await recoverLiveTurnTransition(user,enc,()=>{})).toBe(true);expect(server?.incoming.id).toBe(incoming);expect(localStorage.length).toBe(0);
+});
+it('unknown replacement replies retain the original request',async()=>{
+ const old={requestId:req,encounterId:enc,expectedTurn:turn,incomingId:incoming,nextIndex:0,nextRound:2};localStorage.setItem(`dndkeep:live-turn:${user}:${enc}`,JSON.stringify(old));
+ const original=m.rpc.getMockImplementation()!;m.rpc.mockImplementation(async(name,args)=>{if(name==='reconcile_live_turn_request')throw new Error('Lost reply');return original(name,args);});
+ await expect(recoverLiveTurnTransition(user,enc,()=>{})).rejects.toThrow('Lost reply');expect(JSON.parse(localStorage.getItem(`dndkeep:live-turn:${user}:${enc}`)!)).toEqual(old);expect(m.ticks).not.toHaveBeenCalled();
+});
+it('rejects a replacement for a different outgoing turn before overwriting recovery',async()=>{
+ const old={requestId:req,encounterId:enc,expectedTurn:turn,incomingId:incoming,nextIndex:0,nextRound:2};localStorage.setItem(`dndkeep:live-turn:${user}:${enc}`,JSON.stringify(old));
+ const original=m.rpc.getMockImplementation()!;m.rpc.mockImplementation(async(name,args)=>name==='reconcile_live_turn_request'&&args.p_prepare?{status:'replaced',original:old,request:{...old,requestId:id(6),expectedTurn:id(9)}}:original(name,args));
+ await expect(recoverLiveTurnTransition(user,enc,()=>{})).rejects.toThrow('could not be verified');expect(JSON.parse(localStorage.getItem(`dndkeep:live-turn:${user}:${enc}`)!)).toEqual(old);
+});
+it('recovers a committed winner even when it used a revised incoming actor',async()=>{
+ const old={requestId:req,encounterId:enc,expectedTurn:turn,incomingId:id(8),nextIndex:1,nextRound:1};localStorage.setItem(`dndkeep:live-turn:${user}:${enc}`,JSON.stringify(old));
+ const original=m.rpc.getMockImplementation()!;m.rpc.mockImplementation(async(name,args)=>{if(name==='reconcile_live_turn_request'){server=context();return {status:'committed',transition:server};}return original(name,args);});
+ const review=vi.fn();expect(await recoverLiveTurnTransition(user,enc,()=>{},review)).toBe(true);expect(review).not.toHaveBeenCalled();expect(m.rpc.mock.calls.some(([name])=>name==='begin_live_turn_transition')).toBe(false);expect(localStorage.length).toBe(0);
+});
+
+it('storage failure after retirement keeps the predecessor and never sends the replacement',async()=>{
+ const old={requestId:req,encounterId:enc,expectedTurn:turn,incomingId:id(8),nextIndex:1,nextRound:1};localStorage.setItem(`dndkeep:live-turn:${user}:${enc}`,JSON.stringify(old));
+ const original=m.rpc.getMockImplementation()!;m.rpc.mockImplementation(async(name,args)=>name==='reconcile_live_turn_request'&&args.p_prepare?{status:'replaced',original:old,request:{...old,requestId:id(6),incomingId:incoming,nextIndex:0,nextRound:2}}:original(name,args));
+ const spy=vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw new Error('Storage blocked');});
+ try{await expect(recoverLiveTurnTransition(user,enc,()=>{})).rejects.toThrow('Storage blocked');expect(JSON.parse(localStorage.getItem(`dndkeep:live-turn:${user}:${enc}`)!)).toEqual(old);expect(m.rpc.mock.calls.some(([name])=>name==='begin_live_turn_transition')).toBe(false);}finally{spy.mockRestore();}
+});
+it('a ready response cannot silently change the intended next actor',async()=>{
+ const old={requestId:req,encounterId:enc,expectedTurn:turn,incomingId:incoming,nextIndex:0,nextRound:2};localStorage.setItem(`dndkeep:live-turn:${user}:${enc}`,JSON.stringify(old));
+ const original=m.rpc.getMockImplementation()!;m.rpc.mockImplementation(async(name,args)=>name==='reconcile_live_turn_request'&&args.p_prepare?{status:'ready',request:{...old,incomingId:id(8)}}:original(name,args));
+ await expect(recoverLiveTurnTransition(user,enc,()=>{})).rejects.toThrow('could not be verified');expect(JSON.parse(localStorage.getItem(`dndkeep:live-turn:${user}:${enc}`)!)).toEqual(old);expect(m.ticks).not.toHaveBeenCalled();
 });

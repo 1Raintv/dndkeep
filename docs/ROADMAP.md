@@ -7985,3 +7985,38 @@ markers; typed buff-tick defenses/concentration and other actions racing pending
 work. A saved clock proposal whose roster changes during movement resolution may
 still require recovery handling. This milestone gates turns, not every combat
 action. The DM should review effects immediately using Review movement.
+
+### Stale live turn proposal recovery (2026-10-10, unreleased)
+
+A saved, uncommitted End Turn proposal could become permanently stale when
+reviewed movement damage changed the next living actor. Recovery now first
+checks for a committed winner, before requesting new movement review. Only after
+that review may the server record a replacement proposal for the same outgoing
+turn. Current DM authorization and campaign/encounter locks protect every phase.
+
+Migration 20261010070025 records immutable original/replacement pairs privately.
+A clock-insert trigger rejects retired request IDs even if an old tab submits
+after the roster returns to its previous arrangement. A repeated replacement
+request returns the same proposal; further roster changes form a recoverable
+chain. Already committed live turns win over every stale proposal and resume
+their captured incoming effects. Legacy clock history without a live workflow
+still requires explicit review.
+
+The client validates both the original binding and the replacement, persists
+the new proposal before submitting it, and preserves its predecessor on unknown
+responses or storage failures. No local guessing or deletion of uncertain turn
+requests is used. Reconciliation itself does not advance combat or alter HP.
+
+Verified: full required gate, 3,870 unit cases, TypeScript 194/194, build and
+255.7 KB entry budget. Thirteen local database/browser cases pass, including
+old-tab replay, repeated roster changes, ownership, concurrent replacement,
+rollback, pending movement, and reload recovery after losing both responses.
+Changed client modules lint cleanly; SQL lint has no errors. Security advisors
+retain only the existing keep_warm and client_errors warnings. Exact migration
+source matches the local ledger; no repository migrations pending; database-only
+history preserved. No production deployment.
+
+This closes the stale saved-clock-proposal gap noted above. Pending-effect
+indicators, irrelevant-move filtering, historical map preview/path/teleport
+intent, insertion/resize capture, legacy partial effects and other actions or
+combat ending while effects remain pending still need release work.

@@ -55,14 +55,37 @@ async function continueIncoming(user:string,initial:LiveTurnTransition,guard:()=
 async function begin(request:CombatClockRequest,guard:()=>void){
  guard();const r=await psionicRpc('begin_live_turn_transition',{p_encounter:request.encounterId,p_request:request.requestId,p_expected_turn:request.expectedTurn,p_incoming:request.incomingId,p_index:request.nextIndex,p_round:request.nextRound},true);guard();return verify(r,request.encounterId,request);
 }
-/** Recover before doing any new outgoing work, including on a different device.
- * Historical receipt pools must never be copied into current character stores. */
+const sameRequest=(a:CombatClockRequest,b:CombatClockRequest)=>a.requestId===b.requestId&&a.encounterId===b.encounterId&&a.expectedTurn===b.expectedTurn&&a.incomingId===b.incomingId&&a.nextIndex===b.nextIndex&&a.nextRound===b.nextRound;
+/** Server retirement blocks late submissions of the old proposal. Persist the
+ * recorded replacement before sending it; a lost reply retains the predecessor. */
+async function reconcile(user:string,request:CombatClockRequest,guard:()=>void,prepare=true):Promise<LiveTurnTransition|null>{
+ const raw=await psionicRpc('reconcile_live_turn_request',{p_encounter:request.encounterId,p_original:request,p_prepare:prepare},true);guard();
+ if(!raw||typeof raw!=='object')throw invalid();
+ const value=raw as {status?:unknown;request?:unknown;original?:unknown;transition?:unknown};
+ if(value.status==='committed'){
+  const found=verify(value.transition,request.encounterId);
+  if(found.expectedTurn!==request.expectedTurn)throw invalid();return found;
+ }
+ if(value.status==='uncommitted'&&!prepare)return null;
+ if(!prepare)throw invalid();
+ if(!validCombatClockRequest(value.request)||value.request.encounterId!==request.encounterId||value.request.expectedTurn!==request.expectedTurn)throw invalid();
+ if(value.status==='ready'){
+  if(!sameRequest(value.request,request))throw invalid();
+ }else if(value.status==='replaced'){
+  if(!validCombatClockRequest(value.original)||!sameRequest(value.original,request)||value.request.requestId===request.requestId)throw invalid();
+  localStorage.setItem(key(user,request.encounterId),JSON.stringify(value.request));
+ }else throw invalid();
+ guard();return begin(value.request,guard);
+}
+/** Recover committed incoming work first. A stale uncommitted proposal can be
+ * replaced only by the server, after pending movement has been reviewed. */
 export async function recoverLiveTurnTransition(user:string,encounter:string,guard:()=>void,beforeBegin?:()=>Promise<void>):Promise<boolean>{
  guard();const request=saved(user,encounter);
  const found=await psionicRpc('read_live_turn_transition',{p_encounter:encounter,p_request:request?.requestId??null},true);guard();
  if(found===null&&!request)return false;
- if(found===null&&request){await beforeBegin?.();guard();}
- const r=found===null?await begin(request!,guard):verify(found,encounter,request??undefined);
+ let r=found===null?await reconcile(user,request!,guard,false):verify(found,encounter,request??undefined);
+ if(!r){await beforeBegin?.();guard();r=await reconcile(user,request!,guard);}
+ if(!r)throw invalid();
  await continueIncoming(user,r,guard);return true;
 }
 /** Outgoing work is finished. Persist the proposed boundary before sending it;
