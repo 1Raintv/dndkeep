@@ -1,6 +1,6 @@
 import {rollDie} from './dice';
 
-export interface RechargeAction {name:string;usage?:string;desc?:string}
+export interface RechargeAction {name:string;usage?:string|null;desc?:string|null}
 export type RechargeRule = {kind:'none'}|{kind:'manual';reason:string}|{kind:'roll';min:number;max:number};
 export interface RechargeRoll {name:string;min:number;max:number;roll:number;recharged:boolean}
 export interface RechargePlan {remaining:string[];rolls:RechargeRoll[]}

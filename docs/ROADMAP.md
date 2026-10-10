@@ -6855,3 +6855,41 @@ Verification:27 new rule cases pass, including exact-face success, mixed ranges,
 malformed data, conflicting labels, duplicate/missing actions, pre-roll batch
 validation, invalid die values and no-op batches. Final required gate passes
 (3,382 units,195/195 TypeScript,255.2 KB entry); ESLint and diff checks clean.
+
+### Saved recharge batches and browser recovery (unreleased)
+
+Added DM-only preparation, commit and receipt APIs for one recharge batch per
+participant/turn. Preparation validates the active actor and open turn, returns
+its current expended names and accessible catalog actions, and preserves the
+catalog's private-content restrictions. Commit locks campaign, encounter,
+participant and catalog context, compares the complete saved snapshot, validates
+the submitted dice/ranges, derives success, and saves remaining recharge uses,
+ordered visibility-aware combat events and the receipt atomically. Duplicate
+requests replay the original receipt; competing request IDs cannot roll the same
+turn again. Later resource spending survives replay, even after combat ends.
+As with DM-prepared turn-effect damage, the server validates the submitted plan
+and snapshot; it does not independently prove the client's dice fairness or
+re-parse the recharge ranges. The pure rules planner supplies those ranges.
+
+The client now reads receipts before preparing dice, checks owner/scope after
+asynchronous preparation, validates all actions, persists the exact proposal
+before commit, coalesces simultaneous calls, and retains uncertain requests.
+A receipt is historical and must not replace current participant resources.
+Nullable catalog usage labels are accepted without inventing a recharge range.
+
+This API is not wired into the live advanceTurn pipeline yet. It is ready for
+that controller's incoming phase; the old recharge loop and fixed 5–6 labels
+still need replacement together with the remaining timed-effect integration.
+No production deployment or user-data reset. Migration20261010070009 was applied
+and recorded only on the existing local Docker database; unrelated ledger
+history was preserved.
+
+Verification:30 local database cases plus two real-browser lost-reply/reload
+cases pass across desktop/mobile. Browser recovery preserves both original dice
+and later spending, with one preparation and no additional commits after reload.
+Twelve new client unit cases cover persistence, identical retries, receipt-first
+recovery, overlap, scope changes, blocked storage, unknown thresholds, malformed
+snapshots/receipts and retained corrupt requests. Full gate passes (3,394 units,
+195/195 TypeScript,255.2 KB entry). SQL lint, security advisors, changed-file
+ESLint and diff checks pass. Initial unit setup used unavailable jsdom; corrected
+to the repository's existing happy-dom environment, with no new dependency.
