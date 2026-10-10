@@ -7420,3 +7420,31 @@ This checkpoint is not deployed to production.
 Validation: 27 focused unit cases and 34 local database cases pass. Full gate:
 3,580 units, TypeScript 195/195, clean hooks/RAW/coordinates/anchors, production
 build and 255.7 KB entry budget. Changed-file lint and diff checks pass.
+
+
+### Durable aura client recovery (2026-10-10)
+
+`processSavedAuraResolution` checks authorized server history before preparing
+anything, saves a preparation marker before invoking the synchronous dice
+callback, then persists the exact JSON request before commit. Retries retain
+the same identity, snapshot and dice, including across a different trigger in
+the same turn. Lost-response errors check for a verified server winner; malformed
+acknowledgements or interrupted preparations retain recovery data for review.
+Historical results are returned without patching live HP.
+
+Same-tab calls coalesce. Same-origin tabs serialize through browser Web Locks;
+browsers without locking stop before preparation. The database's unique logical
+identity remains the cross-device guard. Scope checks run after awaited reads
+and commits and when a waiting lock opens. Failed final storage leaves the
+preparation marker, preventing silent replacement rolls. A verified historical
+receipt can recover even if local storage reads are unavailable.
+
+The recovery API is not yet wired into live aura controls or the turn pipeline.
+Explicit review of interrupted preparations, reviewed proposal UI and live
+orchestration remain outstanding. No production deployment in this checkpoint.
+
+Validation: 13 recovery units and 36 local database/browser cases pass. Desktop
+and mobile both lose the commit reply, reload, recover without another roll,
+and preserve later healing after combat ends. Full gate: 3,593 unit tests,
+TypeScript 195/195, clean hooks/RAW/coordinates/anchors, production build and
+255.7 KB entry budget. Changed-file lint and diff checks pass.

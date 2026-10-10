@@ -4,7 +4,7 @@ import {test,expect} from '@playwright/test';
 import {verifyAuraResolutionReceipt} from '../../src/lib/auraResolutionReceipt';
 import {validAuraDamagePools} from '../../src/rules/auraDamageEvidence';
 import {validAuraSaveEvidence} from '../../src/rules/auraSaveEvidence';
-import {gateDbSuite} from './helpers';
+import {gateDbSuite,signInAsSeedDm} from './helpers';
 const args=['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'];
 const sql=(q:string)=>execFileSync('docker',args,{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 const auth=(u:string,q:string)=>`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${u}","role":"authenticated"}';${q};commit;`;
@@ -132,6 +132,34 @@ test.describe('Atomic aura resolution',()=>{
  test('a newly applied next-save penalty invalidates the reviewed save and resistance decision',()=>{
   const expected=read(),effect=seedPenalty();expect(()=>run(commit(expected))).toThrow(/Aura state changed/);
   expect(sql(`select consumed_by is null from dndkeep_private.mind_sliver_effects where cast_id='${effect}'`)).toBe('t');expect(counts()).toEqual({receipt:0,penalty:0,events:0,marker:0});
+ });
+
+ test('browser reload recovers a committed aura after lost responses without changing later HP',async({page})=>{
+  sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}','{"sub":"${dm}","email":"${dm}@aura.local"}','email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${dm}@aura.local`);
+  let committed=false;
+  await page.route('**/rest/v1/rpc/commit_aura_resolution',async route=>{
+   const response=await route.fetch();expect(response.status()).toBe(200);committed=true;await route.abort();
+  });
+  await page.route('**/rest/v1/rpc/read_aura_resolution',async route=>{if(committed)await route.abort();else await route.continue();});
+  const identity={encounterId:enc,turnId:turn,originId:pa,targetId:pb,auraKey:'fixture'};
+  const interrupted=await page.evaluate(async({user,identity,proposal})=>{
+   const path='/src/lib/api/auraResolution.ts',api=await import(/* @vite-ignore */ path);let preparations=0,error='';
+   try{await api.processSavedAuraResolution(user,identity,'turn_end',()=>{preparations++;return proposal;},()=>{});}catch(e){error=String(e);}
+   return {preparations,error,saved:!!api.savedAuraResolution(user,identity)};
+  },{user:dm,identity,proposal:proposal()});
+  expect(interrupted).toMatchObject({preparations:1,saved:true});expect(interrupted.error).not.toBe('');expect(committed).toBe(true);
+  expect(counts()).toEqual({receipt:1,penalty:1,events:2,marker:1});
+  sql(`update characters set current_hp=18 where id='${b}';update combatants set current_hp=18 where id='${cb}';update combat_encounters set status='ended' where id='${enc}'`);
+  await page.unroute('**/rest/v1/rpc/commit_aura_resolution');await page.unroute('**/rest/v1/rpc/read_aura_resolution');await page.reload();
+  const recovered=await page.evaluate(async({user,identity})=>{
+   const path='/src/lib/api/auraResolution.ts',api=await import(/* @vite-ignore */ path);
+   const result=await api.processSavedAuraResolution(user,identity,'creature_entered',()=>{throw new Error('Unexpected replacement roll');},()=>{});
+   return {result,saved:api.savedAuraResolution(user,identity)};
+  },{user:dm,identity});
+  expect(recovered).toMatchObject({result:{damage:15,replayed:true},saved:null});
+  expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe('18');expect(counts()).toEqual({receipt:1,penalty:1,events:2,marker:1});
  });
 
 });
