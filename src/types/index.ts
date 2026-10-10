@@ -1034,7 +1034,7 @@ export interface PendingReaction {
   pending_attack_id: string | null;
   reactor_participant_id: string;
   reactor_name: string;
-  reactor_type: 'character' | 'monster' | 'npc';
+  reactor_type: 'character' | 'creature' | 'monster' | 'npc';
   reaction_key: string;           // 'shield' | 'uncanny_dodge' | ...
   reaction_name: string;          // 'Shield'
   trigger_point: ReactionTriggerPoint;

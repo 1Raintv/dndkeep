@@ -9027,3 +9027,47 @@ transaction that locks current effect/reaction state and binds the original
 reactor/target; verify concurrent acceptance, effect arrival and rollback locally.
 The existing Counterspell transaction provides a shared-reaction-budget pattern.
 Technique-choice UI/recovery and live Bolt verification also remain open.
+
+### Opportunity Attacks — atomic acceptance and Disorient checkpoint
+
+Migration 20261010131356 captures original participants, combatant definitions,
+encounter and triggering turn for new Opportunity Attack offers in a private
+RLS-enabled table. The acceptance RPC authorizes the actual reactor owner/DM,
+locks current reaction and effect state, validates the original binding, and
+creates the attack, spends the reaction, records history and saves acceptance in
+one transaction. Character reactions use the shared action ledger. Creatures
+require the DM. Disorient, incapacitation, spent reactions, expired windows,
+changed turns/participants and outgoing turn reservations reject before spending.
+
+Identical retries return the original attack; conflicting weapon choices reject.
+A deleted attack is not resurrected. Direct offer updates cannot fabricate an
+acceptance or change its identity. Pre-migration offers are not backfilled: they
+must be declined and replaced because their original participants are unknown.
+Private helpers and rows remain inaccessible to clients; the public wrapper is
+invoker-security and authenticated-only, with explicit authorization inside the
+private definer function and fixed search paths.
+
+The actual prompt now calls the validated API instead of separate client writes.
+Only a fresh acceptance auto-rolls; recovered declarations remain available in
+the DM attack queue without rerolling. Fixed the DM filter/type to recognize
+unified creature participants. Weapon numbers remain user-entered, and existing
+OA generation still uses its simplified hostility/5-foot reach model; this does
+not certify every Opportunity Attack eligibility rule.
+
+38 local database/browser checks pass across desktop/mobile, including concurrent
+identical acceptance, shared reaction competition, an in-flight Disorient write,
+permission rejection, effect expiry, stale identities and late-history rollback.
+Real UI checks verify the Disorient message, unspent reaction and subsequent
+single attack roll; screenshots and scoped overflow checks pass. Only the expected
+Disorient RPC rejection occurs; no unexpected runtime/network errors. Removing
+the creature filter makes the UI regression fail. Full gate: 4,144 units,
+TS 194/194, entry 255.7 KB. SQL lint reports no errors; security advisors retain
+only existing keep_warm/client_errors warnings.
+
+Applied locally only. CLI blocked on foreign local history 20261008213500, so the
+new SQL and ledger were applied transactionally without resetting or repairing
+that history. Exact SQL/ledger equality verified (Windows newline normalization
+corrected for this new uncommitted local entry). Release rehearsals now need all
+315 repo migrations. Production unchanged. Remaining Psion work: saved technique
+choice UI/recovery and real Bolt damage verification, then the broader ability
+and map review continues.
