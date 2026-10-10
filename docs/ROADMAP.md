@@ -8802,3 +8802,19 @@ two selected tokens and fullscreen intact; no deletion is submitted. Screenshots
 inspected. Restoring the old listeners exits fullscreen and fails the browser
 regression; restored code passes. Full gate: 4,058 units, TS 194/194, entry
 255.7 KB. No database migration or deployment. Release PR #214 remains draft.
+
+
+### Selection toolbar placement and contrast (2026-10-10, unreleased)
+
+The narrow-screen selection toolbar now sits 60 px below the map top instead of
+132 px, beside the tool rail. The placement applies through 1000 px width so
+narrow landscape also clears the header. Its surface and border now match the
+navigation dock, improving separation from map graphics. Mobile touch sizes,
+compact defaults and expanded action access are preserved.
+
+Desktop/mobile browser cases also resize to 851x393 landscape and check bounds,
+header separation and the official overflow probe. Screenshots inspected. The
+old offset fails the placement regression; restored layout passes. Full gate:
+4,058 unit tests, TS 194/194, entry 255.7 KB. The expanded panel still covers some
+map area on small screens; this improves placement rather than claiming a
+complete responsive map redesign. No production deployment.

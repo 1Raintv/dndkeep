@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { gateDbSuite, signInAsSeedDm } from './helpers';
 import { SAVE_TIMEOUT_MS } from '../../src/components/Campaign/battlemap/saveTimeout';
@@ -159,6 +160,26 @@ test.describe('token gestures (local stack)', () => {
     // Once the overlay is gone, an unobstructed Escape still exits the map.
     await page.evaluate(()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true})));
     await expect(page.locator('.battle-map-fullscreen')).toBeHidden();
+  });
+  test('selection controls stay beside the rail and clear of the header',async({page},info)=>{
+    await openMap(page);const tokens=Object.values((await state(page)).tokens) as any[];
+    for(const token of tokens.filter(t=>['Ilyana Vell','Nyx Quickfingers'].includes(t.name))){const p=await tokenPoint(page,token.id);await page.keyboard.down('Shift');await page.mouse.click(p.x,p.y);await page.keyboard.up('Shift');}
+    const bar=page.getByRole('toolbar',{name:'Selected tokens'});await expect(bar).toBeVisible();
+    for(const size of [page.viewportSize()!,{width:851,height:393}]){
+      await page.setViewportSize(size);await page.getByTitle('More selection actions').click();
+      await expect(bar.getByRole('button',{name:'✕ Delete'})).toBeVisible();
+      await expect.poll(async()=>{const b=(await bar.boundingBox())!;return b.x>=0&&b.x+b.width<=size.width&&b.y>=0&&b.y+b.height<=size.height;}).toBe(true);
+      if(size.width<=1000){const b=(await bar.boundingBox())!;expect(b.x).toBeGreaterThanOrEqual(76);expect(b.y).toBeGreaterThanOrEqual(50);expect(b.y).toBeLessThan(100);}
+      const exit=page.getByTitle('Exit fullscreen (Esc)',{exact:true}).locator('visible=true').first();
+      const b=(await bar.boundingBox())!,h=(await exit.boundingBox())!;expect(b.x>=h.x+h.width||b.x+b.width<=h.x||b.y>=h.y+h.height||b.y+b.height<=h.y).toBe(true);
+      if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
+        const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
+        const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('.map-selection-actions,.map-selection-actions *')");
+        const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);
+      }
+      await page.screenshot({path:info.outputPath(`selection-layout-${size.width}.png`)});
+      await page.getByTitle('More selection actions').click();
+    }
   });
   test('map help uses the roomier side of a raised navigation dock',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
