@@ -228,13 +228,14 @@ test.describe('Telepath attack context',()=>{
   sql(`update auth.users set instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),created_at=now(),updated_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${owner}';
    insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${owner}','${owner}',jsonb_build_object('sub','${owner}','email','${owner}@action.local'),'email',now(),now(),now());`);
   await signInAsSeedDm(page,`${owner}@action.local`);const input=beginPayload();
+  await page.evaluate(async({character,input})=>{const {prepareTelepath}=await import('/src/lib/telepathRecovery.ts');const {roll,...request}=input;await prepareTelepath(character,request,()=>roll);},{character,input});
   for(const operation of ['begin','finish']){
    let dropped=0;await page.route('**/rest/v1/rpc/telepath_reaction',async route=>{
     if(route.request().method()!=='POST'||route.request().postDataJSON().p_operation!==operation){await route.continue();return;}
     const response=await route.fetch();expect(response.ok()).toBe(true);dropped++;await route.abort('failed');
    });
    const failed=await page.evaluate(async({character,operation,payload})=>{
-    const api=await import('/src/lib/api/telepathLifecycle.ts');try{if(operation==='begin')await api.beginTelepathReaction(character,payload);else await api.finishTelepathReaction(character,payload.declarationId);return false;}catch{return true;}
+    const api=await import('/src/lib/telepathRecovery.ts');try{await api.sendTelepath(character,operation==='begin'?api.pendingTelepath(character)!:{kind:'finish',request:{declarationId:payload.declarationId}});return false;}catch{return true;}
    },{character,operation,payload:operation==='begin'?input:{declarationId:input.requestId}});
    expect(failed).toBe(true);expect(dropped).toBe(2);await page.unroute('**/rest/v1/rpc/telepath_reaction');await page.reload();
    const records=await page.evaluate(async({character,attack})=>{
@@ -242,10 +243,24 @@ test.describe('Telepath attack context',()=>{
    },{character,attack});
    expect(records).toHaveLength(1);expect(records[0].request_id).toBe(input.requestId);
    if(operation==='begin')expect(records[0].result).toBeNull();else expect(records[0].result?.energyCost).toBe(1);
+   const recovered=await page.evaluate(async character=>{const api=await import('/src/lib/telepathRecovery.ts');const draft=api.pendingTelepath(character);if(!draft)throw new Error('Draft lost');await api.sendTelepath(character,draft);return api.pendingTelepath(character);},character);expect(recovered).toBeNull();
   }
   expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${input.requestId}'`)).toBe('1');
   expect(sql(`select count(*) from public.psionic_energy_uses where request_id='${input.requestId}'`)).toBe('1');
   await page.close();
+ });
+ test('browser cross-tab Telepath preparation rolls once',async({page})=>{
+  sql(`update auth.users set instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),created_at=now(),updated_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${owner}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${owner}','${owner}',jsonb_build_object('sub','${owner}','email','${owner}@action.local'),'email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${owner}@action.local`);const input=beginPayload();
+  const second=await page.context().newPage();await second.goto(page.url());
+  const attempts=await Promise.all([page,second].map(tab=>tab.evaluate(async({character,input})=>{
+   const api=await import('/src/lib/telepathRecovery.ts');const {roll,...request}=input;let rolls=0;
+   try{await api.prepareTelepath(character,request,()=>{rolls++;return roll;});return {ok:true,rolls};}catch{return {ok:false,rolls};}
+  },{character,input})));
+  expect(attempts.filter(r=>r.ok)).toHaveLength(1);expect(attempts.reduce((sum,r)=>sum+r.rolls,0)).toBe(1);
+  expect(sql(`select count(*) from dndkeep_private.telepath_declarations where character_id='${character}'`)).toBe('0');
+  await second.close();await page.close();
  });
  for(const cancel of [false,true])test(`browser validates enhanced saved records (cancel=${cancel})`,async({page})=>{
   sql(`update auth.users set instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),created_at=now(),updated_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${owner}';

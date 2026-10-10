@@ -1,5 +1,30 @@
 # DNDKeep — Two-Track Roadmap
 
+### Durable Telepath drafts and cross-tab locking (not UI-wired)
+
+Telepath preparation now persists an interruption marker before RNG, then saves
+the exact reviewed request and dice. Enkindled preparation uses the same protocol.
+Submission holds a per-character Web Lock, retains every failed/uncertain draft,
+and clears only after the typed API verifies success. A later permission error
+cannot prove an earlier lost response did not commit. Conflicting pending outcomes
+and new preparations are blocked. Unsupported browser locking fails before RNG;
+corrupt/interrupted storage is preserved for recovery rather than discarded.
+
+14 new unit cases cover storage failure before/after RNG, changed outcomes,
+input mutation, malformed data, unsupported locking and enhancement eligibility.
+Four authenticated desktop/mobile browser cases pass: two tabs compete and only
+one rolls; lost begin/finish replies survive reload and replay with one Reaction
+claim and one conditional Energy payment. Full gate passed: 4,597 tests,
+TS 193/193, entry 255.7 KB. Evidence: .tmp/telepath-draft-{unit,db,gate}.log.
+No migration or production change.
+
+Next: actual DM review and player saved-use controls using this draft flow. Recheck
+live context before fresh preparation; preparation alone is not server permission.
+Replace generic ReactionPromptModal timer/accept/decline handling for Telepath,
+provide explicit interrupted-draft recovery, and add normal reaction history before
+enabling new declarations. Ability-check Bolstering remains separate.
+
+
 ### Telepath client lifecycle validation (not yet UI-wired)
 
 Added typed begin/read/list/enhance/finish/cancel adapters for the authenticated

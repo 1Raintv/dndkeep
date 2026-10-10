@@ -89,13 +89,17 @@ export async function finishTelepathReaction(character:string,id:string,cancel=f
 }
 
 export interface TelepathEnhancementRequest {declarationId:string;requestId:string;kind:'enkindled'|'surge';extraRolls:number[]|null;hitDie:number|null}
+export function validTelepathEnhancementRequest(value:unknown):value is TelepathEnhancementRequest{
+ const r=value as TelepathEnhancementRequest|null;
+ return !!r&&uuid(r.declarationId)&&uuid(r.requestId)&&r.requestId!==r.declarationId&&(r.kind==='enkindled'
+  ?r.hitDie===null&&Array.isArray(r.extraRolls)&&integer(r.extraRolls.length,1,2)&&r.extraRolls.every(n=>integer(n,1,12))
+  :r.kind==='surge'&&r.extraRolls===null&&[6,8,10,12].includes(r.hitDie!));
+}
 /** Saved enhancement links prove which dice were paid for. Resource displays
  * should refresh from the character store; this response is not an absolute HP write. */
 export async function enhanceTelepathReaction(character:string,input:TelepathEnhancementRequest){
  const request=structuredClone(input);ids(character,request.declarationId);
- if(!uuid(request.requestId)||request.requestId===request.declarationId||!(request.kind==='enkindled'
-  ?request.hitDie===null&&Array.isArray(request.extraRolls)&&integer(request.extraRolls.length,1,2)&&request.extraRolls.every(n=>integer(n,1,12))
-  :request.kind==='surge'&&request.extraRolls===null&&[6,8,10,12].includes(request.hitDie!)))throw new PsionicRequestError('Choose a valid saved Telepath enhancement.',true);
+ if(!validTelepathEnhancementRequest(request))throw new PsionicRequestError('Choose a valid saved Telepath enhancement.',true);
  const result=await record(character,request.declarationId,'enhance',{...request});const {requestId:_id,...expected}=request;
  const link=result.enhancements.find(e=>e.requestId===request.requestId);
  if(!link||!same(link.request,expected))throw invalid();return result;
