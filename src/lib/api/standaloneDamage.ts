@@ -1,3 +1,4 @@
+import {exhaustionPenalty} from '../../rules/savingThrows';
 import type {Character} from '../../types';
 import {applyDamageToPools,concentrationDC} from '../../rules/hp';
 import {characterProficiencyBonus} from '../../rules/proficiency';
@@ -15,7 +16,8 @@ function valid(v:unknown):v is StandaloneDamageRequest{
  const r=v as StandaloneDamageRequest|null;
  return !!r&&uuid(r.userId)&&uuid(r.characterId)&&uuid(r.requestId)&&uuid(r.saveRequestId)&&r.requestId!==r.saveRequestId
   &&count(r.damage)&&r.damage>0&&r.damage<=2147483647&&count(r.expectedRevision)&&count(r.beforeHP)&&count(r.beforeTempHP)
-  &&Number.isInteger(r.modifier)&&r.modifier>=-5&&r.modifier<=20&&!!r.expected&&count(r.expected.concentration_revision);
+  &&Number.isInteger(r.modifier)&&r.modifier>=-5&&r.modifier<=20&&!!r.expected&&count(r.expected.concentration_revision)
+  &&(r.expected.exhaustion_level===undefined||Number.isInteger(r.expected.exhaustion_level)&&r.expected.exhaustion_level>=0&&r.expected.exhaustion_level<=6);
 }
 export function savedStandaloneDamage(user:string,char:string):StandaloneDamageRequest|null{
  const raw=localStorage.getItem(key(user,char));if(raw===null)return null;
@@ -46,7 +48,7 @@ function verify(value:unknown,r:StandaloneDamageRequest):StandaloneDamageReceipt
  verifyConcentrationState(c,r.characterId);
  const expected=r.expected,prof=expected.saving_throw_proficiencies?.some(p=>['con','constitution'].includes(p.toLowerCase()));
  const row:StandaloneSaveOffer={request_id:r.saveRequestId,character_id:r.characterId,spell_name:expected.concentration_spell??'',casting_revision:expected.concentration_revision!,
-  damage:r.damage,dc:concentrationDC(r.damage),save_bonus:r.modifier+(prof?characterProficiencyBonus(expected):0),has_advantage:hasWarCaster(expected.gained_feats),natural_extremes:expected.nat_1_20_saves!==false,
+  damage:r.damage,dc:concentrationDC(r.damage),save_bonus:r.modifier+(prof?characterProficiencyBonus(expected):0)-exhaustionPenalty(expected.exhaustion_level??0),has_advantage:hasWarCaster(expected.gained_feats),natural_extremes:expected.nat_1_20_saves!==false,
   created_at:new Date().toISOString(),outcome:null};
  if(v.check!==null){
   verifyStandaloneOffer(v.check,r.characterId);

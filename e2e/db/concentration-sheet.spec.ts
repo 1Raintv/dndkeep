@@ -31,6 +31,8 @@ test.describe('Concentration sheet saves (local stack)', () => {
 
   const protection=(equipped:boolean,attuned:boolean)=>({magic_item_id:'ring-protection',name:'Ring of Protection',magical:true,equipped,attuned,saveBonus:1});
   for (const sample of [
+    {name:'exhaustion subtracts twice its level with equipment',level:5,con:14,proficient:true,die:7,damage:5,natural:false,bonus:2,passed:false,exhaustion:2,inventory:[protection(true,true)]},
+    {name:'exhaustion permits a negative concentration bonus',level:5,con:14,proficient:false,die:17,damage:5,natural:false,bonus:-8,passed:false,exhaustion:5},
     {name:'proficient Constitution',level:5,con:14,proficient:true,die:10,damage:5,natural:false,bonus:5,passed:true},
     {name:'equipped and attuned protection contributes once',level:5,con:14,proficient:true,die:4,damage:5,natural:false,bonus:6,passed:true,inventory:[protection(true,true)]},
     {name:'unattuned protection does not contribute',level:5,con:14,proficient:true,die:4,damage:5,natural:false,bonus:5,passed:false,inventory:[protection(true,false)]},
@@ -41,13 +43,13 @@ test.describe('Concentration sheet saves (local stack)', () => {
     {name:'natural twenty house rule is preserved',level:5,con:10,proficient:false,die:20,damage:60,natural:true,bonus:0,passed:true},
   ]) test(sample.name,async({page})=>{
     await page.addInitScript(value=>{Math.random=()=>value;},(sample.die-0.5)/20);
-    sql(`update characters set current_hp=100,max_hp=100,temp_hp=0,level=${sample.level},constitution=${sample.con},
+    sql(`update characters set current_hp=100,max_hp=100,temp_hp=0,exhaustion_level=${'exhaustion' in sample?sample.exhaustion:0},level=${sample.level},constitution=${sample.con},
       saving_throw_proficiencies='${sample.proficient?'{constitution}':'{}'}',nat_1_20_saves=${sample.natural},inventory='${JSON.stringify('inventory' in sample?sample.inventory:[])}',
       concentration_spell='detect-magic',concentration_rounds_remaining=100 where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     await page.getByPlaceholder('0',{exact:true}).locator('visible=true').first().fill(String(sample.damage));
     await page.getByRole('button',{name:'Damage',exact:true}).locator('visible=true').first().click();
-    const roll=page.getByRole('button',{name:`Roll CON Save (+${sample.bonus})`,exact:true}).locator('visible=true').first();
+    const roll=page.getByRole('button',{name:`Roll CON Save (${sample.bonus>=0?'+':''}${sample.bonus})`,exact:true}).locator('visible=true').first();
     await expect(roll).toBeVisible();await roll.click();
     await expect.poll(()=>sql(`select total from action_logs where character_id='${charId}' and action_name='Concentration Check'`)).toBe(String(sample.die+sample.bonus));
     await expect.poll(()=>sql(`select concentration_spell from characters where id='${charId}'`)).toBe(sample.passed?'detect-magic':'');

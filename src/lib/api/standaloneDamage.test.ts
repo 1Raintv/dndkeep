@@ -52,3 +52,9 @@ it('times out without letting a late response erase recovery',async()=>{
  finish({data:receipt(r),error:null});await Promise.resolve();expect(savedStandaloneDamage(u,c)).toEqual(r);
  m.rpc.mockResolvedValue({data:{...receipt(r),replayed:true},error:null});await submitStandaloneDamage(r);expect(savedStandaloneDamage(u,c)).toBeNull();
 });
+
+it('damage acknowledgement includes the captured exhaustion penalty',async()=>{
+ const r=createStandaloneDamage({...character,exhaustion_level:2},u,9,2),v=receipt(r);
+ v.check.save_bonus=1;m.rpc.mockResolvedValue({data:v,error:null});
+ expect((await submitStandaloneDamage(r)).check?.save_bonus).toBe(1);
+});

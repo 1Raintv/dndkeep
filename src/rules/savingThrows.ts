@@ -18,3 +18,9 @@ export function rollSavingThrow(bonus:number,dc:number,options:{advantage?:boole
  const total=d20+bonus;
  return {d20,total,rolls:dice.map(d=>d.value),passed:savingThrowPassed(d20,total,dc,options)};
 }
+
+/** 2024 exhaustion reduces every D20 Test by twice its level. */
+export function exhaustionPenalty(level:number):number{
+ if(!Number.isInteger(level)||level<0||level>6)throw new Error('Invalid exhaustion level.');
+ return 2*level;
+}

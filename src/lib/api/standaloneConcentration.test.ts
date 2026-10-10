@@ -94,3 +94,21 @@ it('a hung roll can be retried with its original dice after the deadline',async(
  await vi.advanceTimersByTimeAsync(15000);await rejection;expect(savedStandaloneRolls(u,c)[0].rolls).toEqual([3,17]);
  m.rpc.mockResolvedValue({data:{...result,replayed:true},error:null});await rollStandaloneSave(u,row);expect(random).toHaveBeenCalledTimes(2);
 });
+
+it('captures exhaustion and verifies its penalty only once',async()=>{
+ const r=createStandaloneSaveRequest({...character,exhaustion_level:2},u,5,2,id);
+ expect(r.expected.exhaustion_level).toBe(2);m.rpc.mockResolvedValue({data:{...row,save_bonus:1,replayed:false},error:null});
+ expect((await queueStandaloneSave(r)).save_bonus).toBe(1);
+});
+it('rejects an offer that omitted the captured exhaustion penalty',async()=>{
+ const r=createStandaloneSaveRequest({...character,exhaustion_level:2},u,5,2,id);
+ await expect(queueStandaloneSave(r)).rejects.toThrow('does not match');expect(savedStandaloneCreations(u,c)).toEqual([r]);
+});
+it('old zero-exhaustion creation requests can still be replayed',async()=>{
+ const r=request();delete r.expected.exhaustion_level;localStorage.clear();
+ expect((await queueStandaloneSave(r)).save_bonus).toBe(5);
+});
+it('loads negative total bonuses caused by exhaustion',async()=>{
+ m.rpc.mockResolvedValue({data:{character,pending:[{...row,save_bonus:-15}]},error:null});
+ expect((await loadStandaloneSaves(c)).pending[0].save_bonus).toBe(-15);
+});

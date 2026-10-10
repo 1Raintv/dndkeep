@@ -23,7 +23,6 @@ test.describe('Atomic standalone damage and concentration',()=>{
  const settle=(dice='array[3]',id=request)=>`select settle_standalone_concentration_save('${character}','${id}',${dice})`;
  const run=(q:string,user=owner)=>JSON.parse(sql(auth(user,q)));
  const spell=()=>sql(`select concentration_spell from characters where id='${character}'`);
- const war=()=>sql(`update characters set gained_feats=array['War Caster'] where id='${character}'`);
  const hpRevision=()=>sql(`select hit_point_revision from characters where id='${character}'`);
  const damage=(amount=6,saveId=randomUUID(),hp=hpRevision(),expected=snapshot(),damageId=request)=>
   `select apply_standalone_damage('${character}','${damageId}','${saveId}',${amount},${hp},2,'${expected}'::jsonb)`;
@@ -133,6 +132,35 @@ test.describe('Atomic standalone damage and concentration',()=>{
  test('ordinary later HP changes clear the standalone marker',()=>{
   run(damage());sql(`update characters set current_hp=13 where id='${character}'`);
   expect(sql(`select last_standalone_damage_id is null from characters where id='${character}'`)).toBe('t');
+ });
+
+ const exhaustedSnapshot=()=>JSON.stringify({...JSON.parse(snapshot()),exhaustion_level:Number(sql(`select coalesce(exhaustion_level,0) from characters where id='${character}'`))});
+ test('exhaustion is captured with damage and survives a later recovery',()=>{
+  sql(`update characters set exhaustion_level=2 where id='${character}'`);const saveId=randomUUID(),q=damage(6,saveId,hpRevision(),exhaustedSnapshot());
+  const first=run(q);expect(first.check.save_bonus).toBe(1);
+  sql(`update characters set exhaustion_level=0 where id='${character}'`);
+  expect(run(q)).toMatchObject({replayed:true,check:{save_bonus:1}});
+  expect(run(settle('array[8]',saveId))).toMatchObject({outcome:'failed',bonus:1,total:9});
+ });
+ test('stale exhaustion rejects damage atomically before losing HP',()=>{
+  const expected=exhaustedSnapshot();sql(`update characters set exhaustion_level=1 where id='${character}'`);
+  expect(()=>run(damage(6,randomUUID(),hpRevision(),expected))).toThrow(/Character changed/);
+  expect(sql(`select current_hp from characters where id='${character}'`)).toBe('20');expect(pending()).toEqual([]);
+ });
+ test('legacy requests without exhaustion cannot start a new exhausted save',()=>{
+  sql(`update characters set exhaustion_level=1 where id='${character}'`);
+  expect(()=>run(queue())).toThrow(/Reload to include exhaustion/);expect(()=>run(damage())).toThrow(/Reload to include exhaustion/);
+  expect(sql(`select current_hp from characters where id='${character}'`)).toBe('20');expect(pending()).toEqual([]);
+ });
+ test('committed legacy requests replay even after gaining exhaustion',()=>{
+  const q=damage();const first=run(q);sql(`update characters set exhaustion_level=2 where id='${character}'`);
+  expect(run(q)).toMatchObject({replayed:true,check:{save_bonus:first.check.save_bonus}});
+  expect(sql(`select current_hp from characters where id='${character}'`)).toBe('14');
+ });
+ test('standalone save creation includes exhaustion without a damage wrapper',()=>{
+  sql(`update characters set exhaustion_level=5 where id='${character}'`);
+  expect(run(queue(request,5,exhaustedSnapshot()))).toMatchObject({save_bonus:-5});
+  expect(run(settle('array[14]'))).toMatchObject({outcome:'failed',bonus:-5,total:9});
  });
 
 });
