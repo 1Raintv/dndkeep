@@ -144,6 +144,22 @@ test.describe('token gestures (local stack)', () => {
     await page.locator('#keyboard-owner').evaluate(el=>el.remove());
     expect(writes).toBe(1);expect((await state(page)).tokens[token.id]).toMatchObject({x:token.x,y:token.y});
   });
+  test('cancelling a confirmation keeps map fullscreen and selection intact',async({page},info)=>{
+    await openMap(page);const tokens=Object.values((await state(page)).tokens) as any[];
+    const selected=tokens.filter(t=>['Ilyana Vell','Nyx Quickfingers'].includes(t.name));expect(selected).toHaveLength(2);
+    for(const token of selected){const p=await tokenPoint(page,token.id);await page.keyboard.down('Shift');await page.mouse.click(p.x,p.y);await page.keyboard.up('Shift');}
+    await expect(page.getByText('2 selected',{exact:true})).toBeVisible();
+    await page.getByTitle('More selection actions').click();
+    await page.getByRole('toolbar',{name:'Selected tokens'}).getByRole('button',{name:'✕ Delete'}).click();
+    const confirm=page.getByRole('dialog',{name:'Delete 2 tokens?'});await expect(confirm).toBeVisible();
+    await page.keyboard.press('Escape');await expect(confirm).toBeHidden();
+    await expect(page.locator('.battle-map-fullscreen')).toBeVisible();await expect(page.getByText('2 selected',{exact:true})).toBeVisible();
+    for(const token of selected)expect((await state(page)).tokens[token.id]).toBeDefined();
+    await page.screenshot({path:info.outputPath('cancel-preserves-map.png')});
+    // Once the overlay is gone, an unobstructed Escape still exits the map.
+    await page.evaluate(()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true})));
+    await expect(page.locator('.battle-map-fullscreen')).toBeHidden();
+  });
   test('map help uses the roomier side of a raised navigation dock',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
     await openMap(page);

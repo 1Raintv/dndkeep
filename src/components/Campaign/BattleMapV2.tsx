@@ -1,3 +1,4 @@
+import {useMapEscape} from './battlemap/useMapEscape';
 import {runClickTokenMove} from './battlemap/runClickTokenMove';
 import { MapToolPalette } from './battlemap/MapToolPalette';
 import { MapToolButton } from './battlemap/MapToolButton';
@@ -452,14 +453,6 @@ function BattleMapV2(props: BattleMapV2Props) {
       return next;
     });
   }, []);
-  // Esc exits fullscreen. Doesn't interfere with other Esc handlers
-  // because they generally check for an open modal/menu first; this
-  // listener only acts when fullscreen is on AND no other Esc-eating
-  // surface is mounted. We can't easily detect "another modal open"
-  // from here without coupling, so we just check our own state and
-  // bail otherwise — the cost of double-handling Esc (closing both
-  // a popup and exiting fullscreen) is acceptably minor.
-
   // v2.313.0 — Combat Phase 3 pt 5: per-campaign feature flag. When
   // true, this BattleMap reads/writes through scenePlacements.ts
   // (placements + combatants) instead of sceneTokens.ts. Hydrated by
@@ -469,17 +462,6 @@ function BattleMapV2(props: BattleMapV2Props) {
   // active until the DM opts in. Flip via SQL during dogfooding —
   // a UI toggle in CampaignSettings is queued for a follow-up ship.
   const [useNewPath, setUseNewPath] = useState(false);
-  useEffect(() => {
-    if (!mapFullscreen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setMapFullscreen(false);
-        try { localStorage.removeItem(FULLSCREEN_KEY); } catch { /* ignore */ }
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [mapFullscreen]);
   const [canvasEl, setCanvasEl] = useState<HTMLCanvasElement | null>(null);
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   // v2.358.0 — Token selection (left-click without drag). Local-only
@@ -495,22 +477,13 @@ function BattleMapV2(props: BattleMapV2Props) {
   // one-member set behaves exactly as the old single selection did.
   const [selectedTokenIds, setSelectedTokenIds] = useState<ReadonlySet<string>>(() => new Set());
   const clearSelection = useCallback(() => setSelectedTokenIds(new Set()), []);
-  // Escape clears selection. Bails on text inputs so a user typing
-  // in the rename modal can press Escape to dismiss the modal
-  // without also wiping their selection.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      const t = e.target;
-      if (t instanceof HTMLElement) {
-        const tag = t.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || t.isContentEditable) return;
-      }
-      setSelectedTokenIds(new Set());
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  useMapEscape(() => {
+    clearSelection();
+    if (mapFullscreen) {
+      setMapFullscreen(false);
+      try { localStorage.removeItem(FULLSCREEN_KEY); } catch { /* ignore */ }
+    }
+  });
   // v2.226 — left-click-without-drag opens the TokenQuickPanel for
   // character-linked tokens. State holds the tokenId + screen pos
   // so the panel can be anchored near the click.

@@ -8786,3 +8786,19 @@ Restoring the old handler makes six writes instead of one and fails the browser
 regression. Full gate passes 4,051 units, TS 194/194, entry 255.7 KB. No database
 migration or production deployment. Further map polish and release verification
 remain active.
+
+
+### Escape preserves the background map (2026-10-10, unreleased)
+
+Fullscreen and selection previously had separate Escape listeners that could
+both run while a confirmation was dismissed. They now share a small map hook
+that leaves editor, dialog, modal, composition and already-handled keys alone.
+An unobstructed Escape retains the previous exit/clear behavior. The map root
+shrinks and no new behavior is added to its scene or layer wiring.
+
+Seven hook regressions cover current callbacks, cleanup, editing and modal focus.
+Desktop/mobile real bulk-delete confirmations cancel with Escape while keeping
+two selected tokens and fullscreen intact; no deletion is submitted. Screenshots
+inspected. Restoring the old listeners exits fullscreen and fails the browser
+regression; restored code passes. Full gate: 4,058 units, TS 194/194, entry
+255.7 KB. No database migration or deployment. Release PR #214 remains draft.
