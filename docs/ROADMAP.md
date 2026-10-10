@@ -8585,3 +8585,32 @@ contract/Petrified, weapon retaliation and mastery transactions, ordinary
 monster action/recharge recovery, full legendary timing and cross-device
 recovery, release integration and map polish. This checkpoint does not certify
 all ability automation or production behavior.
+
+
+### Psychic preview arithmetic verification (2026-10-10)
+
+The client now independently reconstructs Psychic damage previews before showing
+an applicable result or submitting an application. It checks the saved starting
+amount, explicit DM amount, ordered resistance/vulnerability, immunity and bypass,
+and Sharpened replacement identity, saved activation total, original die, remaining
+turn use and successful-save rounding. Unknown defenses remain unresolved until
+reviewed. It rejects inconsistent positive totals, not just negative numbers.
+Server authorization, paid source provenance and defense discovery remain separate
+requirements; this guard does not establish those facts or fix generic typed damage.
+
+The existing resistance-before-vulnerability rule agrees with SRD 5.2.1 p.17:
+https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+No descriptions or copyrighted feature text were added.
+
+Full gate passed: 3,994 unit tests, TS 194/194, entry 255.7 KB. Ten real desktop/mobile
+checks passed for Destructive Thoughts, Surge, Sharpened replacement, Mind Spike
+save rounding and paid spell reload/lost responses. Two additional desktop/mobile
+checks inject an incorrect positive preview: Apply stays disabled, HP unchanged,
+and a valid refresh restores resolution. Removing the arithmetic guard fails this
+browser regression; restored code passes. No migration. Not deployed.
+
+Audit note: party-panel Untyped is currently an explicit DM bypass, with UI and
+server behavior intentionally matching; do not silently change that semantic while
+fixing generic damage. Equipment damage defenses remain described rather than
+fully structured in the magic-item catalog. Generic mixed/conditional typed damage
+settlement and broader release/map work remain pending.

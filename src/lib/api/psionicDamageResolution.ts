@@ -1,4 +1,5 @@
 import type {PendingAttack} from '../../types';
+import {validPsychicDamagePreviewMath} from '../../rules/psychicDamagePreview';
 import {psychicDamageRoll} from '../../rules/psychicDamageRoll';
 import {psionicRpc} from './psionicTurns';
 import {finishPsionicDamageApplication,psionicTargetConModifier} from './psionicDamageApplication';
@@ -17,7 +18,8 @@ export function validPsionicDamagePlan(value:unknown,id:string):value is Psionic
   &&[p.usedThisTurn,p.pendingActivation,p.defensesKnown,p.immune,p.resistant,p.vulnerable,p.bypass].every(v=>typeof v==='boolean')
   &&integer(p.damageBefore)&&(p.damageAfter===null||integer(p.damageAfter))&&typeof p.turnId==='string'
   &&(p.attackerCharacterId===null||typeof p.attackerCharacterId==='string')
-  &&(p.replacement===null||typeof p.replacement.activationId==='string'&&integer(p.replacement.dieIndex)&&integer(p.replacement.original)&&p.replacement.original>=1&&integer(p.replacement.replacement)&&p.replacement.replacement>=1&&p.replacement.replacement<=36);
+  &&(p.replacement===null||typeof p.replacement.activationId==='string'&&integer(p.replacement.dieIndex)&&integer(p.replacement.original)&&p.replacement.original>=1&&integer(p.replacement.replacement)&&p.replacement.replacement>=1&&p.replacement.replacement<=36)
+  &&validPsychicDamagePreviewMath(p);
 }
 export async function previewPsionicDamage(id:string,choice:PsionicDamageChoice={}):Promise<PsionicDamagePlan>{
  const result=await psionicRpc('preview_psionic_damage',{p_attack_id:id,p_choice:choice},true);
