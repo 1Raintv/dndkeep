@@ -508,10 +508,10 @@ export default function WeaponsTracker({
  maxRangeFt={weaponMaxRangeFt(w.range, w.properties)}
  normalRangeFt={weaponNormalRangeFt(w.range, w.properties)}
  attackBonus={w.attackBonus ?? 0}
- damageDice={w.damageDice === 'flat' ? `1d0+${w.damageBonus ?? 0}` : `${w.damageDice}${w.damageBonus ? (w.damageBonus > 0 ? `+${w.damageBonus}` : String(w.damageBonus)) : ''}`}
+ damageDice={w.damageDice === 'flat' ? String(w.damageBonus ?? 0) : `${w.damageDice}${w.damageBonus ? (w.damageBonus > 0 ? `+${w.damageBonus}` : String(w.damageBonus)) : ''}`}
  damageType={w.damageType || 'slashing'}
  attackName={w.name}
- source="weapon" attackMode={explicitAttackMode(w.range)}
+ source={w.id==='unarmed'?'ability':'weapon'} attackMode={explicitAttackMode(w.range)}
  compact
  />
  )}

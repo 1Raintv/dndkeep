@@ -8614,3 +8614,36 @@ server behavior intentionally matching; do not silently change that semantic whi
 fixing generic damage. Equipment damage defenses remain described rather than
 fully structured in the magic-item catalog. Generic mixed/conditional typed damage
 settlement and broader release/map work remain pending.
+
+
+### On-hit damage rider corrections (2026-10-10)
+
+The mixed-damage audit found incorrect upstream bonus triggers. Hunter's Mark,
+Hex, Divine Favor and Absorb Elements no longer ride saving throws or automatic
+damage. Their unused single-use buffs remain available. Hunter's Mark records
+Force instead of the old Piercing template and supports spell attack-roll hits.
+Divine Favor supports both ranged and melee weapons; the old saved onlyMelee
+flag is corrected during calculation. Spell/ability attacks cannot qualify as
+weapons. Custom damage riders retain their existing saved filters.
+
+The sheet now declares synthesized unarmed strikes as abilities, preventing
+weapon-only Divine Favor from applying. Flat unarmed damage uses a plain number
+instead of invalid 1d0 notation. Hunter's Mark's reference text now says attack
+roll and permits moving the mark without the obsolete later-turn restriction.
+Rules source: SRD 5.2.1, Divine Favor p.122, Hex p.140, Hunter's Mark p.141:
+https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+
+Both client and server calculate the same rider eligibility; original buff rows
+are not rewritten. Already recorded damage retains its historical receipt.
+Migration 20261010070042 applied only to local Docker, exact ledger text verified.
+40 database transaction checks passed, including failed/successful saves, retained
+bonuses, old Hunter's Mark types, ranged Divine Favor and rejected stale writes.
+Desktop/mobile real save-action checks retain all four on-hit buffs and record
+only base damage. Removing the client trigger check makes that regression fail;
+restored code passes. Full gate: 4,011 unit tests, TS 194/194, entry 255.7 KB.
+Database lint clean; only the two existing advisor findings remain. Not deployed.
+
+Next: generic mixed/conditional typed damage settlement; broader rider timing,
+level-20 Hunter's Mark scaling, and explicit legacy attack provenance; release
+integration and map functionality/polish. These fixes do not certify all bonus
+spells, equipment effects or old manually declared weapon attacks.

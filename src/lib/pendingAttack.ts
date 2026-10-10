@@ -799,6 +799,7 @@ export async function rollDamage(attackId: string): Promise<PendingAttack | null
     attackerBuffsSnapshot=structuredClone(attackerBuffs);
     const isMeleeDmg = attackIsMelee(atk);
     const riders = getDamageRiders(attackerBuffs, {
+      attackKind:atk.attack_kind,attackSource:atk.attack_source,hitResult:atk.hit_result,
       targetParticipantId: atk.target_participant_id ?? null,
       isMelee: isMeleeDmg,
     });

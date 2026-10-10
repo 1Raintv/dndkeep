@@ -29,6 +29,35 @@ test.describe('Atomic pending damage recording',()=>{
  const run=(q=call(),u=dm)=>JSON.parse(sql(auth(u,q)));
  const buffs=()=>JSON.parse(sql(`select active_buffs from combatants where id='${cb}'`));
  const state=()=>sql(`select state from pending_attacks where id='${attack}'`);
+ for(const key of ['hunters_mark','hex','divine_favor','absorb_elements_rider'])for(const saved of ['failed','passed'])test(`${key} does not fire or get consumed on a ${saved} save`,()=>{
+  const gated=[{...bonus[0],key},bonus[1]];
+  sql(`update pending_attacks set attack_kind='save',save_result='${saved}',save_success_effect='half' where id='${attack}';update combatants set active_buffs=${json(gated)} where id='${cb}'`);
+  const packet=components();packet.components.pop();
+  expect(run(call(attack,packet,saved==='passed'?2:5,gated)).attack.damage_components.components).toHaveLength(1);expect(buffs()).toEqual(gated);
+ });
+ test('legacy Hunter’s Mark records Force on a spell attack and preserves the stored entry',()=>{
+  const gated=[{...bonus[0],key:'hunters_mark',singleUse:false,damageRider:{dice:'1d4+1',damageType:'piercing'}},bonus[1]];
+  sql(`update pending_attacks set attack_source='spell' where id='${attack}';update combatants set active_buffs=${json(gated)} where id='${cb}'`);
+  const packet=components();packet.components[1].key='rider:0:hunters_mark';packet.components[1].damageType='force';
+  expect(run(call(attack,packet,8,gated)).attack.damage_components.components[1].damageType).toBe('force');expect(buffs()).toEqual(gated);
+ });
+ test('old Hunter’s Mark Piercing totals are rejected without spending a bonus',()=>{
+  const gated=[{...bonus[0],key:'hunters_mark',damageRider:{dice:'1d4+1',damageType:'piercing'}},bonus[1]];
+  sql(`update combatants set active_buffs=${json(gated)} where id='${cb}'`);
+  const packet=components();packet.components[1].key='rider:0:hunters_mark';packet.components[1].damageType='piercing';
+  expect(()=>run(call(attack,packet,8,gated))).toThrow(/Damage bonus type changed/);expect(buffs()).toEqual(gated);
+ });
+ test('legacy melee-only Divine Favor adds damage to a ranged weapon hit',()=>{
+  const gated=[{...bonus[0],key:'divine_favor',onlyMelee:true},bonus[1]];
+  sql(`update pending_attacks set attack_source='weapon',attack_mode='ranged' where id='${attack}';update combatants set active_buffs=${json(gated)} where id='${cb}'`);
+  const packet=components();packet.components[1].key='rider:0:divine_favor';
+  expect(run(call(attack,packet,8,gated)).attack.damage_final).toBe(8);
+ });
+ test('Divine Favor cannot apply to a melee spell attack',()=>{
+  const gated=[{...bonus[0],key:'divine_favor'},bonus[1]];
+  sql(`update pending_attacks set attack_source='spell',attack_mode='melee' where id='${attack}';update combatants set active_buffs=${json(gated)} where id='${cb}'`);
+  const packet=components();packet.components.pop();expect(run(call(attack,packet,5,gated)).attack.damage_final).toBe(5);expect(buffs()).toEqual(gated);
+ });
  test('ranged spell excludes a melee-only rider and preserves it for later',()=>{
   const gated=[{...bonus[0],onlyMelee:true},bonus[1]];
   sql(`update pending_attacks set attack_source='spell',attack_mode='ranged' where id='${attack}';update combatants set active_buffs=${json(gated)} where id='${cb}'`);

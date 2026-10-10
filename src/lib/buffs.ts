@@ -18,6 +18,7 @@ import { supabase } from './supabase';
 import { checkedWrite } from './api/checked';
 import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
+import {damageRiderForAttack,type DamageRiderAttack} from '../rules/damageRiders';
 import { rollDiceExpr } from '../rules/dice';
 import type { TurnTick } from '../rules/turnTicks';
 // v2.315: active_buffs reads come from combatants via JOIN.
@@ -260,15 +261,12 @@ export function getSaveBonuses(targetBuffs: ActiveBuff[]): BuffBonus[] {
  *  riders only fire when attacking the marked creature. */
 export function getDamageRiders(
   attackerBuffs: ActiveBuff[],
-  opts: { targetParticipantId: string | null; isMelee: boolean },
+  opts: DamageRiderAttack,
 ): BuffBonus[] {
   const out: BuffBonus[] = [];
   for (const b of attackerBuffs) {
-    if (!b.damageRider) continue;
-    if (b.onlyMelee && !opts.isMelee) continue;
-    if (b.onlyRanged && opts.isMelee) continue;
-    if (b.onlyVsTargetParticipantId && b.onlyVsTargetParticipantId !== opts.targetParticipantId) continue;
-    out.push({ buff: b, dice: b.damageRider.dice });
+    const rider=damageRiderForAttack(b,opts);
+    if(rider?.damageRider)out.push({buff:rider,dice:rider.damageRider.dice});
   }
   return out;
 }
@@ -384,7 +382,7 @@ export const BUFF_SPELL_REGISTRY: Record<string, BuffSpellEntry> = {
     template: (_casterId, targetId) => ({
       key: 'hunters_mark',
       name: "Hunter's Mark",
-      damageRider: { dice: '1d6', damageType: 'piercing' }, // actually "weapon damage type" per RAW — 1d6 added to weapon's type on hit. Simplified here.
+      damageRider: { dice: '1d6', damageType: 'force' }, // SRD 5.2.1, Hunter's Mark
       onlyVsTargetParticipantId: targetId,
     }),
   },
@@ -403,7 +401,6 @@ export const BUFF_SPELL_REGISTRY: Record<string, BuffSpellEntry> = {
       key: 'divine_favor',
       name: 'Divine Favor',
       damageRider: { dice: '1d4', damageType: 'radiant' },
-      onlyMelee: true,
     }),
   },
   // v2.607.0 — ship 4c. SRD 5.2.1: 5 Temp HP; a creature that hits

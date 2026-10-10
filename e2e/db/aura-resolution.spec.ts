@@ -372,6 +372,9 @@ test.describe('Atomic aura resolution',()=>{
   monster();
   const action={name:'Toppling Gaze',desc:'One creature must succeed on a DC 20 Strength saving throw or be knocked prone.',dc_type:'STR',dc_value:20,dc_success:'none',...(damage?{damage_dice:'1d4',damage_type:'bludgeoning'}:{})};
   sql(`insert into monsters(id,name,type,cr,xp,size,hp,hp_formula,ac,speed,str,dex,con,int,wis,cha,actions) values('${b}','Save actor','Beast','1',200,'Medium',20,'3d8',10,30,10,10,10,10,10,10,${literal([action])});update homebrew_monsters set source_monster_id='${b}' where id='${b}';update combat_participants set participant_type='creature',attacks_remaining=1 where id='${pb}';update combatants set active_buffs='[]' where id='${ca}'`);
+  // On-hit bonuses must survive a saving-throw ability without adding dice.
+  const onHitBuffs=['hunters_mark','hex','divine_favor','absorb_elements_rider'].map(key=>({key,name:key,source:'spell:'+key,singleUse:true,onlyVsTargetParticipantId:pa,damageRider:{dice:'1d6',damageType:key==='hunters_mark'?'piercing':'fire'}}));
+  if(damage)sql(`update combatants set active_buffs=${literal(onHitBuffs)} where id='${cb}'`);
   await signInFixtureDm(page);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
   await page.evaluate(async campaign=>{
    Math.random=()=>0.01;localStorage.setItem('dndkeep:fastCombatRolls','1');
@@ -387,6 +390,7 @@ test.describe('Atomic aura resolution',()=>{
   expect(sql(`select coalesce(active_conditions,'{}'::text[]) @> array['Prone'] from combatants where id='${ca}'`)).toBe('t');
   expect(JSON.parse(sql(`select recipe from dndkeep_private.attack_condition_intents where encounter_id='${enc}'`))).toMatchObject({conditionName:'Prone',sourcePrefix:'monster_action'});
   expect(Number(sql(`select current_hp from combatants where id='${ca}'`))).toBe(damage?19:20);
+  if(damage){expect(JSON.parse(sql(`select damage_components from pending_attacks where encounter_id='${enc}'`)).components).toHaveLength(1);expect(JSON.parse(sql(`select active_buffs from combatants where id='${cb}'`))).toEqual(onHitBuffs);}
   await page.screenshot({path:`.tmp/single-save-${damage}-${info.project.name}.png`});
   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('#single-save-fixture, #single-save-fixture *, .toast, .toast *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
 
