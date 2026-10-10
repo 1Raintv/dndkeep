@@ -1,5 +1,41 @@
 # DNDKeep — Two-Track Roadmap
 
+### Atomic Graze application — stage 2 (local; not released or wired into UI)
+
+Migration 20261010184800 records participant bindings with the Graze choice and
+adds a DM-scoped application endpoint. It composes the existing locked pool/life
+settlement with HP, death state, concentration, combat events, applied state and
+an RLS-protected replay receipt in one transaction. Missing post-damage reaction
+evidence rolls back every write. Replays are checked before looking up mutable
+target state; authorization is rechecked first. Pre-binding Graze receipts require
+review rather than being adopted.
+
+The application verifies the recorded ability, component, original target and
+miss before writing. It applies known typed immunity/resistance/vulnerability and
+Petrified resistance. Absorb Elements contributes resistance once, even when the
+old reaction handler already halved damage_final. Other changed/fudged totals are
+rejected. Unknown or conditional defenses need an explicit immunity/resistance/
+vulnerability ruling with a note, bound to the exact reviewed context. A changed
+context cannot apply that stale ruling. Declined Graze remains zero without
+requiring irrelevant defense decisions. The API resumes any committed
+concentration check instead of applying another hit.
+
+Validation: 32 database cases passed, including pool/life/concentration effects,
+resistance/immunity/vulnerability, rollback, original participant checks, lost
+responses and simultaneous application. Two further cases check stale manual
+reviews and application receipt privacy; both passed. The final full gate passed
+(4,504 tests, TS 194/194, entry 255.7 KB). SQL lint reports no Graze diagnostics
+(20 other existing function warnings). Exact local migration ledger verified.
+Evidence: `.tmp/graze-apply-{unit,final-db,extra-db,final-gate}.log` and
+`.tmp/graze-apply-lint.json`.
+
+Still required before release: wire new declaration opt-in, use/decline controls,
+defense review and atomic application into the combat dialog; remove eager
+Graze HP writes; verify hit-to-miss and miss-to-hit reactions plus desktop/mobile
+recovery. No player flow changed in this backend stage. Release rehearsals must
+include migrations 333–337. The broader Telepath and map work remains open.
+
+
 ### Graze choice recording — stage 1 (local; not released or wired into UI)
 
 Migration 20261010183300 adds an opt-in resolution version that must be supplied

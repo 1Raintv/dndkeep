@@ -78,4 +78,84 @@ test.describe('recorded optional Graze damage',()=>{
   sql(`insert into pending_attacks(campaign_id,attacker_name,attacker_type,target_name,target_type,attack_name,attack_kind,chain_id) values('${camp}','Legacy','system','Target','object','Legacy','attack_roll','${randomUUID()}')`);
   expect(()=>sql(`update pending_attacks set graze_resolution_version=1 where campaign_id='${camp}' and attack_name='Legacy'`)).toThrow(/cannot be changed/);
  });
+ const applicationContext=()=>JSON.parse(sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';set local role authenticated;select public.get_pending_damage_context('${attack}');commit;`));
+ const apply=(review:unknown=null,expected=applicationContext())=>JSON.parse(sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';set local role authenticated;select public.apply_graze_damage('${attack}','${JSON.stringify(expected).replaceAll("'","''")}',0,'${JSON.stringify(review).replaceAll("'","''")}');commit;`));
+ const pools=()=>sql(`select current_hp||'|'||temp_hp from combatants where id=(select combatant_id from combat_participants where id='${target}')`);
+ const defenses=(r:string[]=[],i:string[]=[],v:string[]=[])=>sql(`update combatants set definition_type='custom',definition_id='${target}',stat_block_snapshot='${JSON.stringify({damage_resistances:r,damage_immunities:i,damage_vulnerabilities:v})}' where id=(select combatant_id from combat_participants where id='${target}')`);
+ const prepare=(use=true,post=true)=>{defenses();ready();call(use);if(post)finishEmptyFixtureReactionWindow(sql,owner,attack,'post_damage_roll');};
+ test('atomic application updates pools and history once, including retry after lost response',()=>{
+  prepare();const expected=applicationContext(),first=apply(null,expected);expect(first).toMatchObject({replayed:false,attack:{state:'applied',damage_final:4},settlement:{damage:4}});expect(pools()).toBe('19|0');
+  expect(apply(null,expected).replayed).toBe(true);expect(pools()).toBe('19|0');
+  expect(sql(`select count(*) from combat_events where chain_id=(select chain_id from pending_attacks where id='${attack}') and event_type='damage_applied'`)).toBe('1');
+ });
+ for(const c of [{r:['slashing'],i:[],v:[],damage:2,pools:'20|1'},{r:[],i:['slashing'],v:[],damage:0,pools:'20|3'},
+  {r:[],i:[],v:['slashing'],damage:8,pools:'15|0'},{r:['slashing'],i:[],v:['slashing'],damage:4,pools:'19|0'}])
+  test(`atomic defenses ${JSON.stringify(c)}`,()=>{prepare();defenses(c.r,c.i,c.v);expect(apply().settlement.damage).toBe(c.damage);expect(pools()).toBe(c.pools);});
+ test('atomic application rolls HP and events back when post-damage checks are missing',()=>{
+  prepare(true,false);expect(()=>apply()).toThrow(/Recover the damage reaction check/);expect(pools()).toBe('20|3');
+  expect(sql(`select state from pending_attacks where id='${attack}'`)).toBe('damage_rolled');
+  expect(sql(`select count(*) from dndkeep_private.pending_damage_pool_records where attack_id='${attack}'`)).toBe('0');
+  expect(sql(`select count(*) from combat_events where chain_id=(select chain_id from pending_attacks where id='${attack}') and event_type='damage_applied'`)).toBe('0');
+ });
+ test('atomic application rejects changed pools or rewritten participant identity',()=>{
+  prepare();const expected=applicationContext();sql(`update combatants set current_hp=18 where id=(select combatant_id from combat_participants where id='${target}')`);
+  expect(()=>apply(null,expected)).toThrow(/context changed/);expect(pools()).toBe('18|3');
+  sql(`update combat_participants set entity_id='${randomUUID()}' where id='${target}'`);expect(()=>apply()).toThrow();expect(pools()).toBe('18|3');
+ });
+ test('atomic conditional defenses require an explicit review and preserve it',()=>{
+  prepare();defenses(['slashing from nonmagical attacks']);expect(()=>apply()).toThrow(/Review target damage defenses/);expect(pools()).toBe('20|3');
+  const review={immune:false,resistant:true,vulnerable:false,note:'Nonmagical weapon confirmed'};
+  expect(apply(review)).toMatchObject({settlement:{damage:2},resolution:{review}});expect(pools()).toBe('20|1');
+ });
+ test('atomic decline settles zero even when creature defenses are unknown',()=>{
+  prepare(false);sql(`update combatants set stat_block_snapshot='{}' where id=(select combatant_id from combat_participants where id='${target}')`);
+  expect(apply().settlement.damage).toBe(0);expect(pools()).toBe('20|3');
+ });
+ test('atomic Absorb Elements does not stack with existing resistance',()=>{
+  sql(`update pending_attacks set damage_type='fire' where id='${attack}'`);prepare();defenses(['fire']);
+  sql(`insert into pending_reactions(campaign_id,pending_attack_id,reactor_participant_id,reactor_name,reactor_type,reaction_key,reaction_name,trigger_point,expires_at,state)
+   values('${camp}','${attack}','${target}','Target','creature','absorb_elements','Absorb Elements','post_damage_roll',now()+interval '120 seconds','accepted');
+   update pending_attacks set damage_final=2 where id='${attack}'`);
+  expect(apply().settlement.damage).toBe(2);expect(pools()).toBe('20|1');
+ });
+ test('atomic application records creature death',()=>{
+  prepare();sql(`update combatants set current_hp=2,temp_hp=0 where id=(select combatant_id from combat_participants where id='${target}')`);
+  expect(apply().settlement.dead).toBe(true);
+  expect(sql(`select is_dead from combatants where id=(select combatant_id from combat_participants where id='${target}')`)).toBe('t');
+ });
+
+ for(const hp of [2,20])test(`atomic character concentration after Graze at ${hp} HP`,()=>{
+  const defender=randomUUID();
+  try{
+   sql(`insert into characters(id,user_id,campaign_id,name,species,class_name,background,level,current_hp,max_hp,concentration_spell)
+    values('${defender}','${owner}','${camp}','Defender','Human','Wizard','Sage',5,${hp},20,'Bless');
+    update combat_participants set entity_id='${defender}',participant_type='character' where id='${target}';
+    update combatants set definition_type='character',definition_id='${defender}',current_hp=${hp},max_hp=20,temp_hp=0 where id=(select combatant_id from combat_participants where id='${target}');
+    update pending_attacks set target_type='character' where id='${attack}'`);
+   ready();call();finishEmptyFixtureReactionWindow(sql,owner,attack,'post_damage_roll');const result=apply();
+   if(hp===2){expect(result.settlement.concentrationBroken).toBe(true);expect(sql(`select coalesce(concentration_spell,'') from characters where id='${defender}'`)).toBe('');
+    expect(result.settlement.dead).toBe(false);expect(result.settlement.afterHP).toBe(0);
+   }else{expect(result.settlement.concentrationCheckId).toBeTruthy();expect(result.settlement.concentrationMode).toBe('prompt');expect(result.settlement.afterHP).toBe(16);}
+  }finally{sql(`delete from characters where id='${defender}'`);}
+ });
+ test('atomic concurrent application writes HP and history exactly once',async()=>{
+  prepare();const expected=JSON.stringify(applicationContext()).replaceAll("'","''");
+  const query=`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';set local role authenticated;select public.apply_graze_damage('${attack}','${expected}',0);commit;`;
+  const results=await Promise.all([1,2].map(()=>promisify(execFile)('docker',['exec','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1','-c',query])));
+  expect(results.map(r=>JSON.parse(r.stdout.trim()).replayed).sort()).toEqual([false,true]);expect(pools()).toBe('19|0');
+  expect(sql(`select count(*) from combat_events where chain_id=(select chain_id from pending_attacks where id='${attack}') and event_type='damage_applied'`)).toBe('1');
+ });
+
+ test('a reviewed defense choice cannot be applied after those defenses change',()=>{
+  prepare();defenses(['slashing from nonmagical attacks']);const expected=applicationContext();defenses([],['slashing']);
+  expect(()=>apply({immune:false,resistant:true,vulnerable:false,note:'Old review'},expected)).toThrow(/context changed/);expect(pools()).toBe('20|3');
+ });
+ test('application receipt is private and unauthorized replay is denied',()=>{
+  prepare();apply();const stranger=randomUUID();
+  expect(()=>sql(`begin;set local request.jwt.claims='{"sub":"${stranger}","role":"authenticated"}';set local role authenticated;select public.apply_graze_damage('${attack}');commit;`)).toThrow(/current DM only/);
+  expect(()=>sql(`begin;set local role authenticated;select * from dndkeep_private.graze_damage_applications;rollback;`)).toThrow();
+  expect(sql(`select has_function_privilege('anon','public.apply_graze_damage(uuid,jsonb,integer,jsonb)','execute')`)).toBe('f');
+  expect(pools()).toBe('19|0');
+ });
+
 });
