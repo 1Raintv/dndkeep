@@ -135,6 +135,32 @@ checks are point-in-time evidence, not proof of all runtime compatibility.
 Vercel's preview check for 90477d8a failed with its build-rate-limit result.
 No merge or production migration was attempted.
 
+### Production preflight — activity and data compatibility (read-only)
+
+Rechecked live production on 2026-10-10 after c50b02c1. Its 233 migration
+versions exactly match the repository prefix through 20261008211300 (ordered
+version-list MD5 1a3de08c0a19ec990f1cd7716f389b13). There are 88 pending files.
+
+Reviewed pending top-level data changes and constraints. The stable-character
+backfill affects zero rows; expiring legacy pending death-save prompts affects
+zero rows; the legendary pool constraint has zero incompatible rows. Existing
+Psion turn state has two rows, which receive the new action epoch default.
+New receipt tables are created by this pending chain, so later alterations to
+those tables start without legacy production rows. These observations cover
+migration data shape, not every replacement function's runtime behavior.
+
+Expanded scripts/check-psion-release-preflight.sql with active encounters,
+unresolved attacks, open reaction offers and offered concentration saves.
+The exact read-only script returned zero for all seven checks on production.
+Concentration prompts use offered; death-save prompts use pending. The local
+script also ran successfully and correctly reported two existing active local
+encounters; no local sessions were modified or cleared.
+
+Repeat this preflight immediately before release. A zero count is not a lock,
+a deployment, or proof that every old browser/client will remain compatible.
+No production writes were performed. Remaining release work includes Telepath
+reaction transaction integration, preview availability and final release checks.
+
 ### Release rehearsal refresh — 321 migrations (not released)
 
 Both retained isolated databases (fresh-chain origin and main-upgrade origin)
