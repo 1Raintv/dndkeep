@@ -7286,3 +7286,44 @@ settlement, call these validators against the locked live context, handle the
 DM Legendary Resistance decision, apply typed damage/concentration and write
 one receipt/marker/log batch. These helpers alone do not make live aura damage
 atomic, and the legacy resolver is unchanged in this checkpoint.
+
+
+### Atomic DM-reviewed aura settlement (2026-10-09)
+
+Migration20261010070016 adds `commit_aura_resolution` and a DM-authorized
+historical receipt lookup. One transaction rechecks the locked aura snapshot,
+consumes next-save penalties, verifies the saved physical dice/buff evidence,
+applies the explicit Legendary Resistance decision, calculates save-half then
+resistance/vulnerability, updates HP/concentration, writes combat events and
+consumes the once-per-turn marker. Character damage composes the existing party
+transaction, retaining concentration suppression and one pending save offer;
+creatures die at zero HP. Hidden source/target events remain private.
+
+The private receipt is unique by encounter/turn/origin/target/aura key as well
+as request UUID. Exact retries return the original outcome without overwriting
+later HP, including after combat ends. Competing request IDs cannot apply twice;
+the caller can retrieve the winning receipt by logical aura identity. Failed
+history/events/receipt writes roll back the whole transaction. Authorization is
+checked before both new writes and historical replay.
+
+Preparation now also captures Legendary Resistance charges and active next-save
+effects. A penalty appearing or being consumed after review invalidates the
+proposal before any mutation; it cannot silently turn a previously reviewed
+success into a failure with an outdated resistance decision.
+
+Scope: this is an explicitly DM-reviewed endpoint. Geometry confirmation,
+defense affinity and base save/concentration modifiers are reviewed inputs;
+they are not independently inferred or verified against every game rule here.
+The server validates evidence, arithmetic and unchanged state. The live resolver
+has not switched to this endpoint. Next: persist/recover the client proposal,
+review changed settings without rerolling, reconcile the winning receipt and
+wire the DM turn pipeline. Player-triggered aura orchestration and geometric
+proof still need deliberate integration before deployment.
+
+Validation: all84 local preparation/settlement cases pass across both test
+projects, including concurrent identical/different requests, late receipt failure
+with real Mind Sliver rollback, historical replay after healing/end of combat,
+concentration, immunity, resistance rounding, massive damage and hidden events.
+Full gate passes (3,502 units, TypeScript195/195,255.7KB entry); ESLint, SQL lint
+and security advisors pass. Migration applied/recorded only locally, preserving
+unrelated history. No production deployment or live resolver switch.
