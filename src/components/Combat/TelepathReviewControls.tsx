@@ -4,7 +4,6 @@ import {loadTelepathCandidates} from '../../lib/api/reactionCharacter';
 import {getTelepathAttackContext,type TelepathAttackContext} from '../../lib/api/telepathReactions';
 import {pendingTelepath,prepareTelepath,sendTelepath} from '../../lib/telepathRecovery';
 import {psionicDieSides} from '../../rules/psionicRestoration';
-import {rollDie} from '../../rules/dice';
 /** DM review is explicit: range does not prove line of sight, and a saved
  * Reaction is claimed before optional enhancements or conditional Energy cost. */
 export default function TelepathReviewControls({attack,disabled,onSaved,runAction}:{attack:PendingAttack;disabled:boolean;onSaved:()=>void;runAction:(task:()=>Promise<unknown>)=>Promise<void>}){
@@ -24,7 +23,7 @@ export default function TelepathReviewControls({attack,disabled,onSaved,runActio
   if(!context||!confirmed||disabled)throw new Error('Confirm the review before rolling.');
   const fresh=await getTelepathAttackContext(character,attack.id,feature);if(!alive.current||selection.current!==character)return;
   if(fresh.attack.updatedAt!==context.attack.updatedAt||fresh.budget.context.turnId!==context.budget.context.turnId||fresh.telepathyRange!==context.telepathyRange)throw new Error('Attack, turn or range changed. Review the Psion again.');
-  const saved=await prepareTelepath(character,{requestId:crypto.randomUUID(),attackId:attack.id,feature,expected:fresh,review:{distanceFeet:Number(distance),visible,confirmed:true}},()=>rollDie(psionicDieSides(fresh.psionLevel)));
+  const saved=await prepareTelepath(character,{requestId:crypto.randomUUID(),attackId:attack.id,feature,expected:fresh,review:{distanceFeet:Number(distance),visible,confirmed:true}});
   if(alive.current)setDraft(true);await sendTelepath(character,saved);if(alive.current){setDraft(false);onSaved();}
  });}
  const legal=!!context&&context.reactionAvailable&&context.energyRemaining>0&&context.rangeVerified&&distance.trim()!==''&&Number.isFinite(Number(distance))&&Number(distance)>=0&&Number(distance)<=context.telepathyRange!&&(!context.subject.self||Number(distance)===0)&&(visible||feature==='bolstering'&&context.subject.self)&&confirmed;

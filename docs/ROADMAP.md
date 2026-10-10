@@ -1,5 +1,28 @@
 # DNDKeep — Two-Track Roadmap
 
+### Reload-safe Telepath dice preparation (local; not released)
+
+New preparations durably save a versioned random UUIDv4 and the reviewed request
+before calculating die faces. Canonical dice code maps its independent first/last
+48-bit random sections to one base die or up to two Enkindled dice; UUID version
+and variant bits are excluded. Recovery consumes no new entropy. A failed final
+write, closed tab or reload can reconstruct the same request and dice, then use
+existing Refresh/Retry controls. Submission still requires saving the complete
+request before network access, and server eligibility/payment checks remain in force.
+
+This replaces the preceding same-tab-only in-memory fallback. Existing complete
+drafts continue to work. Unversioned/corrupt preparation markers cannot reconstruct
+unknown faces and remain blocked for explicit review; clearing site data is not a
+recovery procedure. No UI layout or database schema changes. Production unchanged.
+
+Validation: full gate passes with 4,611 tests, TS 193/193, clean hooks and
+256.1 KB entry bundle. All 63 desktop Telepath cases and six mobile recovery,
+review and saved-prompt cases pass. Changed production files have zero lint
+messages. Evidence: .tmp/telepath-seed-{gate,browser,full,mobile}.log and lint JSON.
+The existing PR checks passed for c93aa188; Vercel still reports its deployment
+rate limit. Next: refresh both retained migration rehearsals through 343, then
+final release checks. Ability-check Bolstering remains separate queued work.
+
 ### Interrupted Telepath storage recovery (local; not released)
 
 A completed base or Enkindled roll now remains in memory if its storage write

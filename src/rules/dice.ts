@@ -17,7 +17,19 @@
 
 /** Roll a single die of a given number of sides. */
 export function rollDie(sides: number): number {
-  return Math.floor(Math.random() * sides) + 1;
+  return dieFace(sides, Math.random());
+}
+
+function dieFace(sides:number,sample:number):number {return Math.floor(sample*sides)+1;}
+/** v2.869: replay one or two dice from a DURABLY saved random UUIDv4.
+ * Its first and last 12 hex digits are independent 48-bit random samples;
+ * neither includes the fixed UUID version/variant bits. Never creates entropy.
+ * Version this encoding at the persistence boundary before changing it. */
+export function replaySeededDice(seed:unknown,sides:number,count:number):number[]|null {
+ if(typeof seed!=='string'||!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(seed)
+  ||!Number.isInteger(sides)||sides<1||sides>1000||![1,2].includes(count))return null;
+ const hex=seed.replace(/-/g,'');
+ return [hex.slice(0,12),hex.slice(-12)].slice(0,count).map(part=>dieFace(sides,parseInt(part,16)/2**48));
 }
 
 // Parses dice expressions like "2d8+3" or "1d6" and returns the individual

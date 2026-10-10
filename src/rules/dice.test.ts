@@ -3,7 +3,7 @@
 // pendingAttack damage, buff riders/ticks, monster browser, bestiary
 // bare-integer damage (v2.448), and crit doubling (2024 PHB).
 import { describe, expect, it, vi } from 'vitest';
-import { parseDiceGroups, validDiceGroups, physicalDiceList, physicalDiceOutcome, addDiceModifier, rollDiceGroups, doubleDice, rollDiceExpr, rollDie } from './dice';
+import { replaySeededDice, parseDiceGroups, validDiceGroups, physicalDiceList, physicalDiceOutcome, addDiceModifier, rollDiceGroups, doubleDice, rollDiceExpr, rollDie } from './dice';
 
 describe('rollDie', () => {
   it('stays in [1, sides] and hits every face over many rolls', () => {
@@ -137,4 +137,25 @@ describe('saved dice evidence',()=>{
   }finally{random.mockRestore();}
  });
  it.each(['1d4','2d6+1d8-2','17','0','1D20 + 2'])('accepts the canonical roller output: %s',expression=>expect(validDiceGroups(expression,rollDiceGroups(expression))).toBe(true));
+});
+
+describe('durable seeded dice',()=>{
+ it('uses independent random UUID bits and never calls RNG',()=>{
+  const random=vi.spyOn(Math,'random').mockImplementation(()=>{throw new Error('unexpected RNG');});
+  try{
+   for(const sides of [4,6,8,10,12,20]){
+    expect(replaySeededDice('00000000-0000-4fff-bfff-ffffffffffff',sides,2)).toEqual([1,sides]);
+    expect(replaySeededDice('ffffffff-ffff-4000-8000-000000000000',sides,2)).toEqual([sides,1]);
+   }
+   expect(replaySeededDice('40000000-0000-4000-8000-c00000000000',12,2)).toEqual([4,10]);
+   expect(replaySeededDice('40000000-0000-4fff-bfff-c00000000000',12,1)).toEqual([4]);
+   expect(random).not.toHaveBeenCalled();
+  }finally{random.mockRestore();}
+ });
+ it('rejects unsupported seeds and dice shapes',()=>{
+  for(const seed of [null,{},'bad','00000000-0000-1000-8000-000000000000','00000000-0000-4000-0000-000000000000'])expect(replaySeededDice(seed,6,1)).toBeNull();
+  const seed='00000000-0000-4000-8000-000000000000';
+  for(const sides of [0,-1,NaN,1.5,1001])expect(replaySeededDice(seed,sides,1)).toBeNull();
+  for(const count of [0,3,1.5,NaN])expect(replaySeededDice(seed,6,count)).toBeNull();
+ });
 });

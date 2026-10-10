@@ -7,8 +7,6 @@ import {cancelTelepathReactionByDm} from '../../lib/api/telepathReactions';
 import {pendingTelepath,prepareTelepathEnkindled,sendTelepath} from '../../lib/telepathRecovery';
 import {characterHitDice} from '../../lib/characterHitDice';
 import {psionProgression} from '../../rules/psionProgression';
-import {psionicDieSides} from '../../rules/psionicRestoration';
-import {rollDie} from '../../rules/dice';
 export default function TelepathReactionPrompt({offer,isDM,onSettled}:{offer:PendingReaction;isDM:boolean;onSettled:()=>void}){
  const [row,setRow]=useState<TelepathRecord|null>(null),[character,setCharacter]=useState<Character|null>(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[reason,setReason]=useState('');
  const [draft,setDraft]=useState(false),[count,setCount]=useState<1|2>(1),[die,setDie]=useState(6);
@@ -36,7 +34,7 @@ export default function TelepathReactionPrompt({offer,isDM,onSettled}:{offer:Pen
      const p=psionProgression(c),pools=characterHitDice(c);if(!p||p.subclass!=='Telepath'||p.level!==r.psion_level||pools.status!=='ready')throw new Error('Review current Psion levels and Hit Dice before enhancing.');
      if(kind==='enkindled'){
       if(pools.total-pools.spent<count)throw new Error('Not enough Hit Dice remain.');
-      const saved=await prepareTelepathEnkindled(c.id,r,crypto.randomUUID(),count,()=>rollDie(psionicDieSides(r.psion_level)));await sendTelepath(c.id,saved);
+      const saved=await prepareTelepathEnkindled(c.id,r,crypto.randomUUID(),count);await sendTelepath(c.id,saved);
      }else{
       if(!pools.pools.some(pool=>pool.die===die&&pool.available>0))throw new Error('Choose an available Hit Die.');
       await sendTelepath(c.id,{kind:'enhance',request:{declarationId:r.request_id,requestId:crypto.randomUUID(),kind:'surge',extraRolls:null,hitDie:die}});

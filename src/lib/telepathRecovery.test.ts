@@ -20,34 +20,43 @@ function declaration():TelepathRecord{
 
 const input=()=>{const r=declaration();const {roll:_roll,...request}=r.request;return {...request,requestId:r.request_id};};
 beforeEach(()=>{
- localStorage.clear();vi.resetAllMocks();let tail=Promise.resolve();
+ localStorage.clear();vi.resetAllMocks();vi.spyOn(crypto,'randomUUID').mockReturnValue('40000000-0000-4000-8000-c00000000000');let tail=Promise.resolve();
  vi.stubGlobal('navigator',{locks:{request:(_name:string,task:()=>unknown)=>{const next=tail.then(task);tail=next.then(()=>undefined,()=>undefined);return next;}}});
  mock.begin.mockResolvedValue(declaration());mock.finish.mockResolvedValue(declaration());mock.enhance.mockResolvedValue(declaration());
 });
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();});
-it('saves before RNG and roundtrips the exact roll until verified submission',async()=>{
- const roll=vi.fn(()=>{expect(()=>pendingTelepath(id(1))).toThrow(/recovery/);return 3;});
- const pending=await prepareTelepath(id(1),input(),roll);expect(pendingTelepath(id(1))).toEqual(pending);expect(pendingTelepath(id(2))).toBeNull();
- await sendTelepath(id(1),pending);expect(mock.begin).toHaveBeenCalledWith(id(1),{...input(),roll:3});expect(pendingTelepath(id(1))).toBeNull();expect(roll).toHaveBeenCalledTimes(1);
+it('roundtrips the original seed-derived die until verified submission',async()=>{
+ const pending=await prepareTelepath(id(1),input());expect(pendingTelepath(id(1))).toEqual(pending);expect(pendingTelepath(id(2))).toBeNull();
+ await sendTelepath(id(1),pending);expect(mock.begin).toHaveBeenCalledWith(id(1),{...input(),roll:3});expect(pendingTelepath(id(1))).toBeNull();
+ expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
 });
-it('serializes competing tab preparations without a second roll',async()=>{
- const roll=vi.fn(()=>3);const results=await Promise.allSettled([prepareTelepath(id(1),input(),roll),prepareTelepath(id(1),{...input(),requestId:id(11)},roll)]);
- expect(results.map(r=>r.status)).toEqual(['fulfilled','rejected']);expect(roll).toHaveBeenCalledTimes(1);
+it('serializes competing preparations without generating a second seed',async()=>{
+ const results=await Promise.allSettled([prepareTelepath(id(1),input()),prepareTelepath(id(1),{...input(),requestId:id(11)})]);
+ expect(results.map(r=>r.status)).toEqual(['fulfilled','rejected']);expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
 });
-it('storage failure before the marker never rolls',async()=>{
- vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw new Error('full');});const roll=vi.fn(()=>3);
- await expect(prepareTelepath(id(1),input(),roll)).rejects.toThrow('full');expect(roll).not.toHaveBeenCalled();
+it('failure of the initial write leaves no displayed or submitted dice',async()=>{
+ vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw new Error('full');});
+ await expect(prepareTelepath(id(1),input())).rejects.toThrow('full');expect(localStorage.length).toBe(0);expect(mock.begin).not.toHaveBeenCalled();
 });
-it('failure after RNG retains exact dice for retry without rolling again',async()=>{
- const write=localStorage.setItem.bind(localStorage);let writes=0;vi.spyOn(localStorage,'setItem').mockImplementation((k,v)=>{if(++writes===2)throw new Error('full');write(k,v);});
- const roll=vi.fn(()=>3);await expect(prepareTelepath(id(1),input(),roll)).rejects.toThrow(/Keep this tab open/);
- const pending=pendingTelepath(id(1));expect(pending).toMatchObject({kind:'begin',request:{roll:3}});
- await expect(prepareTelepath(id(1),input(),roll)).rejects.toThrow(/recovery/);
- await sendTelepath(id(1),pending!);expect(mock.begin).toHaveBeenCalledWith(id(1),{...input(),roll:3});
- expect(roll).toHaveBeenCalledTimes(1);expect(pendingTelepath(id(1))).toBeNull();
+function failFinalWrite(){
+ const write=localStorage.setItem.bind(localStorage);let writes=0;
+ return vi.spyOn(localStorage,'setItem').mockImplementation((k,v)=>{if(++writes>1)throw new Error('full');write(k,v);});
+}
+it('reload reconstructs identical dice without RNG after the final write fails',async()=>{
+ const storage=failFinalWrite();await expect(prepareTelepath(id(1),input())).rejects.toThrow(/saved Telepath/);
+ const marker=localStorage.getItem('dndkeep:telepath:'+id(1))!;
+ expect(JSON.parse(marker)).toMatchObject({kind:'preparing',version:2,operation:'begin',request:input()});
+ vi.resetModules();const reloaded=await import('./telepathRecovery');
+ const rng=vi.spyOn(Math,'random').mockImplementation(()=>{throw new Error('must not reroll');});
+ const pending=reloaded.pendingTelepath(id(1))!;expect(pending).toMatchObject({kind:'begin',request:{roll:3}});
+ await expect(reloaded.prepareTelepath(id(1),input())).rejects.toThrow(/recovery/);
+ await expect(reloaded.sendTelepath(id(1),pending)).rejects.toThrow(/saved Telepath/);expect(mock.begin).not.toHaveBeenCalled();
+ expect(localStorage.getItem('dndkeep:telepath:'+id(1))).toBe(marker);
+ storage.mockRestore();await reloaded.sendTelepath(id(1),pending);expect(mock.begin).toHaveBeenCalledWith(id(1),{...input(),roll:3});
+ expect(reloaded.pendingTelepath(id(1))).toBeNull();expect(crypto.randomUUID).toHaveBeenCalledTimes(1);expect(rng).not.toHaveBeenCalled();
 });
 it.each([new Error('lost reply'),Object.assign(new Error('permission changed'),{definitelyNotPaid:true})])('keeps failed requests and retries identical dice (%s)',async error=>{
- const pending=await prepareTelepath(id(1),input(),()=>3);mock.begin.mockRejectedValueOnce(error);
+ const pending=await prepareTelepath(id(1),input());mock.begin.mockRejectedValueOnce(error);
  await expect(sendTelepath(id(1),pending)).rejects.toThrow();expect(pendingTelepath(id(1))).toEqual(pending);
  await sendTelepath(id(1),pending);expect(mock.begin.mock.calls[0]).toEqual(mock.begin.mock.calls[1]);expect(pendingTelepath(id(1))).toBeNull();
 });
@@ -55,63 +64,53 @@ it('blocks a changed outcome while settlement is uncertain',async()=>{
  const request={declarationId:id(10)};mock.finish.mockRejectedValueOnce(new Error('lost'));await expect(sendTelepath(id(1),{kind:'finish',request})).rejects.toThrow();
  await expect(sendTelepath(id(1),{kind:'cancel',request})).rejects.toThrow(/recovery/);expect(mock.finish).toHaveBeenCalledTimes(1);
 });
-it.each(['{broken','null','{"kind":"preparing"}'])('preserves corrupt drafts and never rolls (%s)',async raw=>{
- localStorage.setItem('dndkeep:telepath:'+id(1),raw);const roll=vi.fn(()=>3);await expect(prepareTelepath(id(1),input(),roll)).rejects.toThrow(/recovery/);expect(roll).not.toHaveBeenCalled();expect(localStorage.getItem('dndkeep:telepath:'+id(1))).toBe(raw);
+it.each(['{broken','null','{"kind":"preparing"}','{"kind":"preparing","requestId":"legacy"}'])('preserves unresolvable legacy/corrupt drafts (%s)',async raw=>{
+ localStorage.setItem('dndkeep:telepath:'+id(1),raw);await expect(prepareTelepath(id(1),input())).rejects.toThrow(/recovery/);
+ expect(crypto.randomUUID).not.toHaveBeenCalled();expect(localStorage.getItem('dndkeep:telepath:'+id(1))).toBe(raw);
 });
-it('requires browser locking before any dice or storage',async()=>{
- vi.stubGlobal('navigator',{});const roll=vi.fn(()=>3);await expect(prepareTelepath(id(1),input(),roll)).rejects.toThrow(/browser/);expect(roll).not.toHaveBeenCalled();expect(localStorage.length).toBe(0);
+it('requires locking before entropy or storage',async()=>{
+ vi.stubGlobal('navigator',{});await expect(prepareTelepath(id(1),input())).rejects.toThrow(/browser/);
+ expect(crypto.randomUUID).not.toHaveBeenCalled();expect(localStorage.length).toBe(0);
 });
-it('validates target before a marker and retains invalid RNG as interrupted',async()=>{
- const roll=vi.fn(()=>3);await expect(prepareTelepath(id(1),{...input(),review:{distanceFeet:99,visible:true,confirmed:true}},roll)).rejects.toThrow(/target/);expect(roll).not.toHaveBeenCalled();expect(localStorage.length).toBe(0);
- await expect(prepareTelepath(id(1),input(),()=>99)).rejects.toThrow(/recovery/);expect(()=>pendingTelepath(id(1))).toThrow(/recovery/);
-});
-it('saves Enkindled dice before payment and rejects an unearned enhancement',async()=>{
- const r=declaration(),roll=vi.fn(()=>2);await expect(prepareTelepathEnkindled(id(1),r,id(11),2,roll)).rejects.toThrow(/enhancement/);expect(roll).not.toHaveBeenCalled();
- r.psion_level=20;r.context.psionLevel=20;r.context.energyRemaining=12;
- const pending=await prepareTelepathEnkindled(id(1),r,id(11),2,roll);expect(pending).toMatchObject({kind:'enhance',request:{extraRolls:[2,2]}});
- await sendTelepath(id(1),pending);expect(mock.enhance).toHaveBeenCalledTimes(1);expect(roll).toHaveBeenCalledTimes(2);
+it('rejects invalid targets before committing any preparation',async()=>{
+ await expect(prepareTelepath(id(1),{...input(),review:{distanceFeet:99,visible:true,confirmed:true}})).rejects.toThrow(/target/);
+ expect(crypto.randomUUID).not.toHaveBeenCalled();expect(localStorage.length).toBe(0);
 });
 it('copies inputs before waiting for the lock',async()=>{
- const request=input(),pending=prepareTelepath(id(1),request,()=>3);request.review.distanceFeet=99;expect((await pending).request).toMatchObject({review:{distanceFeet:30}});
+ const request=input(),pending=prepareTelepath(id(1),request);request.review.distanceFeet=99;
+ expect((await pending).request).toMatchObject({review:{distanceFeet:30}});
+});
+it('restores two independent Enkindled dice after reload without another seed or payment',async()=>{
+ const r=declaration();await expect(prepareTelepathEnkindled(id(1),r,id(11),2)).rejects.toThrow(/enhancement/);
+ expect(crypto.randomUUID).not.toHaveBeenCalled();r.psion_level=20;r.context.psionLevel=20;r.context.energyRemaining=12;
+ const storage=failFinalWrite();await expect(prepareTelepathEnkindled(id(1),r,id(11),2)).rejects.toThrow(/saved Telepath/);
+ vi.resetModules();const reloaded=await import('./telepathRecovery');const pending=reloaded.pendingTelepath(id(1))!;
+ expect(pending).toMatchObject({kind:'enhance',request:{extraRolls:[4,10]}});
+ expect(mock.enhance).not.toHaveBeenCalled();storage.mockRestore();await reloaded.sendTelepath(id(1),pending);
+ expect(mock.enhance).toHaveBeenCalledWith(id(1),{declarationId:id(10),requestId:id(11),kind:'enkindled',extraRolls:[4,10],hitDie:null});
+ expect(crypto.randomUUID).toHaveBeenCalledTimes(1);
+});
+it('does not accept changed faces or replace a different durable request',async()=>{
+ const storage=failFinalWrite();await expect(prepareTelepath(id(1),input())).rejects.toThrow();storage.mockRestore();
+ const original=pendingTelepath(id(1))!;const changed=structuredClone(original);if(changed.kind==='begin')changed.request.roll=8;
+ await expect(sendTelepath(id(1),changed)).rejects.toThrow(/recovery/);
+ expect(pendingTelepath(id(1))).toEqual(original);
+ const newer={kind:'cancel',request:{declarationId:id(12)}} as const;localStorage.setItem('dndkeep:telepath:'+id(1),JSON.stringify(newer));
+ await expect(sendTelepath(id(1),original)).rejects.toThrow(/recovery/);expect(mock.begin).not.toHaveBeenCalled();expect(pendingTelepath(id(1))).toEqual(newer);
+});
+it.each(['version','attemptId','character','count'])('rejects malformed recovery evidence: %s',async field=>{
+ const storage=failFinalWrite();await expect(prepareTelepath(id(1),input())).rejects.toThrow();storage.mockRestore();
+ const marker=JSON.parse(localStorage.getItem('dndkeep:telepath:'+id(1))!);
+ if(field==='version')marker.version=3;
+ if(field==='attemptId')marker.attemptId=id(1).replace('-4000-','-1000-');
+ if(field==='character')marker.request.expected.characterId=id(2);
+ if(field==='count'){marker.operation='enkindled';marker.count=3;marker.declaration=declaration();}
+ localStorage.setItem('dndkeep:telepath:'+id(1),JSON.stringify(marker));
+ expect(()=>pendingTelepath(id(1))).toThrow(/recovery/);expect(mock.begin).not.toHaveBeenCalled();
 });
 
-it('does not send while storage remains full, and never exposes mutable retained dice',async()=>{
- const write=localStorage.setItem.bind(localStorage);let writes=0;
- const storage=vi.spyOn(localStorage,'setItem').mockImplementation((k,v)=>{if(++writes>1)throw new Error('full');write(k,v);});
- await expect(prepareTelepath(id(1),input(),()=>3)).rejects.toThrow(/Keep this tab open/);
- const pending=pendingTelepath(id(1))!;if(pending.kind==='begin')pending.request.roll=8;
- await expect(sendTelepath(id(1),pending)).rejects.toThrow(/recovery/);
- const exact=pendingTelepath(id(1))!;
- await expect(sendTelepath(id(1),exact)).rejects.toThrow(/Keep this tab open/);expect(mock.begin).not.toHaveBeenCalled();
- storage.mockRestore();await sendTelepath(id(1),exact);expect(mock.begin).toHaveBeenCalledWith(id(1),{...input(),roll:3});
-});
-it('never replaces a different durable request with retained in-memory dice',async()=>{
- const write=localStorage.setItem.bind(localStorage);let writes=0;
- vi.spyOn(localStorage,'setItem').mockImplementation((k,v)=>{if(++writes===2)throw new Error('full');write(k,v);});
- await expect(prepareTelepath(id(1),input(),()=>3)).rejects.toThrow(/Keep this tab open/);
- const original=pendingTelepath(id(1))!;
- const newer={kind:'cancel',request:{declarationId:id(12)}} as const;write('dndkeep:telepath:'+id(1),JSON.stringify(newer));
- await expect(sendTelepath(id(1),original)).rejects.toThrow(/recovery/);expect(mock.begin).not.toHaveBeenCalled();
- expect(pendingTelepath(id(1))).toEqual(newer);
-});
-it('saves original review before RNG and leaves unknown rolls blocked after module reload',async()=>{
- const write=localStorage.setItem.bind(localStorage);let writes=0;
- vi.spyOn(localStorage,'setItem').mockImplementation((k,v)=>{if(++writes===2)throw new Error('full');write(k,v);});
- await expect(prepareTelepath(id(1),input(),()=>3)).rejects.toThrow(/Keep this tab open/);
- const marker=JSON.parse(localStorage.getItem('dndkeep:telepath:'+id(1))!);
- expect(marker).toMatchObject({kind:'preparing',operation:'begin',request:input()});expect(marker.attemptId).toBeTruthy();
- vi.resetModules();const reloaded=await import('./telepathRecovery');
- expect(()=>reloaded.pendingTelepath(id(1))).toThrow(/recovery/);const roll=vi.fn(()=>2);
- await expect(reloaded.prepareTelepath(id(1),input(),roll)).rejects.toThrow(/recovery/);expect(roll).not.toHaveBeenCalled();
-});
-it('retains both Enkindled faces and original declaration when storage fails',async()=>{
- const r=declaration();r.psion_level=20;r.context.psionLevel=20;r.context.energyRemaining=12;
- const write=localStorage.setItem.bind(localStorage);let writes=0;
- vi.spyOn(localStorage,'setItem').mockImplementation((k,v)=>{if(++writes===2)throw new Error('full');write(k,v);});
- const roll=vi.fn().mockReturnValueOnce(2).mockReturnValueOnce(7);
- await expect(prepareTelepathEnkindled(id(1),r,id(11),2,roll)).rejects.toThrow(/Keep this tab open/);
- expect(JSON.parse(localStorage.getItem('dndkeep:telepath:'+id(1))!)).toMatchObject({operation:'enkindled',count:2,declaration:r});
- await sendTelepath(id(1),pendingTelepath(id(1))!);
- expect(mock.enhance).toHaveBeenCalledWith(id(1),{declarationId:id(10),requestId:id(11),kind:'enkindled',extraRolls:[2,7],hitDie:null});
- expect(roll).toHaveBeenCalledTimes(2);expect(pendingTelepath(id(1))).toBeNull();
+it('does not claim recovery exists when a new settlement cannot be saved',async()=>{
+ vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw new Error('storage unavailable');});
+ await expect(sendTelepath(id(1),{kind:'finish',request:{declarationId:id(10)}})).rejects.toThrow('storage unavailable');
+ expect(pendingTelepath(id(1))).toBeNull();expect(mock.finish).not.toHaveBeenCalled();
 });
