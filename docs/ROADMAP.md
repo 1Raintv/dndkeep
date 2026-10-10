@@ -8712,3 +8712,22 @@ The branch is 137 commits ahead of main at this review, with 79 added/changed
 migration files. Release requires a reviewable PR, hosted green gate, migration
 chain/integration verification, and successful hosted migration/deployment checks.
 No production migration or deployment was performed by this checkpoint.
+
+
+### Psion release integration checkpoint (2026-10-10, unreleased)
+
+Eight real-sheet Restoration checks pass across Actions/Features, primary and
+secondary Psion, desktop and mobile. They verify persistence, one-use tracking,
+Long Rest recovery and preservation of multiclass resources.
+
+Updated the older paired Psion-powers scenarios to use the actual Propel dialog:
+named target, legality confirmation, free/powered choice, recorded Bonus Action,
+saved result and explicit End Turn before another declaration. All four browser
+cases pass. They verify three distinct action claims, no die spent on a successful
+save, one die spent on a failed powered save, free movement remaining selectable
+with an empty pool, telepathy costs, reload and short/long rest recovery.
+
+These tests use disposable local accounts. They do not validate production
+configuration or certify the older Surge/malformed-pool scenarios in the same
+file, whose old Propel selectors still need updating. PR #214 remains draft;
+Vercel deployment is rate-limited. No production deployment in this checkpoint.
