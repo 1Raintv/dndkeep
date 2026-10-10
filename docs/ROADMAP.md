@@ -1,5 +1,31 @@
 # DNDKeep — Two-Track Roadmap
 
+### Telepath reactions — linked enhancements (local; not released)
+
+Migration 20261010163401 records the original Psion turn context and links
+Surge/Enkindled receipts to each Telepath declaration. New enhancements require
+unchanged turn, progression, attack revision and roster, plus an open saved
+offer. Each kind has one identity; Enkindled must precede Surge. Exact payment
+retries still recover after completion without another Hit Die charge.
+
+Final settlement uses the saved base plus paid extra dice and Surge adjustments.
+Only the base Energy Die can be charged, and only when the outcome changes.
+Ineffective and canceled reactions retain Energy Dice; already-paid Hit Dice
+and the Reaction remain spent. The saved result carries original and adjusted
+dice for the eventual recovery display.
+
+Validation: all 28 Telepath database/browser cases passed, covering level-20
+combined totals, wrong Hit Die pools, unearned Enkindled, changed contexts,
+ordering/duplicate enhancement rejection, cancellation and replay. Full gate
+passed (4,346 unit tests; entry 255.7 KB). SQL lint has no errors/new-function
+warnings; security findings remain keep_warm/client_errors. Exact local ledger
+verified. Repo chain is 326; retained release rehearsals cover 321.
+
+Application execution remains disabled: authenticated dispatcher, payment
+recovery links, trigger-turn capture, player/DM controls, ability-check events,
+durable attack offers/history and Graze deferral still need integration.
+
+
 ### Telepath reactions — private saved lifecycle (local; not released)
 
 Migration 20261010162629 adds saved Distraction/Bolstering attack declarations.

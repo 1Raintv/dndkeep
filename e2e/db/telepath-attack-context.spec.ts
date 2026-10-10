@@ -149,9 +149,47 @@ test.describe('Telepath attack context',()=>{
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('7');
   expect(sql(`select count(*) from public.psionic_energy_uses where request_id='${d.request_id}'`)).toBe('1');
  });
+ const enhanceSaved=(declaration:string,kind='surge',extra:number[]|null=null,die:number|null=6,request=randomUUID())=>JSON.parse(sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';
+  select dndkeep_private.enhance_telepath_reaction('${character}','${declaration}','${request}','${kind}',${extra?'array['+extra.join(',')+']':'null'},${die??'null'});commit;`));
+ test('linked Surge is spent once and its adjusted roll survives completion/retry',()=>{
+  const d=beginSaved(2),request=randomUUID();expect(enhanceSaved(d.request_id,'surge',null,6,request)).toMatchObject({total:4,hitDiceSpent:1});
+  expect(enhanceSaved(d.request_id,'surge',null,6,request)).toMatchObject({replayed:true,total:4,hitDiceSpent:1});
+  expect(finishSaved(d.request_id)).toMatchObject({roll:4,originalRolls:[2],rolls:[4],usedSurge:true,total:13,energyCost:1});
+  expect(enhanceSaved(d.request_id,'surge',null,6,request)).toMatchObject({replayed:true});
+  expect(()=>enhanceSaved(d.request_id)).toThrow();expect(sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('1');
+ });
+ test('Enkindled extra dice and Surge affect the saved total but cost only one conditional Energy Die',()=>{
+  sql(`update characters set level=20,class_resources='{"psionic-energy-dice":12}',hit_dice_spent=0 where id='${character}'`);
+  const d=beginSaved(2);expect(enhanceSaved(d.request_id,'enkindled',[6,9],null)).toMatchObject({extraRolls:[6,9],hitDiceSpent:2});
+  expect(enhanceSaved(d.request_id)).toMatchObject({total:19,hitDiceSpent:3});
+  expect(finishSaved(d.request_id)).toMatchObject({roll:19,originalRolls:[2,6,9],enkindledRolls:[6,9],rolls:[4,6,9],usedSurge:true,total:-2,result:'miss',energyCost:1});
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('11');
+ });
+ test('ineffective enhanced reactions retain Energy Dice while paid Hit Dice stay spent',()=>{
+  sql(`update pending_attacks set target_ac=5 where id='${attack}'`);const d=beginSaved(2);enhanceSaved(d.request_id);
+  expect(finishSaved(d.request_id)).toMatchObject({energyCost:0,usedSurge:true,changed:false,total:13});
+  expect(sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('1');
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('8');
+ });
+ test('canceling an enhanced reaction keeps Hit Dice and Reaction spent, without an Energy Die charge',()=>{
+  const d=beginSaved(2);enhanceSaved(d.request_id);expect(finishSaved(d.request_id,true)).toMatchObject({cancelled:true,energyCost:0,reactionCost:1});
+  expect(sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('1');expect(()=>enhanceSaved(d.request_id)).toThrow();
+ });
+ test('rejects unearned Enkindled, a wrong Hit Die pool, changed attack and changed roster before enhancement payment',()=>{
+  const d=beginSaved(2);expect(()=>enhanceSaved(d.request_id,'enkindled',[2],null)).toThrow();expect(()=>enhanceSaved(d.request_id,'surge',null,8)).toThrow();
+  sql(`update combat_participants set entity_id='changed' where id='${enemy}'`);expect(()=>enhanceSaved(d.request_id)).toThrow();
+  sql(`update combat_participants set entity_id='${enemy}' where id='${enemy}';update pending_attacks set target_ac=16 where id='${attack}'`);expect(()=>enhanceSaved(d.request_id)).toThrow();
+  expect(sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('0');
+ });
+ test('Enkindled must precede Surge and each enhancement kind has one saved identity',()=>{
+  sql(`update characters set level=20,class_resources='{"psionic-energy-dice":12}' where id='${character}'`);
+  const d=beginSaved(2);enhanceSaved(d.request_id);expect(()=>enhanceSaved(d.request_id,'enkindled',[2],null)).toThrow();expect(()=>enhanceSaved(d.request_id)).toThrow();
+  expect(sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('1');
+ });
+
  test('the unfinished lifecycle is private and cannot be called by app roles',()=>{
   for(const role of ['anon','authenticated']){
-   expect(sql(`select has_function_privilege('${role}','dndkeep_private.begin_telepath_reaction(uuid,uuid,uuid,text,jsonb,integer,jsonb)','execute') or has_function_privilege('${role}','dndkeep_private.finish_telepath_reaction(uuid,uuid,boolean)','execute') or has_table_privilege('${role}','dndkeep_private.telepath_declarations','select')`)).toBe('f');
+   expect(sql(`select has_function_privilege('${role}','dndkeep_private.begin_telepath_reaction(uuid,uuid,uuid,text,jsonb,integer,jsonb)','execute') or has_function_privilege('${role}','dndkeep_private.finish_telepath_reaction(uuid,uuid,boolean)','execute') or has_function_privilege('${role}','dndkeep_private.enhance_telepath_reaction(uuid,uuid,uuid,text,integer[],integer)','execute') or has_table_privilege('${role}','dndkeep_private.telepath_enhancements','select') or has_table_privilege('${role}','dndkeep_private.telepath_declarations','select')`)).toBe('f');
   }
  });
 
