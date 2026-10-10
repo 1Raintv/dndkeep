@@ -7589,3 +7589,27 @@ Validation: 64 focused unit tests and six real desktop/mobile browser checks
 pass. Full gate: 3,714 unit tests, TypeScript 195/195, hooks/RAW/coordinates/
 anchors, production build and entry budget. New modules/tests lint clean;
 pendingAttack retains its prior one style error and 27 warnings.
+
+
+### Preserve imported creature saves (2026-10-10, unreleased)
+
+Catalog imports now persist exact `saving_throws` totals and ability scores on
+the homebrew copy. They do not guess proficiency from a total. NULL source
+saves remain unknown, explicit empty maps permit score-based saves, and missing
+scores stay NULL instead of becoming 10. The linked save reader uses the saved
+copy's totals; legacy homebrew with NULL totals keeps its proficiency-based path.
+
+Migration `20261010070018_creature_save_totals.sql` adds one nullable JSONB
+column without backfilling or overwriting edited creatures. Applied and recorded
+on local Docker, repeated successfully. Existing imported copies need explicit
+review/reimport rather than an inferred mass backfill. The older monster action
+panel's manual-save display still derives proficiency independently; consolidate
+that path with the verified save reader next. Aura/turn integration is also
+still unfinished; no production deployment.
+
+Validation: eight local desktop/mobile browser cases pass, including actual
+signed-in catalog import, exact +9 total, unlisted WIS -1, unknown saves and
+missing scores. Full gate: 3,722 unit tests, TypeScript 195/195, hooks/RAW/
+coordinates/anchors, build and entry budget. Changed API/tests lint clean.
+Local SQL lint reports existing function warnings; this additive migration
+introduces no functions or changes to those warned function bodies.

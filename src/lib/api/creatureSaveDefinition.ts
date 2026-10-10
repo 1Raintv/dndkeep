@@ -14,8 +14,11 @@ export async function readCreatureSaveDefinition(part:{campaign_id:string;entity
   return !result.error&&result.data?.owner_id===null?result.data as unknown as Record<string,unknown>:null;
  }
  if(!['homebrew_monster','narrative_npc','roster_npc'].includes(cb.definition_type))return null;
- const result=await supabase.from('homebrew_monsters').select('campaign_id, owner_id, user_id, ability_scores, save_proficiencies, cr').eq('id',part.entity_id).single();
+ const result=await supabase.from('homebrew_monsters').select('campaign_id, owner_id, user_id, ability_scores, save_proficiencies, saving_throws, str, dex, con, int, wis, cha, cr').eq('id',part.entity_id).single();
  const row=result.data;if(result.error||!row)return null;
  if(row.campaign_id!==part.campaign_id&&!(row.campaign_id===null&&cb.owner_id&&(row.owner_id===cb.owner_id||row.user_id===cb.owner_id)))return null;
- return row as unknown as Record<string,unknown>;
+ // NULL retains legacy proficiency semantics; explicit maps use exact totals.
+ const resultRow=row as unknown as Record<string,unknown>;
+ if(resultRow.saving_throws==null){const {saving_throws:_totals,...legacy}=resultRow;void _totals;return legacy;}
+ return resultRow;
 }

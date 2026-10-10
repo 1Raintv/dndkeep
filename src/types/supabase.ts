@@ -1221,6 +1221,7 @@ export type Database = {
           max_hp: number | null;
           initiative: number | null;
           conditions: Json | null;
+          saving_throws: Json | null;
           save_proficiencies: Json | null;
           ability_scores: Json | null;
           visible_to_players: boolean;
@@ -1273,6 +1274,7 @@ export type Database = {
           max_hp?: number | null;
           initiative?: number | null;
           conditions?: Json | null;
+          saving_throws?: Json | null;
           save_proficiencies?: Json | null;
           ability_scores?: Json | null;
           visible_to_players?: boolean;
@@ -1325,6 +1327,7 @@ export type Database = {
           max_hp?: number | null;
           initiative?: number | null;
           conditions?: Json | null;
+          saving_throws?: Json | null;
           save_proficiencies?: Json | null;
           ability_scores?: Json | null;
           visible_to_players?: boolean;

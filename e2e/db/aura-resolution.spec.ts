@@ -270,4 +270,17 @@ test.describe('Atomic aura resolution',()=>{
   expect(await read()).toMatchObject({int:{confidence:'low'},wis:{confidence:'low'}});
  });
 
+ test('catalog import preserves exact and unknown saving throws through the live reader',async({page})=>{
+  sql(`insert into monsters(id,name,type,cr,xp,size,hp,hp_formula,ac,speed,str,dex,con,int,wis,cha,saving_throws) values('${b}','Import fixture','Beast','9',5000,'Medium',20,'3d8',10,30,10,10,10,18,9,10,${literal({Intelligence:9})})`);
+  await signInFixtureDm(page);
+  const imported=await page.evaluate(async({id,campaign})=>{const path='/src/lib/api/creatures.ts',api=await import(/* @vite-ignore */ path);return api.importFromCatalog({catalogMonsterId:id,campaignId:campaign});},{id:b,campaign});
+  // Assign the fixture's cleanup ID before assertions so failures cannot leave a copy.
+  sql(`update homebrew_monsters set id='${b}' where id='${imported.id}';update combatants set definition_type='homebrew_monster' where id='${cb}';update combat_participants set participant_type='monster' where id='${pb}'`);
+  expect(imported).toMatchObject({saving_throws:{Intelligence:9},save_proficiencies:null,ability_scores:{int:18,wis:9}});
+  const read=()=>page.evaluate(async target=>{const path='/src/lib/pendingAttack.ts',api=await import(/* @vite-ignore */ path);return {int:await api.getTargetSaveBonus(target,'INT'),wis:await api.getTargetSaveBonus(target,'WIS')};},pb);
+  expect(await read()).toMatchObject({int:{bonus:9,confidence:'high'},wis:{bonus:-1,confidence:'high'}});
+  sql(`update homebrew_monsters set saving_throws=null where id='${b}'`);expect(await read()).toMatchObject({int:{confidence:'low'},wis:{confidence:'low'}});
+  sql(`update homebrew_monsters set saving_throws='{}',int=null where id='${b}'`);expect(await read()).toMatchObject({int:{confidence:'low'},wis:{bonus:-1,confidence:'high'}});
+ });
+
 });

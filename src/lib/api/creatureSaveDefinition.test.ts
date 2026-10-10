@@ -18,3 +18,13 @@ it.each([
 ] as const)('rejects unavailable/mismatched %s sources',async(kind,definition,patch)=>{setup(kind,definition,patch);expect(await readCreatureSaveDefinition(part)).toBeNull();});
 it('rejects a failed source read even if data was returned',async()=>{m.single.mockResolvedValue({data:cb,error:{message:'denied'}});expect(await readCreatureSaveDefinition(part)).toBeNull();});
 it('requires the linked combatant',async()=>{expect(await readCreatureSaveDefinition({...part,combatant_id:null})).toBeNull();expect(m.from).not.toHaveBeenCalled();});
+
+it('preserves imported totals and flat scores',async()=>{
+ const imported={...row,int:18,saving_throws:{int:9}};setup('homebrew_monster',imported);expect(await readCreatureSaveDefinition(part)).toEqual(imported);
+});
+it('NULL totals retain legacy proficiency data',async()=>{
+ setup('homebrew_monster',{...row,saving_throws:null});expect(await readCreatureSaveDefinition(part)).toEqual(row);
+});
+it('unknown imported saves do not become known empty proficiencies',async()=>{
+ setup('homebrew_monster',{...row,saving_throws:null,save_proficiencies:null});expect(await readCreatureSaveDefinition(part)).toEqual({...row,save_proficiencies:null});
+});
