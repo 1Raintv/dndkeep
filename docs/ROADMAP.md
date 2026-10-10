@@ -7863,3 +7863,43 @@ movement/DM review queue and explicit reconciliation are still needed. Manual
 modifiers/defenses remain reviewed inputs, not independently verified automated
 values. Typed buff-tick defenses/concentration and pending-turn race checks also
 remain outstanding.
+
+
+### Durable movement aura evidence (2026-10-10, unreleased)
+
+Migration 20261010070022_movement_aura_journal.sql captures aura-relevant combat
+movement in the same transaction as the authoritative token update. The private
+journal preserves the source token, before/after positions, turn, grids, mover
+candidates, participants, hidden aura metadata and token frame. A late journal
+failure rolls back the position write. Campaign/encounter locks keep capture
+serialized with clock changes. No-op/cosmetic changes create no extra record;
+removing tokens or aura buffs does not rewrite earlier evidence.
+
+Both map modes are covered directly. Testing found the legacy PC bridge can
+reuse a combatant whose id differs from its scene token, then fail to mirror
+later moves. Capture therefore reads scene_tokens for legacy mode and placements
+for modern mode, using the campaign flag to avoid duplicates. Ambiguous legacy
+creature links remain explicit mover candidates; this does not invent identity
+or prove that a save triggered. Cross-campaign transfers redact the other
+campaign's destination/source and token/grid metadata.
+
+The DM-only paged RPC checks current ownership before returning history, with no
+client table/sequence permissions and no public definer wrapper. Its repository
+reader validates identity, source and cursor ordering, preserving bigint cursors
+as decimal strings. Unknown aura state is retained for investigation. This is
+movement evidence, not an automatic damage or completed-review receipt.
+
+Verified locally: 15 capture/privacy/rollback/legacy/browser-reader cases plus a
+separate concurrent-clock locking case pass. Full gate: 3,850 unit cases,
+TypeScript 194/194, build and 255.7 KB entry budget; reader lint has no errors or
+warnings. SQL lint has no errors. Security advisors report no movement-aura
+findings; existing keep_warm search-path and client_errors INSERT warnings remain.
+Exact migration source matches the local ledger; all repository migrations are
+recorded, preserving DB-only 20261008213500. No production changes.
+
+Next: connect this history to durable per-event DM review decisions and atomic
+aura settlement; remove legacy movement damage writes; gate turn advancement on
+unresolved movement review. Insertions, size-only edits, path/teleport semantics,
+ambiguous legacy identities and historical legacy markers need explicit handling
+before release. The current journal only captures committed token updates; it
+intentionally does not infer a traveled path from two endpoints.
