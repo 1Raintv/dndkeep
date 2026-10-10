@@ -9526,3 +9526,33 @@ foreign local history 20261008213500; preserved it and applied only the new SQL
 and ledger together. Repo has 321 migrations; release rehearsals need refreshing.
 No production deployment. Next: authoritative reaction window, linked payment,
 and delaying Graze until the final attack outcome.
+
+
+### Telepath attack preparation — scoped server context
+
+Migration 20261010155210 adds get_telepath_attack_context for Distraction and
+Bolstering. It checks character/DM ownership and campaign membership, Telepath
+subclass level, original attack participant IDs, active encounter, current
+result consistency and Energy pool validity. It returns current shared Reaction
+availability, the captured attack evidence and row revision, and the strongest
+finished, unexpired Connection range. Unfinished/unknown Connection clocks make
+range explicitly unverified. Off-turn Reactions remain available normally.
+
+This endpoint does not claim an action, roll dice, pay, modify the attack, open
+a reaction window or authorize acceptance. spatialReviewRequired is always true.
+The next transaction must recheck this context, bind the original turn and
+participant/combatant identities, verify distance/visibility, and serialize the
+reaction before damage/Graze. Existing attack snapshots capture participant IDs
+but do not prove an unchanged combatant/entity behind a reused roster ID.
+Ability-check Bolstering also still requires its own saved event window.
+
+Local authenticated regression checks cover access, levels, hit/miss triggers,
+spent Reaction, incapacitation, mismatched participants/results, malformed pools,
+Connection finalization/expiry, off-turn use and inactive encounters. Anonymous
+execution is denied on both entry points. SQL lint has no errors or new-function
+warnings; security advisors retain only existing keep_warm/client_errors warnings.
+
+Applied locally with exact SQL/ledger equality; preserved foreign local version
+20261008213500 when CLI refused that history. Repo now has 322 migrations; the
+321-migration release rehearsals need this new file before release. Production
+unchanged. No player-facing Telepath control is enabled by this checkpoint.
