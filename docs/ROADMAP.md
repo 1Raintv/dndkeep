@@ -1,6 +1,29 @@
 # DNDKeep — Two-Track Roadmap
 
 
+### Deferred Propel movement — turn boundaries (not released)
+
+Migration 20261010170333 extends the shared combat assertion to unresolved
+post-save movement. Clock preparation, outgoing effects/reservations, direct
+initiative changes and encounter completion now require choosing or closing
+movement first. Direct active-encounter shutdown also runs the assertion.
+Solo turn changes/deletion share the character lock with choices and reject
+unresolved deferred movement; parent deletion still cascades normally.
+A confirmed choice or explicit no-movement closure releases the boundary.
+
+Validation: all 41 combined movement/turn-boundary database-browser checks passed,
+including the existing reservation race tests. Full gate passed (4,403 unit tests,
+entry 255.7 KB; TS 194/194). SQL lint has no new guard diagnostics; security
+findings remain keep_warm/client_errors. Exact local ledger verified. Repo chain:
+330; retained rehearsals: 321. Logs: `.tmp/propel-boundary-{db,gate,lint,advisors}.*`.
+
+Deferred begin is still private. Remaining before enabling it: player controls,
+uncertain local request recovery, truthful post-save action history, and movement
+instructions that consume the new receipt. Then verify desktop/mobile flows and
+release rehearsals. Map destination placement remains manual.
+
+
+
 ### Post-save Propel movement — recovery API and validation (not released)
 
 Migration 20261010165910 exposes owner-scoped read/choose/close/list operations

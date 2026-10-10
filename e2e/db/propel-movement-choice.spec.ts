@@ -48,11 +48,15 @@ test.describe('Deferred Propel movement (private lifecycle)',()=>{
   sql(auth(`select public.psionic_propel('${character}','begin','{"requestId":"${id}","turnId":"solo:${character}:0","mode":"powered","movement":"push","roll":4,"target":{"name":"Goblin","legalTargetConfirmed":true}}')`));
   finish();expect(()=>start()).toThrow(/cannot be converted/);expect(()=>choose()).toThrow(/no deferred movement/);
  });
- test('new decisions require the original turn; saved decisions still recover later',()=>{
-  start();finish();sql(`insert into psionic_solo_turns(character_id,turn_number) values('${character}',1) on conflict(character_id) do update set turn_number=1`);
-  expect(()=>choose()).toThrow(/original Propel turn/);
-  sql(`update psionic_solo_turns set turn_number=0 where character_id='${character}'`);choose();
-  sql(`update psionic_solo_turns set turn_number=2 where character_id='${character}'`);expect(choose()).toMatchObject({replayed:true});
+ test('solo turns wait for movement and saved choices still recover later',()=>{
+  start();finish();
+  const advance=()=>sql(`insert into psionic_solo_turns(character_id,turn_number) values('${character}',1) on conflict(character_id) do update set turn_number=1`);
+  expect(advance).toThrow(/Choose or close pending Propel movement/);choose();advance();expect(choose()).toMatchObject({replayed:true});
+ });
+ test('solo turn deletion cannot reopen the action while movement is pending',()=>{
+  start();finish();sql(`insert into psionic_solo_turns(character_id,turn_number) values('${character}',0) on conflict(character_id) do nothing`);
+  expect(()=>sql(`delete from psionic_solo_turns where character_id='${character}'`)).toThrow(/Choose or close pending Propel movement/);
+  api('close',{declarationId:id});sql(`delete from psionic_solo_turns where character_id='${character}'`);
  });
  test('rejects another owner and keeps app execution disabled until UI recovery exists',()=>{
   start();finish();expect(()=>choose('warp',other)).toThrow();
@@ -80,13 +84,21 @@ test.describe('Deferred Propel movement (private lifecycle)',()=>{
   combatFailure();const before=state();sql(`update combatants set definition_id='${randomUUID()}' where id=(select combatant_id from combat_participants where id='${target}')`);
   expect(()=>choose()).toThrow(/participants changed/);expect(state()).toBe(before);
  });
- test('ending the original encounter rejects a new decision',()=>{
-  combatFailure();sql(`update combat_encounters set status='ended' where id='${encounter}'`);expect(()=>choose()).toThrow(/original Propel turn/);
+ test('ending combat waits until the movement choice is closed',()=>{
+  combatFailure();const end=()=>sql(`update combat_encounters set status='ended' where id='${encounter}'`);
+  expect(end).toThrow(/Choose or close pending Propel movement/);api('close',{declarationId:id});end();
+  expect(()=>choose()).toThrow(/already saved/);
+ });
+ test('combat clock preparation and direct initiative changes both wait for movement',()=>{
+  combatFailure();const turn=sql(`select psionic_turn_id from combat_encounters where id='${encounter}'`);
+  expect(()=>sql(auth(`select public.prepare_combat_turn_end('${encounter}','${turn}')`))).toThrow(/Choose or close pending Propel movement/);
+  expect(()=>sql(`update combat_encounters set current_turn_index=1 where id='${encounter}'`)).toThrow(/Choose or close pending Propel movement/);
+  choose();sql(`update combat_encounters set current_turn_index=1 where id='${encounter}'`);expect(choose()).toMatchObject({replayed:true});
  });
  const api=(operation:string,payload:Record<string,unknown>={},user=owner)=>JSON.parse(sql(auth(`set local role authenticated;select public.propel_movement('${character}','${operation}','${JSON.stringify(payload)}')`,user)));
  test('authenticated recovery discovers and closes an old unresolved choice without spending',()=>{
   start();finish();const before=state();expect(api('list').items.map((r:{request_id:string})=>r.request_id)).toEqual([id]);
-  sql(`insert into psionic_solo_turns(character_id,turn_number) values('${character}',1) on conflict(character_id) do update set turn_number=1`);
+  sql(`update characters set level=6 where id='${character}'`);
   expect(api('list').items).toHaveLength(1);
   expect(api('close',{declarationId:id}).movement_choice).toMatchObject({choice:'none',feet:0});
   expect(api('list').items).toHaveLength(0);expect(state()).toBe(before);
