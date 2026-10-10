@@ -98,6 +98,52 @@ test.describe('Saved Propel controls',()=>{
   expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${charId}'`)).toBe('1');
   await page.screenshot({path:info.outputPath('propel-storage-recovered.png')});expect(errors).toEqual([]);
  });
+ for(const phase of ['begin','finish'] as const)test(`lost ${phase} reply survives a later rejection without duplicate spending`,async({page},info)=>{
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+  const ability=page.locator('.arow-grid').filter({has:page.getByText('Telekinetic Propel',{exact:true})});
+  const dialog=page.getByRole('dialog',{name:'Telekinetic Propel',exact:true});
+  await ability.getByRole('button',{name:'Use / resume'}).click();
+  await dialog.getByLabel('Target',{exact:true}).fill('Original goblin');await dialog.getByRole('checkbox').check();await dialog.getByLabel('Movement',{exact:true}).selectOption('powered');
+  if(phase==='finish'){
+   await dialog.getByRole('button',{name:'Declare Bonus Action'}).click();await expect(dialog).toContainText('Saved dice total:');
+  }
+  let behavior:'drop'|'deny'|'allow'='drop';const sent:unknown[]=[];
+  await page.route('**/rest/v1/rpc/psionic_propel',async route=>{
+   const body=route.request().postDataJSON();
+   if(body.p_operation!==(phase==='begin'?'begin_deferred':'finish'))return route.continue();
+   sent.push(body);
+   if(behavior==='drop'){await route.fetch();return route.abort();}
+   if(behavior==='deny')return route.fulfill({status:403,contentType:'application/json',body:JSON.stringify({code:'42501',message:'Permission changed after original request',details:null,hint:null})});
+   return route.continue();
+  });
+  await dialog.getByRole('button',{name:phase==='begin'?'Declare Bonus Action':'Save failed',exact:true}).click();
+  const confirm=phase==='begin'?'Confirm saved use':'Confirm saved failed result';
+  await expect(dialog.getByRole('button',{name:confirm,exact:true})).toBeVisible();expect(sent).toHaveLength(2);
+  const original=await page.evaluate(character=>Object.fromEntries(Object.entries(localStorage).filter(([key])=>key.startsWith('dndkeep:propel:'+character+':'))),charId);
+  expect(Object.keys(original)).toHaveLength(1);
+  expect(sql(`select count(*) from dndkeep_private.propel_declarations where character_id='${charId}'`)).toBe('1');
+  expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${charId}'`)).toBe('1');
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe(phase==='begin'?'2':'1');
+  behavior='deny';await page.reload();await ability.getByRole('button',{name:'Use / resume'}).click();
+  await dialog.getByRole('button',{name:confirm,exact:true}).click();
+  await expect(dialog.getByRole('alert')).toContainText('Permission changed after original request');
+  await expect(dialog.getByRole('button',{name:confirm,exact:true})).toBeVisible();
+  expect(await page.evaluate(character=>Object.fromEntries(Object.entries(localStorage).filter(([key])=>key.startsWith('dndkeep:propel:'+character+':'))),charId)).toEqual(original);
+  await expect(dialog.getByRole('button',{name:'Declare Bonus Action'})).toBeDisabled();
+  await dialog.getByRole('alert').scrollIntoViewIfNeeded();
+  await page.screenshot({path:info.outputPath('propel-retry-retained.png')});
+  behavior='allow';await page.reload();await ability.getByRole('button',{name:'Use / resume'}).click();
+  await dialog.getByRole('button',{name:confirm,exact:true}).click();
+  await expect(dialog.getByRole('button',{name:confirm,exact:true})).toHaveCount(0);
+  expect(sent).toHaveLength(4);for(const request of sent)expect(request).toEqual(sent[0]);
+  if(phase==='begin')await dialog.getByRole('button',{name:'Save failed',exact:true}).click();
+  await expect(dialog.getByRole('status')).toContainText('Saved: failed. 1 Energy Dice spent.');
+  expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${charId}'`)).toBe('1');
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('1');
+  expect(await page.evaluate(character=>Object.keys(localStorage).filter(key=>key.startsWith('dndkeep:propel:'+character+':')),charId)).toEqual([]);
+  await page.screenshot({path:info.outputPath('propel-retry-confirmed.png')});expect(errors).toEqual([]);
+ });
  // Guard the linked player choices as well as the server's conditional payment.
  for(const [mode,outcome] of [['free','failed'],['powered','passed'],['powered','failed']] as const)
  test(`Warp stays beside Propel and resolves ${mode} / ${outcome} as one Bonus Action`,async({page},info)=>{

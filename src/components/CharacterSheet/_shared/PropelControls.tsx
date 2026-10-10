@@ -76,11 +76,17 @@ export default function PropelControls({character,persistence,warp=false,campaig
   }else setTargets([]);
   await refresh(active,id);
  });}
- async function send(p:PendingPropel,active:()=>boolean,id:string){
+ async function send(p:PendingPropel,active:()=>boolean,id:string,freshDeclaration=false){
   rememberPropel(id,p);
   let result:PropelRecord;
   try{result=p.kind==='begin'?await beginPropel(id,p.request):await finishPropel(id,p.request.requestId,p.request.outcome,p.request.save??null);}
-  catch(cause){if(cause instanceof PsionicRequestError&&cause.definitelyNotPaid)forgetPropel(id,p);throw cause;}
+  catch(cause){
+   // v2.869: a rejection only describes this RPC attempt. A restored/retried
+   // request may already have committed before its response was lost. Only a
+   // newly generated declaration, never sent before this call, can be discarded.
+   if(freshDeclaration&&p.kind==='begin'&&cause instanceof PsionicRequestError&&cause.definitelyNotPaid)forgetPropel(id,p);
+   throw cause;
+  }
   forgetPropel(id,p);
   if(!active())return;setRow(result);
   if(result.result?.energy)acceptPsionicEnergyReceipt(latest,result.result.energy);
@@ -98,7 +104,7 @@ export default function PropelControls({character,persistence,warp=false,campaig
    throw new Error('Your turn or Bonus Action changed. Reopen Propel before declaring.');
   const request:Omit<PropelRequest,'roll'>={requestId:crypto.randomUUID(),turnId:fresh.turnId,mode,movement:'push',deferred:true,
    target:fresh.encounterId?{participantId:target,legalTargetConfirmed:true}:{name:target.trim(),legalTargetConfirmed:true}};
-  await send(preparePropel(id,request,mode==='technique'?4:state.sides),active,id);
+  await send(preparePropel(id,request,mode==='technique'?4:state.sides),active,id,true);
  });}
  function finish(outcome:PropelOutcome,save:PropelSaveDetails|null=null){if(!row)return;const id=row.request_id;void run(async(active,characterId)=>{await send({kind:'finish',request:{requestId:id,outcome,save}},active,characterId);});}
  const savedEncounter=row&&'encounterId' in row.turn_context?row.turn_context.encounterId:null;

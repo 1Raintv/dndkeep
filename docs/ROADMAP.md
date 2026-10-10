@@ -1,5 +1,28 @@
 # DNDKeep — Two-Track Roadmap
 
+### Propel retains uncertain requests after later rejection (local; not released)
+
+A lost reply can follow a committed declaration or failed-save settlement. A later
+permission/rule rejection describes only that retry; it cannot establish that the
+original action or payment never happened. Propel now retains the exact saved
+request across such errors and reloads. Only a newly generated declaration with a
+definitive rejection on its first send may be discarded. Verified success still
+clears recovery; saved outcomes cannot be replaced while confirmation is pending.
+
+Three component regressions cover fresh rejection, restored declaration retry and
+saved outcome retry. Local browser tests really commit each request, drop both
+replies, simulate a later 403, reload, then confirm identical payloads. Both paths
+retain exactly one Bonus Action claim and one Energy Die expenditure. Restoring
+the old catch handler makes the retry button disappear and fails the new test.
+
+Validation: 30 focused component tests; full `npm run verify` passes with 4,642
+tests, TS 193/193 and 256.1 KB entry. Four desktop/mobile fault tests and the final
+eight-case recovery run pass. Screenshots inspected. Evidence:
+`.tmp/propel-retry-{unit,browser,mutation,restored,gate}.log`.
+No schema changes; production unchanged. Prior head 2a3fce29 has both CI gates
+green and its Vercel deployment pending. Next: the same rejection-discard pattern
+exists in ConnectionControls and needs equivalent first-send/retry coverage.
+
 ### Propel recovers interrupted roll preparation (local; not released)
 
 A failed browser-storage write after rolling previously left a seedless marker

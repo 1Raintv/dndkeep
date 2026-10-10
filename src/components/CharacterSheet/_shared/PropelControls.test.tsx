@@ -13,6 +13,7 @@ vi.mock('../../../lib/gameUtils',()=>({classSaveDC:(c:Character)=>c.intelligence
 vi.mock('../../../rules/dice',()=>({replaySeededDice:m.roll}));
 vi.mock('./continuePropel',()=>({continuePropel:m.resume}));
 import PropelControls from './PropelControls';
+import {PsionicRequestError} from '../../../lib/api/psionicTurns';
 import {pendingPropel,rememberPropel} from '../../../lib/propelRecovery';
 const character={id:'00000000-0000-4000-8000-000000000001',name:'Hero',class_name:'Psion',level:5,intelligence:16,class_resources:{'psionic-energy-dice':2}} as unknown as Character;
 const row={turn_context:{soloTurn:0},request_id:'00000000-0000-4000-8000-000000000002',target:{name:'Goblin'},caster_snapshot:{...character,intelligence:15},mode:'powered',movement:'push',base_roll:3,roll_result:{total:3},outcome:null};
@@ -107,4 +108,34 @@ it.each([false,true])('explains the shared Warp action from either entry (Warp=%
 it('does not offer the Warp modifier to another subclass',async()=>{
  render(<PropelControls character={{...character,subclass:'Telepath'}}/>);await open();
  expect(screen.queryByText(/Warp Propel modifies/)).toBeNull();
+});
+
+it('allows a fresh declaration to recover from a definitive first-attempt rejection',async()=>{
+ m.begin.mockRejectedValueOnce(new PsionicRequestError('Target changed before declaration',true));
+ render(<PropelControls character={character}/>);await choose();fireEvent.click(screen.getByRole('button',{name:'Declare Bonus Action'}));
+ await screen.findByText('Target changed before declaration');
+ expect(pendingPropel(character.id)).toEqual([]);
+ expect(screen.queryByRole('button',{name:'Confirm saved use'})).toBeNull();
+});
+it('retains an unconfirmed declaration across remount and a later permission rejection',async()=>{
+ m.begin.mockRejectedValueOnce(new Error('Lost reply')).mockRejectedValueOnce(new PsionicRequestError('Permission changed',true));
+ const view=render(<PropelControls character={character}/>);await choose();fireEvent.click(screen.getByRole('button',{name:'Declare Bonus Action'}));
+ await screen.findByRole('button',{name:'Confirm saved use'});const original=pendingPropel(character.id);
+ view.unmount();render(<PropelControls character={character}/>);await open();
+ fireEvent.click(screen.getByRole('button',{name:'Confirm saved use'}));await screen.findByText('Permission changed');
+ expect(pendingPropel(character.id)).toEqual(original);
+ fireEvent.click(screen.getByRole('button',{name:'Confirm saved use'}));await screen.findByText(/Strength save DC 15/);
+ expect(m.begin.mock.calls[0]).toEqual(m.begin.mock.calls[1]);expect(m.begin.mock.calls[0]).toEqual(m.begin.mock.calls[2]);
+ expect(m.roll).toHaveBeenCalledTimes(1);expect(pendingPropel(character.id)).toEqual([]);
+});
+it('retains the saved outcome after a lost reply followed by a permission rejection',async()=>{
+ m.finish.mockRejectedValueOnce(new Error('Lost reply')).mockRejectedValueOnce(new PsionicRequestError('Permission changed',true));
+ render(<PropelControls character={character}/>);await choose();fireEvent.click(screen.getByRole('button',{name:'Declare Bonus Action'}));
+ fireEvent.click(await screen.findByRole('button',{name:'Save failed'}));await screen.findByRole('button',{name:'Confirm saved failed result'});
+ const original=pendingPropel(character.id);fireEvent.click(screen.getByRole('button',{name:'Confirm saved failed result'}));await screen.findByText('Permission changed');
+ expect(pendingPropel(character.id)).toEqual(original);expect((screen.getByRole('button',{name:'Save passed'}) as HTMLButtonElement).disabled).toBe(true);
+ m.finish.mockResolvedValue({...row,outcome:'failed',result:{energyCost:1}});
+ fireEvent.click(screen.getByRole('button',{name:'Confirm saved failed result'}));await screen.findByRole('status');
+ expect(m.finish.mock.calls[0]).toEqual(m.finish.mock.calls[1]);expect(m.finish.mock.calls[0]).toEqual(m.finish.mock.calls[2]);
+ expect(m.roll).toHaveBeenCalledTimes(1);expect(pendingPropel(character.id)).toEqual([]);
 });
