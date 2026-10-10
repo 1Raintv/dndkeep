@@ -7254,3 +7254,35 @@ Validation:18 live aura browser cases pass across desktop/mobile; full gate
 passes with3,502 units, TypeScript195/195 and255.7KB entry. Changed-file lint
 has zero errors (the aura file retains15 existing any warnings). No production
 deployment; no database migration in this checkpoint.
+
+
+### Authoritative aura save evidence (2026-10-09)
+
+Migration20261010070015 adds three private, immutable transaction components:
+`dice_evidence_total` checks every saved face/count/size/modifier against the
+canonical grouped grammar; `save_bonus_evidence_total` matches current buff
+contributions, including legacy named Bless/Bane, deduplication and negative
+rolls; `aura_save_evidence` computes the original save from authoritative flags,
+stored DC, submitted physical dice, buff evidence, exhaustion and the consumed
+next-save penalty. Callers cannot submit their own passed flag, DC or final total.
+Automatic failures keep null d20/total and no bonus dice. No helper generates
+random dice, mutates state or is callable by anon/authenticated clients.
+
+The SQL evaluator is required for server verification; parity tests use the
+canonical TypeScript parser/save rules and identical evidence, avoiding an
+independent untested rules interpretation. The base save bonus remains an
+explicit input; the future authorized commit must pair it with the rechecked
+snapshot and the client's reviewed/verified bonus, not claim it is derived here.
+
+All24 database cases pass across the two test projects, covering valid and
+invalid expressions, safe arithmetic bounds, signed effects, omitted/extra
+contributions, physical die selection, exhaustion, natural-extremes house rule,
+automatic failure and private permissions. Full gate passes (3,502 units,
+TypeScript195/195,255.7KB entry), as do ESLint, SQL lint and security advisors.
+Migration applied/recorded only locally. No production deployment.
+
+Next remains the actual aura transaction: consume the next-save effect within
+settlement, call these validators against the locked live context, handle the
+DM Legendary Resistance decision, apply typed damage/concentration and write
+one receipt/marker/log batch. These helpers alone do not make live aura damage
+atomic, and the legacy resolver is unchanged in this checkpoint.
