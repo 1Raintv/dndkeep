@@ -156,7 +156,53 @@ test.describe('Atomic encounter completion',()=>{
  test('save batches require an active encounter and retain DM creature control',()=>{
   sql(`update combat_participants set participant_type='creature',entity_id='catalog-slug' where id='${pa}'`);
   expect(()=>sql(auth(player,saveBatch()))).toThrow(/cannot declare saves/);expect(JSON.parse(sql(auth(dm,saveBatch()))).target_name).toBe('B');
-  sql(`update pending_attacks set state='canceled' where encounter_id='${enc}'`);finish();expect(()=>sql(auth(dm,saveBatch()))).toThrow(/encounter is unavailable/);
+  sql(`update pending_attacks set state='canceled' where encounter_id='${enc}'`);finish();expect(()=>sql(auth(dm,saveBatch().replace(request,randomUUID())))).toThrow(/encounter is unavailable/);
+ });
+
+ test('save batch retries return the original attacks after cancellation and combat completion',()=>{
+  const first=sql(auth(dm,saveBatch()));
+  sql(`update pending_attacks set state='canceled' where encounter_id='${enc}'`);finish();
+  expect(sql(auth(dm,saveBatch()))).toBe(first);
+  expect(sql(`select count(*) from pending_attacks where encounter_id='${enc}'`)).toBe('1');
+  expect(sql(`select count(*) from dndkeep_private.save_batch_declarations where encounter_id='${enc}'`)).toBe('1');
+  expect(()=>sql(auth(dm,'select * from dndkeep_private.save_batch_declarations'))).toThrow(/permission denied/);
+ });
+ test('save batch request identity cannot change targets or mechanics',()=>{
+  sql(auth(dm,saveBatch()));
+  for(const changed of [saveBatch().replace("15,'DEX'","16,'DEX'"),saveBatch().replace('Batch fixture','Different action'),saveBatch(pa,[{participant_id:pa,name:'A',type:'character',entity_id:a}])]){
+   expect(()=>sql(auth(dm,changed))).toThrow(/request changed/);
+  }
+  expect(sql(`select count(*) from pending_attacks where encounter_id='${enc}'`)).toBe('1');
+ });
+ test('save batch receipts retain all target IDs in declaration order',()=>{
+  const targets=[{participant_id:pb,name:'B',type:'character',entity_id:b},{participant_id:pa,name:'A',type:'character',entity_id:a}];
+  const q=saveBatch(pa,targets),first=sql(auth(dm,q));
+  expect(first.split('\n').map(line=>JSON.parse(line).target_participant_id)).toEqual([pb,pa]);
+  expect(sql(auth(dm,q))).toBe(first);expect(sql(`select count(*) from pending_attacks where encounter_id='${enc}'`)).toBe('2');
+ });
+ test('legacy save chains without receipts cannot be silently redeclared',()=>{
+  sql(auth(dm,saveBatch()));sql(`delete from dndkeep_private.save_batch_declarations where chain_id='${request}'`);
+  expect(()=>sql(auth(dm,saveBatch()))).toThrow(/legacy save batch/);expect(sql(`select count(*) from pending_attacks where encounter_id='${enc}'`)).toBe('1');
+ });
+
+ test('save batch receipt replay rechecks actor ownership',()=>{
+  sql(auth(player,saveBatch()));
+  sql(`update characters set user_id='${dm}' where id='${a}'`);
+  expect(()=>sql(auth(player,saveBatch()))).toThrow(/cannot declare saves/);
+  expect(JSON.parse(sql(auth(dm,saveBatch()))).target_name).toBe('B');
+ });
+ test('simultaneous save batch retries create one attack and one receipt',async()=>{
+  const q=auth(dm,saveBatch());
+  const run=()=>new Promise<{code:number|null,out:string,error:string}>(resolve=>{const child=spawn('docker',args);let out='',error='';child.stdout.on('data',v=>out+=v);child.stderr.on('data',v=>error+=v);child.on('close',code=>resolve({code,out,error}));child.stdin.end(q);});
+  const results=await Promise.all([run(),run()]);expect(results.map(r=>r.code),JSON.stringify(results)).toEqual([0,0]);expect(results[0].out).toBe(results[1].out);
+  expect(sql(`select count(*) from pending_attacks where encounter_id='${enc}'`)).toBe('1');expect(sql(`select count(*) from dndkeep_private.save_batch_declarations where encounter_id='${enc}'`)).toBe('1');
+ });
+ test('a late save batch receipt failure rolls back attacks and captured riders',()=>{
+  const fn='reject_batch_'+randomUUID().replaceAll('-','');
+  sql(`create function public.${fn}() returns trigger language plpgsql as $$begin if new.chain_id='${request}' then raise exception 'fixture batch failure';end if;return new;end$$;create trigger ${fn} before insert on dndkeep_private.save_batch_declarations for each row execute function public.${fn}()`);
+  try{expect(()=>sql(auth(dm,effectBatch(recipe())))).toThrow(/fixture batch failure/);expect(sql(`select count(*) from pending_attacks where encounter_id='${enc}'`)).toBe('0');expect(sql(`select count(*) from dndkeep_private.attack_condition_intents where encounter_id='${enc}'`)).toBe('0');}
+  finally{sql(`drop trigger ${fn} on dndkeep_private.save_batch_declarations;drop function public.${fn}()`);}
+  expect(JSON.parse(sql(auth(dm,effectBatch(recipe())))).target_name).toBe('B');
  });
 
  test('save batches reject a target in another encounter of the same campaign',()=>{

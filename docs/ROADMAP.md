@@ -8460,3 +8460,28 @@ No database migration added. Not deployed.
 Remaining: durable declaration/payment recovery, legacy saved-condition review,
 Exhaustion settlement, and release integration. Damage still completes separately
 from condition settlement; this change does not claim an atomic entire attack.
+
+
+### 2026-10-10 — durable server save-batch declaration receipts (unreleased)
+
+Migration 20261010070039 records the exact save-batch request and original target
+attack IDs in a private, RLS-enabled receipt. Repeating a chain ID returns those
+same rows, including after attacks close or combat ends; it never recreates them.
+Changed mechanics/targets are rejected. Current actor authorization is rechecked,
+and receipt recovery additionally requires the original requester or current DM.
+Concurrent requests serialize by chain ID. Attack rows, saved rider intent and
+the declaration receipt commit together. Legacy chains without receipts require
+review rather than guessing whether they can be replayed.
+
+18 focused database checks passed, including concurrent replay, all target IDs
+and order, changed payload rejection, ownership changes, late-failure rollback,
+legacy rejection, and the existing authorization/condition-intent checks.
+Full project verification passed (3,937 units; TS 194/194; entry 255.7 KB).
+SQL lint clean; existing keep_warm and client_errors advisor findings unchanged.
+Local migration SQL exactly matches its ledger entry; no repo migrations pending;
+the foreign local history entry remains intact. Not deployed.
+
+This is the server prerequisite, not finished browser recovery: saveBatch.ts still
+generates a fresh chain per invocation. Next persist the exact browser request,
+resume existing attack states without rerolling, and make action/recharge payment
+recoverable. Do not claim that repeated UI clicks are already deduplicated.
