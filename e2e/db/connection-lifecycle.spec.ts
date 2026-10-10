@@ -100,4 +100,25 @@ test.describe('saved Connection private lifecycle',()=>{
   expect(sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('0');
  });
 
+ test('authenticated dispatcher returns records accepted by the real client validator',async({page})=>{
+  const payload=JSON.stringify({requestId:id,turnId:turn,roll:2,free:true});
+  const call=(operation:string,body:string,user=owner)=>JSON.parse(sql(asUser(user,`set local role authenticated;select public.psionic_connection('${character}','${operation}','${body}')`)));
+  const started=call('begin',payload);expect(started).toMatchObject({remainingSeconds:3600,replayed:false});
+  expect(call('begin',payload).replayed).toBe(true);
+  const result=call('finish',JSON.stringify({declarationId:id}));expect(result.roll_result.total).toBe(2);
+  expect(call('list','{}')).toHaveLength(1);
+  expect(()=>call('read',JSON.stringify({declarationId:id}),other)).toThrow();
+  expect(()=>call('begin',JSON.stringify({...JSON.parse(payload),extra:'unexpected'}))).toThrow();
+  expect(sql(`select has_function_privilege('anon','public.psionic_connection(uuid,text,jsonb)','execute')`)).toBe('f');
+  await page.goto('/auth');
+  const valid=await page.evaluate(async({row,characterId})=>{
+   const api=await import('/src/lib/api/telepathicConnection.ts');
+   return api.validConnectionRecord(row,characterId);
+  },{row:result,characterId:character});
+  expect(valid).toBe(true);
+  sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+3600 where character_id='${character}'`);
+  expect(call('list','{}')).toEqual([]);
+  expect(call('read',JSON.stringify({declarationId:id})).remainingSeconds).toBe(0);
+ });
+
 });

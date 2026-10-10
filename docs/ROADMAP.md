@@ -1,5 +1,21 @@
 # DNDKeep — Two-Track Roadmap
 
+### Connection integration — authenticated API (local; not released)
+
+Migration 20261010145806 exposes the owner-checked lifecycle through one
+invoker RPC. Begin/read/finalize return the saved declaration and remaining
+game-time duration; listing includes active effects and unknown clocks for
+review, while expired declarations remain readable by identity. The dispatcher
+also routes linked enhancement payments. Anonymous execution remains denied.
+
+The client API freezes begin requests and checks declaration identity, Bonus
+Action claims, Energy Die receipts, original/adjusted rolls and duration bounds.
+Malformed successes remain uncertain rather than clearing recovery. Unit tests
+cover altered receipts and duplicate list entries; the local database suite
+checks authenticated responses against the actual browser-loaded validator.
+Player controls and durable enhancement recovery are not switched over yet.
+Repository count is 320 migrations; release rehearsals still cover 318.
+
 ### Connection integration — private saved lifecycle (local; not released)
 
 Migration 20261010145159 adds private Connection declarations and linked
