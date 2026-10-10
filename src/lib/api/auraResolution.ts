@@ -1,4 +1,4 @@
-import {prepareAuraProposal,type ReviewedAuraInputs} from '../../rules/prepareAuraProposal';
+import {prepareAuraProposal,validReviewedAuraInputs,type ReviewedAuraInputs} from '../../rules/prepareAuraProposal';
 import {verifyAuraResolutionReceipt,type AuraResolutionReceipt} from '../auraResolutionReceipt';
 import {psionicRpc} from './psionicTurns';
 export interface AuraIdentity {encounterId:string;turnId:string;originId:string;targetId:string;auraKey:string}
@@ -30,8 +30,9 @@ const active=new Map<string,Promise<AuraResolutionReceipt>>();
  * Scope checks concern the current user/view, not whether an old turn ended.
  * Callers refresh live state; historical result pools must never patch stores. */
 export function processSavedAuraResolution(user:string,input:AuraIdentity,trigger:AuraTrigger,
- prepare:(context:Record<string,unknown>,requestId:string)=>Record<string,unknown>,assertCurrentScope:()=>void,
- review?:(request:SavedAuraRequest)=>Promise<{useResistance:boolean}|null>):Promise<AuraResolutionReceipt>{
+ prepare:(context:Record<string,unknown>,requestId:string,inputs?:ReviewedAuraInputs)=>Record<string,unknown>,assertCurrentScope:()=>void,
+ review?:(request:SavedAuraRequest)=>Promise<{useResistance:boolean}|null>,
+ reviewInputs?:(context:Record<string,unknown>)=>Promise<ReviewedAuraInputs|null>):Promise<AuraResolutionReceipt>{
  assertCurrentScope();
  if(!uuid(user)||!validIdentity(input)||!['creature_entered','emanation_entered','turn_end'].includes(trigger))return Promise.reject(invalid());
  const i=structuredClone(input),k=key(user,i),pending=active.get(k);if(pending)return pending;
@@ -50,9 +51,12 @@ export function processSavedAuraResolution(user:string,input:AuraIdentity,trigge
   if(!request){
    const context=await psionicRpc('get_aura_resolution_context',{...args,p_trigger:trigger},true);assertCurrentScope();
    if(!matchesSnapshot(context,i)||context.trigger!==trigger)throw invalid();
+   const inputs=reviewInputs?await reviewInputs(structuredClone(context)):undefined;assertCurrentScope();
+   if(inputs===null)throw new Error('Aura input review postponed. No dice were rolled; the turn remains open.');
+   if(reviewInputs&&!validReviewedAuraInputs(inputs))throw new Error('Review aura modifiers, targeting and defenses before rolling.');
    const requestId=crypto.randomUUID();
    localStorage.setItem(k,JSON.stringify({version:1,phase:'preparing',userId:user,requestId,identity:i,expected:context}));
-   const proposal=prepare(structuredClone(context),requestId);assertCurrentScope();
+   const proposal=prepare(structuredClone(context),requestId,inputs);assertCurrentScope();
    if(!object(proposal)||'then' in proposal)throw invalid();
    // JSON round-trip fixes the exact wire representation before any RPC.
    const serialized=JSON.stringify({version:1,phase:review?'review':'ready',userId:user,requestId,identity:i,expected:context,proposal});
@@ -91,6 +95,19 @@ export function processSavedAuraResolution(user:string,input:AuraIdentity,trigge
 export function processReviewedAuraResolution(user:string,identity:AuraIdentity,trigger:AuraTrigger,inputs:ReviewedAuraInputs,
  assertCurrentScope:()=>void,review:(request:SavedAuraRequest)=>Promise<{useResistance:boolean}|null>){
  if(typeof review!=='function')return Promise.reject(new Error('Aura rolls require a review step before applying.'));
+ if(!validReviewedAuraInputs(inputs))return Promise.reject(new Error('Review aura modifiers, targeting and defenses before rolling.'));
  const reviewed=structuredClone(inputs);
  return processSavedAuraResolution(user,identity,trigger,(context,requestId)=>prepareAuraProposal(context,requestId,reviewed,crypto.randomUUID()),assertCurrentScope,review);
+}
+
+/** Input review happens before dice. Existing proposals bypass that review and
+ * reopen only their saved-result decision, never preparing replacement rolls. */
+export function processInteractiveAuraResolution(user:string,identity:AuraIdentity,trigger:AuraTrigger,
+ reviewInputs:(context:Record<string,unknown>)=>Promise<ReviewedAuraInputs|null>,
+ reviewResult:(request:SavedAuraRequest)=>Promise<{useResistance:boolean}|null>,guard:()=>void){
+ if(typeof reviewInputs!=='function'||typeof reviewResult!=='function')return Promise.reject(new Error('Aura rolls require input and result review before applying.'));
+ return processSavedAuraResolution(user,identity,trigger,(context,requestId,inputs)=>{
+  if(!inputs)throw new Error('Aura inputs were not reviewed.');
+  return prepareAuraProposal(context,requestId,inputs,crypto.randomUUID());
+ },guard,reviewResult,reviewInputs);
 }

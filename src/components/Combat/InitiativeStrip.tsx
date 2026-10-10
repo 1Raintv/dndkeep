@@ -1,3 +1,4 @@
+import {useAuraTurnReview} from './useAuraTurnReview';
 // v2.96.0 — Phase D of the Combat Backbone
 //
 // Fixed-position bottom strip showing initiative order during an active
@@ -65,6 +66,7 @@ const ACTOR_COLORS: Record<CombatParticipant['participant_type'], string> = {
 
 export default function InitiativeStrip({ isDM, characterId }: Props) {
   const { encounter, participants, currentActor } = useCombat();
+  const auraReview=useAuraTurnReview(encounter?.id);
   const stripRef=useRef<HTMLDivElement>(null);
   useBottomOverlayInset(stripRef,encounter?.status==='active');
   // v2.457.0 — Concentration map for the active campaign. Empty until
@@ -190,7 +192,7 @@ export default function InitiativeStrip({ isDM, characterId }: Props) {
     const started=encounter.id;
     turnClick.current=true;setEndingTurn(true);
     try {
-      const result = await advanceTurn(started);
+      const result = await advanceTurn(started,auraReview.resolve);
       if (mounted.current&&latestEncounter.current===started&&!result.ok) {
         // v2.869: a delayed/failed advance may have partially applied effects.
         // Keep the explanation until dismissed instead of inviting rapid retries.
@@ -289,6 +291,7 @@ export default function InitiativeStrip({ isDM, characterId }: Props) {
         boxShadow: '0 -4px 16px rgba(0,0,0,0.4)',
       }}
     >
+      {auraReview.dialog}
       {currentActor && encounter.psionic_turn_id && (isDM || (currentActor.participant_type === 'character' && currentActor.entity_id === characterId)) && <ConditionSaveRecovery key={`${currentActor.id}:${encounter.psionic_turn_id}`} participant={currentActor} turnId={encounter.psionic_turn_id} />}
       <div className="initiative-summary" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {/* v2.285.0 — Round badge is clickable for the DM. Click

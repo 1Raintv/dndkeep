@@ -200,21 +200,27 @@ export function auraFromBuff(buff: ActiveBuff): AuraSpec | null {
 export async function listActiveAuras(
   campaignId: string,
   encounterId: string,
+  strict=false,
+  target?:{id:string;type:string;trigger:AuraTrigger},
 ): Promise<ActiveAura[]> {
-  const { data: rowsRaw } = await (supabase as any)
+  const { data: rowsRaw,error } = await (supabase as any)
     .from('combat_participants')
     .select('id, name, participant_type, entity_id, combatant_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('encounter_id', encounterId);
+  if(strict&&(error||!rowsRaw))throw new Error('Active auras could not be checked. Retry before ending the turn.');
   const rows = ((rowsRaw ?? []) as any[]).map(normalizeParticipantRow);
 
+  const relevant=(spec:AuraSpec|null,origin:Record<string,unknown>)=>!!spec&&(!target||(spec.triggers.includes(target.trigger)
+    &&origin.id!==target.id&&!spec.exemptParticipantIds.includes(target.id)
+    &&(spec.affects!=='enemies'||((origin.participant_type==='character')!==(target.type==='character')))));
   const withAuras = rows.filter((r: any) =>
-    ((r.active_buffs ?? []) as ActiveBuff[]).some(b => auraFromBuff(b) !== null),
+    !r.is_dead&&((r.active_buffs ?? []) as ActiveBuff[]).some(b => relevant(auraFromBuff(b),r)),
   );
   if (withAuras.length === 0) return [];
 
   const { loadActiveBattleMap, findTokenForParticipant, participantLookup } = await import('./battleMapGeometry');
-  const bmap = await loadActiveBattleMap(campaignId);
-  if (!bmap) return [];
+  const bmap = await loadActiveBattleMap(campaignId,{throwOnError:strict});
+  if (!bmap){if(strict)throw new Error('Place the active aura and target on a map before ending the turn.');return [];}
 
   const out: ActiveAura[] = [];
   for (const r of withAuras) {
@@ -223,10 +229,10 @@ export async function listActiveAuras(
       participantLookup(r),
       bmap.tokens,
     );
-    if (!tok) continue;
+    if (!tok){if(strict)throw new Error('An active aura has no mapped origin. Review its placement before ending the turn.');continue;}
     for (const b of ((r.active_buffs ?? []) as ActiveBuff[])) {
       const spec = auraFromBuff(b);
-      if (!spec) continue;
+      if (!spec||!relevant(spec,r)) continue;
       out.push({
         originParticipantId: r.id as string,
         originName: r.name as string,
@@ -255,7 +261,7 @@ async function alreadySavedThisTurn(participantId: string, marker: string): Prom
  * turn gate, rolls the save, applies damage (half on success when the
  * aura says so), and logs. Returns true when a save was actually made.
  */
-export async function resolveAuraSave(input: {
+export interface AuraSaveInput {
   campaignId: string;
   encounterId: string;
   aura: ActiveAura;
@@ -263,7 +269,9 @@ export async function resolveAuraSave(input: {
   targetName: string;
   targetType: string;
   trigger: AuraTrigger;
-}): Promise<boolean> {
+}
+export type AuraTurnResolver=(input:AuraSaveInput,scope:{userId:string;turnId:string;guard:()=>void})=>Promise<boolean>;
+export async function resolveAuraSave(input:AuraSaveInput): Promise<boolean> {
   const { aura } = input;
   const marker = auraSaveMarkerKey(aura.originParticipantId, aura.spec.key);
   if (await alreadySavedThisTurn(input.targetParticipantId, marker)) return false;
@@ -562,27 +570,27 @@ export async function evaluateAurasOnTurnEnd(input: {
   campaignId: string;
   encounterId: string;
   participantId: string;
+  resolve?: (save:AuraSaveInput)=>Promise<boolean>;
 }): Promise<void> {
-  const auras = await listActiveAuras(input.campaignId, input.encounterId);
-  if (auras.length === 0) return;
-
-  const { data: rowRaw } = await (supabase as any)
+  const { data: rowRaw,error } = await (supabase as any)
     .from('combat_participants')
     .select('id, name, participant_type, entity_id, combatant_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .maybeSingle();
-  if (!rowRaw) return;
+  if(error||!rowRaw){if(input.resolve)throw new Error('The outgoing aura target could not be checked. Retry before advancing.');return;}
   const row = normalizeParticipantRow(rowRaw);
   if (row.is_dead) return;
+  const auras = await listActiveAuras(input.campaignId,input.encounterId,!!input.resolve,{id:row.id as string,type:row.participant_type as string,trigger:'turn_end'});
+  if(auras.length===0)return;
 
   const { loadActiveBattleMap, findTokenForParticipant, participantLookup } = await import('./battleMapGeometry');
-  const bmap = await loadActiveBattleMap(input.campaignId);
-  if (!bmap) return;
+  const bmap = await loadActiveBattleMap(input.campaignId,{throwOnError:!!input.resolve});
+  if (!bmap){if(input.resolve)throw new Error('The aura map is unavailable. Review placement before advancing.');return;}
   const tok = findTokenForParticipant(
     participantLookup(row),
     bmap.tokens,
   );
-  if (!tok) return;
+  if (!tok){if(input.resolve)throw new Error('Place the outgoing target on the map before resolving its auras.');return;}
   const rect = footprintAt(tok.row, tok.col, Math.max(1, (tok.size as number) ?? 1));
 
   for (const aura of auras) {
@@ -591,7 +599,7 @@ export async function evaluateAurasOnTurnEnd(input: {
     if (aura.spec.exemptParticipantIds.includes(row.id as string)) continue;
     const originRect = footprintAt(aura.originRow, aura.originCol, aura.originSize);
     if (!isInsideEmanation(originRect, rect, aura.spec.radiusFt)) continue;
-    await resolveAuraSave({
+    await (input.resolve??resolveAuraSave)({
       campaignId: input.campaignId,
       encounterId: input.encounterId,
       aura,

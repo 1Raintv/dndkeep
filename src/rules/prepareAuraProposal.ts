@@ -8,6 +8,14 @@ export interface ReviewedAuraInputs {
 }
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const uuid=(v:string)=>/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+/** Validate manual review before a durable preparation marker is written. */
+export function validReviewedAuraInputs(value:unknown):value is ReviewedAuraInputs {
+ if(!object(value))return false;
+ return Number.isSafeInteger(value.baseBonus)&&Number(value.baseBonus)>=-1000&&Number(value.baseBonus)<=1000
+  &&Number.isSafeInteger(value.conModifier)&&Number(value.conModifier)>=-105&&Number(value.conModifier)<=120
+  &&value.geometryConfirmed===true&&value.defensesReviewed===true
+  &&typeof value.affinity==='string'&&['normal','immune','resistant','vulnerable','resistant-vulnerable'].includes(value.affinity);
+}
 /** v2.869: call only inside the persisted aura preparation boundary. Every
  * die uses canonical rules; the returned evidence is saved before review.
  * Geometry, defenses and base modifiers are explicitly reviewed inputs,
@@ -18,10 +26,7 @@ export function prepareAuraProposal(context:unknown,requestId:string,inputs:Revi
  const state=context.save,spec=context.aura.aura;
  if(![state.autoFail,state.advantage,state.disadvantage,state.naturalExtremes].every(v=>typeof v==='boolean')
   ||!Array.isArray(state.buffs)||!Number.isInteger(state.exhaustion)||Number(state.exhaustion)<0||Number(state.exhaustion)>6
-  ||!Number.isSafeInteger(inputs.baseBonus)||inputs.baseBonus< -1000||inputs.baseBonus>1000
-  ||!Number.isSafeInteger(inputs.conModifier)||inputs.conModifier< -105||inputs.conModifier>120
-  ||inputs.geometryConfirmed!==true||inputs.defensesReviewed!==true
-  ||!['normal','immune','resistant','vulnerable','resistant-vulnerable'].includes(inputs.affinity)
+  ||!validReviewedAuraInputs(inputs)
   ||!uuid(requestId)||!uuid(concentrationId)||requestId.toLowerCase()===concentrationId.toLowerCase()
   ||(spec.damageDice!==null&&(typeof spec.damageDice!=='string'||!parseDiceGroups(spec.damageDice))))throw invalid();
  const effects=state.autoFail?[]:rollSaveBonuses(state.buffs,0).rolls;

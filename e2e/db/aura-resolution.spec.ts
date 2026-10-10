@@ -220,6 +220,43 @@ test.describe('Atomic aura resolution',()=>{
   expect(run(commit(expected,p))).toMatchObject({penalty:{expiredIds:[expired],consumedIds:[active],penalty:2},save:{passed:false},damage:15});
  });
 
+ test('End Turn reviews aura inputs and resumes saved rolls after postponing',async({page},info)=>{
+  const scene=randomUUID();sql(`update campaigns set use_combatants_for_battlemap=true where id='${campaign}';
+   insert into scenes(id,campaign_id,owner_id,name,grid_type,grid_size_px,width_cells,height_cells,ambient_light,is_published)
+   values('${scene}','${campaign}','${dm}','Aura map','square',70,12,8,'bright',true);
+   insert into scene_token_placements(id,scene_id,combatant_id,x,y) values('${randomUUID()}','${scene}','${ca}',35,35),('${randomUUID()}','${scene}','${cb}',105,35);`);
+  await signInFixtureDm(page);const errors:string[]=[],badResponses:string[]=[];
+  page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
+  page.on('response',response=>{if(response.status()>=400)badResponses.push(`${response.status()} ${response.url()}`);});
+  await page.evaluate(async({enc})=>{
+   const rp='/node_modules/.vite/deps/react.js',dp='/node_modules/.vite/deps/react-dom_client.js',mp='/src/components/shared/Modal.tsx',hp='/src/components/Combat/useAuraTurnReview.tsx',cp='/src/lib/combatEncounter.ts';
+   const [React,dom,modal,hook,combat]=await Promise.all([import(rp),import(dp),import(mp),import(hp),import(cp)]);
+   function Harness(){const aura=hook.useAuraTurnReview(enc);return React.default.createElement(React.default.Fragment,null,aura.dialog,React.default.createElement('button',{onClick:async()=>{
+    delete document.body.dataset.turnResult;document.body.dataset.turnResult=JSON.stringify(await combat.advanceTurn(enc,aura.resolve));
+   }},'Finish reviewed turn'));}
+   const host=document.createElement('div');host.style.cssText='position:fixed;top:80px;left:12px;z-index:1000';document.body.appendChild(host);
+   dom.default.createRoot(host).render(React.default.createElement(modal.ModalProvider,null,React.default.createElement(Harness)));
+  },{enc});
+  const end=page.getByRole('button',{name:'Finish reviewed turn'}),input=page.getByRole('dialog',{name:'Review aura inputs'});
+  await end.click();await expect(input).toBeVisible();await expect(input.getByRole('button',{name:'Roll and review'})).toBeDisabled();
+  await page.keyboard.press('Escape');await expect.poll(()=>page.evaluate(()=>document.body.dataset.turnResult??'')).toContain('postponed');
+  expect(sql(`select psionic_turn_id from combat_encounters where id='${enc}'`)).toBe(turn);expect(counts().receipt).toBe(0);
+  await end.click();await expect(input).toBeVisible();
+  await input.getByLabel('Base saving throw modifier',{exact:true}).fill('0');await input.getByLabel('Concentration save modifier',{exact:true}).fill('0');
+  await input.getByLabel('Damage defense',{exact:true}).selectOption('normal');for(const checkbox of await input.getByRole('checkbox').all())await checkbox.check();
+  await input.screenshot({path:`.tmp/aura-input-${info.project.name}.png`});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[role=dialog], [role=dialog] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
+  await input.getByRole('button',{name:'Roll and review'}).click();
+  const result=page.getByRole('dialog',{name:'Aura: review save'});await expect(result).toBeVisible();const saved=await result.innerText();
+  await page.keyboard.press('Escape');await expect.poll(()=>page.evaluate(()=>document.body.dataset.turnResult??'')).toContain('postponed');
+  expect(counts().receipt).toBe(0);expect(sql(`select psionic_turn_id from combat_encounters where id='${enc}'`)).toBe(turn);
+  await end.click();await expect(result).toBeVisible();expect(await result.innerText()).toBe(saved);await expect(input).toBeHidden();
+  await result.getByRole('button',{name:'Apply result'}).click();await expect.poll(()=>page.evaluate(()=>document.body.dataset.turnResult??'')).toBe('{"ok":true}');
+  expect(counts().receipt).toBe(1);expect(sql(`select psionic_turn_id from combat_encounters where id='${enc}'`)).not.toBe(turn);
+  expect(sql(`select count(*) from dndkeep_private.live_turn_transitions where encounter_id='${enc}' and complete`)).toBe('1');
+  expect(errors).toEqual([]);expect(badResponses).toEqual([]);
+ });
+
  test('aura review controls display saved outcomes and postpone without spending',async({page},info)=>{
   monster();writeAura([{...aura(),aura:{...aura().aura,name:'Spirit Guardians'}}]);
   sql(`update combatants set name='Young Red Dragon',temp_hp=2 where id='${cb}'`);

@@ -1,3 +1,4 @@
+import {useAuraTurnReview} from '../Combat/useAuraTurnReview';
 import type {ActionFlags} from '../../lib/api/actionBudget';
 import {getEnkindledTurn,advancePsionicSoloTurn,PsionicRequestError} from '../../lib/api/psionicTurns';
 import { useState, useEffect, useRef } from 'react';
@@ -48,6 +49,7 @@ export default function ActionEconomy({ savedUsed,savedError,trackPsionicTurns=f
  // v2.594.0 — combat awareness. Safe outside a CombatProvider: the
  // context default has encounter=null, so this is a no-op there.
  const encounter = useCombatSelector(s => s.encounter); // v2.645 slice 2
+ const auraReview=useAuraTurnReview(encounter?.id);
  const currentActor = useCombatCurrentActor();
  const combatLoading = useCombatSelector(s => s.loading);
  const [endingTurn, setEndingTurn] = useState(false);
@@ -80,7 +82,7 @@ export default function ActionEconomy({ savedUsed,savedError,trackPsionicTurns=f
   }
   if(stillHere())reset();return;
  }
- const result=await advanceTurn(encounter.id);
+ const result=await advanceTurn(encounter.id,auraReview.resolve);
  if(!stillHere())return;
  if(result.ok)reset();
  else showToast(`Turn could not be completed: ${result.reason}. Your sheet trackers were kept. Check combat before trying again.`, 'error', {duration:0});
@@ -143,6 +145,7 @@ export default function ActionEconomy({ savedUsed,savedError,trackPsionicTurns=f
  borderRadius: 'var(--r-lg)',
  padding: 'var(--sp-3)',
  }}>
+ {auraReview.dialog}
  {/* v2.77.0: Vertical layout per user spec —
      Header → Action → Bonus Action → Reaction → Movement → End Turn.
      Each action type is now its own full-width row button instead of a

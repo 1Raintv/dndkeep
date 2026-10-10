@@ -7829,3 +7829,37 @@ error handling. All 69 focused cases pass; the full project verification gate
 passes with the existing TypeScript baseline and entry budget unchanged. No new
 lint errors in the four changed code/test files. Existing unfinished aura
 integration remains separate and uncommitted. No production deployment.
+
+
+### Reviewed outgoing aura settlement (2026-10-10, unreleased)
+
+End Turn now supplies the atomic aura resolver from InitiativeStrip, DMScreen,
+and the character turn panel. A DM reviews base save/concentration modifiers,
+damage affinity, targeting and conditional defenses before any dice. Unknown
+modifiers start blank. Invalid or cancelled input creates no preparation marker;
+rolled proposals persist before the result/Legendary Resistance review. Retry
+reopens saved dice instead of requesting replacement inputs. Leaving the owning
+view cancels input review; scope/auth guards stop stale submissions.
+
+Aura evaluation failures now stop outgoing turn completion instead of being
+logged and ignored. Failed participant/map reads and missing relevant tokens
+block with visible errors. Self, exempt, enemies-only group and trigger filters
+run before requiring placement, so unrelated auras do not block a turn. DMScreen
+now shows failures instead of only logging them; it does not promise the clock
+is unchanged when incoming work needs recovery.
+
+Verification: 3,837 unit cases, TypeScript 194/194, all required gates and 255.7 KB
+entry budget; no new lint errors. All 68 atomic-aura local database cases pass.
+The final desktop/mobile End Turn tests also pass: input cancellation leaves the
+clock unchanged, result postponement retains identical rolls, and confirmation
+creates exactly one aura receipt and one completed turn transition. Desktop and
+mobile screenshots inspected; official overflow probe and console/network checks
+pass. No production migrations or deployment.
+
+Release work remains: movement-triggered auras still use the legacy writer.
+Legacy once-per-turn markers without atomic receipts currently stop reviewed
+settlement rather than pretending partial legacy damage completed safely. A
+movement/DM review queue and explicit reconciliation are still needed. Manual
+modifiers/defenses remain reviewed inputs, not independently verified automated
+values. Typed buff-tick defenses/concentration and pending-turn race checks also
+remain outstanding.

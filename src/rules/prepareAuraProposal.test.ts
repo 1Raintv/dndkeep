@@ -34,3 +34,6 @@ it.each([{geometryConfirmed:false},{defensesReviewed:false},{baseBonus:NaN},{bas
 it('rejects unrecognized damage syntax before dice',()=>{const random=vi.spyOn(Math,'random'),c=context();c.aura.aura.damageDice='special';expect(()=>run(c)).toThrow();expect(random).not.toHaveBeenCalled();});
 it('rejects reused concentration identity before dice',()=>{const random=vi.spyOn(Math,'random');expect(()=>prepareAuraProposal(context(),id(2),inputs,id(2))).toThrow();expect(random).not.toHaveBeenCalled();});
 it('does not return evidence for an invalid damage target snapshot',()=>{vi.spyOn(Math,'random').mockReturnValue(.5);const c=context();c.target.combatant.current_hp=-1;expect(()=>run(c)).toThrow();});
+
+import {validReviewedAuraInputs} from './prepareAuraProposal';
+it.each([null,{}, {baseBonus:0,conModifier:0,affinity:{toString:()=>'normal'},geometryConfirmed:true,defensesReviewed:true}])('rejects malformed manual inputs before preparation (%s)',value=>{expect(validReviewedAuraInputs(value)).toBe(false);});

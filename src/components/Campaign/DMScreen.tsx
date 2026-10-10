@@ -1,3 +1,5 @@
+import {useAuraTurnReview} from '../Combat/useAuraTurnReview';
+import {useToast} from '../shared/Toast';
 import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { checkedWrite } from '../../lib/api/checked';
@@ -105,6 +107,8 @@ export default function DMScreen({ campaign }: DMScreenProps) {
   // They're still in the props type for back-compat at the call site
   // but nothing in this component reads them anymore.
   const { encounter, participants, currentActor } = useCombat();
+  const auraReview=useAuraTurnReview(encounter?.id);
+  const {showToast}=useToast();
   const [party, setParty] = useState<PartyMember[]>([]);
   const [npcs, setNpcs] = useState<NPC[]>([]);
   const [notes, setNotes] = useState((campaign as any).notes ?? '');
@@ -250,12 +254,9 @@ export default function DMScreen({ campaign }: DMScreenProps) {
     // happen via the realtime update from useCombat() flowing back
     // through the round-transition useEffect above.
     if (!encounter || encounter.status !== 'active') return;
-    const result = await advanceTurn(encounter.id);
+    const result = await advanceTurn(encounter.id,auraReview.resolve);
     if (!result.ok) {
-      // Surface to the user — the InitiativeStrip already toasts on
-      // failure for its own buttons; DMScreen doesn't have a toast
-      // hook in scope so the console error is the diagnostic path.
-      console.error('[DMScreen] advanceTurn failed:', result.reason);
+      showToast(`Turn completion needs review: ${result.reason}`, 'error', {duration:0});
     }
   }
 
@@ -281,6 +282,7 @@ export default function DMScreen({ campaign }: DMScreenProps) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0, position: 'relative' }}>
+      {auraReview.dialog}
 
       {/* v2.42.0: Concentration tick toast — appears top-right when round advances and timers tick */}
       {roundTickToast && (

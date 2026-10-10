@@ -3,7 +3,7 @@ import {beforeEach,afterEach,expect,it,vi} from 'vitest';
 const h=vi.hoisted(()=>({rpc:vi.fn()}));
 vi.mock('./psionicTurns',()=>({psionicRpc:h.rpc}));
 import {auraDamageEvidence} from '../../rules/auraDamageEvidence';
-import {processSavedAuraResolution,savedAuraResolution,processReviewedAuraResolution} from './auraResolution';
+import {processSavedAuraResolution,savedAuraResolution,processReviewedAuraResolution,processInteractiveAuraResolution} from './auraResolution';
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const user=id(1),identity={encounterId:id(2),turnId:id(3),originId:id(4),targetId:id(5),auraKey:'fixture'},guard=()=>{};
 const context=()=>({encounterId:id(2),turnId:id(3),trigger:'turn_end',marker:`aura_save:${id(4)}:fixture`,origin:{participant:{id:id(4)}},
@@ -144,4 +144,31 @@ it('real dice preparation survives postponement and ignores changed retry inputs
 });
 it('real preparation cannot bypass review',async()=>{
  await expect(processReviewedAuraResolution(user,identity,'turn_end',{baseBonus:0,conModifier:0,affinity:'normal',geometryConfirmed:true,defensesReviewed:true},guard,undefined as never)).rejects.toThrow('require a review');expect(h.rpc).not.toHaveBeenCalled();
+});
+
+it('postpones input review without persisting a marker, rolling or committing',async()=>{
+ const prepare=vi.fn(proposal),review=vi.fn(),input=vi.fn(async()=>null);
+ await expect(processSavedAuraResolution(user,identity,'turn_end',prepare,guard,review,input)).rejects.toThrow(/No dice were rolled/);
+ expect(localStorage.length).toBe(0);expect(prepare).not.toHaveBeenCalled();expect(review).not.toHaveBeenCalled();
+ expect(h.rpc.mock.calls.map(c=>c[0])).toEqual(['read_aura_resolution','get_aura_resolution_context']);
+});
+it('rejects invalid reviewed modifiers before the interruption marker',async()=>{
+ const prepare=vi.fn(proposal),inputs={baseBonus:NaN,conModifier:0,affinity:'normal' as const,geometryConfirmed:true,defensesReviewed:true};
+ await expect(processSavedAuraResolution(user,identity,'turn_end',prepare,guard,vi.fn(),async()=>inputs)).rejects.toThrow(/Review aura modifiers/);
+ expect(prepare).not.toHaveBeenCalled();expect(localStorage.length).toBe(0);
+});
+it('interactive retries reuse saved dice without asking for new inputs',async()=>{
+ const inputs=vi.fn(async()=>({baseBonus:0,conModifier:0,affinity:'normal' as const,geometryConfirmed:true,defensesReviewed:true}));
+ const review=vi.fn().mockResolvedValueOnce(null).mockResolvedValue({useResistance:false});
+ await expect(processInteractiveAuraResolution(user,identity,'turn_end',inputs,review,guard)).rejects.toThrow(/decision postponed/);
+ const saved=savedAuraResolution(user,identity)!;
+ const result=await processInteractiveAuraResolution(user,identity,'turn_end',inputs,review,guard);
+ expect(result.requestId).toBe(saved.requestId);expect(inputs).toHaveBeenCalledTimes(1);
+ expect(review.mock.calls[1][0].proposal).toEqual(saved.proposal);
+});
+
+it('cannot bypass interactive review with missing callbacks',async()=>{
+ await expect(processInteractiveAuraResolution(user,identity,'turn_end',undefined!,vi.fn(),guard)).rejects.toThrow(/input and result review/);
+ await expect(processInteractiveAuraResolution(user,identity,'turn_end',vi.fn(),undefined!,guard)).rejects.toThrow(/input and result review/);
+ expect(h.rpc).not.toHaveBeenCalled();expect(localStorage.length).toBe(0);
 });

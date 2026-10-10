@@ -1,3 +1,4 @@
+import type {AuraTurnResolver} from './auras';
 import { attacksPerAction } from '../rules/extraAttack';
 import { recoverInitiativeResources } from './initiativeResources';
 // v2.96.0 — Phase D of the Combat Backbone
@@ -698,12 +699,12 @@ export type CombatActionResult =
 // cannot stop another control from starting the same effects/advance in parallel.
 // This guard covers one tab only; durable cross-client recovery remains separate.
 const pendingTurnAdvances = new Map<string, Promise<CombatActionResult>>();
-export function advanceTurn(encounterId: string): Promise<CombatActionResult> {
+export function advanceTurn(encounterId: string,resolveAura?:AuraTurnResolver): Promise<CombatActionResult> {
   const pending = pendingTurnAdvances.get(encounterId);
   if (pending) return pending;
   const work = Promise.resolve().then(async () => {
     const {withCurrentTurnUser}=await import('./api/liveTurnTransitions');
-    return withCurrentTurnUser((user,guard)=>advanceTurnOnce(encounterId,user,guard));
+    return withCurrentTurnUser((user,guard)=>advanceTurnOnce(encounterId,user,guard,resolveAura));
   })
     .catch((error: unknown): CombatActionResult => ({
       ok: false,
@@ -716,7 +717,7 @@ export function advanceTurn(encounterId: string): Promise<CombatActionResult> {
   return work;
 }
 
-async function advanceTurnOnce(encounterId: string,userId:string,guard:()=>void): Promise<CombatActionResult> {
+async function advanceTurnOnce(encounterId: string,userId:string,guard:()=>void,resolveAura?:AuraTurnResolver): Promise<CombatActionResult> {
   const {recoverLiveTurnTransition,advanceLiveTurnTransition}=await import('./api/liveTurnTransitions');
   if(await recoverLiveTurnTransition(userId,encounterId,guard))return {ok:true};
   guard();
@@ -809,17 +810,21 @@ async function advanceTurnOnce(encounterId: string,userId:string,guard:()=>void)
 
     // v2.634.0 — Aura/Emanation "ends its turn there" trigger (2024
     // Spirit Guardians). Must run BEFORE the once-per-turn marker
-    // sweep below, which clears the gate this save checks. Defensive:
-    // never blocks turn advance.
+    // clock transaction, which clears its once-per-turn marker. A postponed
+    // or failed review keeps the outgoing turn open.
     try {
       const { evaluateAurasOnTurnEnd } = await import('./auras');
       await evaluateAurasOnTurnEnd({
         campaignId: outgoingForConditions.campaign_id as string,
         encounterId,
         participantId: outgoingForConditions.id as string,
+        resolve:async input=>{
+          guard();if(!resolveAura)throw new Error('Review the aura from the initiative controls before advancing.');
+          return resolveAura(input,{userId,turnId:enc.psionic_turn_id,guard});
+        },
       });
     } catch (err) {
-      console.error('[advanceTurn] end-of-turn aura evaluation failed', err);
+      return {ok:false,reason:err instanceof Error?err.message:'Aura resolution could not be confirmed. Retry before advancing.'};
     }
   }
 
