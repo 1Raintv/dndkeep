@@ -327,4 +327,30 @@ test.describe('Atomic aura resolution',()=>{
   expect(errors).toEqual([]);
  });
 
+ for(const effects of [false,true])test(`real aura preparation survives reload and settles its original reviewed dice (effects ${effects})`,async({page})=>{
+  monster();const penaltyIds=effects?[seedPenalty(),seedPenalty()]:[];
+  if(effects)sql(`update combatants set exhaustion_level=1,active_buffs=${literal([{key:'bless',name:'Bless'},{key:'bane',name:'Bane'},{key:'ward',name:'Ward',saveBonus:2}])} where id='${cb}'`);
+  await signInFixtureDm(page);const before=state();
+  const saved=await page.evaluate(async({user,identity})=>{
+   const path='/src/lib/api/auraResolution.ts',previewPath='/src/rules/auraReviewPreview.ts',api=await import(path),rules=await import(previewPath);
+   try{await api.processReviewedAuraResolution(user,identity,'turn_end',{baseBonus:0,conModifier:0,affinity:'normal',geometryConfirmed:true,defensesReviewed:true},()=>{},async()=>null);}catch(error){if(!String(error).includes('postponed'))throw error;}
+   const request=api.savedAuraResolution(user,identity);return {request,preview:rules.auraReviewPreview(request.expected,request.proposal)};
+  },{user:dm,identity:{encounterId:enc,turnId:turn,originId:pa,targetId:pb,auraKey:'fixture'}});
+  expect(saved.request).toMatchObject({phase:'review',proposal:{save:{baseBonus:0},useResistance:false}});expect(saved.request.proposal.save.dice).toHaveLength(1);expect(saved.request.proposal.damageRoll.dice).toHaveLength(3);
+  expect(state()).toBe(before);expect(counts()).toEqual({receipt:0,penalty:0,events:0,marker:0});
+  await page.reload();
+  const result=await page.evaluate(async({user,identity,original})=>{
+   const path='/src/lib/api/auraResolution.ts',api=await import(path);
+   return api.processReviewedAuraResolution(user,identity,'creature_entered',{baseBonus:99,conModifier:99,affinity:'immune',geometryConfirmed:true,defensesReviewed:true},()=>{},async(request:unknown)=>{
+    if(JSON.stringify(request)!==JSON.stringify(original))throw new Error('Saved aura proposal changed');return {useResistance:false};
+   });
+  },{user:dm,identity:{encounterId:enc,turnId:turn,originId:pa,targetId:pb,auraKey:'fixture'},original:saved.request});
+  expect(result).toMatchObject({requestId:saved.request.requestId,save:saved.preview.normal.save,damage:saved.preview.normal.damage,damageResult:saved.preview.normal.pools});
+  expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe(String(saved.preview.normal.pools.afterHP));expect(counts()).toEqual({receipt:1,penalty:1,events:2,marker:1});
+  expect(result.penalty.consumedIds.sort()).toEqual(penaltyIds.sort());
+  if(effects){expect(result.save.exhaustion).toBe(1);expect(result.save.effectRolls).toHaveLength(3);expect(result.penalty.penalty).toBe(saved.request.proposal.penaltyD4);}
+  const replay=await page.evaluate(async({user,identity})=>{const path='/src/lib/api/auraResolution.ts',api=await import(path);return api.processReviewedAuraResolution(user,identity,'turn_end',{baseBonus:0,conModifier:0,affinity:'normal',geometryConfirmed:true,defensesReviewed:true},()=>{},async()=>{throw new Error('Committed result must not reopen review');});},{user:dm,identity:{encounterId:enc,turnId:turn,originId:pa,targetId:pb,auraKey:'fixture'}});
+  expect(replay).toEqual({...result,replayed:true});expect(counts()).toEqual({receipt:1,penalty:1,events:2,marker:1});
+ });
+
 });

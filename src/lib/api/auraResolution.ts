@@ -1,3 +1,4 @@
+import {prepareAuraProposal,type ReviewedAuraInputs} from '../../rules/prepareAuraProposal';
 import {verifyAuraResolutionReceipt,type AuraResolutionReceipt} from '../auraResolutionReceipt';
 import {psionicRpc} from './psionicTurns';
 export interface AuraIdentity {encounterId:string;turnId:string;originId:string;targetId:string;auraKey:string}
@@ -82,4 +83,14 @@ export function processSavedAuraResolution(user:string,input:AuraIdentity,trigge
   forget(user,i);return receipt;
  }));
  active.set(k,work);void work.finally(()=>{if(active.get(k)===work)active.delete(k);}).catch(()=>{});return work;
+}
+
+/** v2.869: real dice preparation for the reviewed UI path. Inputs are captured
+ * before any await; retries use the saved proposal, never these new arguments.
+ * The generic recovery API remains available for deterministic regression tests. */
+export function processReviewedAuraResolution(user:string,identity:AuraIdentity,trigger:AuraTrigger,inputs:ReviewedAuraInputs,
+ assertCurrentScope:()=>void,review:(request:SavedAuraRequest)=>Promise<{useResistance:boolean}|null>){
+ if(typeof review!=='function')return Promise.reject(new Error('Aura rolls require a review step before applying.'));
+ const reviewed=structuredClone(inputs);
+ return processSavedAuraResolution(user,identity,trigger,(context,requestId)=>prepareAuraProposal(context,requestId,reviewed,crypto.randomUUID()),assertCurrentScope,review);
 }

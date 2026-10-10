@@ -7694,3 +7694,32 @@ catalog row, respecting the actual schema constraints. Full gate passes:
 budget. Changed spec lint clean, local SQL lint has zero errors, repeated
 migration succeeds, exact ledger SQL verified and CLI reports no unapplied
 repo migrations. The pre-existing foreign local ledger entry is preserved.
+
+
+### Real saved aura proposal preparation (2026-10-10, unreleased)
+
+Added canonical proposal generation inside the persisted aura preparation
+boundary: correct d20 count, automatic-failure handling, Bless/Bane/flat effect
+rolls, next-save d4, damage faces and verified preview. The reviewed API adapter
+requires a review callback, captures inputs before awaiting, and reuses the
+original saved proposal when retry arguments change. Legendary Resistance is
+chosen during saved-result review, without rerolling.
+
+Real browser testing with active Mind Sliver exposed a PostgREST-only failure:
+STABLE aura context RPCs ran in read-only transactions, but expiry evaluation
+acquires FOR SHARE locks. Migration `20261010070020_aura_context_lock_compatibility.sql`
+marks the three lock-taking context functions VOLATILE and reloads the schema
+cache; bodies and authorization are unchanged. This follows the official
+[PostgREST function access-mode rules](https://docs.postgrest.org/en/stable/references/transactions.html#access-mode-on-functions).
+Applied/recorded exactly in local Docker; no production migration or deployment.
+
+Validation: 38 focused preparation/recovery unit cases and four real browser
+cases cover postpone/reload/changed retry inputs, exact settlement/replay, and
+Bless+Bane+exhaustion with overlapping Mind Sliver effects. Six additional aura
+context cases cover authorization, unchanged data and stale turns. Full gate:
+3,780 units, TypeScript 194/194, hooks/RAW/coordinates/anchors, build and entry
+budget. Changed files lint clean; local SQL lint has no errors.
+
+Base/CON bonuses, defenses and geometry remain explicitly reviewed inputs.
+This adapter is tested through the live API; movement and turn orchestration
+still use the legacy resolver and must be migrated before release.

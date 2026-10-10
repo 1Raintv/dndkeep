@@ -3,7 +3,7 @@ import {beforeEach,afterEach,expect,it,vi} from 'vitest';
 const h=vi.hoisted(()=>({rpc:vi.fn()}));
 vi.mock('./psionicTurns',()=>({psionicRpc:h.rpc}));
 import {auraDamageEvidence} from '../../rules/auraDamageEvidence';
-import {processSavedAuraResolution,savedAuraResolution} from './auraResolution';
+import {processSavedAuraResolution,savedAuraResolution,processReviewedAuraResolution} from './auraResolution';
 const id=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const user=id(1),identity={encounterId:id(2),turnId:id(3),originId:id(4),targetId:id(5),auraKey:'fixture'},guard=()=>{};
 const context=()=>({encounterId:id(2),turnId:id(3),trigger:'turn_end',marker:`aura_save:${id(4)}:fixture`,origin:{participant:{id:id(4)}},
@@ -133,4 +133,15 @@ it('does not submit if saving the reviewed choice fails',async()=>{
  vi.spyOn(localStorage,'setItem').mockImplementation((k,v)=>{if(JSON.parse(v).phase==='ready')throw new Error('quota');set(k,v);});
  await expect(processSavedAuraResolution(user,identity,'turn_end',proposal,guard,async()=>({useResistance:false}))).rejects.toThrow('quota');
  expect(savedAuraResolution(user,identity)?.phase).toBe('review');expect(h.rpc.mock.calls.filter(c=>c[0]==='commit_aura_resolution')).toHaveLength(0);
+});
+
+it('real dice preparation survives postponement and ignores changed retry inputs',async()=>{
+ const random=vi.spyOn(Math,'random').mockReturnValue(.5),inputs={baseBonus:0,conModifier:0,affinity:'normal' as const,geometryConfirmed:true,defensesReviewed:true};
+ const review=vi.fn(async()=>null);await expect(processReviewedAuraResolution(user,identity,'turn_end',inputs,guard,review)).rejects.toThrow('postponed');
+ const saved=savedAuraResolution(user,identity);expect(saved).toMatchObject({phase:'review',proposal:{save:{baseBonus:0,dice:[11]},penaltyD4:3,damageRoll:{total:5}}});const calls=random.mock.calls.length;
+ const second=vi.fn(async(request:unknown)=>{expect(request).toEqual(saved);return {useResistance:false};});
+ expect(await processReviewedAuraResolution(user,identity,'creature_entered',{...inputs,baseBonus:99,affinity:'immune'},guard,second)).toMatchObject({damage:5});expect(random).toHaveBeenCalledTimes(calls);
+});
+it('real preparation cannot bypass review',async()=>{
+ await expect(processReviewedAuraResolution(user,identity,'turn_end',{baseBonus:0,conModifier:0,affinity:'normal',geometryConfirmed:true,defensesReviewed:true},guard,undefined as never)).rejects.toThrow('require a review');expect(h.rpc).not.toHaveBeenCalled();
 });
