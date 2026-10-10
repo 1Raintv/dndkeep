@@ -69,3 +69,11 @@ export function mutableFormBenefits(form:MutableFormSpec,wearingArmor:boolean) {
 export function mutableFormSpellRange(spell:{range:string;casting_time:string},apply:boolean):string {
  return apply&&spell.range.trim().toLowerCase()==='touch'&&/^1\s+(?:magic\s+)?action$/i.test(spell.casting_time.trim())?'10 feet':spell.range;
 }
+
+/** Validate a shared active-state payload before deriving modifiers. */
+export function validMutableFormSpec(value:unknown):value is MutableFormSpec {
+ if(!value||typeof value!=='object'||Array.isArray(value))return false;
+ const v=value as Record<string,unknown>;
+ return typeof v.fleshWeaver==='boolean'&&(v.durationSeconds===60||v.durationSeconds===600)
+  &&validImprovement(v.improvement as MutableFormChoice|null,v.durationSeconds===600);
+}

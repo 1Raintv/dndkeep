@@ -1,5 +1,5 @@
 import {expect,it} from 'vitest';
-import {MUTABLE_FORM_RESISTANCES,mutableFormBenefits,mutableFormEligibility,mutableFormSpellRange,planMutableForm,type MutableFormChoice} from './mutableForm';
+import {validMutableFormSpec,MUTABLE_FORM_RESISTANCES,mutableFormBenefits,mutableFormEligibility,mutableFormSpellRange,planMutableForm,type MutableFormChoice} from './mutableForm';
 const hero={class_name:'Psion',subclass:'Metamorph',level:3,class_resources:{'psionic-energy-dice':4}};
 const base={fleshWeaver:false,improvement:null};
 it('uses the Bonus Action activation cost and one rolled die for temporary HP',()=>{
@@ -62,3 +62,9 @@ it.each(['1 action','1 Action','1 Magic action'])('optionally extends a Touch sp
 });
 it.each(['1 bonus action','1 reaction','1 minute','2 actions'])('does not extend casting time %s',casting_time=>expect(mutableFormSpellRange({range:'Touch',casting_time},true)).toBe('Touch'));
 it('does not replace other spell ranges',()=>expect(mutableFormSpellRange({range:'30 feet',casting_time:'1 action'},true)).toBe('30 feet'));
+
+it.each([null,undefined,[],{},0,{durationSeconds:600,fleshWeaver:false,improvement:null}])('rejects malformed form spec %j',v=>expect(validMutableFormSpec(v)).toBe(false));
+it('validates base and improved saved form specs',()=>{
+ expect(validMutableFormSpec({durationSeconds:60,fleshWeaver:false,improvement:null})).toBe(true);
+ expect(validMutableFormSpec({durationSeconds:600,fleshWeaver:true,improvement:{kind:'stony',resistance:'Cold'}})).toBe(true);
+});

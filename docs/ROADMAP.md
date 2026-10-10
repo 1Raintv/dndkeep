@@ -1,5 +1,31 @@
 # DNDKeep — Two-Track Roadmap
 
+### Mutable Form current-effects reader (consumers not yet wired)
+
+Migration `20261010224500_mutable_form_active_state.sql` exposes only the active
+form ID, duration, selected benefits and current armor status. Owner, current
+campaign DM and current members may read; outsiders and anonymous callers cannot.
+No dice, payment receipts, HP receipt or inventory are shared. Expired/ended forms
+return null; unknown game-clock state throws rather than silently removing bonuses.
+Armor changes are read live; shields and unequipped armor do not suppress Stride.
+
+`src/lib/api/mutableForm.ts` validates the narrow response before deriving benefits
+through the existing domain rules. Malformed durations, choices, armor flags or
+unexpected private fields fail closed. Five local database cases cover expiry,
+armor changes, clock failure and actual authenticated/anonymous/DM/member access.
+72 focused unit cases pass; full `npm run verify` passes (4,756 tests, TS 193/193,
+256.1 KB entry). Lint/advisors have no Mutable Form findings and reapplication
+succeeds in a rollback. Evidence: `.tmp/mutable-form-active-{unit,db,gate,lint,
+advisors,idempotence}.log`.
+
+All 346 repository migrations are applied locally; foreign 20261008213500 remains.
+The reader alone does NOT apply bonuses to the sheet or map. Next integration must
+update both the display and authoritative resolution: movementAllowanceForParticipant
+and saved movement validation, effectiveCombatAC/attack snapshots, melee reach,
+concentration saves, resistances, Touch casting and Stride/Flexibility actions.
+Avoid copying modifiers into permanent base scores or trusting a cached effect badge.
+Activation UI, history and saved retry recovery remain pending; production unchanged.
+
 ### Mutable Form temporary-HP application (private; UI still pending)
 
 Migration `20261010223000_mutable_form_temporary_hp.sql` captures effective INT

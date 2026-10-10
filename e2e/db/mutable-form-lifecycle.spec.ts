@@ -153,6 +153,39 @@ test.describe('Mutable Form saved private lifecycle',()=>{
    expect(sql(`select temp_hp from combatants where id='${cb}'`)).toBe('5');
   } finally {sql(`update characters set campaign_id=null where id='${character}';delete from campaigns where id='${campaign}'`);}
  });
+ test('shared active read returns no private fields and expires with game time',()=>{
+  const q=`public.get_mutable_form_active('${character}')`;expect(invoke(q)).toBeNull();begin(true);
+  expect(invoke(q)).toEqual({declarationId:id,remainingSeconds:60,durationSeconds:60,fleshWeaver:true,improvement:null,wearingArmor:false});
+  sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+60 where character_id='${character}'`);expect(invoke(q)).toBeNull();
+ });
+ test('shared active read follows current armor, excluding shields and unequipped armor',()=>{
+  sql(`update characters set level=10 where id='${character}'`);begin(false,{kind:'stride'});
+  for(const [inventory,expected] of [[[{equipped:true,armorType:'shield'}],false],[[{equipped:false,armorType:'heavy'}],false],[[{equipped:true,armorType:'light'}],true],[[{equipped:true,armorType:'medium'}],true],[[{equipped:true,armorType:'heavy'}],true],[[],false]] as const){
+   sql(`update characters set inventory='${JSON.stringify(inventory)}' where id='${character}'`);
+   expect(invoke(`public.get_mutable_form_active('${character}')`).wearingArmor).toBe(expected);
+  }
+ });
+ test('shared active read refuses unknown clock state instead of reporting no effect',()=>{
+  begin();sql(`delete from dndkeep_private.psionic_duration_clocks where character_id='${character}'`);
+  expect(()=>invoke(`public.get_mutable_form_active('${character}')`)).toThrow();
+ });
+ test('the authenticated owner can call the narrow read but anonymous callers cannot',()=>{
+  begin();const q=`public.get_mutable_form_active('${character}')`;
+  expect(JSON.parse(sql(`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';select ${q};commit;`)).declarationId).toBe(id);
+  expect(()=>sql(`begin;set local role anon;select ${q};commit;`)).toThrow();
+  expect(()=>invoke(q,other)).toThrow();
+ });
+ test('only the current campaign grants shared read access to its DM or members',()=>{
+  const campaign=randomUUID();
+  try {
+   sql(`insert into campaigns(id,owner_id,name) values('${campaign}','${other}','Mutable shared');update characters set campaign_id='${campaign}' where id='${character}'`);
+   turn=invoke(`dndkeep_private.action_turn_context('${character}')`).turnId;begin();const q=`public.get_mutable_form_active('${character}')`;
+   expect(invoke(q,other).declarationId).toBe(id);
+   sql(`update campaigns set owner_id='${owner}' where id='${campaign}';insert into campaign_members(campaign_id,user_id,role) values('${campaign}','${other}','player') on conflict(campaign_id,user_id) do update set role='player'`);
+   expect(invoke(q,other).declarationId).toBe(id);
+   sql(`delete from campaign_members where campaign_id='${campaign}' and user_id='${other}'`);expect(()=>invoke(q,other)).toThrow();
+  } finally {sql(`update characters set campaign_id=null where id='${character}';delete from campaigns where id='${campaign}'`);}
+ });
  test('concurrent identical requests commit one payment and one Bonus Action',async()=>{
   const query=asUser(owner,expression());
   const results=await Promise.all([1,2].map(()=>promisify(execFile)('docker',[...args,'-c',query],{encoding:'utf8'})));
