@@ -1,13 +1,14 @@
 // @vitest-environment happy-dom
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({query:vi.fn(),damage:vi.fn(),attackRoll:vi.fn(),save:vi.fn(),apply:vi.fn(),cancel:vi.fn(),fudge:vi.fn(),toast:vi.fn(),attack:null as Record<string,unknown>|null,reactionError:null as unknown,reactions:[] as unknown[],readError:null as unknown}));
+const m=vi.hoisted(()=>({recover:vi.fn(),query:vi.fn(),damage:vi.fn(),attackRoll:vi.fn(),save:vi.fn(),apply:vi.fn(),cancel:vi.fn(),fudge:vi.fn(),toast:vi.fn(),attack:null as Record<string,unknown>|null,reactionError:null as unknown,reactions:[] as unknown[],readError:null as unknown}));
+vi.mock('../../lib/pendingReaction',()=>({offerReactionsFor:m.recover}));
 vi.mock('../../lib/supabase',()=>({supabase:{from:m.query,channel:()=>{const c={on:()=>c,subscribe:()=>c};return c;},removeChannel:vi.fn()}}));
 vi.mock('../../lib/pendingAttack',()=>({rollAttackRoll:m.attackRoll,rollDamage:m.damage,applyDamage:m.apply,cancelAttack:m.cancel,fudgeDamage:m.fudge,rollSave:m.save,getTargetSaveBonus:vi.fn().mockResolvedValue({bonus:0,breakdown:''})}));
 vi.mock('../shared/Toast',()=>({useToast:()=>({showToast:m.toast})}));
 import AttackResolutionModal from './AttackResolutionModal';
 const fixture=()=>({id:'attack',campaign_id:'campaign',attacker_name:'Psion',target_name:'Target',attack_name:'Psychic strike',attack_kind:'attack_roll',state:'attack_rolled',hit_result:'hit',attack_rolls:[15],attack_total:20,attack_bonus:5,target_ac:12,damage_dice:'1d6',damage_type:'psychic'});
-beforeEach(()=>{vi.clearAllMocks();m.attack=fixture();m.reactionError=null;m.readError=null;m.reactions=[];m.damage.mockResolvedValue(null);m.apply.mockResolvedValue(null);m.cancel.mockResolvedValue(null);m.query.mockImplementation((table:string)=>{const result=()=>({data:table==='pending_attacks'?m.attack:m.reactions,error:table==='pending_attacks'?m.readError:m.reactionError});const q={select:()=>q,eq:()=>q,in:()=>q,order:()=>q,limit:()=>q,maybeSingle:async()=>result(),then:(resolve:(r:unknown)=>void)=>Promise.resolve(result()).then(resolve)};return q;});});
+beforeEach(()=>{vi.clearAllMocks();m.recover.mockResolvedValue(0);m.attack=fixture();m.reactionError=null;m.readError=null;m.reactions=[];m.damage.mockResolvedValue(null);m.apply.mockResolvedValue(null);m.cancel.mockResolvedValue(null);m.query.mockImplementation((table:string)=>{const result=()=>({data:table==='pending_attacks'?m.attack:m.reactions,error:table==='pending_attacks'?m.readError:m.reactionError});const q={select:()=>q,eq:()=>q,in:()=>q,order:()=>q,limit:()=>q,maybeSingle:async()=>result(),then:(resolve:(r:unknown)=>void)=>Promise.resolve(result()).then(resolve)};return q;});});
 afterEach(cleanup);
 const mount=()=>render(<AttackResolutionModal campaignId="campaign" isDM />);
 const damageButton=()=>screen.findByRole('button',{name:/Roll Damage/});
@@ -23,3 +24,14 @@ it('failed damage adjustment does not continue into HP application',async()=>{m.
 it('network failures explain uncertain outcomes without exposing browser jargon',async()=>{m.damage.mockRejectedValue(new TypeError('Failed to fetch'));mount();fireEvent.click(await damageButton());await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('may already be saved'));expect(screen.getByRole('alert').textContent).not.toContain('TypeError');});
 
 it('offered damage reactions block applying HP changes',async()=>{m.attack={...fixture(),state:'damage_rolled',damage_rolls:[3],damage_raw:3,damage_final:3};m.reactions=[{id:'offer',state:'offered',reactor_name:'Target',reaction_name:'Uncanny Dodge'}];mount();const button=await screen.findByRole('button',{name:/Apply Damage/});expect((button as HTMLButtonElement).disabled).toBe(true);expect(screen.getByRole('status').textContent).toContain('Uncanny Dodge');fireEvent.click(button);expect(m.apply).not.toHaveBeenCalled();});
+
+it.each(['attack_rolled','damage_rolled'])('recovers the %s window before presenting a resumed attack',async state=>{
+ m.attack={...fixture(),state,damage_rolls:[3],damage_raw:3,damage_final:3};mount();
+ await screen.findByRole('button',{name:state==='attack_rolled'?/Roll Damage/:/Apply Damage/});
+ expect(m.recover).toHaveBeenCalledWith(m.attack,state==='attack_rolled'?'post_attack_roll':'post_damage_roll');
+});
+it('an unconfirmed reaction batch blocks a resumed attack until refresh recovers it',async()=>{
+ m.recover.mockRejectedValueOnce(new Error('Offers uncertain'));mount();await screen.findByRole('alert');
+ expect(screen.queryByRole('button',{name:/Roll Damage/})).toBeNull();expect(m.damage).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'Refresh combat'}));await damageButton();expect(m.recover).toHaveBeenCalledTimes(2);
+});

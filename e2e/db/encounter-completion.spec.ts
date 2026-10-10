@@ -2,7 +2,7 @@ import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {test,expect,type Page} from '@playwright/test';
-import {gateDbSuite,signInAsSeedDm} from './helpers';
+import {gateDbSuite,signInAsSeedDm,finishEmptyFixtureReactionWindow} from './helpers';
 const args=['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'];
 const sql=(q:string)=>execFileSync('docker',args,{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 const auth=(u:string,q:string)=>`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${u}","role":"authenticated"}';${q};commit;`;
@@ -106,6 +106,10 @@ test.describe('Atomic encounter completion',()=>{
  const attack=(state='declared',lr=false)=>`insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,attacker_name,attacker_type,target_participant_id,target_name,target_type,attack_name,attack_kind,state,pending_lr_decision,chain_id) values('${request}','${campaign}','${enc}','${pa}','A','character','${pb}','B','character','Fixture','attack_roll','${state}',${lr},'${randomUUID()}')`;
  for(const state of ['declared','attack_rolled','damage_rolled'])test(`unfinished ${state} attack blocks completion without carry-over`,()=>{
   sql(attack(state));const before=snapshot();expect(()=>finish()).toThrow(/Resolve pending attacks/);expect(snapshot()).toBe(before);
+  if(state==='declared')sql(`update pending_attacks set state='attack_rolled' where id='${request}'`);
+  if(state!=='damage_rolled')finishEmptyFixtureReactionWindow(sql,dm,request,'post_attack_roll');
+  if(state!=='damage_rolled')sql(`update pending_attacks set state='damage_rolled' where id='${request}'`);
+  finishEmptyFixtureReactionWindow(sql,dm,request,'post_damage_roll');
   sql(`update pending_attacks set state='applied' where id='${request}'`);expect(finish().replayed).toBe(false);
  });
  for(const state of ['applied','canceled'])test(`terminal ${state} attack allows completion`,()=>{sql(attack(state));expect(finish().replayed).toBe(false);});
@@ -143,6 +147,7 @@ test.describe('Atomic encounter completion',()=>{
   sql(`update characters set current_hp=20,max_hp=20 where id in('${a}','${b}')`);
   const id=JSON.parse(sql(auth(dm,saveBatch()))).pending_attack_id;
   sql(`update pending_attacks set state='damage_rolled',save_result='failed',damage_final=6 where id='${id}'`);
+  finishEmptyFixtureReactionWindow(sql,dm,id,'post_damage_roll');
   return id as string;
  };
  const damageContext=(id:string)=>JSON.parse(sql(auth(dm,`select get_pending_damage_context('${id}')`)));
@@ -361,7 +366,7 @@ test.describe('Atomic encounter completion',()=>{
  test('saved condition preserves independent provenance and refuses an unreviewed later turn',()=>{
   const id=declaredRider();failRider(id);sql(`update combatants set active_conditions=array['Frightened'],condition_sources='{"Frightened":{"source":"manual"}}' where id='${cb}'`);
   expect(settleRider(id).outcome).toBe('already_present');expect(JSON.parse(sql(`select condition_sources->'Frightened' from combatants where id='${cb}'`))).toEqual({source:'manual'});
-  const another=declaredRider();failRider(another);sql(`update combat_encounters set current_turn_index=1 where id='${enc}'`);expect(()=>settleRider(another)).toThrow(/turn changed/);
+  request=randomUUID();const another=declaredRider();expect(another).not.toBe(id);failRider(another);sql(`update combat_encounters set current_turn_index=1 where id='${enc}'`);expect(()=>settleRider(another)).toThrow(/turn changed/);
  });
 
  for(const accept of [true,false])test(`resistance decision ${accept} settles the saved condition in the same transaction`,()=>{

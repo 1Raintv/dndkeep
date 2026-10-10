@@ -187,6 +187,9 @@ test.describe('saved attack outcome rules',()=>{
   }
  });
 
+ function finishWindow(id:string,point='post_attack_roll'){
+  sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';set local role authenticated;select public.attack_reaction_offers(id,'${point}',updated_at,array[]::text[]) from pending_attacks where id='${id}';commit;`);
+ }
  function reactionOffer(f:ReturnType<typeof masteryFixture>,point='post_attack_roll'){
   const offer=randomUUID();sql(`insert into pending_reactions(id,campaign_id,pending_attack_id,reactor_participant_id,reactor_name,reactor_type,reaction_key,reaction_name,trigger_point,expires_at)
    values('${offer}','${camp}','${f.id}','${f.target}','Target','monster','fixture','Fixture reaction','${point}',now()+interval '2 minutes')`);return offer;
@@ -204,11 +207,11 @@ test.describe('saved attack outcome rules',()=>{
   expect(saved?.state).toBe('damage_rolled');expect(f.readBuffs()).toEqual([]);
  });
  test('late attack offers are rejected, while damage reactions block final advancement',()=>{
-  const f=masteryFixture();f.call();
+  const f=masteryFixture();f.call();finishWindow(f.id);
   sql(`update pending_attacks set state='damage_rolled',damage_raw=3,damage_final=3 where id='${f.id}'`);
   expect(()=>reactionOffer(f)).toThrow();const offer=reactionOffer(f,'post_damage_roll');
   expect(()=>sql(`update pending_attacks set state='applied' where id='${f.id}'`)).toThrow();
-  sql(`update pending_reactions set state='expired' where id='${offer}';update pending_attacks set state='applied' where id='${f.id}'`);
+  sql(`update pending_reactions set state='expired' where id='${offer}'`);finishWindow(f.id,'post_damage_roll');sql(`update pending_attacks set state='applied' where id='${f.id}'`);
   expect(()=>reactionOffer(f,'post_damage_roll')).toThrow();
  });
  test('past the timer deadline still requires a recorded decision; cancel remains possible',()=>{
@@ -219,7 +222,7 @@ test.describe('saved attack outcome rules',()=>{
   expect(()=>reactionOffer(f)).toThrow();sql(`update pending_reactions set state='declined' where id='${offer}'`);
  });
  test('late offer and damage advancement cannot both win concurrently',async()=>{
-  const f=masteryFixture();f.call();const run=promisify(execFile),offer=randomUUID();
+  const f=masteryFixture();f.call();finishWindow(f.id);const run=promisify(execFile),offer=randomUUID();
   const commands=[`update pending_attacks set state='damage_rolled' where id='${f.id}'`,
    `insert into pending_reactions(id,campaign_id,pending_attack_id,reactor_participant_id,reactor_name,reactor_type,reaction_key,reaction_name,trigger_point,expires_at)
     values('${offer}','${camp}','${f.id}','${f.target}','Target','monster','fixture','Fixture reaction','post_attack_roll',now()+interval '2 minutes')`];

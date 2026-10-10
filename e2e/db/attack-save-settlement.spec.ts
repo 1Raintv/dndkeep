@@ -1,7 +1,7 @@
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {expect,test} from '@playwright/test';
-import {gateDbSuite} from './helpers';
+import {finishEmptyFixtureReactionWindow,gateDbSuite} from './helpers';
 import {CONDITIONS} from '../../src/data/conditions';
 const args=['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-q','-t','-A','-v','ON_ERROR_STOP=1'];
 const sql=(q:string)=>execFileSync('docker',args,{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
@@ -144,6 +144,7 @@ test.describe('Atomic ordinary saves',()=>{
   expect(sql(`select state from pending_attacks where id='${attack}'`)).toBe('canceled');expect(sql(`select legendary_resistance_used from combat_participants where id='${target}'`)).toBe('0');
  });
  test('cancellation preserves applied attack history',()=>{
+  sql(`update pending_attacks set state='damage_rolled' where id='${attack}'`);finishEmptyFixtureReactionWindow(sql,dm,attack,'post_damage_roll');
   sql(`update pending_attacks set state='applied' where id='${attack}'`);expect(()=>sql(auth(dm,`update pending_attacks set state='canceled' where id='${attack}'`))).toThrow(/already applied/);
   expect(sql(`select state from pending_attacks where id='${attack}'`)).toBe('applied');
  });

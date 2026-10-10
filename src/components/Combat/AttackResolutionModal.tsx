@@ -1,3 +1,4 @@
+import {offerReactionsFor} from '../../lib/pendingReaction';
 import SavedAttackSaveControls from './SavedAttackSaveControls';
 import {psychicDamageRoll} from '../../rules/psychicDamageRoll';
 import PsionicDamageResolutionPanel from './PsionicDamageResolutionPanel';
@@ -57,6 +58,10 @@ function AttackResolutionContent({ campaignId, isDM }: Props) {
       const next=(data as PendingAttack)??null;
       let offers:PendingReaction[]=[],progress:{remaining:number;total:number}|null=null;
       if(next){
+        // v2.869: a resumed damage preview must recover its reaction window too.
+        if(isDM&&current()&&next.state==='attack_rolled')await offerReactionsFor(next,'post_attack_roll');
+        if(isDM&&current()&&next.state==='damage_rolled')await offerReactionsFor(next,'post_damage_roll');
+        if(!current())return;
         const {data:rdata,error:reactionError}=await supabase.from('pending_reactions').select('*')
           .eq('pending_attack_id',next.id).order('offered_at',{ascending:false});
         if(reactionError)throw reactionError;

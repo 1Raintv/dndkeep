@@ -45,3 +45,12 @@ export async function signInAsSeedDm(page: Page, loginEmail = SEED_EMAIL): Promi
   await page.getByRole('button', { name: /enter the keep/i }).click();
   await expect(email).toBeHidden({ timeout: 20_000 });
 }
+
+/** Fixtures with no eligible reactions must still finish the real window check.
+ * Use the public authenticated API, not a private receipt-table insertion. */
+export function finishEmptyFixtureReactionWindow(sql:(query:string)=>string,userId:string,attackId:string,point:'post_attack_roll'|'post_damage_roll'):void{
+ const uuid=/^[0-9a-f-]{36}$/i;if(!uuid.test(userId)||!uuid.test(attackId))throw new Error('Invalid reaction fixture identity');
+ const result=sql(`begin;set local request.jwt.claims='{"sub":"${userId}","role":"authenticated"}';set local role authenticated;
+ select public.attack_reaction_offers(id,'${point}',updated_at,array[]::text[]) from public.pending_attacks where id='${attackId}';commit;`);
+ const receipt=JSON.parse(result);if(receipt.attackId!==attackId||receipt.triggerPoint!==point||receipt.offerCount!==0)throw new Error('Fixture did not confirm an empty reaction window');
+}

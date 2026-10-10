@@ -27,6 +27,7 @@ test.describe('Combat dialog recovery',()=>{
   await signInAsSeedDm(page,email);await page.goto('/campaigns/'+campaign);
   const panel=page.getByRole('region',{name:'Resolve attack'});
   await expect(panel.getByRole('button',{name:/Roll Damage/})).toBeVisible();
+  expect(sql(`select count(*) from dndkeep_private.attack_reaction_offer_batches where attack_id='${attack}' and trigger_point='post_attack_roll'`)).toBe('1');
   let requests=0;
   await page.route('**/rest/v1/rpc/record_pending_damage',async route=>{
    requests++;
@@ -39,6 +40,7 @@ test.describe('Combat dialog recovery',()=>{
   await expect(next).toBeEnabled();await next.click({trial:true});
   expect(requests).toBe(lost?2:1);
   expect(sql(`select state from pending_attacks where id='${attack}'`)).toBe(lost?'damage_rolled':'attack_rolled');
+  if(lost)expect(sql(`select count(*) from dndkeep_private.attack_reaction_offer_batches where attack_id='${attack}' and trigger_point='post_damage_roll'`)).toBe('1');
   expect(JSON.parse(sql(`select active_buffs from combatants where id='${cb}'`))).toHaveLength(lost?0:1);
   await panel.screenshot({path:info.outputPath('combat-recovery.png')});
   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[aria-label=\"Resolve attack\"], [aria-label=\"Resolve attack\"] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}

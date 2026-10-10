@@ -76,4 +76,23 @@ test.describe('durable attack reaction offers',()=>{
  finally{sql(`update campaigns set owner_id='${owner}' where id='${camp}';delete from auth.users where id='${dm}'`);}
  });
 
+ test('missing offer batches block both windows even when no offer exists',()=>{
+ expect(()=>sql(`update pending_attacks set state='damage_rolled' where id='${attack}'`)).toThrow(/Recover the attack reaction check/);
+ call([]);sql(`update pending_attacks set state='damage_rolled',damage_raw=3,damage_final=3 where id='${attack}'`);
+ expect(()=>sql(`update pending_attacks set state='applied' where id='${attack}'`)).toThrow(/Recover the damage reaction check/);
+ revision=sql(`select updated_at from pending_attacks where id='${attack}'`);call([],owner,revision,'post_damage_roll');sql(`update pending_attacks set state='applied' where id='${attack}'`);
+ expect(sql(`select state from pending_attacks where id='${attack}'`)).toBe('applied');
+ });
+ test('rejecting advancement rolls back HP writes in the same transaction',()=>{
+ const before=sql(`select current_hp from combatants where id=(select combatant_id from combat_participants where id='${target}')`);
+ expect(()=>sql(`begin;update combatants set current_hp=0 where id=(select combatant_id from combat_participants where id='${target}');update pending_attacks set state='applied' where id='${attack}';commit;`)).toThrow();
+ expect(sql(`select current_hp from combatants where id=(select combatant_id from combat_participants where id='${target}')`)).toBe(before);
+ });
+
+ test('skipping straight from a declaration to damage cannot bypass reaction review',()=>{
+ sql(`update pending_attacks set state='declared' where id='${attack}'`);
+ expect(()=>sql(`update pending_attacks set state='damage_rolled' where id='${attack}'`)).toThrow(/Recover the attack reaction check/);
+ expect(()=>sql(`update pending_attacks set state='applied' where id='${attack}'`)).toThrow(/Recover the attack reaction check/);
+ });
+
 });

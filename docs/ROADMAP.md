@@ -1,5 +1,50 @@
 # DNDKeep — Two-Track Roadmap
 
+### Required reaction checks before damage (local; not released)
+
+Migration 20261010175150 strengthens attack state advancement: an attack-roll
+window needs a saved post_attack_roll batch before damage recording, and applying
+damage needs a post_damage_roll batch. An empty batch is valid evidence; no row
+is not. Existing unanswered offers still block first. Save/automatic-hit attacks
+do not acquire an invented attack-roll window. Cancellation remains available.
+The trigger shares the attack lock with offer creation; failure also rolls back
+HP/history changes performed in the same transaction. This does not make the
+remaining legacy multi-request HP writer atomic or stop unrelated direct HP edits.
+
+The DM attack dialog recovers its current window before exposing resumed controls,
+including a saved damage preview after a dropped response. Recovery errors use
+the existing locked refresh state. Fixture-only empty windows now use the public
+authenticated dispatcher. The Sharpened Mind spell fixture also needed its required
+Action context restored; all 31 Sharpened cases then passed, including the eight
+previously failing paid-spell paths. No rules guard was relaxed for those fixtures.
+
+Validation: final full gate passed (4,446 tests, TS 194/194, entry 255.7 KB).
+The 50 damage-recording/application cases passed; all 31 Sharpened cases passed
+on rerun. The broader save/completion/Bolt/Psychic run passed 141 of 142; its one
+remaining condition-timing fixture reused a settled request ID. Giving the second
+condition a new ID (and asserting different attacks) restored the intended check;
+that case and six final barrier/completion cases passed together. Desktop/mobile
+dialog checks passed all four cases with the official overflow probe; screenshots
+were inspected. Removing resumed damage-window recovery made the new receipt
+assertion fail (0 instead of 1); restoring the exact bytes passed again.
+
+Local ledger text matches migration 20261010175150 exactly. Final SQL lint has no
+guard diagnostics (20 other functions still report warnings). Security advisor
+has only the existing keep_warm/client_errors warnings. Artifacts:
+`.tmp/reaction-barrier-final-gate.log`, `reaction-barrier-atomic.log`,
+`reaction-barrier-sharpened.log`, `reaction-barrier-more.log`,
+`reaction-barrier-final-cases.log`, `reaction-barrier-ui.log`,
+`reaction-barrier-mutation.log`, `reaction-barrier-restored.log`, and
+`.tmp/reaction-barrier-{desktop,mobile}.png`.
+
+Further integration review: Telepath changes to a saved hit/miss may make a new
+reaction eligible. Define a subsequent reaction window without reopening declined
+or expired offers from the original batch before exposing those controls. Also
+finish durable attack history and move Graze into the atomic damage pipeline with
+the actual captured attack ability modifier. Fresh/main-upgrade rehearsals are
+still at 332 and must include 333/334 before release.
+
+
 ### Saved attack reaction offers and recovery (local; not released)
 
 Migration 20261010174241 adds a private, RLS-enabled receipt table keyed by
