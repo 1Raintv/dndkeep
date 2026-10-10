@@ -1,3 +1,5 @@
+import {CampaignDamageRecovery} from './CampaignDamageRecovery';
+import {useCampaignSheetDamage} from '../../lib/hooks/useCampaignSheetDamage';
 import {useActionBudget} from '../../lib/hooks/useActionBudget';
 import {canUpcastSpell} from '../../rules/spellSlots';
 import SharpenedRollPanel from './_shared/SharpenedRollPanel';
@@ -340,6 +342,11 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
    allDice:(receipt.rolls??[]).map(value=>({die:20,value})),expression:receipt.advantage?'2d20kh1':'1d20',
    flatBonus:receipt.bonus,modifier:receipt.bonus,total:receipt.total!,
    label:`${spellMap[receipt.spell]?.name??receipt.spell} — Concentration Save (DC ${receipt.dc}) · ${receipt.outcome==='passed'?'Maintained':'Broken'}`});
+ });
+ const campaignDamage=useCampaignSheetDamage(userId,characterRef,saveQueue,frozen,receipt=>{
+  const pending=saveQueue.getPending();
+  const patch={...acceptHitPointReceipt(characterRef,receipt,pending).patch,...acceptConcentrationReceipt(characterRef,receipt,pending).patch};
+  if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
  });
  const acceptedSave=useRef<typeof acknowledged>(null);
  useEffect(()=>{
@@ -788,19 +795,11 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  // regardless of whether it landed on temp HP or current HP.
  const inferredDamage = Math.max(0, character.current_hp - current_hp);
  const totalDamage = damageDealt ?? inferredDamage;
- if(frozen||(!characterRef.current.campaign_id&&standaloneConcentration.blockedHP))return;
- if(!characterRef.current.campaign_id&&totalDamage>0){standaloneConcentration.applyDamage(totalDamage);return;}
- if (totalDamage > 0 && concentrationSpellId) {
- // RAW: DC = max(10, floor(damage / 2)), capped at 30
- const dc = concentrationDC(totalDamage);
- const mode = resolveAutomation('concentration_on_damage', character, activeCampaign);
- if (mode === 'prompt') {
- setConcentrationSaveDC(dc);
- setConcentrationSaveDamage(totalDamage);
- } else if (mode === 'auto') {
- rollConcentrationSave(dc);
- }
- // 'off' → no action
+ if(frozen||standaloneConcentration.blockedHP||campaignDamage.blockedHP)return;
+ if(totalDamage>0){
+  if(characterRef.current.campaign_id)void campaignDamage.applyDamage(totalDamage);
+  else standaloneConcentration.applyDamage(totalDamage);
+  return;
  }
  applyUpdate({ current_hp, temp_hp }, true);
  }
@@ -1188,8 +1187,8 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  onUpdateXP={xp => applyUpdate({ experience_points: xp })}
  onOpenAvatarPicker={() => setShowAvatarPicker(true)}
  onToggleInspiration={() => applyUpdate({ inspiration: !character.inspiration }, true)}
- onOpenRest={() => {if(!standaloneConcentration.blockedHP)setShowRest(true);}}
- hpDisabled={frozen||standaloneConcentration.blockedHP}
+ onOpenRest={() => {if(!standaloneConcentration.blockedHP&&!campaignDamage.blockedHP)setShowRest(true);}}
+ hpDisabled={frozen||standaloneConcentration.blockedHP||campaignDamage.blockedHP}
  onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)}
  onUpdateSpeed={speed => applyUpdate({ speed }, true)}
  onShare={character.share_token && character.share_enabled ? () => {
@@ -1671,6 +1670,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
      v2.56.0: Now shows the actual damage that triggered the prompt + the formula
      breakdown so users can see why the DC is what it is. RAW: DC = max(10, floor(damage/2)),
      capped at 30. */}
+ <CampaignDamageRecovery controller={campaignDamage} characterId={character.id} frozen={frozen}/>
  <StandaloneConcentrationPanel controller={standaloneConcentration} frozen={frozen} spellName={id=>spellMap[id]?.name??id}/>
  {concentrationSaveDC !== null && concentrationSpellId && <ConcentrationCheckPrompt
  spellName={spellMap[concentrationSpellId]?.name ?? 'Concentration'} damage={concentrationSaveDamage??0}

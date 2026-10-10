@@ -6451,3 +6451,34 @@ Next: wire player-sheet manual damage to this shared transaction after flushing
 queued edits; preserve saved requests across reload; safely reconcile HP and
 concentration receipts; verify interrupted requests in the real sheet. The old
 campaign-sheet damage path is still active until that integration is complete.
+
+
+### Campaign sheet damage recovery (unreleased)
+
+Owner-sheet damage now uses the shared campaign transaction instead of separately
+saving HP and locally rolling concentration. It flushes queued edits, reads a
+fresh damage context, and saves the original hit before sending. The sheet blocks
+HP/rest controls until an uncertain hit is confirmed or canceled; reload preserves
+its identity. Recovery never processes another character's or a group batch from
+the current sheet. Those requests remain available on their original surfaces.
+
+Verified sheet receipts carry ordered current HP and concentration state, so a
+replay cannot restore the hit's old casting. Automatic checks use the existing
+saved concentration result and reread the damage receipt afterward. An unconfirmed
+automatic save keeps the hit recoverable. Prompt checks use the existing shared
+concentration modal. Zero HP ends concentration without an unnecessary save.
+Late previews are rejected after changing sheets, including away-and-back changes;
+new pending edits or another tab's saved hit block new effect rolls.
+
+This removes the legacy local concentration-roll path for manual sheet damage.
+The realtime fallback for externally written HP still exists and remains audit
+work, as do combat-clock journaling and other general saving-throw callers.
+No production deployment or new migration in this batch; owner-access migration
+20261010070002 is its prerequisite.
+
+Verification: 10 local desktop/mobile browser cases cover lost replies, reload,
+cancellation, exact modifiers, automatic failure, and zero HP. No unexpected
+console/HTTP errors; desktop/mobile recovery screenshots inspected and overflow
+checks passed. The unit regressions cover queue ordering, request persistence,
+automatic-save recovery, group/other-character rejection and scope changes.
+The full gate passes; TypeScript debt dropped to196 and CI is ratcheted accordingly.
