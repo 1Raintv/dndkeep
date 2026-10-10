@@ -142,6 +142,30 @@ test.describe('Atomic combat clock transitions',()=>{
   expect(sql(`select legendary_actions_remaining from combat_participants where id='${pb}'`)).toBe('4');
   await expect.poll(()=>JSON.parse(sql(`select coalesce(jsonb_agg(payload),'[]') from combat_events where encounter_id='${enc}' and event_type='legendary_actions_refilled'`))).toEqual([{refilled_from:1,refilled_to:4}]);
  });
+ for(const ownTurn of [true,false])test(`live Vex expires at the next own end (hit on own turn=${ownTurn})`,async({page})=>{
+  const vex={key:'mastery_vexed',name:'Vexed',source:'mastery:Rapier',onlyVsTargetParticipantId:pb,expiresAtEndOfTurnOf:pa,expiresAfterNextTurnStarts:true};
+  sql(`update combatants set active_buffs='[]' where id in('${ca}','${cb}');update combatants set active_buffs='${JSON.stringify([{key:'bless',name:'Bless',source:'spell',duration:8},vex])}' where id='${ca}';
+   update combat_encounters set current_turn_index=${ownTurn?0:1} where id='${enc}'`);
+  await signInFixtureDm(page);
+  const advance=async()=>expect(await page.evaluate(async id=>{const api=await import('/src/lib/combatEncounter.ts');return api.advanceTurn(id);},enc)).toEqual({ok:true});
+  const current=()=>JSON.parse(sql(`select active_buffs from combatants where id='${ca}'`));
+  if(ownTurn){await advance();expect(current().find((b:{key:string})=>b.key==='mastery_vexed')).toMatchObject({expiresAfterNextTurnStarts:true});}
+  await advance();expect(current().find((b:{key:string})=>b.key==='mastery_vexed')).toMatchObject({expiresAfterNextTurnStarts:false});
+  expect(await page.evaluate(async({buffs,target})=>{const api=await import('/src/lib/masteryRiders.ts');return api.surveyMasteryMarkers(buffs,target).adv;},{buffs:current(),target:pb})).toBe(true);
+  await advance();expect(current().some((b:{key:string})=>b.key==='mastery_vexed')).toBe(false);
+  expect(await page.evaluate(async({buffs,target})=>{const api=await import('/src/lib/masteryRiders.ts');return api.surveyMasteryMarkers(buffs,target).adv;},{buffs:current(),target:pb})).toBe(false);
+  await advance();expect(current()).toEqual([{key:'bless',name:'Bless',source:'spell',duration:6}]);
+ });
+ test('live single-actor round wrap cannot resurrect expired Vex',async({page})=>{
+  sql(`update combatants set is_dead=true,active_buffs='[]' where id='${cb}';update combatants set active_buffs='${JSON.stringify([
+   {key:'bless',name:'Bless',source:'spell',duration:8},
+   {key:'mastery_vexed',name:'Vexed',source:'mastery:Rapier',onlyVsTargetParticipantId:pb,expiresAtEndOfTurnOf:pa,expiresAfterNextTurnStarts:true}
+  ])}' where id='${ca}'`);
+  await signInFixtureDm(page);const advance=()=>page.evaluate(async id=>{const api=await import('/src/lib/combatEncounter.ts');return api.advanceTurn(id);},enc);
+  expect(await advance()).toEqual({ok:true});expect(JSON.parse(sql(`select active_buffs from combatants where id='${ca}'`))).toContainEqual(expect.objectContaining({key:'mastery_vexed',expiresAfterNextTurnStarts:false}));
+  expect(await advance()).toEqual({ok:true});expect(JSON.parse(sql(`select active_buffs from combatants where id='${ca}'`))).toEqual([{key:'bless',name:'Bless',source:'spell',duration:6}]);
+  expect(state()).toMatchObject({index:0,round:3,clock:2});
+ });
  test('browser recovery observes another request winner without advancing or rerunning its effects',async({page})=>{
   await signInFixtureDm(page);const loser={requestId:randomUUID(),encounterId:enc,expectedTurn:turn,incomingId:pb,nextIndex:1,nextRound:1};
   await page.evaluate(async({user,request})=>{const api=await import('/src/lib/api/combatTransitionRecovery.ts');api.saveCombatTransition(user,request);},{user:dm,request:loser});

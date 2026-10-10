@@ -1,3 +1,5 @@
+import {advanceMasteryExpiry,MASTERY_VEX_KEY} from '../rules/masteryExpiry';
+export {MASTERY_VEX_KEY} from '../rules/masteryExpiry';
 import {characterProficiencyBonus} from '../rules/proficiency';
 import { savingThrowPassed } from '../rules/savingThrows';
 // v2.630.0 — Weapon Mastery riders, Ship B part 1 (SRD 5.2.1).
@@ -12,8 +14,7 @@ import { savingThrowPassed } from '../rules/savingThrows';
 //   Vex    — hit + damage: attacker has Advantage on their next attack
 //            roll against THAT target (marker on the attacker, scoped
 //            via onlyVsTargetParticipantId, consumed on use, expires
-//            end of attacker's next turn — swept at start of the turn
-//            after via the same expiry hook)
+//            end of attacker's next turn)
 //   Topple — hit: target makes a CON save (DC 8 + attack ability mod
 //            + PB); fail → Prone via the existing condition system
 //   Push   — hit: DM-facing event "may push target up to 10 ft
@@ -41,7 +42,6 @@ import type { ActiveBuff } from './buffs';
 import type { PendingAttack } from '../types';
 
 export const MASTERY_SAP_KEY = 'mastery_sapped';
-export const MASTERY_VEX_KEY = 'mastery_vexed';
 export const MASTERY_SLOW_KEY = 'mastery_slowed';
 
 export interface MasteryContext {
@@ -198,11 +198,10 @@ export async function applyOnHitMasteryRiders(input: {
           name: 'Vexed',
           source: `mastery:${atk.attack_name}`,
           onlyVsTargetParticipantId: atk.target_participant_id,
-          // RAW: before the end of your next turn — swept at the start
-          // of the turn AFTER the attacker's next (nearest hook that
-          // never expires it early).
-          expiresAtStartOfTurnOf: atk.attacker_participant_id,
-          expiresSkipFirst: true,
+          // v2.869: arm at the next own turn's start, expire at its end.
+          // An off-turn hit uses that same next start, with no extra round.
+          expiresAtEndOfTurnOf: atk.attacker_participant_id,
+          expiresAfterNextTurnStarts: true,
         } as ActiveBuff,
       });
       return;
@@ -359,39 +358,24 @@ export async function grazeOnMiss(atk: PendingAttack): Promise<void> {
   }
 }
 
-/** Start-of-turn expiry sweep. Call from advanceTurn with the full
- *  participant list: removes mastery marker buffs whose
- *  expiresAtStartOfTurnOf matches the participant whose turn is
- *  starting. Vex sets expiresSkipFirst so it survives through the end
- *  of the attacker's next turn (flag cleared on first sweep, removed
- *  on the second). */
-export async function sweepExpiredMasteryMarkers(
-  incomingParticipantId: string,
-  rows: Array<{ id?: string; encounter_id?: string | null; campaign_id?: string; active_buffs?: unknown }>,
-): Promise<void> {
-  const { removeBuff, applyBuff } = await import('./buffs');
-  for (const row of rows) {
-    const buffs = ((row.active_buffs ?? []) as ActiveBuff[]).filter(
-      b => (b as any).expiresAtStartOfTurnOf === incomingParticipantId,
-    );
-    for (const b of buffs) {
-      if ((b as any).expiresSkipFirst) {
-        await applyBuff({
-          participantId: row.id as string,
-          campaignId: row.campaign_id as string | undefined,
-          encounterId: row.encounter_id ?? null,
-          emitEvent: false,
-          buff: { ...(b as any), expiresSkipFirst: undefined } as ActiveBuff,
-        });
-        continue;
-      }
-      await removeBuff({
-        participantId: row.id as string,
-        key: b.key,
-        reason: 'mastery_marker_expired',
-        campaignId: row.campaign_id as string | undefined,
-        encounterId: row.encounter_id ?? null,
-      });
-    }
+type MasteryRows=Array<{id?:string;encounter_id?:string|null;campaign_id?:string;active_buffs?:unknown}>;
+async function sweepMasteryBoundary(actor:string,rows:MasteryRows,timing:'turn_start'|'turn_end'):Promise<void>{
+ const {removeBuff,applyBuff}=await import('./buffs');
+ for(const row of rows){
+  const buffs=(row.active_buffs??[]) as ActiveBuff[];
+  const plan=advanceMasteryExpiry(buffs,actor,timing);
+  for(const b of plan.removed)await removeBuff({participantId:row.id as string,key:b.key,reason:'mastery_marker_expired',campaignId:row.campaign_id,encounterId:row.encounter_id??null});
+  for(const b of plan.next){
+   if(buffs.includes(b))continue;
+   await applyBuff({participantId:row.id as string,campaignId:row.campaign_id,encounterId:row.encounter_id??null,emitEvent:false,buff:b});
   }
+ }
+}
+/** Sap/Slow expire now; Vex becomes due at this turn's end. */
+export function sweepExpiredMasteryMarkers(incomingParticipantId:string,rows:MasteryRows):Promise<void>{
+ return sweepMasteryBoundary(incomingParticipantId,rows,'turn_start');
+}
+/** v2.869: Vex cannot leak into reactions after the attacker's next turn. */
+export function sweepEndedMasteryMarkers(outgoingParticipantId:string,rows:MasteryRows):Promise<void>{
+ return sweepMasteryBoundary(outgoingParticipantId,rows,'turn_end');
 }

@@ -6927,3 +6927,34 @@ failed as expected. Final required gate passes (3,396 units,195/195 TypeScript,
 255.2 KB entry); SQL lint/security advisors and changed-file ESLint pass (34
 existing combatEncounter warnings, no errors). Migration20261010070010 is applied
 and recorded locally only; no reset or unrelated history changes.
+
+### Correct live Vex end-of-turn expiry (unreleased)
+
+Vex previously used a second start-of-turn sweep to approximate its deadline,
+leaving Advantage available after the attacker's next turn ended. New markers
+now arm at the next own start and expire at that turn's end. The same lifecycle
+handles hits during the attacker's turn and reactions during another turn.
+Repeated start processing does not expire an armed Vex early. Existing saved
+Vex markers upgrade at their first source start, and already-armed legacy
+markers expire at the source end. Sap/Slow keep their start-boundary expiry.
+The pure boundary rule replaces the old imperative expiry decision logic and
+is wired into the actual live handler's outgoing and incoming phases.
+Source: [2024 Basic Rules, Vex](https://www.dndbeyond.com/sources/dnd/br-2024/equipment/#Vex).
+
+Round-wrap duration processing also read the original roster snapshot, which
+could restore removed markers or undo their newly armed state. It now obtains
+current combatant buffs after the turn effects. Missing/failed reads refuse an
+empty replacement. This fixes the demonstrated stale-snapshot resurrection;
+the remaining legacy read/write sequence is not an atomic concurrency guarantee.
+The saved clock transaction still needs corresponding timed-marker integration
+before replacing the live controller. No migration or deployment in this change.
+
+Verification:15 new rule/repository/live-helper unit cases pass. Six real-browser
+cases pass on desktop/mobile through advanceTurn: own-turn hits, off-turn hits,
+next-end expiry and single-actor round wraps with another timed buff. Advantage
+is present during the valid turn and absent afterwards. Restoring the old roster
+snapshot read makes the single-actor regression fail by undoing the armed expiry
+state; restoring the fix passes all six cases again. Full gate passes (3,411
+units,195/195 TypeScript,255.2 KB entry), changed-file ESLint has no errors and
+diff checks pass. This is a live timing correction, not completion of the durable
+turn controller or a guarantee against all concurrent buff edits.

@@ -50,7 +50,7 @@ vi.mock('./endOfTurnConditions',()=>({processEndOfTurnConditions:vi.fn(async()=>
 vi.mock('./buffs',()=>({processTurnTicks:h.state.ticks}));
 vi.mock('./auras',()=>({evaluateAurasOnTurnEnd:vi.fn(async()=>{})}));
 vi.mock('./movementGatedFeatures',()=>({resetMovementGatedFeatures:vi.fn(async()=>{})}));
-vi.mock('./masteryRiders',()=>({sweepExpiredMasteryMarkers:vi.fn(async()=>{})}));
+vi.mock('./masteryRiders',()=>({sweepExpiredMasteryMarkers:vi.fn(async()=>{}),sweepEndedMasteryMarkers:vi.fn(async()=>{})}));
 vi.mock('./api/checked', () => ({ checkedWrite: vi.fn(async () => ({ error: null })) }));
 
 import { emitCombatEvent } from './combatEvents';

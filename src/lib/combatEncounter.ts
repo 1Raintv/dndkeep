@@ -841,6 +841,12 @@ async function advanceTurnOnce(encounterId: string): Promise<CombatActionResult>
     }
   }
 
+  // v2.869: expire end-boundary mastery before the incoming start sweep.
+  if(outgoingForConditions){
+    const {sweepEndedMasteryMarkers}=await import('./masteryRiders');
+    await sweepEndedMasteryMarkers(outgoingForConditions.id,rows);
+  }
+
   // Reset per-turn budgets for the incoming actor
   const incomingParticipant = active[nextIdx];
 
@@ -990,9 +996,9 @@ async function advanceTurnOnce(encounterId: string): Promise<CombatActionResult>
   // indefinite buffs (duration < 0) pass through; the rest tick down
   // and drop at ≤ 0.
   //
-  // Reads from the already-fetched `rows` (which spread the JOINed
-  // combatants.active_buffs via JOINED_COMBATANT_FIELDS), writes back
-  // only when `changed` is true to avoid a no-op storm on every turn.
+  // v2.869: read current buffs after mastery/tick changes. Reusing the
+  // original roster snapshot resurrected expired effects on round wrap.
+  // Write only when a duration changed.
   //
   // Fire-and-forget: a write failure here shouldn't strand the DM in
   // an unfinishable advanceTurn call. Out-of-combat catch-up via
@@ -1004,7 +1010,8 @@ async function advanceTurnOnce(encounterId: string): Promise<CombatActionResult>
         active_buffs?: unknown;
       }>) {
         if (!row.combatant_id) continue;
-        const current = (row.active_buffs ?? null) as
+        const {readCombatantBuffs}=await import('./api/buffs');
+        const current = (await readCombatantBuffs(row.combatant_id)) as
           | Array<{ duration?: number }>
           | null;
         const { changed, next } = decrementBuffDurations(

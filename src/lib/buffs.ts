@@ -55,12 +55,12 @@ export interface ActiveBuff {
    *  pendingAttack.applyDamage fires it and removes the buff when
    *  the pool empties. */
   meleeRetaliation?: { damage: number; damageType: string; requiresTempHp?: boolean };
-  /** v2.630.0 — Weapon Mastery markers: swept at the start of this
-   *  participant's turn by sweepExpiredMasteryMarkers (advanceTurn).
-   *  expiresSkipFirst survives one sweep (Vex: "end of your next
-   *  turn" — cleared on the first sweep, removed on the second). */
+  /** Start-boundary markers (Sap/Slow); the skip flag supports old saved Vex. */
   expiresAtStartOfTurnOf?: string;
   expiresSkipFirst?: boolean;
+  /** v2.869: Vex arms on the next own start and expires at that turn's end. */
+  expiresAtEndOfTurnOf?: string;
+  expiresAfterNextTurnStarts?: boolean;
 }
 
 /** v2.602.0 — Per-turn tick spec carried on a buff. Amount per tick is
