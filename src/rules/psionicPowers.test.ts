@@ -98,3 +98,18 @@ it('Warp requires the subclass but does not require an Energy Die for the base u
  expect(resolvePsionicPower({...c,subclass:'Psi Warper',level:2},use,true)).toBeNull();
  expect(resolvePsionicPower({...c,subclass:'Psi Warper',class_resources:{'psionic-energy-dice':0}},use,true)).toMatchObject({cost:0,feet:30});
 });
+
+
+it.each([null,'0',false,-1,0.5,NaN,Infinity,2147483647])('rejects malformed Connection counter %s without blocking Propel',raw=>{
+ const invalid={...c,feature_uses:{'Telepathic Connection':raw}} as unknown as typeof c;
+ expect(psionicPowerState(invalid)).toMatchObject({valid:true,connectionValid:false,connectionFree:false});
+ for(const free of [true,false])expect(resolvePsionicPower(invalid,{kind:'connection',free,roll:4})).toBeNull();
+ expect(resolvePsionicPower(invalid,{kind:'propel',mode:'free',roll:0},true)).toMatchObject({feet:5,cost:0});
+});
+it.each([undefined,0,1,2147483646])('accepts valid Connection counter %s including missing legacy value',uses=>{
+ const feature_uses:Record<string,number>=uses===undefined?{}:{'Telepathic Connection':uses};
+ const saved={...c,feature_uses};
+ const free=uses===undefined||uses===0;
+ expect(psionicPowerState(saved)).toMatchObject({connectionValid:true,connectionFree:free});
+ expect(resolvePsionicPower(saved,{kind:'connection',free,roll:4})).toMatchObject({cost:free?0:1,patch:{feature_uses:{'Telepathic Connection':(uses??0)+1}}});
+});

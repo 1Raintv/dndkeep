@@ -136,3 +136,29 @@ it('keeps a valid power through unrelated HP and available-pool changes',async()
  await waitFor(()=>expect(onUse).toHaveBeenCalledTimes(1));
  expect(onUpdate).toHaveBeenCalledTimes(1);
 });
+
+
+it('blocks an invalid Connection tracker before confirmation',()=>{
+ const onUse=vi.fn();
+ render(<ModalProvider><PsionicPowerButton character={{...character,feature_uses:{'Telepathic Connection':-1}}} onUpdate={vi.fn()} kind="connection" onUse={onUse}/></ModalProvider>);
+ const button=screen.getByRole('button',{name:'Extend (1 die)'}) as HTMLButtonElement;
+ expect(button.disabled).toBe(true);expect(button.title).toBe('Check Telepathic Connection uses.');
+ fireEvent.click(button);expect(screen.queryByRole('dialog')).toBeNull();expect(onUse).not.toHaveBeenCalled();
+});
+it('rejects malformed uses arriving during a paid Connection confirmation',async()=>{
+ const onUse=vi.fn();
+ const ui=(uses:number)=><ModalProvider><PsionicPowerButton character={{...character,feature_uses:{'Telepathic Connection':uses}}} onUpdate={vi.fn()} kind="connection" onUse={onUse}/></ModalProvider>;
+ const view=render(ui(1));fireEvent.click(screen.getByRole('button',{name:'Extend (1 die)'}));
+ view.rerender(ui(1.5));fireEvent.click(screen.getByRole('button',{name:'Extend telepathy'}));
+ await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
+ expect(onUse).not.toHaveBeenCalled();
+});
+it('rejects malformed Connection uses before paying for Surge',async()=>{
+ mocks.roll=1;const onUse=vi.fn(),onUpdate=vi.fn();
+ const ui=(uses:number)=><ModalProvider><PsionicPowerButton character={{...highLevel,feature_uses:{'Telepathic Connection':uses}}} onUpdate={onUpdate} kind="connection" onUse={onUse}/></ModalProvider>;
+ const view=render(ui(1));fireEvent.click(screen.getByRole('button',{name:'Extend (1 die)'}));
+ fireEvent.click(screen.getByRole('button',{name:'Extend telepathy'}));await screen.findByRole('dialog',{name:'Psionic Surge'});
+ view.rerender(ui(1.5));fireEvent.click(screen.getByRole('button',{name:'Spend 1 Hit Point Die'}));
+ await waitFor(()=>expect(mocks.toast).toHaveBeenCalledWith(expect.stringContaining('Surge was not applied'),'warn'));
+ expect(onUse).not.toHaveBeenCalled();expect(onUpdate).not.toHaveBeenCalled();
+});

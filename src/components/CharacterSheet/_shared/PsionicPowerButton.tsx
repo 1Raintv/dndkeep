@@ -31,12 +31,13 @@ export default function PsionicPowerButton({persistence,character,kind,onUse,onU
     const active=()=>mounted.current&&latest.current.id===id&&context.current.epoch===epoch;
     try {
       const before=psionicPowerState(latest.current);
+      if(mode==='connection'&&!before.connectionValid)return;
       if(mode==='connection' && !await modal.confirm({title:'Telepathic Connection',message:`Your base telepathy is ${before.telepathyRange} ft. Roll 1d${before.sides} to extend it by 10 times the roll for 1 hour. ${before.connectionFree?'This first extension after your Long Rest costs no die.':'This extension spends 1 Psionic Energy Die.'}`,confirmLabel:'Extend telepathy'}))return;
       if(!active())return;
       const now=psionicPowerState(latest.current);
       if(!now.valid||(warp&&!now.warp))return;
       if((mode==='powered'||mode==='connection')&&now.dice<1)return;
-      if(mode==='connection'&&now.connectionFree!==before.connectionFree)return;
+      if(mode==='connection'&&(!now.connectionValid||now.connectionFree!==before.connectionFree))return;
       if(mode==='technique'&&!now.technique)return;
       const originalRoll=mode==='free'?0:rollDie(mode==='technique'?4:now.sides);
       let roll=originalRoll,usedSurge=false;let enkindledRolls:number[]=[];
@@ -46,7 +47,7 @@ export default function PsionicPowerButton({persistence,character,kind,onUse,onU
           recoveryNote:`Base power is not resolved. ${mode==='connection'&&now.connectionFree?'First Connection extension costs no Energy Die.':'Check the base Energy Die cost when resolving the power.'}`,
           feature:mode==='connection'?'Telepathic Connection':'Telekinetic Propel',campaignId:latest.current.campaign_id,
           current:()=>latest.current,active,
-          eligible:c=>{const current=psionicPowerState(c);return current.valid&&current.dice>0&&(mode!=='connection'||current.connectionFree===now.connectionFree);},
+          eligible:c=>{const current=psionicPowerState(c);return current.valid&&current.dice>0&&(mode!=='connection'||(current.connectionValid&&current.connectionFree===now.connectionFree));},
 
           prompt:modal.prompt,confirm:modal.confirm,warn:message=>showToast(message,'warn')});
         if(!surged||surged.unconfirmed)return;
@@ -54,14 +55,14 @@ export default function PsionicPowerButton({persistence,character,kind,onUse,onU
       }
       if(!active())return;
       const current=psionicPowerState(latest.current);
-      if(!current.valid||((mode==='powered'||mode==='connection')&&current.dice<1)||(mode==='connection'&&current.connectionFree!==now.connectionFree))return;
+      if(!current.valid||((mode==='powered'||mode==='connection')&&current.dice<1)||(mode==='connection'&&(!current.connectionValid||current.connectionFree!==now.connectionFree)))return;
       const metadata={...(usedSurge?{originalRoll,surged:true as const}:{}),...(enkindledRolls.length?{originalRoll,enkindledRolls}:{})};
       await callback.current(mode==='connection'?{kind:'connection',free:now.connectionFree,roll,...metadata}:
         {kind:'propel',mode,roll,...metadata,...(warp?{movement:'warp' as const}:{})});
     }finally{busy.current=false;if(mounted.current)setPending(false);}
   }
   return <div style={{display:'flex',gap:4,flexWrap:'wrap',justifyContent:'flex-end'}}>
-    {kind==='connection'?<button style={buttonStyle} title={state.dice<1?'You need an available Psionic Energy Die to roll.':undefined} disabled={pending||!state.valid||state.dice<1} onClick={()=>run('connection')}>{state.connectionFree?'Extend (free)':'Extend (1 die)'}</button>:<>
+    {kind==='connection'?<button style={buttonStyle} title={!state.connectionValid?'Check Telepathic Connection uses.':state.dice<1?'You need an available Psionic Energy Die to roll.':undefined} disabled={pending||!state.valid||!state.connectionValid||state.dice<1} onClick={()=>run('connection')}>{state.connectionFree?'Extend (free)':'Extend (1 die)'}</button>:<>
       <button style={buttonStyle} disabled={pending||!state.valid||(warp&&!state.warp)} onClick={()=>run('free')}>{warp?'Teleport (no die)':'Free 5 ft'}</button>
       {state.technique&&!warp&&<button style={buttonStyle} disabled={pending||!state.valid} onClick={()=>run('technique')}>Free d4</button>}
       <button style={buttonStyle} title={`Roll 1d${state.sides}; expend it only if the target fails its Strength save.`} disabled={pending||!state.valid||state.dice<1||(warp&&!state.warp)} onClick={()=>run('powered')}>Roll Energy Die</button>

@@ -8841,3 +8841,20 @@ the confirmation regression, restored code passes. Full gate: 4,064 units,
 TS 194/194, entry 255.7 KB. No migration or deployment. Legacy manual bonus
 riders, logging durability, feature-specific unarmed scaling and action-budget
 integration remain separate unfinished work.
+
+### Psion follow-up — validate Connection uses before enhancement payment
+
+Telepathic Connection now validates its saved use count before confirmation,
+after confirmation, before paid roll enhancements, and before final submission.
+Missing legacy counts remain a free first use; valid positive integer counts
+remain paid extensions. Null, strings, fractions, negative values and counts
+outside the server's integer range are rejected without rewriting resources.
+The pure settlement function also rejects invalid counters. An invalid Connection
+counter does not disable unrelated Telekinetic Propel uses.
+
+Added 12 rule cases and three component regressions, including invalid counters
+arriving while a paid-use confirmation or Surge prompt is open. All 4,079 unit
+tests and the required verification gate pass (TS 194/194; entry 255.7 KB).
+No database migration, layout change, or deployment. This closes a client-side
+preflight gap; it does not certify all Psion automation or eliminate concurrency
+between independent server transactions.

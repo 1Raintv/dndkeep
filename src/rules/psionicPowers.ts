@@ -10,9 +10,13 @@ export function psionicPowerState(c:PsionicPowerCharacter) {
   const progression=psionProgression(c),level=progression?.level??0;
   const raw=c.class_resources?.['psionic-energy-dice'];
   const remaining=psionicPoolRemaining(level,raw);
-  return {valid:!!progression&&remaining!==null,level,dice:remaining??0,
+  // v2.869 — match the saved-use integer guard before rolling or offering paid enhancements.
+  // A corrupt Connection counter must not disable unrelated Propel uses.
+  const connectionUses=c.feature_uses?.[CONNECTION_USE];
+  const connectionValid=connectionUses===undefined||(typeof connectionUses==='number'&&Number.isInteger(connectionUses)&&connectionUses>=0&&connectionUses<=2147483646);
+  return {connectionValid,valid:!!progression&&remaining!==null,level,dice:remaining??0,
     sides:psionicDieSides(level),
-    connectionFree:!(c.feature_uses?.[CONNECTION_USE]),
+    connectionFree:connectionValid&&(connectionUses===undefined||connectionUses===0),
     telepathyRange:progression?.subclass==='Telepath'&&level>=6?60:30,
     warp:progression?.subclass==='Psi Warper'&&level>=3,
     technique:progression?.subclass==='Psykinetic'&&level>=3};
@@ -28,7 +32,7 @@ export function resolvePsionicPower(c:PsionicPowerCharacter,use:PsionicPowerUse,
   if(isTechnique&&!state.technique)return null;
   if(use.kind==='propel'&&failedSave===undefined)return null;
   // A first-free use cannot become a paid use while its dialog is open.
-  if(use.kind==='connection'&&use.free!==state.connectionFree)return null;
+  if(use.kind==='connection'&&(!state.connectionValid||use.free!==state.connectionFree))return null;
   const needsDie=use.kind==='connection'?!use.free:use.mode==='powered';
   if((use.kind==='connection'||needsDie)&&state.dice<1)return null;
   const cost=needsDie&&(use.kind==='connection'||failedSave)?1:0;
