@@ -83,7 +83,8 @@ export async function getMasteryContext(atk: PendingAttack): Promise<MasteryCont
   if (!weaponEntry || !chosen.includes(weaponEntry.name)) return null;
 
   const isRanged = weaponEntry.group === 'simple_ranged' || weaponEntry.group === 'martial_ranged';
-  const abilityMod=weaponAbilityModifier(mod(ch.strength),mod(ch.dexterity),{ranged:isRanged,finesse:weaponEntry.finesse});
+  // v2.869: retain the declared ability even if buffs or equipment change later.
+  const abilityMod=atk.attack_ability_modifier??weaponAbilityModifier(mod(ch.strength),mod(ch.dexterity),{ranged:isRanged,finesse:weaponEntry.finesse});
   const profBonus = characterProficiencyBonus(ch);
   return { mastery: weaponEntry.mastery, abilityMod, profBonus };
 }

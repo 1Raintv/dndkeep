@@ -124,6 +124,8 @@ export interface DeclareAttackInput {
   attackKind: 'attack_roll' | 'save' | 'auto_hit';
 
   attackBonus?: number | null;
+  /** Ability contribution only, captured before later stat/bonus changes. */
+  attackAbilityModifier?: number | null;
   targetAC?: number | null;
   saveDC?: number | null;
   saveAbility?: string | null;
@@ -159,6 +161,7 @@ export async function declareAttack(input: DeclareAttackInput): Promise<PendingA
       attack_name: input.attackName,
       attack_kind: input.attackKind,
       attack_bonus: input.attackBonus ?? null,
+      attack_ability_modifier: input.attackAbilityModifier ?? null,
       target_ac: input.targetAC ?? null,
       save_dc: input.saveDC ?? null,
       save_ability: input.saveAbility ?? null,
@@ -224,6 +227,7 @@ export async function declareAttack(input: DeclareAttackInput): Promise<PendingA
       attack_kind: input.attackKind,
       attack_source: input.attackSource ?? null,
       attack_bonus: input.attackBonus ?? null,
+      attack_ability_modifier: input.attackAbilityModifier ?? null,
       target_ac: input.targetAC ?? null,
       save_dc: input.saveDC ?? null,
       save_ability: input.saveAbility ?? null,
@@ -301,6 +305,7 @@ export async function declareMultiTargetAttack(
     attack_name: input.attackName,
     attack_kind: input.attackKind,
     attack_bonus: input.attackBonus ?? null,
+    attack_ability_modifier: input.attackAbilityModifier ?? null,
     target_ac: input.targetAC ?? null,
     save_dc: input.saveDC ?? null,
     save_ability: input.saveAbility ?? null,

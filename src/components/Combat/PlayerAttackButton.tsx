@@ -24,6 +24,8 @@ interface Props {
   /** Attack bonus (includes proficiency, ability mod, magic item bonuses).
    *  Only used when attackKind='attack_roll'. */
   attackBonus?: number;
+  /** Actual selected ability contribution, excluding proficiency and item bonuses. */
+  attackAbilityModifier?: number;
   /** Damage dice expression like "1d8+3". */
   damageDice: string;
   damageType: string;
@@ -55,6 +57,7 @@ interface Props {
 export default function PlayerAttackButton({
   characterId,
   attackBonus,
+  attackAbilityModifier,
   damageDice,
   damageType,
   attackName,
@@ -109,6 +112,7 @@ export default function PlayerAttackButton({
         attackKind,
         // Attack-roll specifics
         attackBonus: attackKind === 'attack_roll' ? (attackBonus ?? 0) : null,
+        attackAbilityModifier: attackKind === 'attack_roll' ? attackAbilityModifier ?? null : null,
         targetAC: attackKind === 'attack_roll' ? target.ac : null,
         // Save-based specifics
         saveDC: attackKind === 'save' ? saveDC ?? null : null,

@@ -1,5 +1,31 @@
 # DNDKeep — Two-Track Roadmap
 
+### Declared attack ability snapshot (local; not released)
+
+Migration 20261010182115 saves an optional integer ability contribution on each
+pending attack. A private trigger rejects every later change, including null
+backfills and clearing an existing value; existing rows remain null. No permission
+to call the trigger function is granted to application roles. Local application
+preserved the foreign ledger row and verified the exact new migration statement.
+
+Generated weapon rows pass the selected modifier through the combat button, which
+keeps its original request across rerenders/retries. Single- and multi-target
+writes retain the value separately from attack totals. Mastery effects prefer this
+captured value, including zero/negative modifiers. Existing attacks and manual
+weapon rows without metadata retain the old stat fallback for now. Follow-up:
+provide reviewed ability selection for manual declarations, require verified
+values for automated Graze, and move Graze after final reactions into atomic
+HP/history application. The current eager Graze writer remains a release blocker.
+
+Validation: full gate passed (4,487 tests, TS 194/194, entry 255.7 KB).
+All 34 desktop/mobile attack-outcome database cases passed, including live
+creation, retry, immutable updates and null handling for the new column. SQL lint
+has no diagnostics for the new guard; 20 pre-existing function warnings remain.
+Evidence: `.tmp/ability-snapshot-{unit,db,final-gate}.log` and
+`.tmp/ability-snapshot-lint.json`. No production changes. Release rehearsals still
+need migrations 333–335.
+
+
 ### Weapon ability classification (local; not released)
 
 Inventory weapons now use the known weapon category instead of treating every
@@ -11,11 +37,9 @@ rule, including ranged Finesse weapons. Custom weapons still use explicit range
 and property text as a fallback.
 
 Generated weapon rows retain the ability contribution separately from proficiency
-and magic bonuses. This is not yet a saved pending-attack snapshot. Next: capture
-the reviewed modifier at declaration (including manually configured weapons), then
-move optional Graze to final-outcome damage resolution after reactions and make
-HP/history updates atomic. Current Graze timing and raw-stat lookup remain open;
-this change does not claim to fix those. Thirty focused regression cases passed.
+and magic bonuses. The subsequent snapshot work above now persists it for new
+weapon attacks. Manual ability selection and final-outcome Graze damage remain
+open; this classification change does not claim to fix those. Thirty focused regression cases passed.
 Full gate passed: 4,476 tests, TS 194/194, entry 255.7 KB. Evidence:
 `.tmp/weapon-ability-gate.log`. No schema or production changes.
 

@@ -15,6 +15,28 @@ test.describe('saved attack outcome rules',()=>{
    insert into campaigns(id,owner_id,name) values('${camp}','${owner}','Attack outcome fixture');`);
  });
  test.afterEach(()=>{sql(`delete from campaigns where id='${camp}';delete from auth.users where id='${owner}'`);});
+ test('declared ability contribution survives retries and rejects later rewrites',async({page})=>{
+  await signInAsSeedDm(page,email);
+  for(const modifier of [4,0,-2,null]){
+   const id=randomUUID();
+   const result=await page.evaluate(async({id,camp,modifier})=>{
+    const {declareAttack}=await import('/src/lib/pendingAttack.ts');
+    const {supabase}=await import('/src/lib/supabase.ts');
+    const input={requestId:id,campaignId:camp,attackerName:'Fixture attacker',attackerType:'system' as const,targetName:'Fixture target',targetType:'object' as const,
+     attackName:'Greatsword',attackKind:'attack_roll' as const,attackBonus:9,attackAbilityModifier:modifier,damageDice:'2d6+6',damageType:'slashing'};
+    const first=await declareAttack(input),retry=await declareAttack(input);
+    const rewrite=await supabase.from('pending_attacks').update({attack_ability_modifier:7}).eq('id',id).select();
+    const clear=await supabase.from('pending_attacks').update({attack_ability_modifier:modifier===null?0:null}).eq('id',id).select();
+    const same=await supabase.from('pending_attacks').update({attack_ability_modifier:modifier}).eq('id',id).select();
+    return {first,retry,rewrite:rewrite.error?.message,clear:clear.error?.message,same:same.error};
+   },{id,camp,modifier});
+   expect(result.first).toMatchObject({id,attack_bonus:9,attack_ability_modifier:modifier});
+   expect(result.retry).toMatchObject({id,attack_bonus:9,attack_ability_modifier:modifier});
+   expect(result.rewrite).toContain('cannot be rewritten');expect(result.clear).toContain('cannot be rewritten');expect(result.same).toBeNull();
+   expect(JSON.parse(sql(`select to_json(attack_ability_modifier) from pending_attacks where id='${id}'`)||'null')).toBe(modifier);
+  }
+  expect(sql(`select has_function_privilege('authenticated','dndkeep_private.guard_attack_ability_modifier()','execute')`)).toBe('f');
+ });
  test('live attack recording preserves cover, natural extremes and the selected house rule',async({page})=>{
   await signInAsSeedDm(page,email);
   const cases=[{die:20,bonus:-10,ac:30,cover:'none',nat1:true,result:'crit'},

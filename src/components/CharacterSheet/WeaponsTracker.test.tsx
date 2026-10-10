@@ -61,3 +61,9 @@ it.each([0,-2])('flat unarmed damage %i is floored at zero, including critical h
  fireEvent.click(screen.getByRole('button',{name:'STRIKE'}));fireEvent.click(screen.getByRole('button',{name:/^Damage/}));
  fireEvent.click(screen.getByRole('button',{name:/^Confirm hit/}));expect(m.trigger.mock.calls[1][0].total).toBe(0);
 });
+
+it('passes the known ability contribution through without deriving it from damage',()=>{
+ const weapon:WeaponItem={id:'sword',name:'Greatsword',attackBonus:9,attackAbilityModifier:4,damageDice:'2d6',damageBonus:6,damageType:'slashing',range:'Melee',properties:'',notes:''};
+ render(<WeaponsTracker weapons={[weapon]} attacksPerAction={1} onUpdate={vi.fn()} historyCharacterId="hero"/>);
+ expect(m.attack).toHaveBeenCalledWith(expect.objectContaining({attackBonus:9,attackAbilityModifier:4}));
+});

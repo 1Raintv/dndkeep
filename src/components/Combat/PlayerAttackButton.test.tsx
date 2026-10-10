@@ -42,3 +42,14 @@ it('does not roll or retry the payment callback after a confirmed declaration ca
  expect(paid).toHaveBeenCalledTimes(1);expect(api.rollAttackRoll).not.toHaveBeenCalled();expect(screen.queryByRole('button',{name:'Retry declaration'})).toBeNull();
  expect(screen.getByRole('alert').textContent).toContain('resources');
 });
+
+it('retains the original ability modifier across a failed declaration and sheet rerender',async()=>{
+ api.declareAttack.mockRejectedValueOnce(new Error('response lost'));
+ const props={characterId:'char',attackName:'Greatsword',damageDice:'2d6+6',damageType:'slashing',attackBonus:9,attackAbilityModifier:4};
+ const view=render(<PlayerAttackButton {...props}/>);
+ fireEvent.click(screen.getByRole('button',{name:/Attack/}));fireEvent.click(screen.getByRole('button',{name:'Choose goblin'}));
+ await screen.findByRole('alert');view.rerender(<PlayerAttackButton {...props} attackAbilityModifier={7} attackBonus={12}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Retry declaration'}));await waitFor(()=>expect(api.rollAttackRoll).toHaveBeenCalled());
+ expect(api.declareAttack.mock.calls[1][0]).toMatchObject({attackBonus:9,attackAbilityModifier:4});
+ expect(api.declareAttack.mock.calls[1][0]).toEqual(api.declareAttack.mock.calls[0][0]);
+});

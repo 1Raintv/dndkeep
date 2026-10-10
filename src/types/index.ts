@@ -981,6 +981,7 @@ export interface PendingAttack {
   attack_kind: AttackKind;
 
   attack_bonus: number | null;
+  attack_ability_modifier?: number | null;
   target_ac: number | null;
   attack_d20: number | null;
   attack_total: number | null;
