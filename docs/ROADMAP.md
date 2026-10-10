@@ -1,5 +1,27 @@
 # DNDKeep — Two-Track Roadmap
 
+### Connection integration — private saved lifecycle (local; not released)
+
+Migration 20261010145159 adds private Connection declarations and linked
+Surge/Enkindled receipts. Beginning a declaration atomically claims its Bonus
+Action and first-free/paid Energy Die use, preserving the original roll and
+game-clock start. Finalization recovers that same roll without renewing its
+hour. Enhancement retries reuse their payment; expired/rest-ended/missing-clock
+uses cannot spend new Hit Dice. Restoration accounts for one elapsed minute;
+completed supported rests end the effect. Owner checks and revoked direct
+execution keep this private until the player-facing dispatcher is integrated.
+
+Local database coverage includes first-free and later paid extensions, changed
+replays, failed-payment action rollback, shared Bonus Action limits, linked
+Surge and Enkindled totals, exact expiry, restoration, short rests, ownership
+and missing clocks. Existing player controls have not switched to this lifecycle.
+Next: public receipt validation/dispatcher, durable client recovery, active
+range display and desktop/mobile verification. Overlapping active extensions
+must be resolved at the range-read layer; saved durations do not stack.
+
+Repository migration count is now 319. The 318-migration isolated release
+rehearsals predate this private lifecycle and must be refreshed before release.
+
 ### Connection integration — shared rules foundation (not released)
 
 `telepathicConnection` now owns the validated base/extended range calculation;
