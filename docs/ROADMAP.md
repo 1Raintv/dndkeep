@@ -9556,3 +9556,23 @@ Applied locally with exact SQL/ledger equality; preserved foreign local version
 20261008213500 when CLI refused that history. Repo now has 322 migrations; the
 321-migration release rehearsals need this new file before release. Production
 unchanged. No player-facing Telepath control is enabled by this checkpoint.
+
+
+### Strict targeting keeps the selected map
+
+While preparing Telepath spatial checks, found that loadActiveBattleMap could
+silently fall back to another scene when an explicitly selected scene was
+missing, even in strict mode. Strict callers now reject that lookup before
+loading another map's tokens/walls. The existing attack/spell picker loading
+contract blocks selection and offers retry. Non-strict legacy fallback and
+successful no-map/default-scene lookup remain unchanged.
+
+Unit regression asserts no second scene query. An authenticated local browser
+check loads the selected map, deletes that disposable fixture scene, verifies
+the strict read rejects, and verifies an explicit default-scene read still
+finds the other map. No player scene or production data was modified.
+
+Telepath distance/visibility acceptance remains next: use exact instance binding
+and the current scene, and never treat absent map evidence as proof of range or
+sight. Existing center-ray wall checks alone do not establish visibility through
+darkness/invisibility; that still needs supported vision evidence or DM review.

@@ -130,3 +130,10 @@ describe('strict interactive map reads',()=>{
     await expect(loadActiveBattleMap('c',{viewedSceneId:null,throwOnError:true})).resolves.toBeNull();
   });
 });
+
+it('strict targeting never substitutes another scene when the selected scene disappears',async()=>{
+ h.state.queries=[];let reads=0;
+ h.state.respond=table=>({data:table==='scenes'?(++reads===1?null:{id:'different',grid_size_px:70,width_cells:10,height_cells:10}):[],error:null});
+ await expect(loadActiveBattleMap('campaign',{viewedSceneId:'removed',throwOnError:true})).rejects.toThrow('selected map is unavailable');
+ expect(h.state.queries.map(q=>q.table)).toEqual(['scenes']);
+});

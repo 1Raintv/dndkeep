@@ -80,4 +80,22 @@ test.describe('saved attack outcome rules',()=>{
   expect(recovered.rolls).toBe(0);expect(recovered.attack?.attack_roll_snapshot).toEqual(saved);
  });
 
+ test('target checks reject a removed scene instead of loading another campaign map',async({page})=>{
+  const selected=randomUUID(),otherScene=randomUUID();
+  sql(`insert into scenes(id,campaign_id,owner_id,name,grid_type,grid_size_px,width_cells,height_cells,ambient_light,is_published) values
+   ('${selected}','${camp}','${owner}','Selected arena','square',70,10,10,'bright',true),
+   ('${otherScene}','${camp}','${owner}','Other arena','square',70,10,10,'bright',true)`);
+  await signInAsSeedDm(page,email);
+  expect(await page.evaluate(async({camp,selected})=>{
+   const {loadActiveBattleMap}=await import('/src/lib/battleMapGeometry.ts');return (await loadActiveBattleMap(camp,{viewedSceneId:selected,throwOnError:true}))?.id;
+  },{camp,selected})).toBe(selected);
+  sql(`delete from scenes where id='${selected}'`);
+  const result=await page.evaluate(async({camp,selected})=>{
+   const {loadActiveBattleMap}=await import('/src/lib/battleMapGeometry.ts');let error:string|null=null;
+   try{await loadActiveBattleMap(camp,{viewedSceneId:selected,throwOnError:true});}catch(cause){error=String(cause);}
+   return {error,defaultId:(await loadActiveBattleMap(camp,{viewedSceneId:null,throwOnError:true}))?.id};
+  },{camp,selected});
+  expect(result.error).toContain('selected map is unavailable');expect(result.defaultId).toBe(otherScene);
+ });
+
 });
