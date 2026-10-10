@@ -6,7 +6,7 @@
 // offer is auto-declined via client-side timer (DB janitor could also do this
 // on a schedule later).
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import {acceptOpportunityAttack} from '../../lib/api/opportunityAttack';
@@ -15,6 +15,10 @@ import { acceptReaction, declineReaction, expireReaction } from '../../lib/pendi
 import { rollAttackRoll } from '../../lib/pendingAttack';
 import type { PendingReaction, PendingAttack } from '../../types';
 
+
+import {lazyWithRetry} from '../../lib/lazyWithRetry';
+const TelepathReactionPrompt=lazyWithRetry(()=>import('./TelepathReactionPrompt'));
+const savedTelepath=(key:string)=>key==='telepath_distraction'||key==='telepath_bolstering';
 
 interface Props {
   campaignId: string;
@@ -77,11 +81,11 @@ export default function ReactionPromptModal({ campaignId }: Props) {
   useEffect(() => {
     // audit fix: this component is always mounted as a listener — only tick
     // the 4 Hz countdown clock while there's actually something to count down.
-    if (!(allOffers.length)) return;
+    if (!allOffers.some(offer=>!savedTelepath(offer.reaction_key))) return;
     setNow(Date.now()); // fresh baseline the moment an offer appears
     const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
-  }, [allOffers.length]);
+  }, [allOffers]);
 
   // Auto-expire any offer whose expires_at has passed
   useEffect(() => {
@@ -89,6 +93,7 @@ export default function ReactionPromptModal({ campaignId }: Props) {
     // housekeeping, and a Cleave offer must expire on its own timer
     // even though this modal never renders it.
     for (const o of allOffers) {
+      if(savedTelepath(o.reaction_key))continue; // Saved dice require explicit settlement.
       const exp = new Date(o.expires_at).getTime();
       if (now >= exp) {
         expireReaction(o.id).catch(() => {});
@@ -131,8 +136,8 @@ export default function ReactionPromptModal({ campaignId }: Props) {
     // Other reactions (Shield, Uncanny Dodge, Absorb Elements) belong to the
     // player who owns the reacting character.
     return offers.filter(o =>
-      o.reaction_key === 'opportunity_attack'
-      && (o.reactor_type === 'creature' || o.reactor_type === 'monster' || o.reactor_type === 'npc')
+      savedTelepath(o.reaction_key)||(o.reaction_key === 'opportunity_attack'
+      && (o.reactor_type === 'creature' || o.reactor_type === 'monster' || o.reactor_type === 'npc'))
     );
   }, [isDM, allOffers]);
 
@@ -209,6 +214,8 @@ export default function ReactionPromptModal({ campaignId }: Props) {
   // Timer color: green > yellow > red as time runs out
   const timerColor = secondsLeft > 60 ? '#34d399' : secondsLeft > 20 ? '#fbbf24' : '#f87171';
   const progressPct = Math.max(0, Math.min(100, (secondsLeft / 120) * 100));
+
+  if(savedTelepath(urgent.reaction_key))return <Suspense fallback={null}><TelepathReactionPrompt key={urgent.id} offer={urgent} isDM={isDM} onSettled={()=>void load()}/></Suspense>;
 
   return createPortal(
     <div style={{

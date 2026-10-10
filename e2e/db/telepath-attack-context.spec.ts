@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {expect,test} from '@playwright/test';
@@ -277,6 +278,35 @@ test.describe('Telepath attack context',()=>{
   expect(result.result).toMatchObject({cancelled:cancel,energyCost:cancel?0:1,reactionCost:1});
   expect(sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('3');
   await page.close();
+ });
+ for(const cancel of [false,true])test(`saved Telepath prompt settles enhancements without generic expiry (cancel=${cancel})`,async({page},info)=>{
+  const login=cancel?other:owner;
+  sql(`update auth.users set instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),created_at=now(),updated_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${login}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${login}','${login}',jsonb_build_object('sub','${login}','email','${login}@action.local'),'email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${login}@action.local`);
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
+  if(cancel)sql(`update characters set level=20,class_resources='{"psionic-energy-dice":12}',hit_dice_spent=0 where id='${character}'`);
+  const d=beginSaved(2);if(cancel)sql(`update characters set user_id='${other}' where id='${character}';insert into campaign_members(campaign_id,user_id,role) values('${campaign}','${other}','player')`);sql(`update pending_reactions set expires_at=now()-interval '1 minute' where id='${d.request_id}'`);
+  await page.evaluate(async campaign=>{
+   const React=await import('/node_modules/.vite/deps/react.js'),dom=await import('/node_modules/.vite/deps/react-dom_client.js'),component=await import('/src/components/Combat/ReactionPromptModal.tsx');
+   const host=document.createElement('div');document.body.appendChild(host);dom.default.createRoot(host).render(React.default.createElement(component.default,{campaignId:campaign}));
+  },campaign);
+  const dialog=page.getByRole('dialog',{name:'Saved Telepath reaction'});await expect(dialog).toContainText('Saved dice: 2 = 2');
+  await expect(dialog.getByText('DM cleanup',{exact:true})).toHaveCount(cancel?0:1);await expect(dialog).toContainText('Reaction already spent');await expect(dialog).toContainText('will not expire automatically');
+  if(!cancel){await dialog.getByRole('button',{name:'Retry saved request',exact:true}).focus();await page.keyboard.press('Tab');await expect(dialog.locator('summary')).toBeFocused();}
+  if(cancel){await dialog.getByRole('button',{name:'Use Enkindled',exact:true}).click();await expect.poll(()=>sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('1');}
+  if(!cancel)await page.route('**/rest/v1/rpc/telepath_reaction',async route=>{if(route.request().method()==='POST'&&route.request().postDataJSON().p_operation==='enhance'){const response=await route.fetch();expect(response.ok()).toBe(true);await route.abort('failed');}else await route.continue();});
+  await dialog.getByRole('button',{name:'Use Surge · raise 1–3 to 4',exact:true}).click();
+  if(!cancel){await expect(dialog.getByRole('alert')).toBeVisible();await page.unroute('**/rest/v1/rpc/telepath_reaction');await dialog.getByRole('button',{name:'Retry saved request',exact:true}).click();}
+
+  await expect.poll(()=>sql(`select hit_dice_spent from characters where id='${character}'`)).toBe(cancel?'2':'1');
+  await expect(dialog.getByRole('button',{name:'Use Surge · raise 1–3 to 4',exact:true})).toHaveCount(0);
+  await page.screenshot({path:info.outputPath('saved-telepath.png')});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[role=dialog], [role=dialog] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
+  await dialog.getByRole('button',{name:cancel?'Cancel saved use':'Apply saved reaction',exact:true}).click();await expect(dialog).toHaveCount(0);
+  expect(sql(`select state from pending_reactions where id='${d.request_id}'`)).toBe(cancel?'declined':'accepted');
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe(cancel?'12':'7');
+  expect(errors).toEqual([]);await page.close();
  });
  test('dispatcher does not expose private records or helper functions directly',()=>{
   expect(sql(`select has_function_privilege('anon','public.telepath_reaction(uuid,text,jsonb)','execute') or has_function_privilege('authenticated','dndkeep_private.telepath_reaction_record(uuid,uuid)','execute') or has_table_privilege('authenticated','dndkeep_private.telepath_declarations','select')`)).toBe('f');

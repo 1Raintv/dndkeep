@@ -1,5 +1,30 @@
 # DNDKeep — Two-Track Roadmap
 
+### Saved Telepath player/DM prompt (local; new declaration controls still pending)
+
+ReactionPromptModal now routes saved Distraction/Bolstering offers to a dedicated
+lazy-loaded panel. It displays saved dice and original attack evidence, explains
+conditional Energy cost, and exposes apply/cancel, Enkindled, Surge pool selection,
+refresh and exact-request retry. The current campaign DM also sees saved offers
+and has reasoned cleanup when the character/context is unavailable. Generic expiry
+and countdown updates exclude Telepath; direct accept/decline paths are bypassed.
+The panel traps focus among visible controls, including the DM cleanup disclosure.
+
+Four real desktop/mobile checks pass: DM completion with a lost Surge reply and
+exact-request retry, and owning-player Enkindled+Surge cancellation. Each preserves
+spent Hit Dice and conditional Energy costs. Expired timestamps do not auto-close
+saved offers. Screenshots inspected; official overflow probe clean. Removing the
+saved prompt branch makes the regression fail, and exact restoration passes.
+Full gate passed: 4,597 tests, TS 193/193, entry 255.7 KB. Evidence:
+.tmp/telepath-prompt-{gate,ui-final,mutation}.log; desktop/mobile PNGs alongside.
+
+Next: DM review/create controls for new Distraction/Bolstering attack declarations,
+interrupted-draft resolution and normal reaction history. Do not claim fresh
+Telepath automation is exposed yet: this step only handles already saved offers.
+Ability-check Bolstering remains a separate lifecycle. No migration or production
+change; retained release rehearsal and CI checks remain required before merging.
+
+
 ### Durable Telepath drafts and cross-tab locking (not UI-wired)
 
 Telepath preparation now persists an interruption marker before RNG, then saves
