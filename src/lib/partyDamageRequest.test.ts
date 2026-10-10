@@ -1,5 +1,5 @@
-import {expect,it,vi} from 'vitest';
-vi.mock('./hooks/useMagicItems',()=>({getMagicItemById:()=>({requiresAttunement:true,abilityOverride:{ability:'constitution',value:19}})}));
+import {afterEach,expect,it,vi} from 'vitest';
+vi.mock('./hooks/useMagicItems',()=>({getMagicItemById:(id:string)=>({requiresAttunement:true,...(id==='amulet'?{abilityOverride:{ability:'constitution',value:19}}:{})})}));
 import {createPartyDamageRequest,previewPartyDamage,validPartyDamageRequest,verifyPartyDamageReceipt,type PartyDamageContext} from './partyDamageRequest';
 const char='11111111-1111-4111-8111-111111111111',campaign='22222222-2222-4222-8222-222222222222',user='33333333-3333-4333-8333-333333333333';
 const context=():PartyDamageContext=>({character:{id:char,name:'Hero',species:'Human',strength:10,dexterity:10,constitution:14,intelligence:10,wisdom:10,charisma:10,inventory:[],damage_resistances:['psychic'],damage_vulnerabilities:['psychic'],damage_immunities:[],concentration_spell:'detect-magic',hit_point_revision:0,active_conditions:[],automation_overrides:{},advanced_automations_unlocked:false},campaign:{id:campaign,automation_defaults:{}},participant:null,combatant:null,pools:{current_hp:40,max_hp:50,temp_hp:5}});
@@ -49,4 +49,23 @@ it('preserves pre-upgrade saved calculation validation without reintroducing old
  const legacy={...fresh,affinityRules:undefined,damage:11,affinity:'resistant' as const};
  expect(validPartyDamageRequest(legacy)).toBe(true);expect(validPartyDamageRequest({...legacy,damage:10})).toBe(false);
  expect(validPartyDamageRequest({...legacy,affinityRules:2})).toBe(false);
+});
+
+afterEach(()=>vi.restoreAllMocks());
+it('includes eligible equipment and persists signed effects without proficiency or exhaustion twice',()=>{
+ vi.spyOn(Math,'random').mockReturnValue(0);const ctx=context();ctx.character.exhaustion_level=2;
+ ctx.character.inventory=[{magic_item_id:'ring-protection',name:'Ring',magical:true,equipped:true,attuned:true,saveBonus:1} as NonNullable<typeof ctx.character.inventory>[number]];
+ ctx.character.active_buffs=[{name:'Bless',saveBonus:0},{name:'Penalty',saveBonus:-2}];
+ const r=createPartyDamageRequest(ctx,5,null,false);expect(r.baseModifier).toBe(3);expect(r.modifier).toBe(2);expect(r.effectRolls?.map(x=>x.total)).toEqual([1,-2]);expect(validPartyDamageRequest(r)).toBe(true);
+ r.effectRolls![0].total=4;expect(validPartyDamageRequest(r)).toBe(false);
+});
+it('uses active combat effects rather than stale sheet buffs',()=>{
+ const ctx=context();ctx.character.active_buffs=[{name:'Bless'}];ctx.participant={id:user,encounter_id:campaign,combatant_id:char};ctx.combatant={id:char,...ctx.pools,active_conditions:[],active_buffs:[{name:'Penalty',saveBonus:-2}]};
+ expect(createPartyDamageRequest(ctx,5,null,false).modifier).toBe(0);
+});
+it('does not roll save effects for zero HP, immunity or disabled automation',()=>{
+ const random=vi.spyOn(Math,'random'),ctx=context();ctx.character.active_buffs=[{name:'Bless'}];
+ expect(createPartyDamageRequest(ctx,100,null,false).effectRolls).toEqual([]);
+ ctx.character.damage_immunities=['psychic'];expect(createPartyDamageRequest(ctx,5,'psychic',false).effectRolls).toEqual([]);
+ ctx.campaign.automation_defaults={concentration_on_damage:'off'};expect(createPartyDamageRequest(ctx,5,null,false).effectRolls).toEqual([]);expect(random).not.toHaveBeenCalled();
 });

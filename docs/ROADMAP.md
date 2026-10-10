@@ -6370,3 +6370,39 @@ passed in the broad run; both new desktop/mobile effect-recovery cases pass afte
 fixing the fixture's global-random sequence and waiting for the committed hit
 before removing effects. This gives110 verified cases. SQL error-level lint is
 clean; changed-file ESLint retains only the existing any-type warning. No deploy.
+
+
+### Shared campaign damage concentration modifiers (unreleased)
+
+The existing DM party-damage flow now includes eligible flat equipment bonuses
+and persisted temporary saving-throw dice in its request. The server adds
+proficiency and subtracts exhaustion exactly once when it creates the durable
+concentration offer. Combatant exhaustion/buffs override stale sheet values in
+an active encounter; between encounters the character snapshot supplies them.
+Effect dice are not rolled when damage is immune, the hit breaks concentration
+at zero HP/incapacitation, or automation suppresses the save.
+
+The context snapshot now includes both sources' effects and exhaustion, so a
+changed modifier invalidates a fresh application before HP/offer writes. Existing
+committed request identities replay before the fresh-context check. Saved request
+validation verifies effect-dice arithmetic; old proposals remain readable for
+receipt recovery or cancellation. This retains DM-only party-damage authorization.
+
+This repairs the live shared transaction that player-sheet damage should reuse.
+CharacterSheet's legacy manual/realtime damage save path has NOT yet been replaced;
+owner-scoped access, sheet recovery controls and stale HP/turn checks remain the
+next integration work. This is not a claim that all campaign saves are fixed.
+
+The migration was created through the CLI, then ordered after the latest existing
+party context definition as 20261010070001_party_concentration_modifiers.sql. Several
+existing versions are ahead of the machine clock, so keeping the CLI's earlier
+stamp would let a later historical migration overwrite this fix on fresh replay.
+Applied only to local Docker with its ledger entry, preserving unrelated local
+history. No production migration or deployment.
+
+Verification:3,253 unit tests and58 local campaign database/browser regressions
+pass. The live recovery case combines a protection item, Bless, Bane, a flat
+modifier and exhaustion, then changes current effects and verifies the original
+offer still settles at the captured total. Required type/hooks/RAW/coordinates/
+anchors/build/budget gates pass (197/197 TypeScript; entry255.2KB), as do changed-
+file ESLint, diff checks and SQL error-level lint. No production deployment.

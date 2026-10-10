@@ -140,4 +140,23 @@ test.describe('Atomic party damage',()=>{
   expect(combat).toEqual({dead:true,failures:3,buffs:[{key:'other',source:'spell:detect-magic',casterParticipantId:'someone-else'}]});expect(state().spell).toBe('');
  });
 
+ test('party concentration captures exhaustion and retains it after later recovery',()=>{
+  sql(`update characters set exhaustion_level=2,saving_throw_proficiencies=array['constitution'] where id='${char}'`);
+  const ctx=context();expect(ctx.character.exhaustion_level).toBe(2);apply(ctx);
+  expect(sql(`select con_bonus from pending_concentration_saves where id='${save}'`)).toBe('1');
+  sql(`update characters set exhaustion_level=0 where id='${char}'`);expect(apply(ctx).replayed).toBe(true);
+  expect(sql(`select con_bonus from pending_concentration_saves where id='${save}'`)).toBe('1');
+ });
+ test('stale temporary effects reject before HP or a concentration offer changes',()=>{
+  const ctx=context();sql(`update characters set active_buffs='[{"name":"Bless","saveBonus":0}]' where id='${char}'`);
+  expect(()=>apply(ctx)).toThrow(/Party state changed/);expect(state().hp).toBe(50);expect(count('pending_concentration_saves')).toBe('0');
+ });
+ test('active combat exhaustion overrides stale sheet exhaustion',()=>{
+  const encounter=randomUUID(),participant=randomUUID();sql(`insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaign}','active',1,0);
+   insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values('${participant}','${encounter}','${campaign}','character','${char}','Damage fixture',0);
+   update combatants set exhaustion_level=2,active_buffs='[{"name":"Bane"}]' where id=(select combatant_id from combat_participants where id='${participant}')`);
+  const ctx=context();expect(ctx.combatant.exhaustion_level).toBe(2);expect(ctx.combatant.active_buffs).toEqual([{name:'Bane'}]);
+  apply(ctx);expect(sql(`select con_bonus from pending_concentration_saves where id='${save}'`)).toBe('-2');
+ });
+
 });
