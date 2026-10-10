@@ -8858,3 +8858,32 @@ tests and the required verification gate pass (TS 194/194; entry 255.7 KB).
 No database migration, layout change, or deployment. This closes a client-side
 preflight gap; it does not certify all Psion automation or eliminate concurrency
 between independent server transactions.
+
+### Psion source audit — Telekinetic Techniques duration (unreleased)
+
+Rechecked the owner's Downloads/UA2025-Psion+Update.pdf, page 9, against the
+live Psykinetic feature imported by classes.ts. Disorient was incorrectly
+shown as ending at the caster's next turn. Corrected it to the target's next
+turn. Boost remains +10 ft Speed until the caster's next turn. A reference
+regression checks these distinct owners through the actual subclass catalog.
+Also reviewed the adjacent revised Metamorph and Telepath descriptions against
+pages 8 and 10; this pass does not certify their automation.
+
+Full verification passes: 4,080 unit tests, TS 194/194, entry 255.7 KB. No
+migration. Hosted CI passed for preceding commit bd954756; its Vercel preview
+was still deploying when checked. Neither this correction nor the broader
+release is merged into main.
+
+Concrete next automation gap: Propel currently offers Psykinetic's free d4,
+but does not apply the additional technique selected after a failed save.
+Wire one optional effect choice to the settled declaration: Boost expires at
+the caster's next start; Disorient expires at the target's next start; Bolt
+uses the saved roll for Force damage. The server must validate Psykinetic level
+3+, settled failure (including Legendary Resistance), the original target and
+one saved choice. Persist/replay the effect and damage receipt atomically;
+reopening, reloading or retrying must not reapply damage or extend a removed
+effect. Use existing turn-boundary handling and typed damage defenses, and
+connect movement allowance and Opportunity Attack eligibility readers rather
+than displaying an inert buff. Verify different caster/target initiative
+positions, passed/cancelled saves, retries, permissions and level/subclass
+changes. Keep the private UA content restrictions intact.

@@ -82,3 +82,13 @@ it('keeps Psi Warper targeting and movement limits consistent across sheet and c
  expect(text('Mass Teleportation')).not.toContain('space you can see');
  expect(text('Teleporter Combat')).toContain('one of your Psion cantrips');expect(text('Teleporter Combat')).toContain('same Bonus Action');
 });
+
+
+// Owner-provided UA2025-Psion+Update.pdf p.9: these two durations differ.
+it('keeps Boost on the caster turn and Disorient on the target turn',()=>{
+ const feature=CLASS_MAP.Psion.subclasses.find(s=>s.name==='Psykinetic')!.features!.find(f=>f.name==='Telekinetic Techniques')!;
+ expect(feature.level).toBe(3);
+ expect(feature.descriptionLong).toContain("Boost (+10 ft to the target's Speed until the start of your next turn)");
+ expect(feature.descriptionLong).toContain('Disorient (the target cannot make Opportunity Attacks until the start of its next turn)');
+ expect(feature.descriptionLong).not.toContain('Disorient (the target cannot make Opportunity Attacks until the start of your next turn)');
+});
