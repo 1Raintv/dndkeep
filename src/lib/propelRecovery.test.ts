@@ -17,30 +17,54 @@ it('keeps both save dice and prevents changing evidence on retry',()=>{
 });
 
 const declaration={requestId:'00000000-0000-4000-8000-000000000001',turnId:'turn',mode:'powered' as const,movement:'push' as const,target:{name:'Goblin',legalTargetConfirmed:true as const}};
-it('writes the interruption marker before rolling and keeps the exact completed roll',()=>{
- const roll=vi.fn(()=>{expect(()=>pendingPropel('hero')).toThrow(/could not be recovered/);return 3;});
- const saved=preparePropel('hero',declaration,roll);
+const seed='40000000-0000-4000-8000-c00000000000';
+it('stores the original target and seed before calculating the die face',()=>{
+ vi.spyOn(crypto,'randomUUID').mockReturnValue(seed);
+ const write=localStorage.setItem.bind(localStorage),values:unknown[]=[];
+ vi.spyOn(localStorage,'setItem').mockImplementation((key,value)=>{values.push(JSON.parse(value));write(key,value);});
+ const saved=preparePropel('hero',declaration,8);
+ expect(values[0]).toMatchObject({kind:'preparing',version:2,attemptId:seed,sides:8,request:declaration});
  expect(saved).toEqual(pending);expect(pendingPropel('hero')).toEqual([pending]);
- expect(()=>preparePropel('hero',declaration,roll)).toThrow(/original/);expect(roll).toHaveBeenCalledTimes(1);
+ expect(()=>preparePropel('hero',declaration,8)).toThrow(/original/);
 });
-it('does not roll or submit when the marker cannot be stored',()=>{
+it('does not create a pending roll if the seed cannot be stored',()=>{
  vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw new Error('Storage full');});
- const roll=vi.fn(()=>3);expect(()=>preparePropel('hero',declaration,roll)).toThrow('Storage full');expect(roll).not.toHaveBeenCalled();
+ expect(()=>preparePropel('hero',declaration,8)).toThrow('Storage full');expect(localStorage.length).toBe(0);
 });
-it('preserves a blocked interruption marker if storing the rolled request fails',()=>{
+it.each([['powered',8,3],['technique',4,2]] as const)('recovers %s after the final write fails, without fresh entropy', (mode,sides,roll)=>{
+ vi.spyOn(crypto,'randomUUID').mockReturnValue(seed);
  const write=localStorage.setItem.bind(localStorage);let writes=0;
- vi.spyOn(localStorage,'setItem').mockImplementation(function(key,value){if(++writes===2)throw new Error('Storage full');write(key,value);});
- const roll=vi.fn(()=>3);expect(()=>preparePropel('hero',declaration,roll)).toThrow('Storage full');
- expect(()=>preparePropel('hero',declaration,roll)).toThrow(/could not be recovered/);expect(roll).toHaveBeenCalledTimes(1);
+ vi.spyOn(localStorage,'setItem').mockImplementation((key,value)=>{if(++writes===2)throw new Error('Storage full');write(key,value);});
+ expect(()=>preparePropel('hero',{...declaration,mode},sides)).toThrow(/original Propel roll is saved/);
+ vi.mocked(crypto.randomUUID).mockImplementation(()=>{throw new Error('Must not reroll');});
+ const restored=pendingPropel('hero');expect(restored).toMatchObject([{kind:'begin',request:{...declaration,mode,roll}}]);
+ expect(()=>preparePropel('hero',{...declaration,mode},sides)).toThrow(/original/);
+ rememberPropel('hero',restored[0]);expect(pendingPropel('hero')).toEqual(restored);
 });
-it('free movement does not call RNG',()=>{
- const roll=vi.fn(()=>3);expect(preparePropel('hero',{...declaration,mode:'free'},roll).request).toMatchObject({mode:'free',roll:0});expect(roll).not.toHaveBeenCalled();
+it('free movement saves directly without RNG or an interruption marker',()=>{
+ const random=vi.spyOn(crypto,'randomUUID');
+ expect(preparePropel('hero',{...declaration,mode:'free'},8).request).toMatchObject({mode:'free',roll:0});expect(random).not.toHaveBeenCalled();
+ expect(JSON.parse(localStorage.getItem('dndkeep:propel:hero:'+declaration.requestId+':begin')!).kind).toBe('begin');
+});
+it.each([null,{}, {kind:'preparing',requestId:declaration.requestId},
+ {kind:'preparing',version:2,attemptId:'bad',sides:8,request:declaration},
+ {kind:'preparing',version:2,attemptId:seed,sides:4,request:declaration},
+ {kind:'preparing',version:2,attemptId:seed,sides:8,request:{...declaration,mode:'technique'}},
+ {kind:'preparing',version:3,attemptId:seed,sides:8,request:declaration}])('preserves invalid or legacy marker %j',value=>{
+ const key='dndkeep:propel:hero:'+declaration.requestId+':begin',encoded=JSON.stringify(value);localStorage.setItem(key,encoded);
+ expect(()=>pendingPropel('hero')).toThrow(/could not be recovered/);expect(localStorage.getItem(key)).toBe(encoded);
+});
+it('refuses a changed target or die after an interrupted preparation',()=>{
+ const key='dndkeep:propel:hero:'+declaration.requestId+':begin';localStorage.setItem(key,JSON.stringify({kind:'preparing',version:2,attemptId:seed,sides:8,request:declaration}));
+ expect(()=>rememberPropel('hero',{...pending,request:{...pending.request,roll:4}})).toThrow(/original/);
+ expect(()=>rememberPropel('hero',{...pending,request:{...pending.request,target:{name:'Other',legalTargetConfirmed:true}}})).toThrow(/original/);
+ expect(pendingPropel('hero')).toEqual([pending]);
 });
 it.each(['{broken','null',JSON.stringify({...pending,request:{...pending.request,requestId:'00000000-0000-4000-8000-000000000002'}})])('preserves corrupt or mismatched saved requests (%s)',value=>{
  const key='dndkeep:propel:hero:'+declaration.requestId+':begin';localStorage.setItem(key,value);
  expect(()=>pendingPropel('hero')).toThrow(/could not be recovered/);expect(localStorage.getItem(key)).toBe(value);
 });
 it('validates the target before writing a marker or rolling',()=>{
- const roll=vi.fn(()=>3);expect(()=>preparePropel('hero',{...declaration,target:{name:'',legalTargetConfirmed:true}},roll)).toThrow(/Invalid/);
- expect(localStorage.length).toBe(0);expect(roll).not.toHaveBeenCalled();
+ expect(()=>preparePropel('hero',{...declaration,target:{name:'',legalTargetConfirmed:true}},8)).toThrow(/Invalid/);
+ expect(localStorage.length).toBe(0);
 });

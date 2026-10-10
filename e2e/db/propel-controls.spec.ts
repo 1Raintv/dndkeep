@@ -52,6 +52,52 @@ test.describe('Saved Propel controls',()=>{
   await expect(page.getByRole('button',{name:'Bonus Action Available',exact:true})).toBeEnabled({timeout:10000});
   expect(errors).toEqual([]);
  });
+ // A real reload must recover the same seed, target and die after storage failure.
+ for(const mode of ['powered','technique'] as const)test(`interrupted ${mode} preparation survives reload without rerolling`,async({page},info)=>{
+  if(mode==='technique')sql(`update characters set subclass='Psykinetic' where id='${charId}'`);
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
+  await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+  const ability=page.locator('.arow-grid').filter({has:page.getByText('Telekinetic Propel',{exact:true})});
+  await ability.getByRole('button',{name:'Use / resume'}).click();
+  const dialog=page.getByRole('dialog',{name:'Telekinetic Propel',exact:true});
+  await dialog.getByLabel('Target',{exact:true}).fill('Original goblin');await dialog.getByRole('checkbox').check();
+  await dialog.getByLabel('Movement',{exact:true}).selectOption(mode);
+  await page.evaluate(character=>{
+   const original=Storage.prototype.setItem,random=crypto.randomUUID;
+   (window as any).__restorePropelStorage=()=>{Storage.prototype.setItem=original;crypto.randomUUID=random;};
+   crypto.randomUUID=()=> '40000000-0000-4000-8000-c00000000000';
+   Storage.prototype.setItem=function(key,value){
+    if(key.startsWith('dndkeep:propel:'+character+':')&&JSON.parse(value).kind==='begin')throw new DOMException('Storage full','QuotaExceededError');
+    original.call(this,key,value);
+   };
+  },charId);
+  await dialog.getByRole('button',{name:'Declare Bonus Action'}).click();
+  await expect(dialog.getByRole('alert')).toContainText('Your original Propel roll is saved.');
+  await expect(dialog.getByRole('button',{name:'Confirm saved use'})).toBeVisible();
+  expect(sql(`select count(*) from dndkeep_private.propel_declarations where character_id='${charId}'`)).toBe('0');
+  expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${charId}'`)).toBe('0');
+  await page.screenshot({path:info.outputPath('propel-storage-interrupted.png')});
+  await page.evaluate(()=>(window as any).__restorePropelStorage());await page.reload();
+  const recovered=await page.evaluate(async character=>{
+   const random=crypto.randomUUID;crypto.randomUUID=()=>{throw new Error('Recovery must not generate another seed');};
+   try{
+    // @ts-ignore browser Vite import
+    const {pendingPropel}=await import('/src/lib/propelRecovery.ts');return pendingPropel(character);
+   }finally{crypto.randomUUID=random;}
+  },charId);
+  const roll=mode==='powered'?3:2;
+  expect(recovered).toMatchObject([{kind:'begin',request:{mode,roll,target:{name:'Original goblin'}}}]);
+  await ability.getByRole('button',{name:'Use / resume'}).click();
+  await dialog.getByRole('button',{name:'Confirm saved use'}).click();
+  await expect(dialog).toContainText(`Saved dice total: ${roll}.`);
+  await expect(dialog).toContainText('Target: Original goblin');
+  await dialog.getByRole('button',{name:'Save failed',exact:true}).click();
+  await expect(dialog.getByRole('status')).toContainText(`Saved: failed. ${mode==='powered'?1:0} Energy Dice spent.`);
+  expect(sql(`select base_roll from dndkeep_private.propel_declarations where character_id='${charId}'`)).toBe(String(roll));
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe(mode==='powered'?'1':'2');
+  expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${charId}'`)).toBe('1');
+  await page.screenshot({path:info.outputPath('propel-storage-recovered.png')});expect(errors).toEqual([]);
+ });
  // Guard the linked player choices as well as the server's conditional payment.
  for(const [mode,outcome] of [['free','failed'],['powered','passed'],['powered','failed']] as const)
  test(`Warp stays beside Propel and resolves ${mode} / ${outcome} as one Bonus Action`,async({page},info)=>{

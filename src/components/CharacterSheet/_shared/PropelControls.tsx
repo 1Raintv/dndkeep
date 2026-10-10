@@ -17,7 +17,6 @@ import {useOptimisticCharacterRef} from '../../../lib/hooks/useOptimisticCharact
 import {classSaveDC} from '../../../lib/gameUtils';
 import {psionicPowerState} from '../../../rules/psionicPowers';
 import {psionProgression} from '../../../rules/psionProgression';
-import {rollDie} from '../../../rules/dice';
 import {continuePropel} from './continuePropel';
 import {useModal} from '../../shared/Modal';
 import ModalPortal from '../../shared/ModalPortal';
@@ -99,7 +98,7 @@ export default function PropelControls({character,persistence,warp=false,campaig
    throw new Error('Your turn or Bonus Action changed. Reopen Propel before declaring.');
   const request:Omit<PropelRequest,'roll'>={requestId:crypto.randomUUID(),turnId:fresh.turnId,mode,movement:'push',deferred:true,
    target:fresh.encounterId?{participantId:target,legalTargetConfirmed:true}:{name:target.trim(),legalTargetConfirmed:true}};
-  await send(preparePropel(id,request,()=>rollDie(mode==='technique'?4:state.sides)),active,id);
+  await send(preparePropel(id,request,mode==='technique'?4:state.sides),active,id);
  });}
  function finish(outcome:PropelOutcome,save:PropelSaveDetails|null=null){if(!row)return;const id=row.request_id;void run(async(active,characterId)=>{await send({kind:'finish',request:{requestId:id,outcome,save}},active,characterId);});}
  const savedEncounter=row&&'encounterId' in row.turn_context?row.turn_context.encounterId:null;

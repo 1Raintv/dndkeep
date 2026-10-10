@@ -1,5 +1,28 @@
 # DNDKeep — Two-Track Roadmap
 
+### Propel recovers interrupted roll preparation (local; not released)
+
+A failed browser-storage write after rolling previously left a seedless marker
+that permanently blocked Propel after reload. New paid-die/free-d4 preparations
+save a versioned random seed, die size and exact reviewed target before deriving
+the face through canonical dice utilities. Reload reconstructs the same request;
+confirmation durably saves it before sending. Base 5-ft movement saves directly
+without random generation. Existing complete requests remain compatible; legacy
+seedless or corrupt markers remain blocked rather than inventing dice.
+
+Validated exact target/roll recovery, retained conditional Energy Die cost and
+one Bonus Action, with no server declaration/payment before the interrupted
+preparation is confirmed. Changing a recovered target/roll is rejected. Added
+real desktop/mobile reload regressions for Energy Dice and the Psykinetic d4;
+disabling seed recovery fails the new browser regression at the intended guard.
+
+Validation: 48 focused tests, full `npm run verify` (4,639 tests, TS 193/193,
+256.1 KB entry), and 12 desktop/mobile browser cases pass. Screenshots inspected.
+Evidence: `.tmp/propel-seed-{unit,mutation,browser,gate}.log`.
+No schema changes. Prior-head Vercel preview is build-rate-limited; production
+unchanged. Next recovery audit: distinguish first-request rejection from a later
+rejection after an earlier unconfirmed send; the latter cannot prove no payment.
+
 ### Propel relationship and narrow map controls (local; not released)
 
 Warp remains immediately after Telekinetic Propel, now explicitly labelled
