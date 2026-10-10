@@ -190,10 +190,15 @@ test.describe('Private action turn context' ,()=>{
   const q=auth(finishPower(id,'failed'));const results=await Promise.all([parallel(q),parallel(q)]);
   expect(results.map(r=>r.code)).toEqual([0,0]);expect(results.map(r=>JSON.parse(r.out).replayed).sort()).toEqual([false,true]);expect(energy()).toBe(1);
  });
- test('saved Propel declarations remain discoverable across cursor pages without browser state',()=>{
-  const ids=Array.from({length:27},()=>randomUUID());
-  const statements=ids.map((id,i)=>`update combat_encounters set round_number=${i+2} where id='${encounter}';select dndkeep_private.begin_propel('${character}','${id}',(select psionic_turn_id::text from combat_encounters where id='${encounter}'),'free','push',0,'{"participantId":"${enemy}","legalTargetConfirmed":true}')`);
-  sql(auth(statements.join(';')));
+ test('legacy pending Propel remains discoverable across cursor pages without browser state',()=>{
+  const ids=Array.from({length:27},()=>randomUUID());sql(auth(powerSql(ids[0],'free','push',0)));
+  // Seed old pending history directly. Current gameplay correctly refuses to
+  // advance past an unfinished declaration; pagination must still recover
+  // records accumulated by earlier clients. This fixture does not spend actions.
+  for(const id of ids.slice(1))sql(`insert into dndkeep_private.propel_declarations
+   select (jsonb_populate_record(null::dndkeep_private.propel_declarations,to_jsonb(d)||jsonb_build_object(
+    'request_id','${id}','action_receipt',jsonb_set(d.action_receipt,'{claim,requestId}',to_jsonb('${id}'::text))))).*
+   from dndkeep_private.propel_declarations d where d.request_id='${ids[0]}'`);
   const first=JSON.parse(sql(auth(`select dndkeep_private.list_propel('${character}')`)));expect(first.items).toHaveLength(25);
   const cursor=first.nextCursor;
   const second=JSON.parse(sql(auth(`select dndkeep_private.list_propel('${character}','${cursor.createdAt}','${cursor.requestId}')`)));expect(second.items).toHaveLength(2);expect(second.nextCursor).toBeNull();
@@ -276,6 +281,7 @@ test.describe('Private action turn context' ,()=>{
   const read=(user=owner)=>JSON.parse(sql(`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${user}","role":"authenticated"}';select public.get_action_budget('${character}');commit;`));
   const id=randomUUID();sql(auth(powerSql(id,'free','push',0)));
   expect(read().spent).toEqual({action:false,bonusAction:true,reaction:false});expect(read().claimed.bonusAction).toBe(true);
+  sql(auth(finishPower(id,'cancelled'))); // Resolve the declared feature before leaving its turn.
   sql(`update combat_participants set reaction_used=true where id='${participant}'`);next(1);
   expect(read().spent).toEqual({action:false,bonusAction:true,reaction:true});
   next(0,2);sql(`update combat_participants set reaction_used=false where id='${participant}'`);
@@ -322,11 +328,11 @@ test.describe('Private action turn context' ,()=>{
  const prepareSpells=()=>sql(`update characters set current_hp=20,max_hp=20,spell_sources='{"misty-step":["class:Psion"],"light":["class:Psion"]}',spell_preparation_sources='{"misty-step":["class:Psion"]}',prepared_spells=array['misty-step'],spell_slots='{"2":{"total":3,"used":0}}' where id='${character}';update combatants set current_hp=20 where id=(select combatant_id from combat_participants where id='${participant}')`);
  const spellQuery=(id:string,kind='bonusAction',slot=2)=>`select public.declare_spell_cast_atomic('${id}','${character}','${participant}','${slot?'misty-step':'light'}','Spell',${slot},${slot?"'"+sql(`select spell_slots->'2' from characters where id='${character}'`)+"'":'null'},'${JSON.stringify({source:'class:Psion',spellLevel:slot,isBonusAction:kind==='bonusAction',actionKind:kind})}')`;
  test('Propel and a Bonus Action spell compete before a slot or declaration is spent',()=>{
-  prepareSpells();sql(auth(powerSql(randomUUID(),'free','push',0)));
+  prepareSpells();const propel=randomUUID();sql(auth(powerSql(propel,'free','push',0)));
   expect(()=>sql(auth(spellQuery(randomUUID())))).toThrow(/already spent/);
   expect(sql(`select spell_slots->'2'->>'used' from characters where id='${character}'`)).toBe('0');
   expect(sql(`select count(*) from pending_spell_casts where caster_character_id='${character}'`)).toBe('0');
-  next(1);next(0,2);sql(auth(spellQuery(randomUUID())));
+  sql(auth(finishPower(propel,'cancelled')));next(1);next(0,2);sql(auth(spellQuery(randomUUID())));
   expect(flags().bonus).toBe(true);expect(()=>sql(auth(powerSql(randomUUID(),'free','push',0)))).toThrow(/already spent/);
  });
  test('cantrip action claims and paid Bonus Action spells share budgets without conflating slot limits',()=>{
@@ -579,6 +585,34 @@ test.describe('Private action turn context' ,()=>{
   test('the shared unscoped target reader is private',()=>{
    expect(()=>sql(authenticated(owner,`select dndkeep_private.saving_target_context('${campaign}','${encounter}','${enemy}','STR')`))).toThrow(/permission denied/);
   });
+ });
+
+ const reserveOutgoing=()=>sql(auth(`select public.prepare_combat_turn_end('${encounter}','${context().turnId}')`));
+ for(const kind of ['action','bonusAction'])test(`closing reservation blocks a new ${kind} claim without changing flags`,()=>{
+  reserveOutgoing();const before=flags();expect(()=>sql(auth(claimSql(randomUUID(),input({kind,grantId:'normal:'+kind}))))).toThrow(/turn is already ending/);
+  expect(flags()).toEqual(before);expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${character}'`)).toBe('0');
+ });
+ for(const source of ['haste','action-surge'])test(`closing reservation also blocks an unused ${source} grant`,()=>{
+  const grant=randomUUID();sql(`insert into dndkeep_private.action_extra_grants(id,character_id,owner_turn_id,source) values('${grant}','${character}','${context().ownerTurnId}','${source}')`);
+  reserveOutgoing();expect(()=>sql(auth(claimSql(randomUUID(),input({kind:'action',grantId:'extra:'+grant,purpose:'attack'}))))).toThrow(/turn is already ending/);
+  expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${character}'`)).toBe('0');
+ });
+ test('closing reservation keeps legitimate reaction claims available',()=>{
+  reserveOutgoing();sql(auth(claimSql(randomUUID(),input({kind:'reaction',grantId:'normal:reaction'}))));expect(flags().reaction).toBe(true);
+ });
+ test('closing reservation does not re-spend a historical Action claim',()=>{
+  const id=randomUUID(),payload=input({kind:'action',grantId:'normal:action',purpose:'magic'});sql(auth(claimSql(id,payload)));reserveOutgoing();
+  const before=flags();expect(JSON.parse(sql(auth(claimSql(id,payload)))).replayed).toBe(true);expect(flags()).toEqual(before);
+ });
+ for(const kind of ['action','bonusAction'])test(`closing reservation rejects ${kind} casting and rolls back its payment`,()=>{
+  prepareSpells();reserveOutgoing();const id=randomUUID(),slot=kind==='action'?0:2;
+  expect(()=>sql(auth(spellQuery(id,kind,slot)))).toThrow(/turn is already ending/);
+  expect(sql(`select spell_slots->'2'->>'used' from characters where id='${character}'`)).toBe('0');expect(flags()).toMatchObject({action:false,bonus:false});
+  expect(sql(`select count(*) from pending_spell_casts where id='${id}'`)).toBe('0');expect(sql(`select count(*) from dndkeep_private.declared_spell_payments where cast_id='${id}'`)).toBe('0');
+ });
+ test('closing reservation does not consume free Misty Step or Energy Dice',()=>{
+  warper();reserveOutgoing();expect(()=>sql(auth(misty()))).toThrow(/turn is already ending/);
+  expect(energy()).toBe(3);expect(flags().bonus).toBe(false);expect(sql(`select coalesce(feature_uses->>'Free Misty Step (Teleportation)','0') from characters where id='${character}'`)).toBe('0');
  });
 
 });

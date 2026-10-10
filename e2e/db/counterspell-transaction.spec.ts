@@ -121,4 +121,10 @@ test.describe('Atomic Counterspell acceptance (local stack)',()=>{
   }finally{sql(`update pending_spell_casts set campaign_id='${campaign}' where id='${cast}';delete from campaigns where id='${otherCampaign}'`);}
  });
  test('the campaign DM can accept on behalf of the reactor',()=>{expect(JSON.parse(sql(auth(dm,request()))).saveDC).toBe(15);});
+ test('closing reservation preserves an eligible Counterspell reaction and its retry',()=>{
+  sql(auth(dm,`select prepare_combat_turn_end('${encounter}',(select psionic_turn_id from combat_encounters where id='${encounter}'))`));
+  const q=request(),first=JSON.parse(sql(auth(owner,q)));expect(first.replayed).toBe(false);expect(reaction()).toBe('t');expect(row().spell_slots['3'].used).toBe(1);
+  expect(JSON.parse(sql(auth(owner,q)))).toMatchObject({attackId:first.attackId,replayed:true});expect(row().spell_slots['3'].used).toBe(1);
+ });
+
 });

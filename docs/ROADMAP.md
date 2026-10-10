@@ -8188,3 +8188,32 @@ legacy condition/aura calls still require their own idempotency audit; a
 reservation prevents competing declarations but does not itself make those
 separate calls transactional. Do not claim general multiplayer action sequencing
 or the full release audit complete.
+
+
+### Closing-turn shared action claims (2026-10-10, unreleased)
+
+Migration 20261010070031 rejects new shared Action and Bonus Action claims for a
+reserved outgoing turn, including Haste/Action Surge grants. The rejection is
+inside each feature/casting transaction: paid spells, cantrips and free Misty
+Step cannot consume slots, feature uses or energy on a rejected declaration.
+Historical claim replay remains available and does not spend again. Reaction
+claims remain governed by their existing eligibility checks; an actual accepted
+Counterspell during closing still pays once and supports its original retry.
+The lookup is indexed by captured turn identity and creates no new client access.
+
+Verified ten focused cases and the broader 124-case action/Counterspell/turn
+boundary suite. The broad run passed 121 cases; three old fixtures assumed that
+turns could skip unresolved Propel. Two now cancel before advancing; pending
+history pagination seeds explicit legacy records instead of bypassing live turn
+rules. Those three corrected fixtures passed separately. Full required gate:
+3,897 units, TS 194/194, 255.7 KB entry. SQL lint clean; existing keep_warm and
+client_errors security findings unchanged. Exact local migration ledger verified,
+foreign history preserved. Not deployed.
+
+Remaining: Dash/Disengage in src/lib/movement.ts still read and update legacy
+participant flags separately, and pending attacks have separate declaration and
+settlement paths. Move these to checked transactions before applying a generic
+flag guard: rejecting a late flag write after damage would create partial saves.
+Also audit pending spells/reactions before turn/combat completion, and expose
+closing-turn availability in player controls. This guard covers shared claims,
+not every legacy action writer or already-declared unresolved effect.
