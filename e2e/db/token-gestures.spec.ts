@@ -475,6 +475,16 @@ test.describe('token gestures (local stack)', () => {
     await page.keyboard.press('=');await expect(zoom).toHaveValue('120');
     await page.keyboard.press('-');await expect(zoom).toHaveValue('100');
     await page.mouse.down();await page.keyboard.press('=');await expect(zoom).toHaveValue('100');await page.mouse.up();
+    // A released touch and a separate mouse hover cannot unlock the remaining touch.
+    await page.evaluate(()=>{
+      for(const pointerId of [41,42])window.dispatchEvent(new PointerEvent('pointerdown',{pointerId,pointerType:'touch',buttons:1}));
+      window.dispatchEvent(new PointerEvent('pointerup',{pointerId:41,pointerType:'touch',buttons:0}));
+    });
+    await page.mouse.move(box.x+box.width/2+1,box.y+box.height/2);
+    await page.keyboard.press('=');await expect(zoom).toHaveValue('100');
+    await page.evaluate(()=>window.dispatchEvent(new PointerEvent('pointerup',{pointerId:42,pointerType:'touch',buttons:0})));
+    await page.keyboard.press('=');await expect(zoom).toHaveValue('120');
+    await page.keyboard.press('-');await expect(zoom).toHaveValue('100');
     await zoom.focus();await page.keyboard.press('=');await expect(zoom).toHaveValue('100');await zoom.blur();
     // v2.741 — simulate the brief focus gap after a dialog opens away from the pointer.
     const camera=()=>page.evaluate(()=>{const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);return {x:vp.center.x,y:vp.center.y,scale:vp.scale.x};});

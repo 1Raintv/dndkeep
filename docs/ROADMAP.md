@@ -1,5 +1,21 @@
 # DNDKeep — Two-Track Roadmap
 
+### Camera shortcuts retain multi-pointer ownership (local; not released)
+
+Map zoom/Fit/Find/Previous shortcuts now track pressed pointer IDs independently.
+A released finger, unrelated pointerup, or hovering mouse cannot unlock shortcuts
+while another touch or pen remains held. Cancellation removes only that pointer;
+blur/hidden visibility clears stale ownership and requires fresh map hover.
+Listeners are cleaned up on unmount. Existing text-field, modal, overlay and
+browser-shortcut exclusions remain intact.
+
+Four new unit cases cover overlapping pointers and visibility. Three fail against
+the previous implementation. The live map's desktop/mobile shortcut regression
+also proves a released touch plus separate mouse hover cannot zoom while the second
+touch is held; normal shortcuts resume afterward and token positions stay unchanged.
+Full gate: 4,627 tests, TS 193/193, entry 256.1 KB. Evidence:
+.tmp/map-pointer-shortcuts-{mutation,browser,gate}.log. No layout/database change.
+
 ### Hidden-tab single-token drag cancellation (local; not released)
 
 Single-token drag now cancels on a hidden-document visibility change, matching
