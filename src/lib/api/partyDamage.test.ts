@@ -1,5 +1,8 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 const m=vi.hoisted(()=>({rpc:vi.fn(),read:vi.fn(),resolve:vi.fn()}));
+// v2.869: concentration receipt validation imports the standalone API module.
+// Keep its database boundary mocked even though these cases only use its parser.
+vi.mock('../supabase',()=>({supabase:{}}));
 vi.mock('./psionicTurns',()=>({psionicRpc:m.rpc}));
 vi.mock('./concentrationSaves',()=>({readConcentrationResult:m.read,resolveConcentrationSave:m.resolve}));
 vi.mock('../hooks/useMagicItems',()=>({getMagicItemById:()=>null}));

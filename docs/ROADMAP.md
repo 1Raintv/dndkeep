@@ -8696,3 +8696,19 @@ No migration or production deployment.
 Remaining release work includes broader Psion automation, generic damage
 settlement, map improvements and branch integration. This preflight does not
 change or independently recertify server transaction recovery or rest behavior.
+
+
+### Hosted CI isolation repair (2026-10-10, unreleased)
+
+Release review found GitHub CI failing in partyDamage.test.ts despite local
+verification passing. Its concentration receipt parser imported the standalone
+API and initialized the real Supabase client. The test now mocks that database
+boundary while retaining the real receipt validator. A temporary config without
+env files reproduces the original missing-credentials failure; the repaired five
+cases pass in the same environment. Full local gate: 4,041 units, TS 194/194,
+entry 255.7 KB. Hosted verification is required before release.
+
+The branch is 137 commits ahead of main at this review, with 79 added/changed
+migration files. Release requires a reviewable PR, hosted green gate, migration
+chain/integration verification, and successful hosted migration/deployment checks.
+No production migration or deployment was performed by this checkpoint.
