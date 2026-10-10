@@ -8294,3 +8294,26 @@ Turn advancement and attack declaration/payment still need consolidation. Legacy
 cancellation can strand a Legendary Resistance decision by marking its attack
 canceled; investigate cancellation and repair controls before claiming release
 readiness for all attack states. Do not silently clear that saved decision.
+
+
+### 2026-10-10 — cancellation preserves saved decisions (unreleased)
+
+The shared cancellation path now verifies the returned attack and propagates
+write failures instead of silently succeeding. A database guard prevents both
+new and older clients from canceling an attack with pending Legendary Resistance
+or relabeling an applied attack as canceled. Cancellation retries are safe while
+the row remains canceled and do not refund resources. Existing malformed legacy
+rows are not silently repaired or discarded; explicit recovery remains needed.
+
+Migration 20261010070035 applied locally with exact SQL ledger verification,
+foreign history retained and no repository migrations pending. SQL lint clean;
+existing keep_warm/client_errors advisor findings unchanged. Full required gate
+passed with 3,919 units, TS 194/194, entry 255.7 KB. One later wrapper-propagation
+test brings the targeted API/wrapper run to nine passing checks. Save suite had
+28 passing cases and one fixture assertion failure (NULL used-charge counter);
+after explicitly initializing that counter, all eight focused desktop/mobile
+cancellation checks passed, including lost HTTP response and retry. No visual
+layout changed. Not deployed.
+
+Next: finish audit of attack/reaction payment and turn boundaries, and provide
+explicit recovery for legacy canceled attacks with unresolved resistance.

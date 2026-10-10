@@ -1,3 +1,4 @@
+import {cancelPendingAttack} from './api/attackCancellation';
 import {creatureSaveBonus} from '../rules/creatureSaveBonus';
 import {readCreatureSaveDefinition} from './api/creatureSaveDefinition';
 import {resolveAttackSave,forgetAttackSave} from './api/attackSaves';
@@ -1351,10 +1352,7 @@ export async function applyDamage(attackId: string): Promise<PendingAttack | nul
 
 // ─── Cancel ──────────────────────────────────────────────────────
 export async function cancelAttack(attackId: string): Promise<void> {
-  await supabase
-    .from('pending_attacks')
-    .update({ state: 'canceled' })
-    .eq('id', attackId);
+  await cancelPendingAttack(attackId);
 }
 
 // ─── Fudge damage ────────────────────────────────────────────────

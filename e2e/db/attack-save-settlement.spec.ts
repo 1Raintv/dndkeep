@@ -136,4 +136,22 @@ test.describe('Atomic ordinary saves',()=>{
   expect(()=>sql(auth(dm,`insert into pending_attacks select (jsonb_populate_record(null::pending_attacks,to_jsonb(a)||jsonb_build_object('id','${randomUUID()}','save_result','passed','save_d20',20,'save_total',20))).* from pending_attacks a where id='${attack}'`))).toThrow(/current save controls/);
  });
 
+ test('cancellation cannot strand a saved Legendary Resistance choice',()=>{
+  sql(`update combat_participants set legendary_resistance=3,legendary_resistance_used=0 where id='${target}'`);sliver();expect(settle().attack.pending_lr_decision).toBe(true);
+  expect(()=>sql(auth(dm,`update pending_attacks set state='canceled' where id='${attack}'`))).toThrow(/Decide Legendary Resistance/);
+  expect(sql(`select state from pending_attacks where id='${attack}'`)).toBe('declared');
+  sql(auth(dm,`select decide_legendary_resistance('${attack}',false)`));sql(auth(dm,`update pending_attacks set state='canceled' where id='${attack}'`));
+  expect(sql(`select state from pending_attacks where id='${attack}'`)).toBe('canceled');expect(sql(`select legendary_resistance_used from combat_participants where id='${target}'`)).toBe('0');
+ });
+ test('cancellation preserves applied attack history',()=>{
+  sql(`update pending_attacks set state='applied' where id='${attack}'`);expect(()=>sql(auth(dm,`update pending_attacks set state='canceled' where id='${attack}'`))).toThrow(/already applied/);
+  expect(sql(`select state from pending_attacks where id='${attack}'`)).toBe('applied');
+ });
+ test('cancellation replay neither rolls a save nor refunds resources',()=>{
+  const before=sql(`select to_jsonb(c) from characters c where id='${character}'`);
+  for(let n=0;n<2;n++)sql(auth(dm,`update pending_attacks set state='canceled' where id='${attack}'`));
+  expect(sql(`select to_jsonb(c) from characters c where id='${character}'`)).toBe(before);
+  expect(sql(`select count(*) from dndkeep_private.attack_save_receipts where attack_id='${attack}'`)).toBe('0');
+ });
+
 });

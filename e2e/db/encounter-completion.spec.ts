@@ -142,6 +142,16 @@ test.describe('Atomic encounter completion',()=>{
    insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}',jsonb_build_object('sub','${dm}','email','${dm}@turn.local'),'email',now(),now(),now())`);
   await signInAsSeedDm(page,`${dm}@turn.local`);
  }
+
+ test('browser cancellation reports a resistance rejection and retries the same attack',async({page})=>{
+  sql(attack('declared',true));await login(page);
+  const cancel=()=>page.evaluate(async id=>{const path='/src/lib/api/attackCancellation.ts',api=await import(path);try{await api.cancelPendingAttack(id);return null;}catch(error){return String(error);}},request);
+  expect(await cancel()).toContain('Decide Legendary Resistance');expect(sql(`select state from pending_attacks where id='${request}'`)).toBe('declared');
+  sql(`update pending_attacks set pending_lr_decision=false where id='${request}'`);
+  let replies=0;await page.route('**/rest/v1/pending_attacks?*',async route=>{if(route.request().method()!=='PATCH')return route.continue();await route.fetch();replies++;await route.abort('failed');});
+  expect(await cancel()).toBeTruthy();expect(replies).toBe(1);expect(sql(`select state from pending_attacks where id='${request}'`)).toBe('canceled');
+  await page.unroute('**/rest/v1/pending_attacks?*');expect(await cancel()).toBeNull();expect(finish().replayed).toBe(false);
+ });
  test('browser retries a lost completion reply without overwriting later healing',async({page})=>{
   await login(page);let replies=0;
   await page.route('**/rest/v1/rpc/end_combat_encounter',async route=>{await route.fetch();replies++;await route.abort('failed');});
