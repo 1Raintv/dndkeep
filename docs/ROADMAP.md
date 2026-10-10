@@ -1,5 +1,27 @@
 # DNDKeep — Two-Track Roadmap
 
+### Potent Thoughts progression consistency (local; not released)
+
+Potent Thoughts now uses psionProgression, like the other Psion powers. Its
+separate level check previously granted the Intelligence damage bonus for malformed
+primary levels, invalid combined totals, or duplicate Psion classes. Eleven new
+invalid-progression cases fail against the previous implementation. Valid Psion
+levels qualify at six in either class order; total-level cantrip scaling and
+explicit Psion casting-source ownership remain covered, including negative INT.
+The live SpellCastButton and SpellsTab both use this shared damage rule.
+
+Owner-provided UA2025-Psion+Update.pdf p.10 rechecked: six Psion levels, Psion
+cantrip damage only. Full gate passes: 4,623 unit tests, TS 193/193, entry 256.1 KB.
+Evidence: .tmp/potent-thoughts-{mutation,gate}.log. No database or layout change.
+
+Further source review confirms Bulwark Mind remains description-only: level six,
+start-of-turn activation for one Energy Die, ten-minute duration, Psychic resistance
+and free Energy Die bonuses to INT/WIS/CHA saves. Implement its complete saved
+activation/timer/damage/save flow before exposing a spending button. Preserve the
+source's Incapacitated restriction; confirm its scope before extending resistance
+behavior. Ability-check Bolstering also still needs an original-check lifecycle.
+Continue map navigation/token review alongside this queued subclass work.
+
 ### Release rehearsals refreshed through 343 (production unchanged)
 
 Both retained databases (fresh-origin and main-upgrade-origin) resumed from 332

@@ -38,3 +38,28 @@ it('applies Potent Thoughts only when the shared cantrip is cast through Psion',
  expect(cantripDamage(shared,spell,'1d6',4,'Psion')).toMatchObject({bonus:4,needsSourceReview:false});
  expect(cantripDamage({...pc,spell_sources:{'mind-sliver':['class:Psion','grant:class:Psion']}},spell,'1d6',4).bonus).toBe(4);
 });
+
+it.each([
+ {level:21},
+ {level:6,secondary_class:'Psion',secondary_subclass:'Telepath',secondary_level:6},
+ {level:6,secondary_class:'Fighter',secondary_level:15},
+ {level:6,secondary_class:'Fighter',secondary_level:-1},
+ {level:6,secondary_class:'Fighter',secondary_level:1.5},
+ {level:6,secondary_class:'Fighter',secondary_level:NaN},
+ {level:6,secondary_class:'Fighter',secondary_level:Infinity},
+ {class_name:'Wizard',level:0,secondary_class:'Psion',secondary_subclass:'Telepath',secondary_level:6},
+ {class_name:'Wizard',level:1.5,secondary_class:'Psion',secondary_subclass:'Telepath',secondary_level:6},
+ {class_name:'Wizard',level:15,secondary_class:'Psion',secondary_subclass:'Telepath',secondary_level:6},
+ {class_name:'',level:1,secondary_class:'Psion',secondary_subclass:'Telepath',secondary_level:6},
+])('does not grant Potent Thoughts from invalid class progression %#',patch=>{
+ expect(cantripDamage({...pc,...patch},spell,'1d6',4,'Psion').bonus).toBe(0);
+});
+it('keeps the six-Psion-level requirement in both class orders at the total-level cap',()=>{
+ for(const psionLevel of [5,6,19]){
+  const otherLevel=20-psionLevel;
+  for(const character of [
+   {...pc,level:psionLevel,secondary_class:'Wizard',secondary_level:otherLevel},
+   {...pc,class_name:'Wizard',subclass:null,level:otherLevel,secondary_class:'Psion',secondary_subclass:'Telepath',secondary_level:psionLevel},
+  ])expect(cantripDamage(character,spell,'1d6',4,'Psion')).toEqual({dice:'4d6',bonus:psionLevel>=6?4:0,needsSourceReview:false});
+ }
+});
