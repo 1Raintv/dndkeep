@@ -368,6 +368,31 @@ test.describe('Atomic aura resolution',()=>{
   expect(sql(`select legendary_actions_remaining from combat_participants where id='${pa}'`)).toBe('1');expect(errors).toEqual([]);
  });
 
+ for(const damage of [false,true]) test(`single-target monster save retains its condition ${damage?'with damage':'without damage'}`,async({page},info)=>{
+  monster();
+  const action={name:'Toppling Gaze',desc:'One creature must succeed on a DC 20 Strength saving throw or be knocked prone.',dc_type:'STR',dc_value:20,dc_success:'none',...(damage?{damage_dice:'1d4',damage_type:'bludgeoning'}:{})};
+  sql(`insert into monsters(id,name,type,cr,xp,size,hp,hp_formula,ac,speed,str,dex,con,int,wis,cha,actions) values('${b}','Save actor','Beast','1',200,'Medium',20,'3d8',10,30,10,10,10,10,10,10,${literal([action])});update homebrew_monsters set source_monster_id='${b}' where id='${b}';update combat_participants set participant_type='creature',attacks_remaining=1 where id='${pb}';update combatants set active_buffs='[]' where id='${ca}'`);
+  await signInFixtureDm(page);const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+  await page.evaluate(async campaign=>{
+   Math.random=()=>0.01;localStorage.setItem('dndkeep:fastCombatRolls','1');
+   const paths=['/node_modules/.vite/deps/react.js','/node_modules/.vite/deps/react-dom_client.js','/src/components/Combat/MonsterActionPanel.tsx','/src/components/shared/Toast.tsx','/src/context/CombatContext.tsx'];
+   const [React,dom,panel,toast,combat]=await Promise.all(paths.map(path=>import(path)));
+   const host=document.createElement('div');host.id='single-save-fixture';document.getElementById('root')!.style.display='none';document.body.appendChild(host);
+   dom.default.createRoot(host).render(React.default.createElement(toast.ToastProvider,null,React.default.createElement(combat.CombatProvider,{campaignId:campaign},React.default.createElement(panel.default,{isDM:true}))));
+  },campaign);
+  await page.getByRole('button',{name:/Toppling Gaze/}).click();
+  await page.locator('button[data-target-group]').first().click();
+  await expect.poll(()=>sql(`select count(*) from dndkeep_private.attack_condition_resolutions r join pending_attacks p on p.id=r.attack_id where p.encounter_id='${enc}'`)).toBe('1');
+  await expect.poll(()=>sql(`select state from pending_attacks where encounter_id='${enc}'`)).toBe(damage?'applied':'canceled');
+  expect(sql(`select coalesce(active_conditions,'{}'::text[]) @> array['Prone'] from combatants where id='${ca}'`)).toBe('t');
+  expect(JSON.parse(sql(`select recipe from dndkeep_private.attack_condition_intents where encounter_id='${enc}'`))).toMatchObject({conditionName:'Prone',sourcePrefix:'monster_action'});
+  expect(Number(sql(`select current_hp from combatants where id='${ca}'`))).toBe(damage?19:20);
+  await page.screenshot({path:`.tmp/single-save-${damage}-${info.project.name}.png`});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('#single-save-fixture, #single-save-fixture *, .toast, .toast *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
+
+  expect(errors).toEqual([]);
+ });
+
  test('legendary save conditions settle without resistance before closing the attack',async({page},info)=>{
   monster();sql(`update homebrew_monsters set dex=10,saving_throws='{}' where id='${b}';update combat_participants set legendary_actions_total=3,legendary_actions_remaining=3 where id='${pa}';update combat_participants set legendary_resistance=0 where id='${pb}'`);await signInFixtureDm(page);
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});

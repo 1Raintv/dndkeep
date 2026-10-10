@@ -8437,3 +8437,26 @@ it passed again. Full project verification passed. No schema changes this turn.
 Not deployed. Continue with single-target metadata/settlement and durable batch
 request/payment recovery; replay guarantees here apply to the same saved attack,
 not a fresh declaration from a repeated batch button click.
+
+
+### 2026-10-10 — saved conditions for single-target monster saves (unreleased)
+
+Single-target monster saves now use the same checked declaration and saved
+condition recipe as batches. They retain duration, repeat-save and source
+metadata across a Legendary Resistance pause. Immediate saves settle the condition
+before damage or closing the attack, fixing the dropped rider on damaging saves.
+Removed the separate browser immunity lookup and legacy condition write; current
+server defenses and the settlement receipt determine the outcome. Ordinary
+attack-roll actions and dice animation retain their existing flow.
+
+Real browser tests cover single-target conditions with and without damage;
+condition receipts, final attack state, HP and saved recipe are asserted.
+Desktop/mobile screenshots, official overflow probe and error checks passed.
+Disabling settlement failed the new regression; restoration passed. The existing
+Propel Bonus Action/die/reload test also passed on desktop and mobile.
+Full project verification passed: 3,937 units, TS 194/194, entry 255.7 KB.
+No database migration added. Not deployed.
+
+Remaining: durable declaration/payment recovery, legacy saved-condition review,
+Exhaustion settlement, and release integration. Damage still completes separately
+from condition settlement; this change does not claim an atomic entire attack.

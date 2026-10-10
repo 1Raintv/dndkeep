@@ -70,11 +70,6 @@ import {
 // Dash and Disengage." The v2.413 InitiativeStrip-left location
 // didn't stick.
 import { takeDash, takeDisengage, resetMovement } from '../../lib/movement';
-// v2.442.0 — applyCondition lets us auto-tag the target with the
-// inferred condition on save fail (Frightened on Frightful Presence,
-// Prone on Wing Attack, etc.) so the DM doesn't have to reach for
-// the token context menu after every save.
-import { applyCondition } from '../../lib/conditions';
 // v2.443.0 — Batch declare RPC for multi-target save actions.
 // Replaces N×3 sequential round-trips (homebrew → monsters → declare)
 // with one. Per-target save+damage+apply chains still run client-side
@@ -1168,78 +1163,41 @@ export default function MonsterActionPanel({ isDM }: Props) {
       const saveBonuses=saveAbility?await verifiedTargetSaves([target],saveAbility):null;
       await spendRecharge(a);
 
-      // v2.415.0 — Flavor-aware resolution. Attacks use the
-      // declareAttack → rollAttackRoll → rollDamage → applyDamage
-      // chain (kind='attack_roll'). Save-vs-DC actions (Frightening
-      // Presence, breath weapons, gaze, etc.) use the same
-      // pending_attacks table with kind='save': declareAttack
-      // (with saveDC + saveAbility) → rollSave (rolls target's
-      // d20 + ability mod) → optionally rollDamage (for save
-      // actions that deal damage; rollDamage respects save_result
-      // to halve on success when saveSuccessEffect='half') →
-      // applyDamage. For pure save-or-condition actions with no
-      // damage (Frightening Presence, Hold Monster), we skip the
-      // damage steps and toast the result so the DM can apply
-      // the condition manually (auto-condition-on-fail is a
-      // future ship; the bestiary data doesn't currently carry
-      // structured condition info).
+      // Saves retain their condition recipe before rolling; attack rolls
+      // continue through the normal attack/damage chain.
       if (flavor === 'save') {
         const ability = normalizeSaveAbility(a.dc_type);
         if (!ability) {
           showToast(`Couldn't parse save ability: "${a.dc_type}".`, 'error');
         } else {
-          // v2.419.0 — Roll FIRST, immunity flavor LAST. Pre-v2.419
-          // we short-circuited the entire save chain when the target
-          // was immune to the inferred condition. User feedback:
-          // the player should still see their character roll the
-          // save — the immunity is something the DM narrates AFTER
-          // the result. So now we always run the full chain
-          // (declare → save → optional damage), and if the action's
-          // primary effect is a condition the target is immune to
-          // AND the save FAILED, we toast the immunity AFTER the
-          // roll. Passes are noted as normal successes (the
-          // immunity is moot since the save passed anyway).
-          //
-          // Lookup is the same as v2.417 — condition_immunities lives
-          // on `monsters` reachable via homebrew_monsters.source_monster_id.
+          // v2.869 — Save the rider before rolling so a resistance pause retains its
+          // duration and source. Settlement checks current defenses atomically.
           const inferredCondition = inferConditionFromSaveAction(a.name, a.desc);
-          let targetImmuneToCondition = false;
-          if (inferredCondition && target.participant_type === 'creature' && target.entity_id) {
-            const { data: tgtHb } = await supabase
-              .from('homebrew_monsters')
-              .select('source_monster_id')
-              .eq('id', target.entity_id)
-              .maybeSingle();
-            const tgtSourceId = (tgtHb as any)?.source_monster_id;
-            if (tgtSourceId) {
-              const { data: tgtRow } = await supabase
-                .from('monsters')
-                .select('condition_immunities')
-                .eq('id', tgtSourceId)
-                .maybeSingle();
-              const immList = ((tgtRow as any)?.condition_immunities ?? []) as string[];
-              targetImmuneToCondition = immList.some(s => s.toLowerCase() === inferredCondition);
-            }
-          }
-
-          const attack = await declareAttack({
+          const conditionName = inferredCondition
+            ? inferredCondition.charAt(0).toUpperCase() + inferredCondition.slice(1)
+            : null;
+          const durationRounds = inferConditionDurationRounds(a.desc);
+          const saveToEnd = inferSaveToEnd(a.desc, ability, a.dc_value);
+          const batch = await declareSaveBatch({
             campaignId: encounter.campaign_id,
             encounterId: encounter.id,
-            attackerParticipantId: currentActor.id,
-            attackerName: currentActor.name,
-            attackerType: 'creature',
-            targetParticipantId: target.id,
-            targetName: target.name,
-            targetType: target.participant_type,
-            attackSource: 'monster_action',
+            attacker: {id: currentActor.id, name: currentActor.name, type: 'creature'},
             attackName: a.name,
-            attackKind: 'save',
-            saveDC: a.dc_value ?? null,
+            saveDC: a.dc_value ?? 0,
             saveAbility: ability,
-            saveSuccessEffect: a.dc_success ?? 'none',
+            saveSuccessEffect: (a.dc_success ?? 'none') as 'none' | 'half' | 'other',
             damageDice: a.damage_dice ?? null,
             damageType: a.damage_type ?? null,
+            inferredCondition,
+            conditionIntent: conditionName ? {
+              conditionName, sourcePrefix: 'monster_action', sourceKind: actionNameToSourceKind(a.name),
+              durationRounds: durationRounds ?? null, saveToEnd: saveToEnd ?? null,
+            } : null,
+            targets: [target],
           });
+          const row = batch?.rows.find(row => row.targetParticipantId === target.id);
+          if (!row) throw new Error('Could not declare this saving throw. Review the target before trying again.');
+          const attack = {id: row.pendingAttackId};
           if (attack) {
             // Look up the target's save bonus (CR-based for
             // creatures, level-based for PCs, both with prof check).
@@ -1270,118 +1228,67 @@ export default function MonsterActionPanel({ isDM }: Props) {
             // realtime and surface the choice.
             if (saveOutcome === 'awaiting_resistance') {
               showToast(`${target.name} may use Legendary Resistance — resolve via the prompt.`, 'info');
-            } else if (a.damage_dice) {
-              // Save with damage (e.g. dragon breath weapon). Roll
-              // damage; rollDamage halves automatically when
-              // save_result='passed' and saveSuccessEffect='half',
-              // or zeroes when 'none'.
-              const damaged = await rollDamage(rolled?.id ?? attack.id);
-              if (!fastRolls && damaged && (damaged as any).damage_rolls) {
-                const damageDice = a.damage_dice ?? '';
-                const dieMatch = damageDice.match(/d(\d+)/i);
-                const dieType = dieMatch ? parseInt(dieMatch[1], 10) : 6;
-                const rolls = (damaged as any).damage_rolls as number[];
-                const finalDmg = (damaged as any).damage_final as number;
-                if (rolls.length > 0) {
-                  triggerRoll({
-                    allDice: rolls.map(v => ({ die: dieType, value: v })),
-                    result: rolls[0],
-                    dieType,
-                    total: finalDmg,
-                    expression: damageDice,
-                    label: `${a.name} — Damage`,
-                  });
-                  await sleep(1800);
-                }
-              }
-              if (damaged && damaged.state === 'damage_rolled') {
-                await applyDamage(damaged.id);
-                // v2.421.0 — Force CombatContext refresh so the
-                // next attack in the multiattack sequence sees the
-                // updated HP immediately instead of waiting for the
-                // realtime echo to land. Without this, fast picks
-                // see stale HP in the target picker between hits,
-                // which the user reported as "the health menu is
-                // not synced." Cheap (single SELECT) and runs
-                // off the critical path.
-                refresh().catch(err => console.error('[MonsterActionPanel] refresh failed', err));
-                // v2.422.0 — Also force the dashboard's combatants
-                // state to reload so token HP bars (which read from
-                // `combatants` → tokenStateMap, NOT from CombatContext)
-                // stay in lockstep with the InitiativeStrip and the
-                // MonsterActionPanel. CampaignDashboard listens for
-                // this window event and calls loadCombatants().
-                window.dispatchEvent(new Event('dndkeep:hp-applied'));
-              }
             } else {
-              // Pure save-or-condition action with no damage. Toast
-              // the result; on a failed save we now (v2.442.0) auto-
-              // apply the inferred condition (Frightened on FP, Prone
-              // on Wing Attack, etc.) so the DM doesn't have to dig
-              // through the token context menu after every save. The
-              // condition is tagged with a source so future cleanup
-              // (e.g. concentration loss) can find it.
-              //
-              // v2.419.0 — Immunity flavor. If the save FAILED but
-              // the target is immune to the inferred condition, the
-              // failure has no effect. Toast that fact AFTER the
-              // roll so the DM can narrate the immunity (the player
-              // still saw their character roll, which is what they
-              // wanted).
-              const passed = saveOutcome === 'passed';
-              if (passed) {
-                showToast(`${target.name} succeeded on ${ability} save vs ${a.name}.`, 'success');
-              } else if (targetImmuneToCondition && inferredCondition) {
-                showToast(
-                  `${target.name} failed the save vs ${a.name} but is IMMUNE to ${inferredCondition} — no effect.`,
-                  'info',
-                );
-              } else if (inferredCondition) {
-                // v2.442.0 — Auto-apply the condition. inferredCondition
-                // is lowercase ("frightened"); applyCondition expects the
-                // capitalized form that matches CONDITION_MAP keys.
-                const conditionName = inferredCondition.charAt(0).toUpperCase() + inferredCondition.slice(1);
-                // v2.445.0 — Infer duration + end-of-turn re-save spec
-                // from the action's desc. When present, applyCondition
-                // stores them on the source row so advanceTurn's
-                // processor can auto-roll re-saves and auto-expire.
-                const durationRounds = inferConditionDurationRounds(a.desc);
-                const saveToEnd = inferSaveToEnd(a.desc, ability, a.dc_value);
-                const sourceKind = actionNameToSourceKind(a.name);
-                try {
-                  await applyCondition({
-                    participantId: target.id,
-                    conditionName,
-                    source: `monster_action:${a.name}:${currentActor.id}`,
-                    casterParticipantId: currentActor.id,
-                    campaignId: encounter.campaign_id,
-                    encounterId: encounter.id,
-                    ...(durationRounds ? { durationRounds, currentRound: encounter.round_number } : {}),
-                    ...(saveToEnd ? { saveToEnd } : {}),
-                    sourceKind,
-                    sourceAttackerId: currentActor.id,
-                  });
-                  // Build a more informative toast when there's a duration.
-                  const durationLabel = durationRounds
-                    ? ` (${durationRounds === 10 ? '1 min' : `${durationRounds} rd`})`
-                    : '';
-                  showToast(
-                    `${target.name} FAILED ${ability} save vs ${a.name} — ${conditionName} applied${durationLabel}.`,
-                    'info',
-                  );
-                } catch (err) {
-                  console.error('[MonsterActionPanel] applyCondition failed', err);
-                  showToast(
-                    `${target.name} FAILED ${ability} save vs ${a.name}. Apply ${conditionName} manually.`,
-                    'info',
-                  );
+              const condition = conditionName ? await settleAttackCondition(attack.id, conditionName) : null;
+              if (a.damage_dice) {
+                // Save with damage (e.g. dragon breath weapon). Roll
+                // damage; rollDamage halves automatically when
+                // save_result='passed' and saveSuccessEffect='half',
+                // or zeroes when 'none'.
+                const damaged = await rollDamage(rolled?.id ?? attack.id);
+                if (!fastRolls && damaged && (damaged as any).damage_rolls) {
+                  const damageDice = a.damage_dice ?? '';
+                  const dieMatch = damageDice.match(/d(\d+)/i);
+                  const dieType = dieMatch ? parseInt(dieMatch[1], 10) : 6;
+                  const rolls = (damaged as any).damage_rolls as number[];
+                  const finalDmg = (damaged as any).damage_final as number;
+                  if (rolls.length > 0) {
+                    triggerRoll({
+                      allDice: rolls.map(v => ({ die: dieType, value: v })),
+                      result: rolls[0],
+                      dieType,
+                      total: finalDmg,
+                      expression: damageDice,
+                      label: `${a.name} — Damage`,
+                    });
+                    await sleep(1800);
+                  }
+                }
+                if (damaged && damaged.state === 'damage_rolled') {
+                  await applyDamage(damaged.id);
+                  // v2.421.0 — Force CombatContext refresh so the
+                  // next attack in the multiattack sequence sees the
+                  // updated HP immediately instead of waiting for the
+                  // realtime echo to land. Without this, fast picks
+                  // see stale HP in the target picker between hits,
+                  // which the user reported as "the health menu is
+                  // not synced." Cheap (single SELECT) and runs
+                  // off the critical path.
+                  refresh().catch(err => console.error('[MonsterActionPanel] refresh failed', err));
+                  // v2.422.0 — Also force the dashboard's combatants
+                  // state to reload so token HP bars (which read from
+                  // `combatants` → tokenStateMap, NOT from CombatContext)
+                  // stay in lockstep with the InitiativeStrip and the
+                  // MonsterActionPanel. CampaignDashboard listens for
+                  // this window event and calls loadCombatants().
+                  window.dispatchEvent(new Event('dndkeep:hp-applied'));
                 }
               } else {
-                showToast(`${target.name} FAILED ${ability} save vs ${a.name}. Apply effect manually (see action description).`, 'info');
+                if (saveOutcome === 'passed') {
+                  showToast(`${target.name} succeeded on ${ability} save vs ${a.name}.`, 'success');
+                } else if (condition?.outcome === 'immune') {
+                  showToast(`${target.name} failed the save vs ${a.name} but is IMMUNE to ${conditionName} — no effect.`, 'info');
+                } else if (condition) {
+                  const durationLabel = condition.outcome === 'applied' && durationRounds
+                    ? ` (${durationRounds === 10 ? '1 min' : `${durationRounds} rd`})` : '';
+                  showToast(`${target.name} FAILED ${ability} save vs ${a.name} — ${conditionName} ${condition.outcome === 'applied' ? 'applied' : 'already present'}${durationLabel}.`, 'info');
+                } else {
+                  showToast(`${target.name} FAILED ${ability} save vs ${a.name}. Apply effect manually (see action description).`, 'info');
+                }
+                // Cancel the lingering pending_attacks row so it
+                // doesn't sit forever in 'declared' state.
+                await cancelAttack(rolled?.id ?? attack.id);
               }
-              // Cancel the lingering pending_attacks row so it
-              // doesn't sit forever in 'declared' state.
-              await cancelAttack(rolled?.id ?? attack.id);
             }
           }
         }
@@ -1613,15 +1520,14 @@ export default function MonsterActionPanel({ isDM }: Props) {
         return;
       }
       const inferredCondition = inferConditionFromSaveAction(a.name, a.desc);
-      // Capitalized form for applyCondition (matches CONDITION_MAP keys).
+      // Canonical condition name for the saved rider.
       const conditionName = inferredCondition
         ? inferredCondition.charAt(0).toUpperCase() + inferredCondition.slice(1)
         : null;
       // v2.445.0 — Pre-compute duration + save-to-end + source-kind
       // once per batch (they're action-level properties, not target-
-      // level). The per-target loop below passes them into
-      // applyCondition. When durationRounds is null, applyCondition
-      // falls through to v2.444 "permanent until removed" behavior.
+      // level). Save them with the declaration, including null duration
+      // for conditions that persist until removed.
       const durationRounds = inferConditionDurationRounds(a.desc);
       const saveToEnd = inferSaveToEnd(a.desc, ability, a.dc_value);
       const sourceKind = actionNameToSourceKind(a.name);
@@ -1681,7 +1587,7 @@ export default function MonsterActionPanel({ isDM }: Props) {
       }
 
       // v2.443.0 — Per-target chain: getTargetSaveBonus → rollSave →
-      // (rollDamage + applyDamage | applyCondition + cancelAttack).
+      // saved condition settlement, then damage or cancellation.
       // Each chain is independent so we run them all in Promise.all.
       // For a 5-target Cold Breath this runs 5 chains concurrently
       // instead of 5×4-7 sequential calls.
