@@ -15,8 +15,9 @@ type Resp = { data?: unknown; error?: unknown; count?: number | null };
 
 const h = vi.hoisted(() => {
   const state = {
+    ticks: vi.fn(async () => {}),
     calls: [] as Call[],
-    respond: ((_c: Call) => ({ data: [], error: null })) as (c: Call) => Resp,
+    respond: ((_c: Call) => ({ data: [], error: null })) as (c: Call) => Resp | Promise<Resp>,
   };
   function builder(call: Call): unknown {
     const b: unknown = new Proxy({}, {
@@ -45,11 +46,16 @@ vi.mock('./combatEvents', () => ({
   emitCombatEventChain: vi.fn(async () => null),
   newChainId: () => 'chain',
 }));
+vi.mock('./endOfTurnConditions',()=>({processEndOfTurnConditions:vi.fn(async()=>{})}));
+vi.mock('./buffs',()=>({processTurnTicks:h.state.ticks}));
+vi.mock('./auras',()=>({evaluateAurasOnTurnEnd:vi.fn(async()=>{})}));
+vi.mock('./movementGatedFeatures',()=>({resetMovementGatedFeatures:vi.fn(async()=>{})}));
+vi.mock('./masteryRiders',()=>({sweepExpiredMasteryMarkers:vi.fn(async()=>{})}));
 vi.mock('./api/checked', () => ({ checkedWrite: vi.fn(async () => ({ error: null })) }));
 
 import { recoverInitiativeResources } from './initiativeResources';
 vi.mock('./initiativeResources',()=>({recoverInitiativeResources:vi.fn(async()=>{})}));
-import { characterToSeed, seedToRow, firstPerDefinition, startEncounter, endEncounter, addParticipantToEncounter, rollInitiativeForParticipant, type SeedSource } from './combatEncounter';
+import { advanceTurn, characterToSeed, seedToRow, firstPerDefinition, startEncounter, endEncounter, addParticipantToEncounter, rollInitiativeForParticipant, type SeedSource } from './combatEncounter';
 
 const seed = (over: Partial<SeedSource>): SeedSource => ({
   type: 'creature', entityId: 'goblin-def', name: 'Goblin Scout',
@@ -60,6 +66,7 @@ const opOf = (c: Call, name: string) => c.ops.find(o => o.op === name);
 
 beforeEach(() => {
   vi.mocked(recoverInitiativeResources).mockClear();
+  h.state.ticks.mockClear();
   h.state.calls.length = 0;
   h.state.respond = () => ({ data: [], error: null });
 });
@@ -215,4 +222,47 @@ it.each([
   const row = seedToRow(characterToSeed(character), ctx);
   expect(row.attacks_per_action).toBe(count);
   expect(row.attacks_remaining).toBe(count);
+});
+
+describe('shared live turn advancement',()=>{
+ const encounter={id:'guard-enc',campaign_id:'camp',status:'active',current_turn_index:0,round_number:1,psionic_turn_id:'turn'};
+ const actors=[0,1].map(n=>({id:`p${n}`,combatant_id:`cb${n}`,campaign_id:'camp',name:`Actor ${n}`,participant_type:'creature',turn_order:n,current_hp:10,max_hp:10,is_dead:false}));
+ const encounterWrites=()=>h.state.calls.filter(c=>c.table==='combat_encounters'&&opOf(c,'update')&&opOf(c,'eq')?.args[1]==='guard-enc');
+ function successful(c:Call):Resp {
+  if(c.table==='combat_encounters')return {data:opOf(c,'update')?{psionic_turn_id:'next'}:encounter,error:null};
+  return {data:actors,error:null};
+ }
+ it('overlapping controls share one successful advance and one set of turn effects',async()=>{
+  let release!:(value:Resp)=>void;
+  const held=new Promise<Resp>(resolve=>{release=resolve;});
+  h.state.respond=c=>c.table==='combat_encounters'&&!opOf(c,'update')?held:successful(c);
+  const first=advanceTurn('guard-enc'),second=advanceTurn('guard-enc');expect(second).toBe(first);
+  release({data:encounter,error:null});
+  expect(await first).toEqual({ok:true});expect(await second).toEqual({ok:true});
+  expect(encounterWrites()).toHaveLength(1);
+  expect(h.state.ticks.mock.calls).toHaveLength(2);
+  expect(h.state.ticks).toHaveBeenNthCalledWith(1,{participantId:'p0',encounterId:'guard-enc',timing:'turn_end'});
+  expect(h.state.ticks).toHaveBeenNthCalledWith(2,{participantId:'p1',encounterId:'guard-enc',timing:'turn_start'});
+ });
+ it('a later deliberate call can advance after the first finishes',async()=>{
+  h.state.respond=successful;const first=advanceTurn('guard-enc');expect(await first).toEqual({ok:true});
+  const later=advanceTurn('guard-enc');expect(later).not.toBe(first);expect(await later).toEqual({ok:true});expect(encounterWrites()).toHaveLength(2);
+ });
+ it('a failed read shares its result and releases the guard for retry',async()=>{
+  h.state.respond=()=>({data:null,error:null});const first=advanceTurn('guard-enc'),second=advanceTurn('guard-enc');
+  expect(second).toBe(first);expect(await first).toEqual({ok:false,reason:'Encounter not found'});
+  h.state.respond=successful;expect(await advanceTurn('guard-enc')).toEqual({ok:true});
+ });
+ it('unexpected exceptions become a visible failure result and do not strand subsequent calls',async()=>{
+  h.state.respond=()=>{throw new Error('Connection interrupted');};
+  const first=advanceTurn('guard-enc'),second=advanceTurn('guard-enc');expect(second).toBe(first);
+  expect(await first).toEqual({ok:false,reason:'Connection interrupted'});
+  h.state.respond=successful;expect(await advanceTurn('guard-enc')).toEqual({ok:true});
+ });
+ it('does not block a different encounter behind an in-flight read',async()=>{
+  let release!:(value:Resp)=>void;const held=new Promise<Resp>(resolve=>{release=resolve;});
+  h.state.respond=c=>opOf(c,'eq')?.args[1]==='guard-enc'?held:{data:null,error:null};
+  const first=advanceTurn('guard-enc');expect(await advanceTurn('other')).toEqual({ok:false,reason:'Encounter not found'});
+  release({data:null,error:null});expect(await first).toEqual({ok:false,reason:'Encounter not found'});
+ });
 });

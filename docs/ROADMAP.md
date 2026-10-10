@@ -6745,3 +6745,32 @@ also passes with receipt-first confirmation. Full gate passes (3,350 units,
 196/196 TypeScript,entry255.2KB); changed-file ESLint, SQL lint, security advisors
 and diff checks pass. Only the reviewed new migration was applied locally and
 recorded in the ledger; unrelated local history was preserved.
+
+### Live turn-handler overlap guard (unreleased)
+
+advanceTurn now coalesces overlapping calls for one encounter in the same tab.
+InitiativeStrip, DMScreen and the character-sheet action controls all call this
+shared handler, so separate controls cannot start concurrent copies of its
+turn effects and writes. The guard is released after success or failure;
+different encounters remain independent. Unexpected exceptions become an
+explicit failure result for the existing callers rather than an unhandled
+rejection. This does not make a later retry idempotent or coordinate browsers;
+the durable turn-controller migration remains required before branch release.
+
+Five new caller tests cover a full successful advance/effect pass, later calls,
+failed reads, unexpected exceptions and encounter isolation. The browser test
+holds the first encounter read, overlaps two real advanceTurn calls, then checks
+that both share the result and only one encounter write occurred. Desktop and
+mobile pass. The initial fixture's request hold was bypassed by the service
+worker; blocking service workers in this network-controlled fixture (as other
+recovery suites do) fixes the harness. All six affected browser cases pass in
+the final isolated run, including existing lost-reply and competing-request
+recovery cases. No UI layout or database migration change.
+
+Removed an existing unused combat-start chain ID (emitCombatEventChain owns its
+IDs). Type diagnostics fell from196 to195; CI's baseline was ratcheted to195.
+Full gate passes (3,355 units,195/195 TypeScript,entry255.2KB). Changed-file ESLint
+has no errors (34 pre-existing warnings in combatEncounter.ts); diff checks pass.
+No production deployment. Remaining work includes durable incoming/outgoing
+phases, explicit stale/observed-request reconciliation and non-atomic turn
+operations before the legacy clock writes can be replaced.

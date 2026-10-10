@@ -596,7 +596,6 @@ export async function startEncounter(opts: StartEncounterOptions): Promise<Start
   }
 
   // 4. Emit combat_started + initiative_rolled events
-  const chainId = newChainId();
   const events: Parameters<typeof emitCombatEventChain>[0] = [];
   events.push({
     campaignId: opts.campaignId,
@@ -697,7 +696,26 @@ export type CombatActionResult =
   | { ok: true }
   | { ok: false; reason: string };
 
-export async function advanceTurn(encounterId: string): Promise<CombatActionResult> {
+// v2.869: three controls share this handler. A component-local busy flag
+// cannot stop another control from starting the same effects/advance in parallel.
+// This guard covers one tab only; durable cross-client recovery remains separate.
+const pendingTurnAdvances = new Map<string, Promise<CombatActionResult>>();
+export function advanceTurn(encounterId: string): Promise<CombatActionResult> {
+  const pending = pendingTurnAdvances.get(encounterId);
+  if (pending) return pending;
+  const work = Promise.resolve().then(() => advanceTurnOnce(encounterId))
+    .catch((error: unknown): CombatActionResult => ({
+      ok: false,
+      reason: error instanceof Error ? error.message : 'Turn advancement could not be confirmed. Check combat before trying again.',
+    }))
+    .finally(() => {
+      if (pendingTurnAdvances.get(encounterId) === work) pendingTurnAdvances.delete(encounterId);
+    });
+  pendingTurnAdvances.set(encounterId, work);
+  return work;
+}
+
+async function advanceTurnOnce(encounterId: string): Promise<CombatActionResult> {
   const { data: enc, error: encErr } = await supabase
     .from('combat_encounters')
     .select('*')

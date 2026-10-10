@@ -7,6 +7,8 @@ const sql=(q:string)=>execFileSync('docker',args,{input:q,encoding:'utf8',stdio:
 const auth=(u:string,q:string)=>`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${u}","role":"authenticated"}';${q};commit;`;
 const parallel=(q:string)=>new Promise<{code:number|null,out:string,error:string}>(resolve=>{const p=spawn('docker',args);let out='',error='';p.stdout.on('data',v=>out+=v);p.stderr.on('data',v=>error+=v);p.on('close',code=>resolve({code,out,error}));p.stdin.end(q);});
 test.describe('Atomic combat clock transitions',()=>{
+ // Request holds must reach Playwright instead of the service worker's fetch.
+ test.use({serviceWorkers:'block'});
  gateDbSuite();let dm:string,player:string,campaign:string,enc:string,a:string,b:string,ca:string,cb:string,pa:string,pb:string,request:string,turn:string;
  test.beforeEach(()=>{
   [dm,player,campaign,enc,a,b,ca,cb,pa,pb,request]=Array.from({length:11},()=>randomUUID());
@@ -78,6 +80,25 @@ test.describe('Atomic combat clock transitions',()=>{
  test('ambiguous historical clock winners are not guessed',()=>{
   run();sql(`insert into dndkeep_private.combat_clock_transitions(request_id,encounter_id,request,result) select gen_random_uuid(),encounter_id,request,result from dndkeep_private.combat_clock_transitions where request_id='${request}'`);
   expect(()=>sql(auth(dm,readClock()))).toThrow(/Conflicting saved combat transitions/);
+ });
+ test('live turn handler coalesces overlapping controls into one database advance',async({page})=>{
+  await signInFixtureDm(page);let reads=0,writes=0;let release!:()=>void;
+  const held=new Promise<void>(resolve=>{release=resolve;});
+  await page.route(/\/rest\/v1\/combat_encounters(?:\?|$)/,async route=>{
+   if(new URL(route.request().url()).searchParams.get('id')===`eq.${enc}`){
+    if(route.request().method()==='GET'){reads++;if(reads===1)await held;}
+    if(route.request().method()==='PATCH')writes++;
+   }
+   await route.continue();
+  });
+  const pending=page.evaluate(async encounter=>{
+   const api=await import('/src/lib/combatEncounter.ts');
+   const first=api.advanceTurn(encounter),second=api.advanceTurn(encounter);
+   return {shared:first===second,results:await Promise.all([first,second])};
+  },enc);
+  try{await expect.poll(()=>reads).toBe(1);expect(writes).toBe(0);}finally{release();}
+  expect(await pending).toEqual({shared:true,results:[{ok:true},{ok:true}]});
+  expect(writes).toBe(1);expect(state()).toMatchObject({index:1,round:1,clock:0});expect(state().turn).not.toBe(turn);
  });
  test('browser recovery observes another request winner without advancing or rerunning its effects',async({page})=>{
   await signInFixtureDm(page);const loser={requestId:randomUUID(),encounterId:enc,expectedTurn:turn,incomingId:pb,nextIndex:1,nextRound:1};
