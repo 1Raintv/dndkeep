@@ -1,5 +1,34 @@
 # DNDKeep — Two-Track Roadmap
 
+### Telepath reactions — private saved lifecycle (local; not released)
+
+Migration 20261010162629 adds saved Distraction/Bolstering attack declarations.
+Beginning preserves the original base die, reviewed attack revision, roster
+bindings and explicit DM range/visibility confirmation; it claims the shared
+Reaction and creates an offer that holds damage progression. Exact declaration
+retries reuse that record. No Energy Die is charged at declaration.
+
+Finishing locks the attack/roster, checks the original turn and progression,
+then applies the numerical modifier and conditionally charges one Energy Die
+in the same transaction. Natural critical hits stay critical. Ineffective
+rolls retain the die but keep the Reaction spent. Concurrent completion reuses
+one result/payment. Stale state or insufficient energy leaves the declaration
+recoverable; explicit cancellation keeps the Reaction spent and charges no
+Energy Die. A timer or direct offer deletion cannot discard an unfinished use.
+
+The functions/table remain private and unavailable to application roles.
+Do not enable a dispatcher/UI yet: linked Surge/Enkindled, player recovery,
+original attack trigger-turn capture, spatial review integration, ability-check
+Bolstering, durable attack history/offers and Graze deferral remain unfinished.
+DM confirmation here is an explicit adjudication, not automatic line of sight.
+
+Validation: 20 database/browser suite cases and six follow-up cases passed,
+including roster/progression guards and simultaneous completion. Full gate:
+4,346 unit tests, entry 255.7 KB. SQL lint has no errors/new-function warnings;
+security findings remain keep_warm/client_errors. Local ledger matches exact
+migration bytes. Repo chain is 325; retained release rehearsals cover 321.
+
+
 ### Reaction windows — server-side attack barrier (local; not released)
 
 Migration 20261010162103 serializes new attack-linked reaction offers against

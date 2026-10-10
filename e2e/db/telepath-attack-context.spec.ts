@@ -67,6 +67,94 @@ test.describe('Telepath attack context',()=>{
   expect(context()).toMatchObject({reactionAvailable:true,budget:{context:{isOwnTurn:false}}});
   sql(`update combat_encounters set status='setup' where id='${encounter}'`);expect(()=>context()).toThrow();
  });
+ const beginSaved=(roll:number,feature='distraction',review:unknown={distanceFeet:30,visible:true,confirmed:true},request=randomUUID())=>JSON.parse(sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';
+  select dndkeep_private.begin_telepath_reaction('${character}','${request}','${attack}','${feature}',dndkeep_private.telepath_attack_context('${character}','${attack}','${feature}'),${roll},'${JSON.stringify(review)}');commit;`));
+ const finishSaved=(request:string,cancel=false)=>JSON.parse(sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';select dndkeep_private.finish_telepath_reaction('${character}','${request}',${cancel});commit;`));
+ test('saved Distraction spends Reaction once and charges energy only when the hit becomes a miss',()=>{
+  const d=beginSaved(3);expect(d).toMatchObject({base_roll:3,result:null});
+  expect(sql(`select reaction_used from combat_participants where id='${participant}'`)).toBe('t');
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('8');
+  expect(()=>sql(`update pending_attacks set state='damage_rolled' where id='${attack}'`)).toThrow();
+  expect(finishSaved(d.request_id)).toMatchObject({energyCost:1,reactionCost:1,originalTotal:17,total:14,result:'miss',changed:true,replayed:false});
+  expect(finishSaved(d.request_id)).toMatchObject({energyCost:1,total:14,replayed:true});
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('7');
+  expect(sql(`select count(*) from public.psionic_energy_uses where request_id='${d.request_id}'`)).toBe('1');
+  expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${d.request_id}'`)).toBe('1');
+  expect(sql(`select state from pending_reactions where id='${d.request_id}'`)).toBe('accepted');
+ });
+ test('an ineffective Distraction retains its Energy Die and still spends Reaction',()=>{
+  const d=beginSaved(2);expect(finishSaved(d.request_id)).toMatchObject({energyCost:0,energy:null,reactionCost:1,total:15,result:'hit',changed:false});
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('8');
+  expect(sql(`select count(*) from public.psionic_energy_uses where request_id='${d.request_id}'`)).toBe('0');
+ });
+ test('Bolstering turns a missed attack into a hit with one conditional payment',()=>{
+  sql(`update pending_attacks set target_ac=20,hit_result='miss' where id='${attack}'`);const d=beginSaved(3,'bolstering');
+  expect(finishSaved(d.request_id)).toMatchObject({energyCost:1,total:20,result:'hit',changed:true});
+ });
+ test('saved declarations recover exactly and refuse changed rolls on the same identity',()=>{
+  const d=beginSaved(3),expected=JSON.stringify(d.context),review=JSON.stringify(d.review);
+  const replay=(roll:number)=>sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';select dndkeep_private.begin_telepath_reaction('${character}','${d.request_id}','${attack}','distraction','${expected}',${roll},'${review}');commit;`);
+  expect(JSON.parse(replay(3))).toMatchObject({replayed:true,base_roll:3});expect(()=>replay(4)).toThrow();
+  expect(()=>beginSaved(3)).toThrow();expect(finishSaved(d.request_id,true)).toMatchObject({cancelled:true,reactionCost:1,energyCost:0});
+  expect(()=>finishSaved(d.request_id)).toThrow();
+ });
+ test('range, visibility, resource and die validation happen before the Reaction claim',()=>{
+  for(const review of [{distanceFeet:61,visible:true,confirmed:true},{distanceFeet:30,visible:false,confirmed:true},{distanceFeet:30,visible:true,confirmed:false}])expect(()=>beginSaved(3,'distraction',review)).toThrow();
+  expect(()=>beginSaved(9)).toThrow();
+  sql(`update characters set class_resources='{"psionic-energy-dice":0}' where id='${character}'`);expect(()=>beginSaved(3)).toThrow();
+  expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${character}'`)).toBe('0');
+ });
+ test('changed attack or depleted energy never partially settles the saved result',()=>{
+  const d=beginSaved(3);sql(`update characters set class_resources='{"psionic-energy-dice":0}' where id='${character}'`);
+  expect(()=>finishSaved(d.request_id)).toThrow();expect(sql(`select attack_total from pending_attacks where id='${attack}'`)).toBe('17');
+  expect(sql(`select result is null from dndkeep_private.telepath_declarations where request_id='${d.request_id}'`)).toBe('t');
+  sql(`update characters set class_resources='{"psionic-energy-dice":8}' where id='${character}';update pending_attacks set target_ac=16 where id='${attack}'`);
+  expect(()=>finishSaved(d.request_id)).toThrow();expect(finishSaved(d.request_id,true)).toMatchObject({cancelled:true,energyCost:0});
+ });
+ test('timer/decline/delete cannot erase a paid Reaction before explicit saved cancellation',()=>{
+  const d=beginSaved(3);
+  for(const state of ['expired','declined','accepted'])expect(()=>sql(`update pending_reactions set state='${state}' where id='${d.request_id}'`)).toThrow();
+  expect(()=>sql(`delete from pending_reactions where id='${d.request_id}'`)).toThrow();
+  expect(finishSaved(d.request_id,true)).toMatchObject({cancelled:true});
+  expect(sql(`select state from pending_reactions where id='${d.request_id}'`)).toBe('declined');
+  expect(()=>sql(`update pending_reactions set state='offered' where id='${d.request_id}'`)).toThrow();
+ });
+ test('rebound participants and changed turns require cancellation without spending energy',()=>{
+  const d=beginSaved(3);sql(`update combat_participants set entity_id='other-creature' where id='${enemy}'`);
+  expect(()=>finishSaved(d.request_id)).toThrow();expect(sql(`select attack_total from pending_attacks where id='${attack}'`)).toBe('17');
+  sql(`update combat_participants set entity_id='${enemy}' where id='${enemy}';update combat_encounters set current_turn_index=1 where id='${encounter}'`);
+  expect(()=>finishSaved(d.request_id)).toThrow();expect(finishSaved(d.request_id,true)).toMatchObject({cancelled:true,energyCost:0});
+ });
+ test('changed Psion progression requires cancellation, and saved payments remain untouched',()=>{
+  const d=beginSaved(3);sql(`update characters set subclass='Psi Warper' where id='${character}'`);
+  expect(()=>finishSaved(d.request_id)).toThrow();expect(finishSaved(d.request_id,true)).toMatchObject({cancelled:true,energyCost:0});
+ });
+ test('a natural 20 remains a critical hit even after Distraction lowers its total',()=>{
+  // A new original roll, never a rewrite of immutable evidence.
+  sql(`delete from pending_attacks where id='${attack}';insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,attacker_name,attacker_type,target_participant_id,target_name,target_type,attack_name,attack_kind,attack_bonus,target_ac,chain_id)
+   values('${attack}','${campaign}','${encounter}','${enemy}','Enemy','monster','${participant}','Telepath','character','Strike','attack_roll',0,20,'${randomUUID()}')`);
+  const snapshot={version:1,attackId:attack,campaignId:campaign,encounterId:encounter,attackerId:enemy,targetId:participant,d20:20,total:20,targetAC:20,naturalOneAutoFails:true,criticalOnHit:false,automatic:'none',result:'crit'};
+  sql(`update pending_attacks set state='attack_rolled',attack_d20=20,attack_total=20,hit_result='crit',attack_roll_snapshot='${JSON.stringify(snapshot)}' where id='${attack}'`);
+  const d=beginSaved(8);expect(finishSaved(d.request_id)).toMatchObject({total:12,result:'crit',changed:false,energyCost:0});
+ });
+ test('simultaneous completion requests spend once and return the same attack result',async()=>{
+  const d=beginSaved(3),query=`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';select dndkeep_private.finish_telepath_reaction('${character}','${d.request_id}',false);commit;`;
+  const run=()=>new Promise<Record<string,unknown>>((resolve,reject)=>{
+   const process=spawn('docker',['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1']);let out='',err='';
+   process.stdout.on('data',data=>out+=data);process.stderr.on('data',data=>err+=data);process.on('error',reject);
+   process.on('close',code=>{if(code)reject(new Error(err));else{try{resolve(JSON.parse(out.trim()));}catch(error){reject(error);}}});process.stdin.end(query);
+  });
+  const results=await Promise.all([run(),run()]);expect(results.map(r=>r.replayed).sort()).toEqual([false,true]);
+  for(const result of results)expect(result).toMatchObject({total:14,result:'miss',energyCost:1});
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('7');
+  expect(sql(`select count(*) from public.psionic_energy_uses where request_id='${d.request_id}'`)).toBe('1');
+ });
+ test('the unfinished lifecycle is private and cannot be called by app roles',()=>{
+  for(const role of ['anon','authenticated']){
+   expect(sql(`select has_function_privilege('${role}','dndkeep_private.begin_telepath_reaction(uuid,uuid,uuid,text,jsonb,integer,jsonb)','execute') or has_function_privilege('${role}','dndkeep_private.finish_telepath_reaction(uuid,uuid,boolean)','execute') or has_table_privilege('${role}','dndkeep_private.telepath_declarations','select')`)).toBe('f');
+  }
+ });
+
  test('anonymous callers cannot invoke either context entry point',()=>{
   expect(sql(`select has_function_privilege('anon','public.get_telepath_attack_context(uuid,uuid,text)','execute') or has_function_privilege('anon','dndkeep_private.telepath_attack_context(uuid,uuid,text)','execute')`)).toBe('f');
  });
