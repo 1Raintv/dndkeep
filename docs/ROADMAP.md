@@ -1,5 +1,40 @@
 # DNDKeep — Two-Track Roadmap
 
+### Stony resistance in saved damage contexts (local, unreleased)
+
+Migration `20261010235500_mutable_form_damage_resistance.sql` projects the active
+Stony choice into party and pending-attack character damage contexts. It reuses
+the private, clock-verified Mutable Form reader, adds only the selected type,
+and preserves manual defenses without writing the permanent character list.
+Existing resistance math performs one reduction with downward rounding, before
+vulnerability; immunity wins. A missing effect clock fails closed.
+
+Context comparison rejects expiry between preview and an unapplied hit. Saved
+successful damage receipts still replay after expiry without recalculating or
+writing HP again. Verified paths include party area damage preview/application
+and atomic Graze. This is not yet a claim that aura, standalone manual damage,
+every mixed-damage path, or the sheet defense display is integrated. Those call
+sites still need review before exposing the complete Mutable Form player flow.
+Conditional-defense review retains its existing explicit DM override contract.
+
+Tests cover all nine choices, duplicate resistance, immunity, vulnerability,
+expiry, unchanged permanent lists, private helper privileges, stale party
+previews and saved receipt replay. The actual party UI test loses the response,
+expires Stony, then recovers after reload. Removing the two context projections
+makes both the Graze and real-party-preview regressions fail; restored afterward.
+Evidence: `.tmp/stony-resistance-{tests,graze,mutation,regression,gate,lint}.log`.
+Full verification passes (4,817 unit tests, TS 193/193, entry 256.1 KB).
+All 131 desktop database/browser regression cases pass, plus the mobile Stony
+party preview/recovery case. Local SQL lint has no findings for the three changed
+functions. Inspected mobile screenshot: `.tmp/stony-resistance-mobile.png`.
+
+Applied only to the normal local Docker database, then reapplied in a rolled-back
+transaction to check idempotence. Preserved foreign local ledger version
+20261008213500 after CLI refusal. Repo now has 350 migrations; both retained
+release rehearsal stacks and hosted preview verification still need updating.
+Production unchanged; no new public endpoint or client grant.
+
+
 ### Propel target loading fails closed (unreleased)
 
 Rechecked the requested Propel contract: adjacent Bonus Action entries, optional

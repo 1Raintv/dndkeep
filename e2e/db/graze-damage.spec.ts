@@ -138,6 +138,36 @@ test.describe('recorded optional Graze damage',()=>{
    }else{expect(result.settlement.concentrationCheckId).toBeTruthy();expect(result.settlement.concentrationMode).toBe('prompt');expect(result.settlement.afterHP).toBe(16);}
   }finally{sql(`delete from characters where id='${defender}'`);}
  });
+ // Stony is a timed defense in the authoritative damage context, not a sheet edit.
+ for(const variant of ['active','duplicate','vulnerable','immune','expired','stride'])test(`Stony Graze resistance: ${variant}`,()=>{
+  const defender=randomUUID(),stonyAttack=randomUUID();
+  try{
+   sql(`insert into characters(id,user_id,campaign_id,name,species,class_name,subclass,background,level,current_hp,max_hp,class_resources,damage_resistances,damage_vulnerabilities,damage_immunities)
+    values('${defender}','${owner}','${camp}','Stony Defender','Human','Psion','Metamorph','Sage',10,20,20,'{"psionic-energy-dice":8}',
+     ${variant==='duplicate'?"array['Slashing']":"array[]::text[]"},${variant==='vulnerable'?"array['slashing']":"array[]::text[]"},${variant==='immune'?"array['slashing']":"array[]::text[]"});
+    update combat_participants set entity_id='${defender}',participant_type='character' where id='${target}';
+    update combatants set definition_type='character',definition_id='${defender}',current_hp=20,max_hp=20,temp_hp=3 where id=(select combatant_id from combat_participants where id='${target}');
+    insert into pending_attacks select (jsonb_populate_record(null::pending_attacks,to_jsonb(a)||jsonb_build_object('id','${stonyAttack}','target_type','character','attack_ability_modifier',5))).* from pending_attacks a where id='${attack}';
+    update combat_encounters set current_turn_index=1 where id='${enc}';
+    begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';
+    select dndkeep_private.begin_mutable_form('${defender}','${randomUUID()}',dndkeep_private.action_turn_context('${defender}')->>'turnId',2,false,
+     '${JSON.stringify(variant==='stride'?{kind:'stride'}:{kind:'stony',resistance:'Slashing'})}');commit;
+    update combat_encounters set current_turn_index=0 where id='${enc}';`);
+   attack=stonyAttack;ready();call();finishEmptyFixtureReactionWindow(sql,owner,attack,'post_damage_roll');
+   let expected=applicationContext();
+   if(variant==='expired'){
+    sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+600 where character_id='${defender}'`);
+    expect(()=>apply(null,expected)).toThrow(/context changed/);expect(pools()).toBe('20|3');expected=applicationContext();
+   }
+   const damage=variant==='immune'?0:variant==='vulnerable'?4:['expired','stride'].includes(variant)?5:2;
+   const result=apply(null,expected);expect(result.settlement.damage).toBe(damage);
+   expect(pools()).toBe(`${20-Math.max(0,damage-3)}|${Math.max(0,3-damage)}`);
+   // Expiry after success never rewrites an existing receipt or applies again.
+   sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+600 where character_id='${defender}'`);
+   expect(apply(null,expected)).toMatchObject({replayed:true,settlement:{damage}});
+   expect(sql(`select damage_resistances::text from characters where id='${defender}'`)).toBe(variant==='duplicate'?'{Slashing}':'{}');
+  }finally{sql(`delete from characters where id='${defender}'`);}
+ });
  test('atomic concurrent application writes HP and history exactly once',async()=>{
   prepare();const expected=JSON.stringify(applicationContext()).replaceAll("'","''");
   const query=`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';set local role authenticated;select public.apply_graze_damage('${attack}','${expected}',0);commit;`;

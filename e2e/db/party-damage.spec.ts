@@ -7,7 +7,7 @@ test.use({serviceWorkers:'block'});
 const sql=(q:string)=>execFileSync('docker',['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'],{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 test.describe('party damage affinity order',()=>{
  gateDbSuite();
- for(const {recovery,legacy,saveEffects} of [{recovery:false,legacy:false,saveEffects:false},{recovery:true,legacy:false,saveEffects:false},{recovery:false,legacy:true,saveEffects:false},{recovery:true,legacy:false,saveEffects:true}]) test(saveEffects?'campaign save modifiers survive a lost damage response':legacy?'chosen Tiefling legacy changes preview and applied HP':recovery?'lost damage response survives reload without applying twice':'odd damage applies resistance before vulnerability in preview and HP',async({page},info)=>{
+ for(const {recovery,legacy,saveEffects,stony} of [{recovery:false,legacy:false,saveEffects:false,stony:false},{recovery:true,legacy:false,saveEffects:false,stony:false},{recovery:false,legacy:true,saveEffects:false,stony:false},{recovery:true,legacy:false,saveEffects:true,stony:false},{recovery:true,legacy:false,saveEffects:false,stony:true}]) test(stony?'Stony resistance previews correctly and a lost receipt survives expiry':saveEffects?'campaign save modifiers survive a lost damage response':legacy?'chosen Tiefling legacy changes preview and applied HP':recovery?'lost damage response survives reload without applying twice':'odd damage applies resistance before vulnerability in preview and HP',async({page},info)=>{
   const user=randomUUID(),character=randomUUID(),campaign=randomUUID(),email='damage-'+user+'@dndkeep.local';
   try{
    sql(`begin;
@@ -22,13 +22,16 @@ test.describe('party damage affinity order',()=>{
     inventory='[{"magic_item_id":"ring-protection","name":"Ring of Protection","magical":true,"equipped":true,"attuned":true,"saveBonus":1}]',
     active_buffs='[{"name":"Bless","saveBonus":0},{"name":"Bane"},{"name":"Ward","saveBonus":2}]' where id='${character}'`);
    if(legacy)sql(`update characters set species='Tiefling',species_choices='{"tieflingLegacy":"abyssal"}' where id='${character}'`);
-   const final=legacy?11:22,hp=50-final,label=legacy?'resistant':'resistance then vulnerability';
+   if(stony)sql(`update characters set class_name='Psion',subclass='Metamorph',level=10,class_resources='{"psionic-energy-dice":8}',damage_resistances=array[]::text[],damage_vulnerabilities=array[]::text[] where id='${character}';
+    begin;set local request.jwt.claims='{"sub":"${user}","role":"authenticated"}';
+    select dndkeep_private.begin_mutable_form('${character}','${randomUUID()}',dndkeep_private.action_turn_context('${character}')->>'turnId',2,false,'{"kind":"stony","resistance":"Fire"}');commit;`);
+   const final=legacy||stony?11:22,hp=50-final,label=legacy||stony?'resistant':'resistance then vulnerability';
    await signInAsSeedDm(page,email);await page.goto('/campaigns/'+campaign);
    await page.getByRole('button',{name:'Party',exact:true}).click();await page.getByRole('button',{name:'AoE Damage',exact:true}).click();
    const panel=page.getByRole('region',{name:'Party area damage'});
    await panel.getByRole('button',{name:/Affinity Fixture/}).click();
    await panel.getByPlaceholder('Damage amount…').fill('23');
-   await panel.getByTitle('Damage type — untyped ignores resistance/vulnerability').selectOption(legacy?'poison':'psychic');
+   await panel.getByTitle('Damage type — untyped ignores resistance/vulnerability').selectOption(stony?'fire':legacy?'poison':'psychic');
    await expect(panel).toContainText(`Affinity Fixture takes ${final}`);await expect(panel).toContainText(`(50→${hp})`);await expect(panel).toContainText(label);
    await panel.getByText(`Affinity Fixture takes ${final}`,{exact:true}).scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('damage-preview.png')});
    if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
@@ -50,6 +53,10 @@ test.describe('party damage affinity order',()=>{
      expect(saved.effectRolls.map((r:{total:number})=>r.total)).toEqual([2,-2,2]);expect(saved.baseModifier).toBe(3);expect(saved.modifier).toBe(5);
      expect(sql(`select con_bonus from pending_concentration_saves where character_id='${character}'`)).toBe('4');
      sql(`update characters set exhaustion_level=0,active_buffs='[]' where id='${character}'`);
+    }
+    if(stony){
+     expect(sql(`select damage_resistances::text from characters where id='${character}'`)).toBe('{}');
+     sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+600 where character_id='${character}'`);
     }
     await page.unroute('**/rest/v1/rpc/apply_party_damage');await page.reload();
     await page.getByRole('button',{name:'Party',exact:true}).click();await page.getByRole('button',{name:'AoE Damage',exact:true}).click();

@@ -69,6 +69,19 @@ test.describe('Mutable Form saved private lifecycle',()=>{
    expect(invoke(`public.settle_pending_concentration_save('${save}',3,'player',17,null)`)).toMatchObject({advantage:true,rolls:[3,17],d20:17,outcome:'passed'});
   }finally{sql(`delete from campaigns where id='${camp}'`);}
  });
+ for(const resistance of ['Acid','Bludgeoning','Cold','Fire','Lightning','Piercing','Poison','Slashing','Thunder'])test(`Stony snapshot projects only the chosen ${resistance} resistance`,()=>{
+  sql(`update characters set level=10 where id='${character}'`);begin(false,{kind:'stony',resistance});
+  const query=`dndkeep_private.mutable_form_damage_resistances('${character}','["psychic"]')`;
+  expect(invoke(query)).toEqual(['psychic',resistance.toLowerCase()]);
+  sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+600 where character_id='${character}'`);
+  expect(invoke(query)).toEqual(['psychic']);
+ });
+ test('Stony damage snapshots reject an unknown clock and keep their helper private',()=>{
+  sql(`update characters set level=10 where id='${character}'`);begin(false,{kind:'stony',resistance:'Fire'});
+  sql(`delete from dndkeep_private.psionic_duration_clocks where character_id='${character}'`);
+  expect(()=>invoke(`dndkeep_private.mutable_form_damage_resistances('${character}','[]')`)).toThrow(/clock/);
+  for(const role of ['anon','authenticated'])expect(sql(`select has_function_privilege('${role}','dndkeep_private.mutable_form_damage_resistances(uuid,jsonb)','execute')`)).toBe('f');
+ });
  test('the trusted active-form reader cannot be invoked by an authenticated client',()=>{
   expect(sql(`select has_function_privilege('authenticated','dndkeep_private.read_mutable_form_active_internal(uuid)','execute')`)).toBe('f');
  });

@@ -23,6 +23,17 @@ test.describe('Atomic party damage',()=>{
  const apply=(ctx=context(),damage=10)=>JSON.parse(sql(auth(dm,call(ctx,damage))));
  const state=()=>JSON.parse(sql(`select jsonb_build_object('hp',current_hp,'temp',temp_hp,'spell',concentration_spell,'marker',last_campaign_damage_id,'failures',death_saves_failures,'conditions',active_conditions) from characters where id='${char}'`));
  const count=(table:string)=>sql(`select count(*) from ${table} where character_id='${char}'`);
+ test('Stony expiry invalidates an unapplied damage preview without changing permanent defenses',()=>{
+  sql(`update characters set subclass='Metamorph',level=10,class_resources='{"psionic-energy-dice":8}' where id='${char}';
+   begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';
+   select dndkeep_private.begin_mutable_form('${char}','${randomUUID()}',dndkeep_private.action_turn_context('${char}')->>'turnId',2,false,'{"kind":"stony","resistance":"Fire"}');commit;`);
+  const ctx=context();expect(ctx.character.damage_resistances).toContain('fire');
+  sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+600 where character_id='${char}'`);
+  expect(()=>apply(ctx)).toThrow(/Party state changed/);expect(state().hp).toBe(50);
+  expect(count('dndkeep_private.party_damage_events')).toBe('0');
+  expect(context().character.damage_resistances??[]).not.toContain('fire');
+  expect(sql(`select coalesce(damage_resistances,array[]::text[])::text from characters where id='${char}'`)).toBe('{}');
+ });
  test('stable-state changes invalidate a preview even with unchanged counters',()=>{
   sql(`update characters set current_hp=0,temp_hp=0,concentration_spell='' where id='${char}'`);
   const ctx=context();expect(ctx.character.is_stable).toBe(false);
