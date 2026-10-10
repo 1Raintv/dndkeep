@@ -108,8 +108,12 @@ test.describe('Telepath attack context',()=>{
   expect(sql(`select jsonb_build_object('resources',class_resources,'hitDice',hit_dice_spent) from characters where id='${character}'`)).toBe(before);
   expect(sql(`select attack_total||':'||hit_result from pending_attacks where id='${attack}'`)).toBe('17:hit');
   expect(sql(`select state from pending_reactions where id='${d.request_id}'`)).toBe('declined');
-  expect(sql(`select count(*) from combat_events where payload->>'declaration_id'='${d.request_id}'`)).toBe('1');
+  expect(sql(`select count(*) from combat_events where event_type='dm_override' and payload->>'declaration_id'='${d.request_id}'`)).toBe('1');
   expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${d.request_id}'`)).toBe('1');
+  const events=JSON.parse(sql(`select jsonb_agg(payload order by created_at) from combat_events where payload->>'declaration_id'='${d.request_id}'`));
+  expect(events.reduce((sum:number,h:{reaction_cost:number})=>sum+h.reaction_cost,0)).toBe(1);
+  expect(events.find((h:{telepath_stage:string})=>h.telepath_stage==='cancelled')).toMatchObject({reaction_retained:true,hit_dice_retained:true,reaction_cost:0,energy_cost:0});
+
  });
  test('DM cancellation rejects strangers and invalid reasons without deciding the offer',()=>{
   const d=beginSaved(3);
@@ -131,7 +135,7 @@ test.describe('Telepath attack context',()=>{
  test('DM cancellation recovers a normal cancellation without adding history',()=>{
   const d=beginSaved(3);finishSaved(d.request_id,true);
   expect(cancelByDm(d.request_id)).toMatchObject({cancelled:true,replayed:true});
-  expect(sql(`select count(*) from combat_events where payload->>'declaration_id'='${d.request_id}'`)).toBe('0');
+  expect(sql(`select count(*) from combat_events where event_type='dm_override' and payload->>'declaration_id'='${d.request_id}'`)).toBe('0');
  });
  test('DM cancellation keeps linked enhancement Hit Dice spent after departure',()=>{
   const d=beginSaved(2);enhanceSaved(d.request_id);
@@ -149,7 +153,7 @@ test.describe('Telepath attack context',()=>{
    expect(sql(`select result is null from dndkeep_private.telepath_declarations where request_id='${d.request_id}'`)).toBe('t');
   } finally {sql(`alter table public.combat_events drop constraint ${constraint}`);}
   expect(cancelByDm(d.request_id)).toMatchObject({cancelled:true,replayed:false});
-  expect(sql(`select count(*) from combat_events where payload->>'declaration_id'='${d.request_id}'`)).toBe('1');
+  expect(sql(`select count(*) from combat_events where event_type='dm_override' and payload->>'declaration_id'='${d.request_id}'`)).toBe('1');
  });
  test('DM cancellation simultaneous requests create exactly one history event',async()=>{
   const d=beginSaved(2),query=`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';set local role authenticated;select public.cancel_telepath_reaction_by_dm('${d.request_id}','Concurrent cleanup');commit;`;
@@ -159,7 +163,7 @@ test.describe('Telepath attack context',()=>{
    process.on('close',code=>{if(code)reject(new Error(err));else{try{resolve(JSON.parse(out.trim()));}catch(error){reject(error);}}});process.stdin.end(query);
   });
   const results=await Promise.all([run(),run()]);expect(results.map(r=>r.replayed).sort()).toEqual([false,true]);
-  expect(sql(`select count(*) from combat_events where payload->>'declaration_id'='${d.request_id}'`)).toBe('1');
+  expect(sql(`select count(*) from combat_events where event_type='dm_override' and payload->>'declaration_id'='${d.request_id}'`)).toBe('1');
  });
  const beginPayload=(roll=3)=>({requestId:randomUUID(),attackId:attack,feature:'distraction',expected:context(),roll,review:{distanceFeet:30,visible:true,confirmed:true}});
  test('authenticated dispatcher recovers the declaration and conditional payment without spending twice',()=>{
@@ -334,6 +338,69 @@ test.describe('Telepath attack context',()=>{
   expect(sql(`select attack_total from pending_attacks where id='${attack}'`)).toBe(String(17+(feature==='distraction'?-1:1)*declaration.roll));
   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe(declaration.roll>=3?'7':'8');
   expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${declaration.id}'`)).toBe('1');
+  expect(errors).toEqual([]);await page.close();
+ });
+ test('Telepath history records declaration, enhancements and final cost once across retries',()=>{
+  sql(`update characters set level=20,class_resources='{"psionic-energy-dice":12}',hit_dice_spent=0 where id='${character}'`);
+  const input=beginPayload(2);dispatch('begin',input);dispatch('begin',input);
+  for(const enhancement of [{declarationId:input.requestId,requestId:randomUUID(),kind:'enkindled',extraRolls:[6,9],hitDie:null},{declarationId:input.requestId,requestId:randomUUID(),kind:'surge',extraRolls:null,hitDie:6}]){dispatch('enhance',enhancement);dispatch('enhance',enhancement);}
+  dispatch('finish',{declarationId:input.requestId});dispatch('finish',{declarationId:input.requestId});
+  const history=JSON.parse(sql(`select jsonb_agg(payload order by sequence) from combat_events where payload->>'declaration_id'='${input.requestId}'`));
+  expect(history.map((h:{telepath_stage:string})=>h.telepath_stage)).toEqual(['declared','enkindled','surge','resolved']);
+  expect(history.reduce((sum:number,h:{reaction_cost:number})=>sum+h.reaction_cost,0)).toBe(1);
+  expect(history.reduce((sum:number,h:{hit_dice_cost:number})=>sum+h.hit_dice_cost,0)).toBe(3);
+  expect(history.reduce((sum:number,h:{energy_cost:number})=>sum+h.energy_cost,0)).toBe(1);
+  expect(history[3]).toMatchObject({originalTotal:17,total:-2,hit_result:'miss',individual_results:[4,6,9]});
+ });
+ test('Telepath history failure on declaration rolls back the Reaction and offer',()=>{
+  const input=beginPayload(),constraint='test_history_'+randomUUID().replace(/-/g,'');
+  sql(`alter table combat_events add constraint ${constraint} check(payload->>'declaration_id' is distinct from '${input.requestId}') not valid`);
+  try{expect(()=>dispatch('begin',input)).toThrow();
+   expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${input.requestId}'`)).toBe('0');
+   expect(sql(`select count(*) from pending_reactions where id='${input.requestId}'`)).toBe('0');
+  }finally{sql(`alter table combat_events drop constraint ${constraint}`);}
+  expect(dispatch('begin',input)).toMatchObject({request_id:input.requestId});
+ });
+ test('Telepath history failure on enhancement rolls back Hit Dice and its receipt',()=>{
+  const d=beginSaved(2),constraint='test_history_'+randomUUID().replace(/-/g,'');
+  const input={declarationId:d.request_id,requestId:randomUUID(),kind:'surge',extraRolls:null,hitDie:6};
+  sql(`alter table combat_events add constraint ${constraint} check(not(payload->>'declaration_id'='${d.request_id}' and payload->>'telepath_stage'='surge')) not valid`);
+  try{expect(()=>dispatch('enhance',input)).toThrow();
+   expect(sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('0');
+   expect(sql(`select count(*) from psionic_surge_uses where request_id='${input.requestId}'`)).toBe('0');
+  }finally{sql(`alter table combat_events drop constraint ${constraint}`);}
+  dispatch('enhance',input);expect(sql(`select hit_dice_spent from characters where id='${character}'`)).toBe('1');
+ });
+ test('Telepath history failure on finish rolls back attack, Energy and decision',()=>{
+  const d=beginSaved(3),constraint='test_history_'+randomUUID().replace(/-/g,'');
+  sql(`alter table combat_events add constraint ${constraint} check(not(payload->>'declaration_id'='${d.request_id}' and payload->>'telepath_stage'='resolved')) not valid`);
+  try{expect(()=>finishSaved(d.request_id)).toThrow();
+   expect(sql(`select attack_total from pending_attacks where id='${attack}'`)).toBe('17');
+   expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('8');
+   expect(sql(`select result is null from dndkeep_private.telepath_declarations where request_id='${d.request_id}'`)).toBe('t');
+   expect(sql(`select state from pending_reactions where id='${d.request_id}'`)).toBe('offered');
+  }finally{sql(`alter table combat_events drop constraint ${constraint}`);}
+  expect(finishSaved(d.request_id)).toMatchObject({energyCost:1});
+ });
+ test('Telepath cancellation history keeps costs explicit without claiming a refund',()=>{
+  const d=beginSaved(2);enhanceSaved(d.request_id);finishSaved(d.request_id,true);finishSaved(d.request_id,true);
+  const rows=JSON.parse(sql(`select jsonb_agg(payload order by sequence) from combat_events where payload->>'declaration_id'='${d.request_id}'`));
+  expect(rows.map((h:{telepath_stage:string})=>h.telepath_stage)).toEqual(['declared','surge','cancelled']);
+  expect(rows[2]).toMatchObject({energy_cost:0,reaction_cost:0,hit_dice_cost:0});expect(rows[2].action_name).toContain('remain spent');
+ });
+ test('Telepath history renders saved rolls and costs in the combat log',async({page},info)=>{
+  sql(`update auth.users set instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),created_at=now(),updated_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${owner}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${owner}','${owner}',jsonb_build_object('sub','${owner}','email','${owner}@action.local'),'email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${owner}@action.local`);
+  const d=beginSaved(3);enhanceSaved(d.request_id);finishSaved(d.request_id);
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));page.on('response',r=>{if(r.status()>=400)errors.push(`${r.status()} ${r.url()}`);});
+  await page.evaluate(async campaign=>{
+   const React=await import('/node_modules/.vite/deps/react.js'),dom=await import('/node_modules/.vite/deps/react-dom_client.js'),log=await import('/src/components/shared/CombatEventLog.tsx');
+   const host=document.createElement('div');host.id='telepath-history';host.style.cssText='position:fixed;inset:12px;padding:12px;z-index:99999;background:#0b111b;overflow:auto';document.body.appendChild(host);dom.default.createRoot(host).render(React.default.createElement(log.default,{campaignId:campaign}));
+  },campaign);
+  const log=page.locator('#telepath-history');await expect(log).toContainText('Attack 17 to 13 (miss); 1 Energy Die spent.');await expect(log).toContainText('1 Hit Die spent; saved dice [4]');await expect(log).toContainText('Reaction spent; saved base die 3');
+  await page.screenshot({path:info.outputPath('telepath-history.png')});
+  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('#telepath-history, #telepath-history *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
   expect(errors).toEqual([]);await page.close();
  });
  test('dispatcher does not expose private records or helper functions directly',()=>{

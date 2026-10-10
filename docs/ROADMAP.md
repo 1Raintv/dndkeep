@@ -1,5 +1,32 @@
 # DNDKeep — Two-Track Roadmap
 
+### Atomic Telepath combat history (local; not released)
+
+Migration 20261010213000 records declaration, paid Enkindled/Surge and final
+resolution/cancellation in the same transaction as their saved lifecycle steps.
+Entries retain base/adjusted dice, original/final attack totals, outcome and explicit
+incremental resource costs. Replays do not add entries. Existing declarations are
+not backfilled with invented events. Original offer names avoid reading a departed
+character's current private state for history. DM cleanup keeps its single override
+entry, includes the reason in visible text, and identifies prior spending as retained
+instead of charging the Reaction again in history metadata.
+
+Forced history failures prove rollback of Reaction/offer creation, Hit Dice/payment
+receipts, and final attack/Energy/decision changes. All 61 Telepath desktop cases
+passed; 18 final desktop/mobile cleanup/history cases passed after the retained-cost
+metadata refinement. Combat log screenshots inspected; official overflow probe clean.
+Full gate: 4,602 tests, TS 193/193, entry 255.7 KB. SQL lint: 20 existing findings,
+none in the changed functions; security findings remain keep_warm/client_errors.
+Exact local ledger verified. Repo chain: 343; retained release rehearsals need
+333–343. Production unchanged. PR214 CI was green at prior head 88e87d80.
+Evidence: .tmp/telepath-history-{focused,full,final,gate}.log, lint/advisors JSON,
+and desktop/mobile PNGs.
+
+Next: explicit recovery for interrupted pre-roll drafts, then migration rehearsals
+and release checks. Ability-check Bolstering still requires its own event lifecycle;
+attack reactions now have review, saved player controls and durable history.
+
+
 ### DM Telepath attack review and declaration (local; not released)
 
 AttackResolutionModal now offers a separate DM review panel after an attack roll.
