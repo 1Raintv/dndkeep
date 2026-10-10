@@ -29,6 +29,27 @@ test.describe('Concentration sheet saves (local stack)', () => {
     if (userId) sql(`delete from action_logs where character_id='${charId}'; delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
   });
 
+  for(const rounds of [null,100])test(`active concentration card fits long spell names with timer ${rounds}`,async({page},info)=>{
+    sql(`update characters set concentration_spell='protection-from-evil-and-good',concentration_rounds_remaining=${rounds===null?'null':rounds} where id='${charId}'`);
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    const card=page.getByRole('region',{name:'Active concentration',exact:true});await card.evaluate(el=>el.scrollIntoView({block:'center'}));
+    await expect(card.getByText('Protection from Evil and Good',{exact:true})).toBeVisible();
+    expect((await card.getByText('Protection from Evil and Good',{exact:true}).boundingBox())!.width).toBeGreaterThanOrEqual(200);
+    await expect(card).toContainText('whichever is higher; maximum 30');
+    if(rounds===null)await expect(card.getByText('No round timer',{exact:true})).toBeVisible();
+    else await expect(card.getByRole('button',{name:'− Round',exact:true})).toBeVisible();
+    const drop=card.getByRole('button',{name:'✕ Drop Concentration',exact:true});await expect(drop).toBeInViewport({ratio:1});
+    expect((await drop.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    expect(await drop.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));})).toBe(true);
+    const clipped=await card.evaluate(root=>Array.from(root.querySelectorAll<HTMLElement>('div,span,button')).filter(el=>{
+      const r=el.getBoundingClientRect(),parent=root.getBoundingClientRect();
+      return r.width>0&&r.height>0&&((el.clientWidth>0&&el.scrollWidth>el.clientWidth+1)||r.left<parent.left-1||r.right>parent.right+1);
+    }).map(el=>el.textContent));
+    expect(clipped).toEqual([]);await card.screenshot({path:info.outputPath('concentration-status-card.png')});
+    await drop.click();await expect(card).toHaveCount(0);
+    await expect.poll(()=>sql(`select concentration_spell from characters where id='${charId}'`)).toBe('');
+  });
+
   const protection=(equipped:boolean,attuned:boolean)=>({magic_item_id:'ring-protection',name:'Ring of Protection',magical:true,equipped,attuned,saveBonus:1});
   for (const sample of [
     {name:'exhaustion subtracts twice its level with equipment',level:5,con:14,proficient:true,die:7,damage:5,natural:false,bonus:2,passed:false,exhaustion:2,inventory:[protection(true,true)]},

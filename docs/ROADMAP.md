@@ -1,5 +1,24 @@
 # DNDKeep — Two-Track Roadmap
 
+### Readable concentration status card on narrow sheets (local)
+
+The active-spell card now reserves readable width for spell details and wraps the
+timer/Drop controls below them when needed. Both buttons have 44px targets. The
+duration/save reminder is larger and higher contrast, and now states the DC 30
+ceiling. The card is an accessible named region for assistive technology.
+
+Four actual-sheet browser cases pass across desktop/mobile, with and without a
+round timer, using a long spell name. They check readable text width, clipping,
+control hit-testing and the real Drop write. Restoring the old layout reproduces
+a 15px text column and fails the regression. Centered screenshots show both
+controls unobstructed; the official overflow probe is clean on mobile and only
+reports existing sidebar label truncation on desktop.
+Evidence: `.tmp/concentration-card-{layout,mutation,final-gate}.log` and
+`.tmp/concentration-status-{desktop,mobile}.png`.
+Full `npm run verify` passes (4,814 tests, TS 193/193, entry 256.1 KB).
+Production unchanged. Stony damage resistance remains the next rules integration.
+
+
 ### Stony Epidermis concentration advantage (local)
 
 Migration `20261010234500_mutable_form_concentration.sql` snapshots Stony's

@@ -1683,8 +1683,9 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  {concentrationSpellId && (() => {
  const spell = spellMap[concentrationSpellId];
  return spell ? (
- <div className="animate-fade-in" style={{
- display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+ <div className="animate-fade-in" role="region" aria-label="Active concentration" style={{
+ // v2.869: let controls wrap instead of shrinking spell details to 15px.
+ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between',
  padding: '14px 18px',
  background: 'linear-gradient(90deg, rgba(167,139,250,0.14), rgba(167,139,250,0.06))',
  border: '2px solid rgba(167,139,250,0.55)',
@@ -1704,7 +1705,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  animation: 'pulse-gold 1.5s ease-in-out infinite',
  }}
  />
- <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', paddingLeft: 14, flex: 1, minWidth: 0 }}>
+ <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', paddingLeft: 14, flex: '1 1 240px', minWidth: 0, overflowWrap: 'anywhere' }}>
  <div style={{ minWidth: 0, flex: 1 }}>
  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 10, color: '#a78bfa', letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginBottom: 3 }}>
  Concentrating
@@ -1712,8 +1713,8 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 15, color: 'var(--t-1)', marginBottom: 2 }}>
  {spell.name}
  </div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)' }}>
- {spell.duration} · CON save on damage (DC 10 or half damage)
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, lineHeight: 1.5, color: 'var(--t-2)' }}>
+ {spell.duration} · CON save on damage (DC 10 or half damage, whichever is higher; maximum 30)
  </div>
  </div>
  </div>
@@ -1758,7 +1759,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  disabled={isExpired}
  style={{
  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10, letterSpacing: '0.04em',
- padding: '3px 8px', borderRadius: 'var(--r-sm)', cursor: isExpired ? 'not-allowed' : 'pointer', minHeight: 0,
+ padding: '3px 8px', borderRadius: 'var(--r-sm)', cursor: isExpired ? 'not-allowed' : 'pointer', minHeight: 44,
  background: 'rgba(167,139,250,0.15)',
  border: '1px solid rgba(167,139,250,0.4)',
  color: '#c4b5fd',
@@ -1776,7 +1777,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  style={{
  flexShrink: 0,
  fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 12, letterSpacing: '0.04em',
- padding: '8px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer', minHeight: 0,
+ padding: '8px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer', minHeight: 44,
  background: 'rgba(167,139,250,0.15)',
  border: '1px solid rgba(167,139,250,0.5)',
  color: '#c4b5fd',
