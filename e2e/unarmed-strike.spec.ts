@@ -15,5 +15,12 @@ test('unarmed controls request the targets save without an attacker roll',async(
  await page.screenshot({path:`.tmp/unarmed-save-${info.project.name}.png`});
  if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[role=dialog], [role=dialog] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
  await dialog.getByRole('button',{name:/^Grapple/}).click();await expect(dialog).toBeHidden();await expect(page.getByRole('status')).toContainText('Save requested only');
+ await page.evaluate(()=>{Math.random=()=>0.55;});
+ await page.getByRole('button',{name:'STRIKE'}).click();await dialog.getByRole('button',{name:/^Damage/}).click();
+ await expect(dialog).toContainText('Attack total: 17.');await expect(dialog.getByRole('button',{name:/^Confirm hit/})).toBeVisible();
+ await page.screenshot({path:`.tmp/unarmed-hit-${info.project.name}.png`});
+ await dialog.getByRole('button',{name:'Cancel',exact:true}).click();await expect(dialog).toBeHidden();
+ await page.getByRole('button',{name:'STRIKE'}).click();await dialog.getByRole('button',{name:/^Damage/}).click();
+ await dialog.getByRole('button',{name:/^Confirm hit/}).click();await expect(dialog).toBeHidden();
  expect(errors).toEqual([]);
 });

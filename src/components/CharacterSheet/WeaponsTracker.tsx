@@ -44,7 +44,7 @@ function parseDamage(damageDice: string, damageBonus: number): number {
  } else if (damageDice === 'flat') {
  dmg = damageBonus;
  }
- return Math.max(1, dmg);
+ return Math.max(0, dmg);
 }
 
 function modStr(n: number) { return (n >= 0 ? '+' : '') + n; }
@@ -77,6 +77,7 @@ export default function WeaponsTracker({
  // reference so the 4 mode buttons (Damage / Grapple / Shove Push / Shove
  // Prone) have everything they need.
  const [unarmedModal, setUnarmedModal] = useState<WeaponItem | null>(null);
+ const [unarmedAttackRolled,setUnarmedAttackRolled]=useState(false);
  const [unarmedError,setUnarmedError]=useState('');
  const [unarmedBusy,setUnarmedBusy]=useState(false);
  const [unarmedNotice,setUnarmedNotice]=useState('');
@@ -153,7 +154,7 @@ export default function WeaponsTracker({
  setLastRoll(prev => ({
  weaponName: weapon.name,
  hit, nat,
- damage: prev?.weaponName === weapon.name ? prev.damage : 0,
+ damage: !weapon.unarmedModes && prev?.weaponName === weapon.name ? prev.damage : 0,
  damageType: weapon.damageType,
  crit: nat === 20,
  miss: nat === 1,
@@ -197,7 +198,8 @@ export default function WeaponsTracker({
 
  const baseDmg = parseDamage(weapon.damageDice, weapon.damageBonus);
  const isCrit = lastRoll?.weaponName === weapon.name && lastRoll.crit;
- const critExtra = isCrit ? parseDamage(weapon.damageDice, 0) : 0;
+ // v2.869 — critical hits add dice, never an invented point to flat damage.
+ const critExtra = isCrit && weapon.damageDice !== 'flat' ? parseDamage(weapon.damageDice, 0) : 0;
  const damage = baseDmg + bonusDmg + critExtra;
 
  setLastRoll(prev => prev ? { ...prev, damage, weaponName: weapon.name } : {
@@ -399,7 +401,7 @@ export default function WeaponsTracker({
  {w.unarmedModes ? (
  <button
  className="srow-hit"
- onClick={() => {setUnarmedError('');setUnarmedNotice('');setUnarmedModal(w);}}
+ onClick={() => {setUnarmedError('');setUnarmedNotice('');setUnarmedAttackRolled(false);setUnarmedModal(w);}}
  title="Unarmed Strike — pick Damage, Grapple, or Shove"
  style={{
  fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 13,
@@ -632,10 +634,13 @@ export default function WeaponsTracker({
  {/* Damage — the existing attack flow */}
  <button
  onClick={() => {
- handleHit(unarmedModal);
- // Slight delay so the two rolls don't visually collide on screen
- window.setTimeout(() => handleDamage(unarmedModal), 150);
- setUnarmedModal(null);
+ if(!unarmedAttackRolled){
+   setUnarmedAttackRolled(true);
+   void handleHit(unarmedModal).catch(()=>setUnarmedError('The attack roll could not be logged. Keep the displayed roll; check history before continuing.'));
+ }else{
+   if(lastRoll?.nat!==1)void handleDamage(unarmedModal);
+   setUnarmedModal(null);
+ }
  }}
  style={{
  width: '100%', padding: '12px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
@@ -649,16 +654,16 @@ export default function WeaponsTracker({
  }}
  >
  <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 4, whiteSpace: 'normal' as const }}>
- Damage
+ {unarmedAttackRolled?(lastRoll?.nat===1?'Miss — close':'Confirm hit — show damage'):'Damage'}
  </div>
  <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-2)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
- Roll to hit ({modStr(unarmedModal.attackBonus)}), then {modStr(unarmedModal.damageBonus)} bludgeoning on hit.
+ {unarmedAttackRolled?`Attack total: ${lastRoll?.hit}. ${lastRoll?.nat===1?'Natural 1: no damage.':lastRoll?.nat===20?'Natural 20: critical hit. Confirm to show damage.':'Confirm the hit with your DM before showing damage.'} No HP is changed here.`:`Roll to hit (${modStr(unarmedModal.attackBonus)}), then confirm the hit before showing bludgeoning damage.`}
  </div>
  </button>
 
  {/* Grapple — target chooses Strength or Dexterity save */}
  <button
- disabled={unarmedBusy||unarmedModal.unarmedSaveDC==null} onClick={() => void requestUnarmedSave(unarmedModal,'grapple')}
+ disabled={unarmedBusy||unarmedAttackRolled||unarmedModal.unarmedSaveDC==null} onClick={() => void requestUnarmedSave(unarmedModal,'grapple')}
  style={{
  width: '100%', padding: '12px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
@@ -680,7 +685,7 @@ export default function WeaponsTracker({
 
  {/* Shove — Push 5 ft */}
  <button
- disabled={unarmedBusy||unarmedModal.unarmedSaveDC==null} onClick={() => void requestUnarmedSave(unarmedModal,'push')}
+ disabled={unarmedBusy||unarmedAttackRolled||unarmedModal.unarmedSaveDC==null} onClick={() => void requestUnarmedSave(unarmedModal,'push')}
  style={{
  width: '100%', padding: '12px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
@@ -702,7 +707,7 @@ export default function WeaponsTracker({
 
  {/* Shove — Knock Prone */}
  <button
- disabled={unarmedBusy||unarmedModal.unarmedSaveDC==null} onClick={() => void requestUnarmedSave(unarmedModal,'prone')}
+ disabled={unarmedBusy||unarmedAttackRolled||unarmedModal.unarmedSaveDC==null} onClick={() => void requestUnarmedSave(unarmedModal,'prone')}
  style={{
  width: '100%', padding: '12px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,

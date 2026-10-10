@@ -2,11 +2,11 @@
 import {cleanup,render,fireEvent,screen,waitFor} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 import type {WeaponItem} from '../../types';
-const m=vi.hoisted(()=>({attack:vi.fn(),roll:vi.fn(),log:vi.fn()}));
+const m=vi.hoisted(()=>({attack:vi.fn(),roll:vi.fn(),log:vi.fn(),trigger:vi.fn()}));
 vi.mock('../Combat/PlayerAttackButton',()=>({default:(props:unknown)=>{m.attack(props);return null;}}));
 vi.mock('../../lib/supabase',()=>({supabase:{}}));
-vi.mock('../../lib/gameUtils',()=>({rollDie:m.roll,computeActiveBonuses:()=>({})}));
-vi.mock('../../context/DiceRollContext',()=>({useDiceRoll:()=>({triggerRoll:vi.fn()})}));
+vi.mock('../../lib/gameUtils',()=>({rollDie:m.roll,computeActiveBonuses:()=>({attackBonus:0,damageBonus:0})}));
+vi.mock('../../context/DiceRollContext',()=>({useDiceRoll:()=>({triggerRoll:m.trigger})}));
 vi.mock('../shared/ActionLog',()=>({logAction:m.log}));
 import WeaponsTracker from './WeaponsTracker';
 afterEach(()=>{cleanup();vi.clearAllMocks();});
@@ -34,4 +34,30 @@ it('failed logging keeps the request visible and never claims a completed save',
  render(<WeaponsTracker weapons={[unarmed]} attacksPerAction={1} onUpdate={vi.fn()} historyCharacterId="hero"/>);
  fireEvent.click(screen.getByRole('button',{name:'STRIKE'}));fireEvent.click(screen.getByRole('button',{name:/^Grapple/}));
  expect((await screen.findByRole('alert')).textContent).toContain('could not be logged');expect(screen.queryByRole('status')).toBeNull();expect(m.roll).not.toHaveBeenCalled();
+});
+
+it.each([12,20])('unarmed damage waits for hit confirmation after natural %i and flat critical damage stays flat',async nat=>{
+ m.roll.mockReturnValue(nat);render(<WeaponsTracker weapons={[unarmed]} attacksPerAction={1} onUpdate={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'STRIKE'}));fireEvent.click(screen.getByRole('button',{name:/^Damage/}));
+ expect(m.trigger).toHaveBeenCalledTimes(1);expect(m.trigger.mock.calls[0][0].total).toBe(nat+5);
+ expect(screen.getByText(new RegExp('Attack total: '+(nat+5)))).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:/^Confirm hit/}));
+ expect(m.trigger).toHaveBeenCalledTimes(2);expect(m.trigger.mock.calls[1][0].total).toBe(4);
+});
+it('natural 1 closes without producing damage',()=>{
+ m.roll.mockReturnValue(1);render(<WeaponsTracker weapons={[unarmed]} attacksPerAction={1} onUpdate={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'STRIKE'}));fireEvent.click(screen.getByRole('button',{name:/^Damage/}));
+ fireEvent.click(screen.getByRole('button',{name:/^Miss — close/}));expect(m.trigger).toHaveBeenCalledTimes(1);
+});
+it('cancelling after the hit roll never produces damage and the next strike starts fresh',()=>{
+ m.roll.mockReturnValue(12);render(<WeaponsTracker weapons={[unarmed]} attacksPerAction={1} onUpdate={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'STRIKE'}));fireEvent.click(screen.getByRole('button',{name:/^Damage/}));
+ fireEvent.click(screen.getByRole('button',{name:'Cancel'}));expect(m.trigger).toHaveBeenCalledTimes(1);
+ fireEvent.click(screen.getByRole('button',{name:'STRIKE'}));expect(screen.getByRole('button',{name:/^Damage/})).toBeTruthy();
+});
+
+it.each([0,-2])('flat unarmed damage %i is floored at zero, including critical hits',damageBonus=>{
+ m.roll.mockReturnValue(20);render(<WeaponsTracker weapons={[{...unarmed,damageBonus}]} attacksPerAction={1} onUpdate={vi.fn()}/>);
+ fireEvent.click(screen.getByRole('button',{name:'STRIKE'}));fireEvent.click(screen.getByRole('button',{name:/^Damage/}));
+ fireEvent.click(screen.getByRole('button',{name:/^Confirm hit/}));expect(m.trigger.mock.calls[1][0].total).toBe(0);
 });

@@ -8818,3 +8818,26 @@ old offset fails the placement regression; restored layout passes. Full gate:
 4,058 unit tests, TS 194/194, entry 255.7 KB. The expanded panel still covers some
 map area on small screens; this improves placement rather than claiming a
 complete responsive map redesign. No production deployment.
+
+
+### Manual unarmed hit confirmation and flat damage (2026-10-10, unreleased)
+
+Removed the delayed automatic damage call from the manual Unarmed Strike mode.
+The attack total remains visible until the player confirms a hit; natural 1
+closes without damage, and Cancel never rolls damage. Other strike modes stay
+disabled after the attack roll. Reopening begins a new manual strike. Existing
+combat target resolution is unchanged; this tabletop flow does not apply HP or
+spend the server action budget.
+
+Flat unarmed critical damage no longer receives an invented extra point, and the
+manual damage parser floors at zero rather than one. SRD 5.2.1 p.16 permits zero
+damage and doubles damage dice on critical hits, not fixed amounts:
+https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+
+Six added component cases cover normal/critical confirmation, natural 1,
+cancellation, zero and negative flat base amounts. Desktop/mobile screenshots
+inspected and interaction checks pass; restoring the old automatic flow fails
+the confirmation regression, restored code passes. Full gate: 4,064 units,
+TS 194/194, entry 255.7 KB. No migration or deployment. Legacy manual bonus
+riders, logging durability, feature-specific unarmed scaling and action-budget
+integration remain separate unfinished work.
