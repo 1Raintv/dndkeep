@@ -1,10 +1,10 @@
-import {getCombatClockContext,commitCombatClock,validCombatClockReceipt,validCombatClockRequest,type CombatClockRequest,type CombatClockReceipt} from './combatClock';
+import {readCombatClockTransition,getCombatClockContext,commitCombatClock,validCombatClockReceipt,validCombatClockRequest,type CombatClockRequest,type CombatClockReceipt} from './combatClock';
 /** A clock acknowledgement is not proof that start/end-of-turn effects ran.
  * Keep the saved request until the caller has explicitly finished its follow-up.
  * v2.869 audit: unknown post-clock work must never be blindly replayed. */
 export interface SavedCombatTransition {
  version:1;userId:string;request:CombatClockRequest;
- stage:'clock-pending'|'clock-confirmed'|'effects-started';
+ stage:'clock-pending'|'clock-confirmed'|'clock-observed'|'effects-started';
  receipt:CombatClockReceipt|null;
 }
 const active=new Map<string,Promise<SavedCombatTransition>>();
@@ -14,8 +14,11 @@ const same=(a:CombatClockRequest,b:CombatClockRequest)=>a.requestId===b.requestI
 function verify(value:unknown,user:string,encounter:string):asserts value is SavedCombatTransition {
  const r=value as SavedCombatTransition|null;
  if(!r||r.version!==1||!user||r.userId!==user||!validCombatClockRequest(r.request)||r.request.encounterId!==encounter
-  ||!['clock-pending','clock-confirmed','effects-started'].includes(r.stage)
-  ||(r.stage==='clock-pending'?r.receipt!==null:!validCombatClockReceipt(r.receipt,r.request)))throw invalid();
+  ||!['clock-pending','clock-confirmed','clock-observed','effects-started'].includes(r.stage)
+  ||(r.stage==='clock-pending'?r.receipt!==null:r.stage==='clock-observed'?
+   !r.receipt||r.receipt.requestId===r.request.requestId||!validCombatClockRequest({...r.request,requestId:r.receipt.requestId})
+    ||!validCombatClockReceipt(r.receipt,{...r.request,requestId:r.receipt.requestId})||!r.receipt.replayed
+   :!validCombatClockReceipt(r.receipt,r.request)))throw invalid();
 }
 export function savedCombatTransition(user:string,encounter:string):SavedCombatTransition|null {
  const raw=localStorage.getItem(key(user,encounter));if(raw===null)return null;
@@ -34,12 +37,12 @@ export function confirmCombatTransition(user:string,encounter:string):Promise<Sa
  const work=(async()=>{
   const r=savedCombatTransition(user,encounter);if(!r)throw invalid();
   if(r.stage!=='clock-pending')return r;
-  const receipt=await commitCombatClock(r.request);
+  const receipt=await readCombatClockTransition(r.request)??await commitCombatClock(r.request);
   // Another tab may have progressed while this acknowledgement was in flight.
   const current=savedCombatTransition(user,encounter);
   if(!current||!same(current.request,r.request))throw invalid();
   if(current.stage!=='clock-pending')return current;
-  const confirmed:SavedCombatTransition={...r,stage:'clock-confirmed',receipt};store(confirmed);return confirmed;
+  const confirmed:SavedCombatTransition={...r,stage:receipt.requestId===r.request.requestId?'clock-confirmed':'clock-observed',receipt};store(confirmed);return confirmed;
  })();active.set(k,work);void work.finally(()=>{if(active.get(k)===work)active.delete(k);}).catch(()=>{});return work;
 }
 /** Mark before invoking side effects. A reload at this stage is an unknown
@@ -47,6 +50,7 @@ export function confirmCombatTransition(user:string,encounter:string):Promise<Sa
 export function beginCombatTransitionEffects(user:string,encounter:string,requestId:string):SavedCombatTransition {
  const r=savedCombatTransition(user,encounter);
  if(!r||r.request.requestId!==requestId||r.stage==='clock-pending')throw invalid();
+ if(r.stage==='clock-observed')throw new Error('Another request advanced this turn. Reconcile its incoming effects before continuing.');
  if(r.stage==='effects-started')throw new Error('This turn may already have applied its effects. Reconcile them before continuing.');
  const started:SavedCombatTransition={...r,stage:'effects-started'};store(started);return started;
 }

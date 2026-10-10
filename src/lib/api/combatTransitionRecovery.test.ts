@@ -7,7 +7,7 @@ const id=(n:number)=>`${n}${'0'.repeat(7)}-0000-4000-8000-000000000000`;
 const request={requestId:id(1),encounterId:id(2),expectedTurn:id(3),incomingId:id(4),nextIndex:0,nextRound:2};
 const receipt={requestId:request.requestId,encounterId:request.encounterId,incomingId:request.incomingId,turnId:id(5),index:0,round:2,roundWrapped:true,campaignRounds:12,replayed:false};
 const user=id(6),enc=request.encounterId;
-beforeEach(()=>{vi.resetAllMocks();localStorage.clear();m.rpc.mockResolvedValue({data:receipt,error:null});});
+beforeEach(()=>{vi.resetAllMocks();localStorage.clear();m.rpc.mockImplementation(async name=>({data:name==='read_combat_clock_transition'?null:receipt,error:null}));});
 it('persists before contacting the server and scopes recovery to the signed-in user',()=>{
  saveCombatTransition(user,request);expect(savedCombatTransition(user,enc)?.stage).toBe('clock-pending');expect(savedCombatTransition(id(7),enc)).toBeNull();expect(m.rpc).not.toHaveBeenCalled();
 });
@@ -17,19 +17,19 @@ it('does not replace an unfinished request with a new next turn',()=>{
 it('storage failure prevents request submission',()=>{
  const spy=vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw new Error('storage blocked');});try{expect(()=>saveCombatTransition(user,request)).toThrow('storage blocked');expect(m.rpc).not.toHaveBeenCalled();}finally{spy.mockRestore();}
 });
-it('retries the exact saved request after both transport attempts fail',async()=>{
+it('failed receipt reads retain the exact saved request for retry',async()=>{
  saveCombatTransition(user,request);m.rpc.mockRejectedValueOnce(new Error('offline')).mockRejectedValueOnce(new Error('offline'));
  await expect(confirmCombatTransition(user,enc)).rejects.toThrow();expect(savedCombatTransition(user,enc)?.stage).toBe('clock-pending');
  await confirmCombatTransition(user,enc);expect(m.rpc.mock.calls[0]).toEqual(m.rpc.mock.calls[2]);expect(savedCombatTransition(user,enc)?.stage).toBe('clock-confirmed');
 });
-it('coalesces simultaneous confirmation clicks',async()=>{saveCombatTransition(user,request);const a=confirmCombatTransition(user,enc),b=confirmCombatTransition(user,enc);expect(a).toBe(b);await a;expect(m.rpc).toHaveBeenCalledTimes(1);});
+it('coalesces simultaneous confirmation clicks',async()=>{saveCombatTransition(user,request);const a=confirmCombatTransition(user,enc),b=confirmCombatTransition(user,enc);expect(a).toBe(b);await a;expect(m.rpc).toHaveBeenCalledTimes(2);});
 it('retains confirmed clock state until side effects explicitly finish',async()=>{
  saveCombatTransition(user,request);await confirmCombatTransition(user,enc);expect(()=>finishCombatTransition(user,enc,request.requestId)).toThrow();
  beginCombatTransitionEffects(user,enc,request.requestId);expect(savedCombatTransition(user,enc)?.stage).toBe('effects-started');finishCombatTransition(user,enc,request.requestId);expect(savedCombatTransition(user,enc)).toBeNull();
 });
 it('does not blindly restart unknown effects after reload',async()=>{
  saveCombatTransition(user,request);await confirmCombatTransition(user,enc);beginCombatTransitionEffects(user,enc,request.requestId);
- expect(await confirmCombatTransition(user,enc)).toMatchObject({stage:'effects-started'});expect(m.rpc).toHaveBeenCalledTimes(1);
+ expect(await confirmCombatTransition(user,enc)).toMatchObject({stage:'effects-started'});expect(m.rpc).toHaveBeenCalledTimes(2);
  expect(()=>beginCombatTransitionEffects(user,enc,request.requestId)).toThrow('Reconcile');
 });
 it('does not send corrupt stored requests',async()=>{localStorage.setItem(`dndkeep:combat-transition:${user}:${enc}`,'{}');await expect(confirmCombatTransition(user,enc)).rejects.toThrow('verified');expect(m.rpc).not.toHaveBeenCalled();});
@@ -39,7 +39,7 @@ it('rejects a mismatched stored receipt before treating a clock as confirmed',()
 });
 it('preserves the original request if storing the acknowledgement fails',async()=>{
  saveCombatTransition(user,request);const spy=vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw new Error('disk full');});try{await expect(confirmCombatTransition(user,enc)).rejects.toThrow('disk full');}finally{spy.mockRestore();}
- expect(savedCombatTransition(user,enc)?.stage).toBe('clock-pending');await confirmCombatTransition(user,enc);expect(m.rpc.mock.calls[0]).toEqual(m.rpc.mock.calls[1]);
+ expect(savedCombatTransition(user,enc)?.stage).toBe('clock-pending');await confirmCombatTransition(user,enc);expect(m.rpc.mock.calls.filter(([name])=>name==='commit_combat_clock_transition')).toEqual([m.rpc.mock.calls[1],m.rpc.mock.calls[1]]);
 });
 it('cannot finish another request or start effects before confirmation',()=>{
  saveCombatTransition(user,request);expect(()=>beginCombatTransitionEffects(user,enc,request.requestId)).toThrow();expect(()=>finishCombatTransition(user,enc,id(9))).toThrow();
@@ -70,4 +70,34 @@ it('storage failure cannot submit a clock mutation',async()=>{
  m.rpc.mockResolvedValue({data:context,error:null});const spy=vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw new Error('Full');});
  try{await expect(prepareCombatTransition(user,enc,request.expectedTurn,()=>{})).rejects.toThrow('Full');}finally{spy.mockRestore();}
  expect(m.rpc.mock.calls.map(([name])=>name)).toEqual(['get_combat_clock_context']);expect(savedCombatTransition(user,enc)).toBeNull();
+});
+
+it('recovers its own acknowledged clock without resending the advance',async()=>{
+ saveCombatTransition(user,request);m.rpc.mockResolvedValue({data:{request,receipt:{...receipt,replayed:true}},error:null});
+ expect(await confirmCombatTransition(user,enc)).toMatchObject({stage:'clock-confirmed',receipt:{replayed:true}});
+ expect(m.rpc.mock.calls.map(([name])=>name)).toEqual(['read_combat_clock_transition']);
+});
+it('records another request winner but cannot blindly run or finish its incoming effects',async()=>{
+ saveCombatTransition(user,request);const winner={...request,requestId:id(8)};
+ m.rpc.mockResolvedValue({data:{request:winner,receipt:{...receipt,requestId:id(8),replayed:true}},error:null});
+ const result=await confirmCombatTransition(user,enc);expect(result).toMatchObject({stage:'clock-observed',request,receipt:{requestId:id(8)}});
+ expect(savedCombatTransition(user,enc)).toEqual(result);expect(await confirmCombatTransition(user,enc)).toEqual(result);
+ expect(m.rpc).toHaveBeenCalledTimes(1);
+ expect(()=>beginCombatTransitionEffects(user,enc,request.requestId)).toThrow('Reconcile');expect(()=>finishCombatTransition(user,enc,request.requestId)).toThrow();
+});
+it('a different recorded successor does not replace the saved proposal or send another advance',async()=>{
+ saveCombatTransition(user,request);m.rpc.mockResolvedValue({data:{request:{...request,incomingId:id(8)},receipt:{...receipt,incomingId:id(8),replayed:true}},error:null});
+ await expect(confirmCombatTransition(user,enc)).rejects.toThrow('different actor or round');expect(savedCombatTransition(user,enc)).toMatchObject({stage:'clock-pending',request});
+ expect(m.rpc).toHaveBeenCalledTimes(1);
+});
+it('an unknown winner lookup cannot fall through to a fresh advance',async()=>{
+ saveCombatTransition(user,request);m.rpc.mockRejectedValue(new Error('offline'));
+ await expect(confirmCombatTransition(user,enc)).rejects.toThrow();expect(m.rpc.mock.calls.every(([name])=>name==='read_combat_clock_transition')).toBe(true);
+ expect(savedCombatTransition(user,enc)?.stage).toBe('clock-pending');
+});
+it('preserves the pending request if recording an observed winner fails',async()=>{
+ saveCombatTransition(user,request);m.rpc.mockResolvedValue({data:{request:{...request,requestId:id(8)},receipt:{...receipt,requestId:id(8),replayed:true}},error:null});
+ const spy=vi.spyOn(localStorage,'setItem').mockImplementation(()=>{throw new Error('disk full');});
+ try{await expect(confirmCombatTransition(user,enc)).rejects.toThrow('disk full');}finally{spy.mockRestore();}
+ expect(savedCombatTransition(user,enc)?.stage).toBe('clock-pending');expect((await confirmCombatTransition(user,enc)).stage).toBe('clock-observed');
 });

@@ -6713,3 +6713,35 @@ unchanged and performs no new preparation. Full gate passes (3,338 units,
 196/196 TypeScript,entry255.2KB); changed-file ESLint, SQL lint, security advisors
 and diff checks pass. Only the new reviewed migration was applied locally with
 its ledger entry; unrelated local history remains intact.
+
+### Clock winner recovery (unreleased)
+
+Migration20261010070007 adds a DM-authorized historical clock reader keyed by
+encounter and expected outgoing turn, with an index for that lookup. It returns
+null only when no transition is recorded, rejects ambiguous history, remains
+available after combat ends and rechecks current campaign ownership. Anonymous
+callers cannot execute it; the private ledger remains inaccessible to clients.
+
+confirmCombatTransition now reads the authoritative winner before submitting an
+advance. It validates the recorded request and receipt, retaining the original
+proposal when the lookup is unavailable, malformed or points to a different
+actor/position/round. Recovery of its own request confirms the clock without
+resending it. A matching winner with another request ID is saved as clock-observed,
+keeping the original local request and the actual winning receipt distinct.
+
+An observed winner proves only that the clock moved: another caller may already
+have run incoming effects. Therefore beginCombatTransitionEffects and completion
+cannot treat clock-observed as permission to run or silently finish those effects.
+The state survives reload and suppresses additional clock mutations. Explicit
+reconciliation and incoming-effect completion tracking are still required before
+live rollout; this does not resolve every stale-request case or connect the live
+advanceTurn buttons. No production deployment.
+
+Verification:102 local clock/expiry/database/browser regressions pass across
+desktop and mobile. New browser coverage retains a losing local proposal,
+observes the matching server winner, blocks incoming-effect execution, survives
+reload and sends zero additional clock mutations. The original lost-reply case
+also passes with receipt-first confirmation. Full gate passes (3,350 units,
+196/196 TypeScript,entry255.2KB); changed-file ESLint, SQL lint, security advisors
+and diff checks pass. Only the reviewed new migration was applied locally and
+recorded in the ledger; unrelated local history was preserved.

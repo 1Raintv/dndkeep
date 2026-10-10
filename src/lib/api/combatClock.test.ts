@@ -1,6 +1,6 @@
 import {beforeEach,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({rpc:vi.fn()}));vi.mock('../supabase',()=>({supabase:{rpc:mocks.rpc}}));
-import {getCombatClockContext,commitCombatClock} from './combatClock';
+import {readCombatClockTransition,getCombatClockContext,commitCombatClock} from './combatClock';
 const id=(n:number)=>`${n}${'0'.repeat(7)}-0000-4000-8000-000000000000`;
 const request={requestId:id(1),encounterId:id(2),expectedTurn:id(3),incomingId:id(4),nextIndex:0,nextRound:2};
 const receipt={requestId:request.requestId,encounterId:request.encounterId,incomingId:request.incomingId,turnId:id(5),index:0,round:2,roundWrapped:true,campaignRounds:12,replayed:false};
@@ -37,4 +37,16 @@ it.each([{userId:id(8)},{encounterId:id(8)},{expectedTurn:id(8)},{outgoingId:'ba
 });
 it('rejects invalid context identity before requesting any data',async()=>{
  await expect(getCombatClockContext('bad',request.encounterId,request.expectedTurn)).rejects.toMatchObject({definitelyNotPaid:true});expect(mocks.rpc).not.toHaveBeenCalled();
+});
+
+it('reads a matching recorded winner with a different request ID',async()=>{
+ const winner={...request,requestId:id(8)},result={...receipt,requestId:id(8),replayed:true};
+ mocks.rpc.mockResolvedValue({data:{request:winner,receipt:result},error:null});expect(await readCombatClockTransition(request)).toEqual(result);
+});
+it('treats only an explicit null lookup as no recorded winner',async()=>{
+ mocks.rpc.mockResolvedValue({data:null,error:null});expect(await readCombatClockTransition(request)).toBeNull();
+ mocks.rpc.mockResolvedValue({data:{},error:null});await expect(readCombatClockTransition(request)).rejects.toMatchObject({definitelyNotPaid:false});
+});
+it.each([{request:{...request,expectedTurn:id(8)}},{request:{...request,requestId:'bad'}},{receipt:{...receipt,replayed:false}},{receipt:{...receipt,requestId:id(8),replayed:true}},{receipt:{...receipt,turnId:request.expectedTurn,replayed:true}}])('rejects a mismatched historical record %j',async bad=>{
+ mocks.rpc.mockResolvedValue({data:{request,receipt:{...receipt,replayed:true},...bad},error:null});await expect(readCombatClockTransition(request)).rejects.toMatchObject({definitelyNotPaid:false});
 });

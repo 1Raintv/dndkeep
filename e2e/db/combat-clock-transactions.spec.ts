@@ -1,6 +1,6 @@
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {test,expect} from '@playwright/test';
+import {test,expect,type Page} from '@playwright/test';
 import {gateDbSuite,signInAsSeedDm} from './helpers';
 const args=['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'];
 const sql=(q:string)=>execFileSync('docker',args,{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
@@ -57,11 +57,47 @@ test.describe('Atomic combat clock transitions',()=>{
   turn=state().turn;sql(`update combat_encounters set status='ended' where id='${enc}'`);
   expect(()=>sql(auth(dm,prepare()))).toThrow(/Combat turn changed/);expect(state().clock).toBe(0);
  });
- test('browser preparation survives lost clock replies and does not advance a later turn',async({page})=>{
-  endEffects(pa,ca);
+ async function signInFixtureDm(page:Page){
   sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
    insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}','{"sub":"${dm}","email":"${dm}@turn.local"}','email',now(),now(),now());`);
   await signInAsSeedDm(page,`${dm}@turn.local`);
+ }
+ const readClock=()=>`select read_combat_clock_transition('${enc}','${turn}')`;
+ test('clock lookup returns null before an advance and the historical winner afterwards',()=>{
+  expect(sql(auth(dm,readClock()))).toBe('');const first=run();
+  run(call(randomUUID(),state().turn,pa,0,2));const later=state();
+  expect(JSON.parse(sql(auth(dm,readClock())))).toEqual({request:{requestId:request,encounterId:enc,expectedTurn:turn,incomingId:pb,nextIndex:1,nextRound:1},receipt:{...first,replayed:true}});expect(state()).toEqual(later);
+ });
+ test('clock lookup remains DM-only after combat ends and ownership changes',()=>{
+  run();sql(`update combat_encounters set status='ended' where id='${enc}'`);
+  expect(JSON.parse(sql(auth(dm,readClock()))).receipt.replayed).toBe(true);
+  expect(()=>sql(auth(player,readClock()))).toThrow(/only to its DM/);expect(()=>sql('set role anon;'+readClock())).toThrow(/permission denied/);
+  sql(`update campaigns set owner_id='${player}' where id='${campaign}'`);expect(()=>sql(auth(dm,readClock()))).toThrow(/only to its DM/);
+  expect(JSON.parse(sql(auth(player,readClock()))).receipt.requestId).toBe(request);
+ });
+ test('ambiguous historical clock winners are not guessed',()=>{
+  run();sql(`insert into dndkeep_private.combat_clock_transitions(request_id,encounter_id,request,result) select gen_random_uuid(),encounter_id,request,result from dndkeep_private.combat_clock_transitions where request_id='${request}'`);
+  expect(()=>sql(auth(dm,readClock()))).toThrow(/Conflicting saved combat transitions/);
+ });
+ test('browser recovery observes another request winner without advancing or rerunning its effects',async({page})=>{
+  await signInFixtureDm(page);const loser={requestId:randomUUID(),encounterId:enc,expectedTurn:turn,incomingId:pb,nextIndex:1,nextRound:1};
+  await page.evaluate(async({user,request})=>{const api=await import('/src/lib/api/combatTransitionRecovery.ts');api.saveCombatTransition(user,request);},{user:dm,request:loser});
+  run();const before=state();let mutations=0;
+  await page.route('**/rest/v1/rpc/commit_combat_clock_transition',async route=>{mutations++;await route.abort('failed');});
+  const observed=await page.evaluate(async({user,encounter,requestId})=>{
+   const api=await import('/src/lib/api/combatTransitionRecovery.ts');const result=await api.confirmCombatTransition(user,encounter);
+   let blocked=false;try{api.beginCombatTransitionEffects(user,encounter,requestId);}catch{blocked=true;}
+   return {result,blocked};
+  },{user:dm,encounter:enc,requestId:loser.requestId});
+  expect(observed).toMatchObject({blocked:true,result:{stage:'clock-observed',request:loser,receipt:{requestId:request,replayed:true}}});
+  await page.reload();const recovered=await page.evaluate(async({user,encounter})=>{
+   const api=await import('/src/lib/api/combatTransitionRecovery.ts');return api.confirmCombatTransition(user,encounter);
+  },{user:dm,encounter:enc});
+  expect(recovered).toEqual(observed.result);expect(mutations).toBe(0);expect(state()).toEqual(before);
+ });
+ test('browser preparation survives lost clock replies and does not advance a later turn',async({page})=>{
+  endEffects(pa,ca);
+  await signInFixtureDm(page);
   let commits=0;await page.route('**/rest/v1/rpc/commit_combat_clock_transition',async route=>{await route.fetch();commits++;await route.abort('failed');});
   const first=await page.evaluate(async({user,encounter,turn})=>{
    const api=await import('/src/lib/api/combatTransitionRecovery.ts');

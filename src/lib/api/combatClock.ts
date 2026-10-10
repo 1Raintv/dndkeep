@@ -34,3 +34,18 @@ export async function getCombatClockContext(user:string,encounter:string,turn:st
   ||c.nextIndex!==0&&c.roundWrapped||!count(c.campaignRounds))throw new PsionicRequestError('The next combat turn could not be verified. Refresh before advancing.',true);
  return c;
 }
+
+/** A winner from another request proves only the clock moved, not whether its
+ * caller already ran incoming effects. Recovery must retain that distinction. */
+export async function readCombatClockTransition(r:CombatClockRequest):Promise<CombatClockReceipt|null>{
+ if(!validCombatClockRequest(r))throw new PsionicRequestError('Invalid saved combat transition. No request was sent.',true);
+ const value=await psionicRpc('read_combat_clock_transition',{p_encounter_id:r.encounterId,p_expected_turn:r.expectedTurn},true);
+ if(value===null)return null;
+ const v=value as {request:CombatClockRequest;receipt:CombatClockReceipt}|null;
+ if(!v||!validCombatClockRequest(v.request)||!validCombatClockReceipt(v.receipt,v.request)||v.receipt.replayed!==true
+  ||v.request.encounterId!==r.encounterId||v.request.expectedTurn!==r.expectedTurn)
+  throw new PsionicRequestError('The recorded combat transition could not be verified. Keep the saved request.',false);
+ if(v.request.incomingId!==r.incomingId||v.request.nextIndex!==r.nextIndex||v.request.nextRound!==r.nextRound)
+  throw new PsionicRequestError('Another request advanced to a different actor or round. Review the saved transition before continuing.',false);
+ return v.receipt;
+}
