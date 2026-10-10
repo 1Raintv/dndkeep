@@ -1,5 +1,31 @@
 # DNDKeep — Two-Track Roadmap
 
+### Mutable Form AC participates in shared attack resolution (local)
+
+`rollAttackRoll` now reads the target character's active Mutable Form before any
+dice are rolled and adds its +1/+2/+3 AC alongside existing cover and buff bonuses.
+A read failure blocks resolution rather than silently omitting protection.
+Migration `20261010230000_mutable_form_attack_ac.sql` checks first-roll target AC
+against the current character target, buffs, cover and active form. It covers old
+RPCs and direct writes as well as the history wrapper. Stale defense submissions
+roll back; later reactions/replays retain the immutable original attack evidence.
+Permanent armor_class values are not changed.
+
+Three live browser cases verify all three bonus combinations, stacking, expiry,
+replayed original results and rejected stale writes. The entire attack-outcome
+suite passes (26 cases), including history rollback, ownership, concurrent rolls
+and one-use markers. Full `npm run verify` passes (4,756 tests, TS 193/193,
+256.1 KB entry). Lint/advisors have no Mutable Form findings; reapplication passes
+in rollback. Evidence: `.tmp/mutable-form-ac-{db,regression,gate,lint,advisors,
+idempotence}.log`. All 347 repo migrations are local; foreign 20261008213500 is
+preserved. Production and the older release rehearsals are unchanged.
+
+Remaining Mutable Form scope: sheet AC display, movement/reach, resistance and
+concentration integration, Touch casting, Stride/Flexibility actions, Flesh Weaver
+healing, activation history and public activation UI with durable recovery.
+The AC integration is tested using private fixture activations; players still
+cannot activate the unfinished feature through a new public control.
+
 ### Mutable Form current-effects reader (consumers not yet wired)
 
 Migration `20261010224500_mutable_form_active_state.sql` exposes only the active

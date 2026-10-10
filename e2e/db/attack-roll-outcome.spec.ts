@@ -15,6 +15,30 @@ test.describe('saved attack outcome rules',()=>{
    insert into campaigns(id,owner_id,name) values('${camp}','${owner}','Attack outcome fixture');`);
  });
  test.afterEach(()=>{sql(`delete from campaigns where id='${camp}';delete from auth.users where id='${owner}'`);});
+ for(const bonus of [1,2,3])test(`live attacks include Mutable Form AC +${bonus}, cover and other buffs`,async({page})=>{
+  const character=randomUUID(),declaration=randomUUID(),target=randomUUID(),enc=randomUUID(),id=randomUUID();
+  const level=bonus===2?7:10,choice=bonus===2?null:{kind:'flexibility'};
+  sql(`insert into characters(id,user_id,campaign_id,name,species,class_name,subclass,background,level,intelligence,class_resources) values('${character}','${owner}','${camp}','Metamorph','Human','Psion','Metamorph','Sage',${level},16,'{"psionic-energy-dice":6}');
+   begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';select dndkeep_private.begin_mutable_form('${character}','${declaration}',dndkeep_private.action_turn_context('${character}')->>'turnId',2,${bonus!==1},'${JSON.stringify(choice)}');commit;
+   insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${enc}','${camp}','active',1,0);
+   insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values('${target}','${enc}','${camp}','character','${character}','Metamorph',0);
+   update combatants set active_buffs='[{"key":"ward","name":"Ward","acBonus":1}]' where id=(select combatant_id from combat_participants where id='${target}');
+   insert into pending_attacks(id,campaign_id,encounter_id,target_participant_id,attacker_name,attacker_type,target_name,target_type,attack_name,attack_kind,attack_bonus,target_ac,cover_level,chain_id)
+    values('${id}','${camp}','${enc}','${target}','Fixture attacker','system','Metamorph','character','Strike','attack_roll',8,15,'half','${randomUUID()}')`);
+  await signInAsSeedDm(page,email);
+  const roll=async(attackId:string)=>page.evaluate(async id=>{const {rollAttackRoll}=await import('/src/lib/pendingAttack.ts');const random=Math.random;Math.random=()=>9.5/20;try{return await rollAttackRoll(id);}finally{Math.random=random;}},attackId);
+  expect(await roll(id)).toMatchObject({target_ac:18+bonus,hit_result:'miss',attack_total:18});
+  // An expired form must not change the original recorded result on replay.
+  sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+600 where character_id='${character}'`);
+  expect(await roll(id)).toMatchObject({target_ac:18+bonus,hit_result:'miss'});
+  const next=randomUUID();sql(`insert into pending_attacks(id,campaign_id,encounter_id,target_participant_id,attacker_name,attacker_type,target_name,target_type,attack_name,attack_kind,attack_bonus,target_ac,cover_level,chain_id)
+    values('${next}','${camp}','${enc}','${target}','Fixture attacker','system','Metamorph','character','Strike','attack_roll',8,15,'half','${randomUUID()}')`);
+  const snapshot={version:1,attackId:next,campaignId:camp,encounterId:enc,attackerId:null,targetId:target,d20:10,total:18,targetAC:18+bonus,naturalOneAutoFails:true,criticalOnHit:false,automatic:'none',result:'miss'};
+  const revision=sql(`select updated_at from pending_attacks where id='${next}'`);
+  expect(()=>sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';select public.record_pending_attack_roll('${next}','${revision}','${JSON.stringify(snapshot)}',null);commit;`)).toThrow();
+  expect(sql(`select state from pending_attacks where id='${next}'`)).toBe('declared');
+  expect(await roll(next)).toMatchObject({target_ac:18,hit_result:'hit',attack_total:18});
+ });
  test('declared ability contribution survives retries and rejects later rewrites',async({page})=>{
   await signInAsSeedDm(page,email);
   for(const modifier of [4,0,-2,null]){

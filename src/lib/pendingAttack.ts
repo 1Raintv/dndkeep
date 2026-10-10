@@ -1,3 +1,4 @@
+import {readMutableFormBenefits} from './api/mutableForm';
 import {recordPendingAttackRoll} from './api/pendingAttackRoll';
 import type {AttackRollSnapshot} from '../rules/attackRollSnapshot';
 import {attackRollOutcome} from '../rules/attackRollOutcome';
@@ -397,6 +398,7 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   let targetConditions: string[] = [];
   let attackerBuffs: ActiveBuff[] = [];
   let targetBuffs: ActiveBuff[] = [];
+  let mutableFormAC = 0;
   let attackerExhaustion = 0;
   let distanceCells = 99;  // default "ranged / far" — no auto-crit, no Prone bonus
   if (atk.attacker_participant_id || atk.target_participant_id) {
@@ -421,6 +423,12 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
     attackerBuffs = ((aData?.active_buffs as ActiveBuff[] | null) ?? []);
     targetBuffs = ((tData?.active_buffs as ActiveBuff[] | null) ?? []);
     attackerExhaustion = ((aData?.exhaustion_level as number | null) ?? 0);
+    // v2.869: read the timed target defense before rolling; a failed read must
+    // not silently resolve against an AC missing Mutable Form.
+    if(tData?.participant_type==='character'){
+      const form=await readMutableFormBenefits(String(tData.entity_id));
+      mutableFormAC=form?.acBonus??0;
+    }
 
     // v2.568.0 — LIVE positions. Pre-v2.568 this read the legacy
     // `battle_maps` jsonb table, which BattleMapV2 stopped writing at
@@ -498,7 +506,7 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   const coverAcBonus = coverLevel === 'half' ? 2 : coverLevel === 'three_quarters' ? 5 : 0;
   const baseAc = atk.target_ac ?? 10;
   const buffAc = effectiveCombatAC(baseAc, targetBuffs) - baseAc;
-  const effectiveAc = baseAc + coverAcBonus + buffAc;
+  const effectiveAc = baseAc + coverAcBonus + buffAc + mutableFormAC;
 
   // v2.110.0 — Phase H: auto-crit when target is Paralyzed/Unconscious and
   // attacker is within 5 ft melee range. Still bypassed by total cover.
