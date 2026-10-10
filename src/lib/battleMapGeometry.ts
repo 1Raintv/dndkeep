@@ -203,6 +203,9 @@ export async function loadActiveBattleMap(
       .maybeSingle();
     if (error && opts?.throwOnError) throw error;
     scene = (data as SceneRow | null) ?? null;
+    // v2.869 — an explicit targeting scene must not fall back to positions
+    // on a different map after deletion or loss of access.
+    if(!scene&&opts?.throwOnError)throw new Error('The selected map is unavailable. Reopen the map before choosing a target.');
   }
   if (!scene) {
     const { data, error } = await supabase

@@ -27,3 +27,23 @@ it('editing normalizes supplied defenses without clearing omitted fields',async(
 it('invalid catalog data fails before creating a partial creature',async()=>{
  state.catalog.damage_resistances=['psychic',42];await expect(importFromCatalog({catalogMonsterId:'bad'})).rejects.toThrow('text entries');expect(state.insert).not.toHaveBeenCalled();
 });
+
+it('imports exact save totals and scores without inventing proficiencies',async()=>{
+ state.catalog={...state.catalog,int:18,wis:9,saving_throws:{Intelligence:9}};
+ await importFromCatalog({catalogMonsterId:'fixture'});
+ expect(state.insert.mock.calls[0][1]).toMatchObject({saving_throws:{Intelligence:9},save_proficiencies:null,ability_scores:{int:18,wis:9,str:null}});
+});
+it.each([null,{}])('preserves the difference between unknown and empty save maps %j',async saving_throws=>{
+ state.catalog={...state.catalog,int:18,saving_throws};await importFromCatalog({catalogMonsterId:'fixture'});
+ expect(state.insert.mock.calls[0][1]).toMatchObject({saving_throws,save_proficiencies:null});
+});
+it('retains explicit custom save totals on create and update',async()=>{
+ await createCreature({name:'Custom',saving_throws:{str:8},save_proficiencies:null});
+ expect(state.insert.mock.calls[0][1]).toMatchObject({saving_throws:{str:8},save_proficiencies:null});
+ await updateCreature('id',{saving_throws:{str:9}});expect(state.update.mock.calls[0][1]).toEqual({saving_throws:{str:9}});
+});
+
+it('keeps unknown imported scores unknown even with an empty save map',async()=>{
+ state.catalog={...state.catalog,int:null,saving_throws:{}};await importFromCatalog({catalogMonsterId:'fixture'});
+ expect(state.insert.mock.calls[0][1]).toMatchObject({int:null,saving_throws:{},ability_scores:{int:null}});
+});

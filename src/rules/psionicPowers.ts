@@ -1,3 +1,4 @@
+import {telepathyBaseRange,telepathicConnectionRange} from './telepathicConnection';
 import {psionProgression,type PsionicClassState} from './psionProgression';
 import {validPsionicRoll,psionicRollNote,type PsionicRollEnhancement} from './psionicEnhancedRoll';
 import {psionicPoolRemaining,psionicDieSides} from './psionicRestoration';
@@ -10,10 +11,14 @@ export function psionicPowerState(c:PsionicPowerCharacter) {
   const progression=psionProgression(c),level=progression?.level??0;
   const raw=c.class_resources?.['psionic-energy-dice'];
   const remaining=psionicPoolRemaining(level,raw);
-  return {valid:!!progression&&remaining!==null,level,dice:remaining??0,
+  // v2.869 — match the saved-use integer guard before rolling or offering paid enhancements.
+  // A corrupt Connection counter must not disable unrelated Propel uses.
+  const connectionUses=c.feature_uses?.[CONNECTION_USE];
+  const connectionValid=connectionUses===undefined||(typeof connectionUses==='number'&&Number.isInteger(connectionUses)&&connectionUses>=0&&connectionUses<=2147483646);
+  return {connectionValid,valid:!!progression&&remaining!==null,level,dice:remaining??0,
     sides:psionicDieSides(level),
-    connectionFree:!(c.feature_uses?.[CONNECTION_USE]),
-    telepathyRange:progression?.subclass==='Telepath'&&level>=6?60:30,
+    connectionFree:connectionValid&&(connectionUses===undefined||connectionUses===0),
+    telepathyRange:telepathyBaseRange(c)??30,
     warp:progression?.subclass==='Psi Warper'&&level>=3,
     technique:progression?.subclass==='Psykinetic'&&level>=3};
 }
@@ -23,18 +28,24 @@ export function resolvePsionicPower(c:PsionicPowerCharacter,use:PsionicPowerUse,
   if(!state.valid)return null;
   if(use.kind==='propel'&&use.movement==='warp'&&!state.warp)return null;
   const isTechnique=use.kind==='propel'&&use.mode==='technique';
+  // v2.869 — the baseline push rolls no die, and the Psykinetic d4 is
+  // not an Energy Die. Neither can carry Surge/Enkindled payment claims.
+  if(use.kind==='propel'&&use.mode!=='powered') {
+    if(use.surged||use.enkindledRolls?.length||use.originalRoll!==undefined)return null;
+    if(use.mode==='free'&&use.roll!==0)return null;
+  }
   const rolls=use.kind==='connection'||use.mode!=='free';
   if(rolls&&(isTechnique?(!Number.isInteger(use.roll)||use.roll<1||use.roll>4):!validPsionicRoll(state.level,use.roll,use)))return null;
   if(isTechnique&&!state.technique)return null;
   if(use.kind==='propel'&&failedSave===undefined)return null;
   // A first-free use cannot become a paid use while its dialog is open.
-  if(use.kind==='connection'&&use.free!==state.connectionFree)return null;
+  if(use.kind==='connection'&&(!state.connectionValid||use.free!==state.connectionFree))return null;
   const needsDie=use.kind==='connection'?!use.free:use.mode==='powered';
   if((use.kind==='connection'||needsDie)&&state.dice<1)return null;
   const cost=needsDie&&(use.kind==='connection'||failedSave)?1:0;
   const patch={class_resources:{...c.class_resources,'psionic-energy-dice':state.dice-cost},
     feature_uses:{...c.feature_uses,...(use.kind==='connection'?{[CONNECTION_USE]:(c.feature_uses?.[CONNECTION_USE]??0)+1}:{})}};
-  const feet=use.kind==='connection'?state.telepathyRange+10*use.roll:failedSave?(use.movement==='warp'?30:use.mode==='free'?5:5*use.roll):0;
+  const feet=use.kind==='connection'?telepathicConnectionRange(c,use.roll,use)!:failedSave?(use.movement==='warp'?30:use.mode==='free'?5:5*use.roll):0;
   const notes=use.kind==='connection'?`Telepathy range ${feet} ft for 1 hour. ${cost?'Spent 1 die.':'First extension after Long Rest: no die spent.'}`:
     `${failedSave?'Failed STR save':'Passed STR save'}: ${cost?'Spent 1 die.':'No die spent.'} ${use.movement==='warp'?(failedSave?'Teleport to an unoccupied space you can see within 30 ft of you, horizontal to you. Does not add Prone.':'No teleport.'):`${feet} ft movement straight toward or away from you.`} Target: one other Large or smaller creature you can see within 30 ft.`;
   return {patch,cost,feet,notes:notes+' '+psionicRollNote(use.roll,use)};

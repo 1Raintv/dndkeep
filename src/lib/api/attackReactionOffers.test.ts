@@ -1,0 +1,12 @@
+import {beforeEach,expect,it,vi} from 'vitest';
+const rpc=vi.hoisted(()=>vi.fn());vi.mock('./psionicTurns',async original=>({...await original<typeof import('./psionicTurns')>(),psionicRpc:rpc}));
+vi.mock('../supabase',()=>({supabase:{}}));
+import {attackReactionOffers} from './attackReactionOffers';
+const id='11111111-1111-4111-8111-111111111111',time='2026-10-10T12:00:00Z';
+beforeEach(()=>{rpc.mockReset();});
+it('reads a missing batch without pretending it was finalized empty',async()=>{rpc.mockResolvedValue(null);expect(await attackReactionOffers(id,'post_attack_roll',null,null)).toBeNull();});
+it('writes empty batches and accepts a competing saved winner',async()=>{rpc.mockResolvedValue({attackId:id,triggerPoint:'post_attack_roll',offerCount:1});expect(await attackReactionOffers(id,'post_attack_roll',time,[])).toBe(1);expect(rpc).toHaveBeenCalledWith('attack_reaction_offers',{p_attack_id:id,p_trigger:'post_attack_roll',p_expected_updated_at:time,p_keys:[]},true);});
+it('snapshots and deduplicates candidates before the request',async()=>{rpc.mockResolvedValue({attackId:id,triggerPoint:'post_damage_roll',offerCount:2});await attackReactionOffers(id,'post_damage_roll',time,['hellish_rebuke','absorb_elements','absorb_elements']);expect(rpc.mock.calls[0][1].p_keys).toEqual(['absorb_elements','hellish_rebuke']);});
+it.each([null,{}, {attackId:id,triggerPoint:'post_damage_roll',offerCount:1},{attackId:id,triggerPoint:'post_attack_roll',offerCount:-1},{attackId:id,triggerPoint:'post_attack_roll',offerCount:1.5},{attackId:id,triggerPoint:'post_attack_roll',offerCount:5}])('rejects an unverifiable write receipt %j',async value=>{rpc.mockResolvedValue(value);await expect(attackReactionOffers(id,'post_attack_roll',time,['shield'])).rejects.toThrow(/confirmed/);});
+it.each([['shield','post_damage_roll'],['counterspell','post_attack_roll'],['shield','pre_damage_applied']] as const)('rejects %s in %s before RPC',async(key,trigger)=>{await expect(attackReactionOffers(id,trigger,time,[key])).rejects.toThrow(/Invalid/);expect(rpc).not.toHaveBeenCalled();});
+it('propagates an uncertain response without inventing zero offers',async()=>{rpc.mockRejectedValue(new Error('offline'));await expect(attackReactionOffers(id,'post_attack_roll',time,[])).rejects.toThrow('offline');});

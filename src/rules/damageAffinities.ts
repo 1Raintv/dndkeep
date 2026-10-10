@@ -1,3 +1,11 @@
+/** All 13 damage types per the 2024 PHB. Lowercase canonical form. */
+export const DAMAGE_TYPES = [
+  'acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning',
+  'necrotic', 'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder',
+] as const;
+
+export type DamageType = typeof DAMAGE_TYPES[number];
+
 /** SRD 5.2.1 p.17: immunity prevents damage; apply resistance (round down)
  * before vulnerability. v2.824: odd damage does not cancel back to its input.
  * https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf */

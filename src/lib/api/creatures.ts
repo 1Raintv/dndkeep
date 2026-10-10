@@ -60,6 +60,7 @@ export interface CreatureRow {
   // Combat-runtime jsonb (kept loose; UI normalizes shape)
   conditions: unknown;
   save_proficiencies: unknown;
+  saving_throws?: unknown;
   ability_scores: unknown;
   // State flags
   visible_to_players: boolean;
@@ -126,12 +127,12 @@ export async function createCreature(input: Partial<CreatureRow> & { name: strin
       max_hp: input.max_hp ?? input.hp ?? 10,
       ac: input.ac ?? 10,
       speed: input.speed ?? 30,
-      str: input.str ?? 10,
-      dex: input.dex ?? 10,
-      con: input.con ?? 10,
-      int: input.int ?? 10,
-      wis: input.wis ?? 10,
-      cha: input.cha ?? 10,
+      str: input.str === undefined ? 10 : input.str,
+      dex: input.dex === undefined ? 10 : input.dex,
+      con: input.con === undefined ? 10 : input.con,
+      int: input.int === undefined ? 10 : input.int,
+      wis: input.wis === undefined ? 10 : input.wis,
+      cha: input.cha === undefined ? 10 : input.cha,
       attack_name: input.attack_name ?? null,
       attack_bonus: input.attack_bonus ?? null,
       attack_damage: input.attack_damage ?? null,
@@ -156,7 +157,8 @@ export async function createCreature(input: Partial<CreatureRow> & { name: strin
       is_alive: input.is_alive ?? true,
       in_combat: false,
       conditions: input.conditions ?? [],
-      save_proficiencies: input.save_proficiencies ?? [],
+      save_proficiencies: input.save_proficiencies === undefined ? [] : input.save_proficiencies,
+      saving_throws: input.saving_throws ?? null,
       ability_scores: input.ability_scores ?? null,
       traits: input.traits ?? '',
     })
@@ -209,8 +211,8 @@ export async function importFromCatalog(input: {
   if (catalogErr) throw catalogErr;
   if (!catalogRow) throw new Error('Catalog monster not found');
   // Build the homebrew row from the catalog row. We map only the
-  // shared fields; the catalog has more (saving_throws, skills, etc.)
-  // that homebrew_monsters doesn't store yet.
+  // shared fields, including exact save totals. Do not infer proficiency
+  // from a listed total: exceptional bonuses need not equal ability + PB.
   const c = catalogRow as Record<string, unknown>;
   return createCreature({
     name: input.nameOverride ?? (c.name as string),
@@ -227,6 +229,10 @@ export async function importFromCatalog(input: {
     int: (c.int as number) ?? null,
     wis: (c.wis as number) ?? null,
     cha: (c.cha as number) ?? null,
+    // Unknown source saves remain unknown; never turn NULL into an empty map.
+    saving_throws: c.saving_throws ?? null,
+    save_proficiencies: null,
+    ability_scores: Object.fromEntries(['str','dex','con','int','wis','cha'].map(key=>[key,c[key] ?? null])),
     xp: (c.xp as number) ?? null,
     attack_name: (c.attack_name as string) ?? null,
     attack_bonus: (c.attack_bonus as number) ?? null,

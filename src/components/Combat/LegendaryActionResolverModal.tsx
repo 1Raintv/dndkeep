@@ -1,3 +1,7 @@
+import {settleAttackCondition} from '../../lib/api/attackConditions';
+import {savedSavePhase} from '../../rules/saveResolution';
+import {readSavedLegendarySave,runSavedLegendarySave,readSavedBatchAttack,type SavedLegendarySave} from '../../lib/api/savedLegendarySaves';
+import {verifiedTargetSaves} from '../../lib/verifiedTargetSaves';
 // v2.446.0 — Legendary Action resolution modal.
 //
 // Opens when the DM clicks an LA option in LegendaryActionPopover.
@@ -38,10 +42,9 @@ import { supabase } from '../../lib/supabase';
 import { spendLegendaryAction } from '../../lib/legendaryActions';
 import {
   declareAttack, rollAttackRoll, rollDamage, applyDamage, cancelAttack,
-  rollSave, getTargetSaveBonus,
+  rollSave,
 } from '../../lib/pendingAttack';
-import { declareSaveBatch } from '../../lib/saveBatch';
-import { applyCondition } from '../../lib/conditions';
+import type {DeclareSaveBatchInput} from '../../lib/saveBatch';
 import { rollDie, abilityModifier } from '../../lib/gameUtils';
 import {
   loadActiveBattleMap,
@@ -237,6 +240,20 @@ export default function LegendaryActionResolverModal({
 
   // Resolution state.
   const [busy, setBusy] = useState(false);
+  const [saveError,setSaveError]=useState<string|null>(null);
+  const [savedAction,setSavedAction]=useState<SavedLegendarySave|null>(null);
+  const [recoveryLoading,setRecoveryLoading]=useState(true);
+  const [recoveryError,setRecoveryError]=useState<string|null>(null);
+  useEffect(()=>{
+    let live=true;setRecoveryLoading(true);
+    readSavedLegendarySave({campaignId,encounterId,attacker:{id:participant.id},attackName:laOption.name})
+      .then(saved=>{if(live){setSavedAction(saved);setRecoveryError(null);}})
+      .catch(error=>{if(live)setRecoveryError(error instanceof Error?error.message:'Could not read the saved action.');})
+      .finally(()=>{if(live)setRecoveryLoading(false);});
+    return()=>{live=false;};
+  },[campaignId,encounterId,participant.id,laOption.name]);
+  const resuming=savedAction?.phase==='pending';
+
   // For ability checks: the rolled d20 + total + bonus.
   const [checkRoll, setCheckRoll] = useState<{ d20: number; bonus: number; total: number } | null>(null);
   // For attack: which target was clicked + the attack-chain progress
@@ -461,87 +478,65 @@ export default function LegendaryActionResolverModal({
   }
 
   async function resolveSaveBatch() {
-    if (!pattern.save) return;
-    const sv = pattern.save;
-    const targets = saveTargets.map(r => r.target).filter(p => selectedSaveTargets.has(p.id));
-    if (targets.length === 0) {
-      showToast('Pick at least one target.', 'info');
-      return;
-    }
-    setBusy(true);
-    try {
-      const inferredCondition = sv.conditionName ? sv.conditionName.toLowerCase() : null;
-      const batch = await declareSaveBatch({
-        campaignId,
-        encounterId,
-        attacker: { id: participant.id, name: participant.name, type: 'creature' },
-        attackName: laOption.name,
-        saveDC: sv.dc,
-        saveAbility: sv.ability,
-        saveSuccessEffect: sv.successEffect,
-        damageDice: sv.damageDice,
-        damageType: sv.damageType,
-        inferredCondition,
-        targets,
+    if (!pattern.save || busy || recoveryLoading || recoveryError) return;
+    const sv=pattern.save;
+    const targets=saveTargets.map(r=>r.target).filter(p=>selectedSaveTargets.has(p.id));
+    if(!resuming&&targets.length===0){showToast('Pick at least one target.','info');return;}
+    const input:DeclareSaveBatchInput=resuming?savedAction!.input:{
+      campaignId,encounterId,attacker:{id:participant.id,name:participant.name,type:'creature'},attackName:laOption.name,
+      saveDC:sv.dc,saveAbility:sv.ability,saveSuccessEffect:sv.successEffect,damageDice:sv.damageDice,damageType:sv.damageType,
+      inferredCondition:sv.conditionName?.toLowerCase()??null,
+      conditionIntent:sv.conditionName?{conditionName:sv.conditionName,sourcePrefix:'legendary_action',sourceKind:laOption.name.toLowerCase().replace(/[^a-z0-9]+/g,'_'),durationRounds:null,saveToEnd:null}:null,
+      legendaryCost:cost,targets,
+    };
+    setBusy(true);setSaveError(null);
+    try{
+      // Unknown bonuses still block new payments. Recovery reads already rolled
+      // targets first; later changes to their stats cannot force a reroll.
+      if(!resuming)await verifiedTargetSaves(input.targets,input.saveAbility);
+      await runSavedLegendarySave(input,savedAction?.input.savedDeclaration.chainId??null,async(saved,batch,guard,beforeDamage)=>{
+        let passed=0,failed=0,conditionApplied=0,resistancePending=0,finished=0;
+        const results=await Promise.allSettled(batch.rows.map(async row=>{
+          guard();let attack=await readSavedBatchAttack(row.pendingAttackId,batch.chainId);guard();
+          let phase=savedSavePhase(attack,row.pendingAttackId);
+          if(phase==='roll'){
+            const bonuses=await verifiedTargetSaves([row.target],saved.saveAbility);guard();
+            const rolled=await rollSave(row.pendingAttackId,bonuses.get(row.target.id)!.bonus);guard();
+            if(!rolled)throw new Error('The saving throw could not be verified.');
+            attack=rolled;phase=savedSavePhase(attack,row.pendingAttackId);
+          }
+          if(phase==='roll')throw new Error('The saving throw has not been recorded. Resume its saved request before continuing.');
+          if(phase==='complete'){
+            // v2.869: HP may have committed before the reply was lost. Replaying
+            // its receipt also resumes automatic concentration without another hit.
+            if(attack.state==='applied'&&saved.damageDice){await applyDamage(attack.id);guard();}
+            finished++;return;
+          }
+          if(phase==='awaiting_resistance'){resistancePending++;return;}
+          const conditionName=saved.conditionIntent?.conditionName;
+          if(conditionName){guard();const receipt=await settleAttackCondition(row.pendingAttackId,conditionName);guard();if(receipt?.outcome==='applied')conditionApplied++;}
+          if(saved.damageDice){guard();const damaged=await rollDamage(row.pendingAttackId);guard();if(!damaged)throw new Error('The saved damage could not be verified.');if(damaged.state==='damage_rolled'){await applyDamage(damaged.id,()=>beforeDamage(damaged.id));guard();}}
+          else {guard();await cancelAttack(row.pendingAttackId);guard();}
+          guard();const final=await readSavedBatchAttack(row.pendingAttackId,batch.chainId);guard();
+          if(savedSavePhase(final,row.pendingAttackId)!=='complete')throw new Error('This attack is still pending. Finish its prompt, then resume the saved action.');
+          if(attack.save_result==='passed')passed++;else failed++;
+        }));
+        // Keep the browser lock until every target settles, including when one
+        // fails. A retry must not overlap unfinished sibling work.
+        const rejection=results.find(r=>r.status==='rejected');if(rejection?.status==='rejected')throw rejection.reason;
+        window.dispatchEvent(new Event('dndkeep:hp-applied'));
+        const parts=[`${saved.attackName}: ${passed} saved · ${failed} failed`];
+        if(finished)parts.push(`${finished} already finished`);
+        if(resistancePending)parts.push(`${resistancePending} awaiting Legendary Resistance; finish pending attacks after deciding`);
+        if(conditionApplied)parts.push(`${saved.conditionIntent!.conditionName} ×${conditionApplied}`);
+        showToast(parts.join(' · '),failed||resistancePending?'info':'success');
+        return resistancePending===0;
       });
-      if (!batch) {
-        showToast('Couldn\'t declare the save batch.', 'error');
-        return;
-      }
-      let passed = 0;
-      let failed = 0;
-      let conditionApplied = 0;
-      await Promise.all(batch.rows.map(async (row) => {
-        const sb = await getTargetSaveBonus(row.target.id, sv.ability);
-        const r = await rollSave(row.pendingAttackId, sb.bonus);
-        const ok = (r as any)?.save_result === 'passed';
-        if (sv.damageDice) {
-          const damaged = await rollDamage(r?.id ?? row.pendingAttackId);
-          if (damaged && damaged.state === 'damage_rolled') {
-            await applyDamage(damaged.id);
-          }
-        } else {
-          await cancelAttack(r?.id ?? row.pendingAttackId);
-        }
-        if (ok) passed++;
-        else {
-          failed++;
-          if (!row.immuneToCondition && sv.conditionName) {
-            try {
-              await applyCondition({
-                participantId: row.target.id,
-                conditionName: sv.conditionName,
-                source: `legendary_action:${laOption.name}:${participant.id}`,
-                casterParticipantId: participant.id,
-                campaignId,
-                encounterId,
-                sourceKind: laOption.name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
-                sourceAttackerId: participant.id,
-                // LAs typically don't carry duration phrasing in their
-                // brief desc, so we don't infer durationRounds here.
-                // Wing Attack's Prone is until-stand-up, which the
-                // existing condition system handles correctly without
-                // a duration field.
-              });
-              conditionApplied++;
-            } catch (err) {
-              console.error('[LegendaryActionResolverModal] applyCondition failed', err);
-            }
-          }
-        }
-      }));
-      window.dispatchEvent(new Event('dndkeep:hp-applied'));
-      await spend();
-      const parts = [`${laOption.name}: ${passed} saved · ${failed} failed`];
-      if (sv.conditionName && conditionApplied > 0) parts.push(`${sv.conditionName} ×${conditionApplied}`);
-      showToast(parts.join(' · '), failed > 0 ? 'info' : 'success');
       onClose();
-    } catch (err) {
-      console.error('[LegendaryActionResolverModal] save batch failed', err);
-      showToast('Save resolution failed. Check console.', 'error');
-    } finally {
-      setBusy(false);
-    }
+    }catch(error){
+      setSaveError(error instanceof Error?error.message:'Save resolution failed.');
+      try{setSavedAction(await readSavedLegendarySave(input));}catch(readError){setRecoveryError(readError instanceof Error?readError.message:'Could not read the saved action.');}
+    }finally{setBusy(false);}
   }
 
   async function spendManually() {
@@ -685,17 +680,18 @@ export default function LegendaryActionResolverModal({
                   <> · applies {pattern.save.conditionName} on fail</>
                 )}
               </div>
+              {resuming&&<div role="status" style={{fontSize:13,lineHeight:1.5,color:'var(--t-2)'}}>Resume the saved action for {savedAction!.input.targets.map(t=>t.name).join(', ')}. Its original rolls and payment will be reused.</div>}
               <div style={{ display: 'flex', gap: 6 }}>
                 <button
                   onClick={() => setSelectedSaveTargets(new Set(saveBulkIds))}
-                  disabled={busy || saveBulkIds.length === 0}
+                  disabled={busy || recoveryLoading || !!recoveryError || resuming || saveBulkIds.length === 0}
                   style={btnSecondary}
                 >
                   Select all ({saveBulkIds.length})
                 </button>
                 <button
                   onClick={() => setSelectedSaveTargets(new Set())}
-                  disabled={busy || selectedSaveTargets.size === 0}
+                  disabled={busy || recoveryLoading || !!recoveryError || resuming || selectedSaveTargets.size === 0}
                   style={btnSecondary}
                 >
                   Clear
@@ -708,7 +704,7 @@ export default function LegendaryActionResolverModal({
                   </div>
                 )}
                 {saveTargets.map(({ target: t, group, inRange, distanceFt }) => {
-                  const sel = selectedSaveTargets.has(t.id);
+                  const sel = resuming ? savedAction!.input.targets.some(target=>target.id===t.id) : selectedSaveTargets.has(t.id);
                   return (
                     <button
                       key={t.id}
@@ -722,7 +718,7 @@ export default function LegendaryActionResolverModal({
                           return next;
                         });
                       }}
-                      disabled={busy || (!inRange && !sel)}
+                      disabled={busy || recoveryLoading || !!recoveryError || resuming || (!inRange && !sel)}
                       title={inRange ? undefined : `${t.name} is out of range (${distanceFt} ft; ${pattern.save!.rangeFt} ft max)`}
                       style={{ ...btnTargetRow(sel, t.participant_type === 'character'), ...rowStyleFor(group, { inRange }) }}
                     >
@@ -745,12 +741,13 @@ export default function LegendaryActionResolverModal({
                   );
                 })}
               </div>
+              {(saveError||recoveryError)&&<div role="alert" style={{padding:10,border:'1px solid #fbbf24',borderRadius:6,color:'#fde68a',background:'#302819',fontSize:13,lineHeight:1.5}}>{saveError||recoveryError}</div>}
               <button
                 onClick={resolveSaveBatch}
-                disabled={busy || selectedSaveTargets.size === 0}
+                disabled={busy || recoveryLoading || !!recoveryError || (!resuming && selectedSaveTargets.size === 0)}
                 style={btnConfirm}
               >
-                Resolve {selectedSaveTargets.size} target{selectedSaveTargets.size === 1 ? '' : 's'} & spend {cost}
+                {resuming?'Resume saved action':`Resolve ${selectedSaveTargets.size} target${selectedSaveTargets.size===1?'':'s'} & spend ${cost}`}
               </button>
             </>
           )}

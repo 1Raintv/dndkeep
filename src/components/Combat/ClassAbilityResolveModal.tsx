@@ -1,3 +1,5 @@
+import {getPropelSaveContext} from '../../lib/api/propelSaveContext';
+import {conditionsAutoFailSave,conditionsDisadvantageSave} from '../../lib/conditions';
 import {rollSavingThrow} from '../../rules/savingThrows';
 import {getPsionicGuardsSaveAdvantage} from '../../lib/api/psionicDisciplines';
 // v2.247.0 — Class-ability save resolver modal.
@@ -64,6 +66,9 @@ export { formatOutcomesLog } from '../../lib/classAbilityOutcomes';
 import type { SaveOutcome, TargetOutcome } from '../../lib/classAbilityOutcomes';
 
 interface Props {
+  boundDeclarationId?:string;
+  /** A persisted declaration cannot switch targets or encounters during resolution. */
+  boundTarget?:{participantId:string;encounterId:string};
   open: boolean;
   onClose: () => void;
   ability: ClassAbility;
@@ -105,12 +110,12 @@ function filterTargets(
 }
 
 export default function ClassAbilityResolveModal({
-  open, onClose, ability, saveDC, character, campaign, campaignId, onConfirmed,
+  open, onClose, ability, saveDC, character, campaign, campaignId, onConfirmed, boundTarget, boundDeclarationId,
 }: Props) {
-  const singleTarget=ability.psionicUse?.kind==='propel';
+  const singleTarget=!!boundTarget||ability.psionicUse?.kind==='propel';
   const [checking,setChecking]=useState(false),[saveError,setSaveError]=useState('');
   const busy=useRef(false),generation=useRef(0);
-  const context=JSON.stringify([open,campaignId,character.id,ability.name,ability.save,ability.psionicUse,saveDC]);
+  const context=JSON.stringify([open,campaignId,character.id,ability.name,ability.save,ability.psionicUse,saveDC,boundTarget,boundDeclarationId]);
   const latest=useRef(context);latest.current=context;
   useEffect(()=>{busy.current=false;setChecking(false);setSaveError('');return()=>{generation.current++;};},[context]);
   const [selectedTarget,setSelectedTarget]=useState('');
@@ -144,7 +149,7 @@ export default function ClassAbilityResolveModal({
       setLoading(true);
       setError(null);
       setOutcomes({});
-      setSelectedTarget('');
+      setSelectedTarget(boundTarget?.participantId??'');
       setSaveBonuses({});
 
       const { data: enc } = await supabase
@@ -154,6 +159,9 @@ export default function ClassAbilityResolveModal({
         .eq('status', 'active')
         .maybeSingle();
       if (cancelled) return;
+      if (boundTarget&&enc?.id!==boundTarget.encounterId) {
+        setTargets([]);setError('The declared encounter is no longer active. Keep this saved use for manual resolution.');setLoading(false);return;
+      }
       if (!enc?.id) {
         setError('No active combat encounter.');
         setLoading(false);
@@ -180,7 +188,9 @@ export default function ClassAbilityResolveModal({
       if (cancelled) return;
 
       const list = ((all ?? []) as CombatParticipant[]);
-      const filtered = ability.save ? filterTargets(list, casterId, ability.save) : [];
+      const eligible = ability.save ? filterTargets(list, casterId, ability.save) : [];
+      const filtered = boundTarget?eligible.filter(p=>p.id===boundTarget.participantId):eligible;
+      if(boundTarget&&filtered.length!==1)setError('The declared target is no longer available. Keep this saved use for manual resolution.');
       setTargets(filtered);
       setOutcomes(Object.fromEntries(filtered.map(p => [p.id, {
         participantId: p.id,
@@ -215,7 +225,7 @@ export default function ClassAbilityResolveModal({
 
   if (!open) return null;
 
-  function setOutcome(participantId: string, outcome: SaveOutcome, d20?: number, total?: number, bonus?: number, rolls?:number[],advantage?:boolean) {
+  function setOutcome(participantId: string, outcome: SaveOutcome, d20?: number, total?: number, bonus?: number, rolls?:number[],advantage?:boolean,naturalExtremes?:boolean,disadvantage?:boolean,automaticFailure?:boolean) {
     setOutcomes(prev => ({
       ...prev,
       [participantId]: {
@@ -224,7 +234,7 @@ export default function ClassAbilityResolveModal({
         d20,
         total,
         bonus,
-        rolls,advantage,
+        rolls,advantage,naturalExtremes,disadvantage,automaticFailure,
       },
     }));
   }
@@ -253,11 +263,17 @@ export default function ClassAbilityResolveModal({
     const issued=generation.current,bonus=saveBonuses[p.id].bonus;
     const current=()=>issued===generation.current&&latest.current===context;
     try {
-      const advantage=p.participant_type==='character'&&!!p.entity_id&&
-        await getPsionicGuardsSaveAdvantage(p.entity_id,ability.save?.ability??'');
+      const live=boundDeclarationId&&boundTarget?await getPropelSaveContext(character.id,boundDeclarationId,boundTarget.encounterId,p.id):null;
       if(!current())return;
-      const roll=rollSavingThrow(bonus,saveDC,{advantage,naturalExtremes:saveBonuses[p.id].naturalExtremes});
-      setOutcome(p.id,roll.passed?'passed':'failed',roll.d20,roll.total,bonus,roll.rolls,advantage);
+      const conditions=live?.state.conditions??p.active_conditions??[];
+      const automaticFailure=live?.state.autoFail??conditionsAutoFailSave(conditions,ability.save?.ability??'');
+      const disadvantage=live?.state.disadvantage??(!automaticFailure&&conditionsDisadvantageSave(conditions,ability.save?.ability??''));
+      const advantage=live?.state.advantage??(!automaticFailure&&p.participant_type==='character'&&!!p.entity_id&&
+        await getPsionicGuardsSaveAdvantage(p.entity_id,ability.save?.ability??''));
+      if(!current())return;
+      const naturalExtremes=live?.state.naturalExtremes??saveBonuses[p.id].naturalExtremes??false;
+      const roll=rollSavingThrow(bonus,saveDC,{advantage,disadvantage,forceFailure:automaticFailure,naturalExtremes});
+      setOutcome(p.id,roll.passed?'passed':'failed',roll.d20,roll.total,bonus,roll.rolls,advantage,naturalExtremes,disadvantage||undefined,automaticFailure||undefined);
     }catch(error){if(current())setSaveError(error instanceof Error?error.message:'Protection could not be verified. Try again.');}
     finally{if(current()){busy.current=false;setChecking(false);}}
   }
@@ -354,7 +370,7 @@ export default function ClassAbilityResolveModal({
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {saveError&&<p role="alert" style={{color:'#f87171',fontSize:12}}>{saveError}</p>}
               {checking&&<p role="status">Checking protection…</p>}
-              {singleTarget&&<div style={{marginBottom:12}}><p>Choose one Large or smaller creature other than yourself that you can see within 30 ft. {ability.psionicUse?.kind==='propel'&&ability.psionicUse.movement==='warp'?'On failure, teleport to an unoccupied space you can see within 30 ft of you, horizontal to you.':'Apply movement straight toward or away from you.'}</p><p>{ability.psionicUse?.kind==='propel'?(ability.psionicUse.mode==='free'?(ability.psionicUse.movement==='warp'?'No Energy Die required.':'Free: 5 ft on a failed save.'):`Rolled ${ability.psionicUse.roll}: ${ability.psionicUse.movement==='warp'?'teleport destination remains within 30 ft of you':`${ability.psionicUse.roll*5} ft on failure`}. ${ability.psionicUse.mode==='powered'?'Spend 1 die only on failure.':'No die spent.'}`):''}</p><label>Propel target<select disabled={checking} aria-label="Propel target" value={selectedTarget} onChange={e=>setSelectedTarget(e.target.value)} style={{width:'100%'}}><option value="">Choose one target</option>{targets.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label></div>}
+              {singleTarget&&<div style={{marginBottom:12}}><p>Choose one Large or smaller creature other than yourself that you can see within 30 ft. {ability.psionicUse?.kind==='propel'&&ability.psionicUse.movement==='warp'?'On failure, teleport to an unoccupied space you can see within 30 ft of you, horizontal to you.':'Apply movement straight toward or away from you.'}</p><p>{ability.psionicUse?.kind==='propel'?(ability.psionicUse.mode==='free'?(ability.psionicUse.movement==='warp'?'No Energy Die required.':'Free: 5 ft on a failed save.'):`Rolled ${ability.psionicUse.roll}: ${ability.psionicUse.movement==='warp'?'teleport destination remains within 30 ft of you':`${ability.psionicUse.roll*5} ft on failure`}. ${ability.psionicUse.mode==='powered'?'Spend 1 die only on failure.':'No die spent.'}`):''}</p><label>Propel target<select disabled={checking||!!boundTarget} aria-label="Propel target" value={selectedTarget} onChange={e=>setSelectedTarget(e.target.value)} style={{width:'100%'}}><option value="">Choose one target</option>{targets.map(t=><option key={t.id} value={t.id}>{t.name}</option>)}</select></label></div>}
               {visibleTargets.map(p => {
                 const out = outcomes[p.id];
                 const showAutoFail =
@@ -385,7 +401,7 @@ export default function ClassAbilityResolveModal({
                       <TargetGroupChip group={targetGroup(p, { id: casterParticipantId ?? '', participant_type: 'character' })} />
                       {/* v2.249.0 — d20 + bonus = total chip. Replaces the
                           v2.247 "d20: N" pill once the player has rolled. */}
-                      {out?.d20 !== undefined && (
+                      {out?.d20 !== undefined && !out.automaticFailure && (
                         <span
                           title={out.bonus !== undefined ? `d20 ${out.d20} ${out.bonus >= 0 ? '+' : ''}${out.bonus} = ${out.total ?? out.d20}` : `d20 ${out.d20}`}
                           style={{
@@ -478,7 +494,9 @@ export default function ClassAbilityResolveModal({
                         </div>
                       );
                     })()}
-                    {out?.advantage&&<div style={{fontSize:11,color:'#c4b5fd',marginBottom:6}}>Psionic Guards: {out.rolls?.join(' or ')} — keep highest</div>}
+                    {out?.automaticFailure&&<div style={{fontSize:11,color:'#f87171',marginBottom:6}}>Automatic failure from condition — no dice rolled</div>}
+                    {out?.disadvantage&&!out.advantage&&<div style={{fontSize:11,color:'#c4b5fd',marginBottom:6}}>Disadvantage: {out.rolls?.join(' or ')} — keep lowest</div>}
+                    {out?.advantage&&!out.disadvantage&&<div style={{fontSize:11,color:'#c4b5fd',marginBottom:6}}>Psionic Guards: {out.rolls?.join(' or ')} — keep highest</div>}
                     {/* Row 3: action buttons */}
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <button
@@ -491,14 +509,14 @@ export default function ClassAbilityResolveModal({
                       </button>
                       <button
                         disabled={checking}
-                        onClick={() => setOutcome(p.id, 'passed', out?.d20, out?.total, out?.bonus,out?.rolls,out?.advantage)}
+                        onClick={() => setOutcome(p.id, 'passed', out?.d20, out?.total, out?.bonus,out?.rolls,out?.advantage,out?.naturalExtremes,out?.disadvantage,out?.automaticFailure)}
                         style={btnStyle('#4ade80', out?.outcome === 'passed')}
                       >
                         Mark Pass
                       </button>
                       <button
                         disabled={checking}
-                        onClick={() => setOutcome(p.id, 'failed', out?.d20, out?.total, out?.bonus,out?.rolls,out?.advantage)}
+                        onClick={() => setOutcome(p.id, 'failed', out?.d20, out?.total, out?.bonus,out?.rolls,out?.advantage,out?.naturalExtremes,out?.disadvantage,out?.automaticFailure)}
                         style={btnStyle('#f87171', out?.outcome === 'failed')}
                       >
                         Mark Fail

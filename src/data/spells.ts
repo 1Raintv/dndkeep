@@ -196,7 +196,7 @@ const SPELL_ENTRIES: SpellData[] = [
   name: "Mending",
   level: 0,
   school: "Transmutation",
-  casting_time: "1 action",
+  casting_time: "1 minute",
   range: "Touch",
   components: "V, S, M (two lodestones)",
   duration: "Instantaneous",
@@ -1234,7 +1234,7 @@ const SPELL_ENTRIES: SpellData[] = [
   concentration: true,
   ritual: false,
   classes: ["Ranger"],
-  description: "You choose a creature you can see within range and mystically mark it as your quarry. Until the spell ends, you deal an extra 1d6 Force damage to the target whenever you hit it with a weapon attack, and you have advantage on any Wisdom (Perception) or Wisdom (Survival) check you make to find it. If the target drops to 0 hit points before this spell ends, you can use a bonus action on a subsequent turn of yours to mark a new creature.",
+  description: "You choose a creature you can see within range and mystically mark it as your quarry. Until the spell ends, you deal an extra 1d6 Force damage to the target whenever you hit it with an attack roll, and you have advantage on any Wisdom (Perception) or Wisdom (Survival) check you make to find it. If the target drops to 0 hit points before this spell ends, you can use a bonus action to mark a new creature you can see within range.",
   higher_levels: "When you cast this spell using a spell slot of 3rd or 4th level, you can maintain your concentration on the spell for up to 8 hours. When you use a spell slot of 5th level or higher, you can maintain your concentration on the spell for up to 24 hours.",
   },
   {

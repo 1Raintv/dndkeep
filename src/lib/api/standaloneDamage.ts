@@ -1,9 +1,11 @@
+import {rollSaveBonuses,validSaveBonusRolls,type SaveBonusRoll} from '../../rules/saveBonuses';
+import {exhaustionPenalty} from '../../rules/savingThrows';
 import type {Character} from '../../types';
 import {applyDamageToPools,concentrationDC} from '../../rules/hp';
 import {characterProficiencyBonus} from '../../rules/proficiency';
 import {hasWarCaster} from '../../rules/concentrationSave';
 import {standaloneConcentrationRpc as rpc,standaloneConcentrationSnapshot,verifyStandaloneOffer,verifyStandaloneSaveReceipt,verifyConcentrationState,type Snapshot,type StandaloneSaveOffer,type StandaloneSaveReceipt} from './standaloneConcentration';
-export interface StandaloneDamageRequest {userId:string;characterId:string;requestId:string;saveRequestId:string;damage:number;expectedRevision:number;beforeHP:number;beforeTempHP:number;modifier:number;expected:Snapshot}
+export interface StandaloneDamageRequest {userId:string;characterId:string;requestId:string;saveRequestId:string;damage:number;expectedRevision:number;beforeHP:number;beforeTempHP:number;modifier:number;baseModifier?:number;effectRolls?:SaveBonusRoll[];expected:Snapshot}
 export interface StandaloneDamageReceipt {requestId:string;saveRequestId:string;hp:{requestId:string;mode:'damage';amount:number;beforeHP:number;beforeTempHP:number;afterHP:number;afterTempHP:number};check:StandaloneSaveOffer|null;resolution:Omit<StandaloneSaveReceipt,'character'|'replayed'>|null;automation:'off'|'prompt'|'auto';character:Character;replayed:boolean}
 export const STANDALONE_DAMAGE_CHANGED='dndkeep:standalone-damage-changed';
 const uuid=(v:unknown):v is string=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
@@ -15,7 +17,8 @@ function valid(v:unknown):v is StandaloneDamageRequest{
  const r=v as StandaloneDamageRequest|null;
  return !!r&&uuid(r.userId)&&uuid(r.characterId)&&uuid(r.requestId)&&uuid(r.saveRequestId)&&r.requestId!==r.saveRequestId
   &&count(r.damage)&&r.damage>0&&r.damage<=2147483647&&count(r.expectedRevision)&&count(r.beforeHP)&&count(r.beforeTempHP)
-  &&Number.isInteger(r.modifier)&&r.modifier>=-5&&r.modifier<=20&&!!r.expected&&count(r.expected.concentration_revision);
+  &&Number.isInteger(r.modifier)&&r.modifier>=-105&&r.modifier<=120&&(r.effectRolls===undefined&&r.baseModifier===undefined||validSaveBonusRolls(r.effectRolls)&&Number.isSafeInteger(r.baseModifier)&&r.modifier===r.baseModifier!+r.effectRolls.reduce((sum,x)=>sum+x.total,0))&&!!r.expected&&count(r.expected.concentration_revision)
+  &&(r.expected.exhaustion_level===undefined||Number.isInteger(r.expected.exhaustion_level)&&r.expected.exhaustion_level>=0&&r.expected.exhaustion_level<=6);
 }
 export function savedStandaloneDamage(user:string,char:string):StandaloneDamageRequest|null{
  const raw=localStorage.getItem(key(user,char));if(raw===null)return null;
@@ -29,8 +32,10 @@ function persist(r:StandaloneDamageRequest){
 }
 function forget(r:StandaloneDamageRequest){const k=key(r.userId,r.characterId);if(localStorage.getItem(k)===JSON.stringify(r)){localStorage.removeItem(k);changed();}}
 export function createStandaloneDamage(character:Character,userId:string,damage:number,modifier:number):StandaloneDamageRequest{
+ if(savedStandaloneDamage(userId,character.id))throw new Error('Confirm the previous damage request first.');
+ const effects=rollSaveBonuses(character.concentration_spell?character.active_buffs??[]:[],0);
  const r={userId,characterId:character.id,requestId:crypto.randomUUID(),saveRequestId:crypto.randomUUID(),damage,
-  expectedRevision:character.hit_point_revision!,beforeHP:character.current_hp,beforeTempHP:character.temp_hp??0,modifier,expected:standaloneConcentrationSnapshot(character)};
+  expectedRevision:character.hit_point_revision!,beforeHP:character.current_hp,beforeTempHP:character.temp_hp??0,modifier:modifier+effects.bonus,baseModifier:modifier,effectRolls:effects.rolls,expected:standaloneConcentrationSnapshot(character)};
  persist(r);return r;
 }
 const args=(r:StandaloneDamageRequest)=>({p_character_id:r.characterId,p_request_id:r.requestId,p_save_request_id:r.saveRequestId,p_damage:r.damage,
@@ -46,8 +51,10 @@ function verify(value:unknown,r:StandaloneDamageRequest):StandaloneDamageReceipt
  verifyConcentrationState(c,r.characterId);
  const expected=r.expected,prof=expected.saving_throw_proficiencies?.some(p=>['con','constitution'].includes(p.toLowerCase()));
  const row:StandaloneSaveOffer={request_id:r.saveRequestId,character_id:r.characterId,spell_name:expected.concentration_spell??'',casting_revision:expected.concentration_revision!,
-  damage:r.damage,dc:concentrationDC(r.damage),save_bonus:r.modifier+(prof?characterProficiencyBonus(expected):0),has_advantage:hasWarCaster(expected.gained_feats),natural_extremes:expected.nat_1_20_saves!==false,
+  damage:r.damage,dc:concentrationDC(r.damage),save_bonus:r.modifier+(prof?characterProficiencyBonus(expected):0)-exhaustionPenalty(expected.exhaustion_level??0),has_advantage:v.check?.has_advantage??v.resolution?.advantage??hasWarCaster(expected.gained_feats),natural_extremes:expected.nat_1_20_saves!==false,
   created_at:new Date().toISOString(),outcome:null};
+ // The saved server offer includes timed class effects, not just sheet feats.
+ if(typeof row.has_advantage!=='boolean'||hasWarCaster(expected.gained_feats)&&!row.has_advantage)throw new Error('The concentration advantage could not be verified.');
  if(v.check!==null){
   verifyStandaloneOffer(v.check,r.characterId);
   for(const field of ['request_id','spell_name','casting_revision','damage','dc','save_bonus','has_advantage','natural_extremes'] as const)

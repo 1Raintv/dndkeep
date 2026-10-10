@@ -3,13 +3,13 @@ import {cleanup,render} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 import type {Viewport} from 'pixi-viewport';
 import {ReachOverlayLayer} from './ReachOverlayLayer';
-const state=vi.hoisted(()=>({reachPreview:{centerWorldX:100,centerWorldY:100,footprintCells:1,reachFt:5} as null|{centerWorldX:number;centerWorldY:number;footprintCells:number;reachFt:number}}));
+const state=vi.hoisted(()=>({currentSceneId:'scene',reachPreview:{sceneId:'scene',centerWorldX:100,centerWorldY:100,footprintCells:1,reachFt:5} as null|{sceneId:string;centerWorldX:number;centerWorldY:number;footprintCells:number;reachFt:number}}));
 vi.mock('../../../lib/stores/battleMapStore',()=>({useBattleMapStore:(select:(s:typeof state)=>unknown)=>select(state)}));
 vi.mock('pixi.js',()=>({Graphics:class {
  destroyed=false;visible=false;parent:unknown=null;eventMode='';rect=vi.fn();
  destroy(){this.destroyed=true;}clear(){}setFillStyle(){}fill(){}setStrokeStyle(){}stroke(){}
 }}));
-afterEach(()=>{cleanup();state.reachPreview={centerWorldX:100,centerWorldY:100,footprintCells:1,reachFt:5};});
+afterEach(()=>{cleanup();state.currentSceneId='scene';state.reachPreview={sceneId:'scene',centerWorldX:100,centerWorldY:100,footprintCells:1,reachFt:5};});
 function camera(destroyed=false){
  const vp={destroyed,addChild:vi.fn((g:{parent:unknown;visible:boolean;destroyed:boolean;rect:ReturnType<typeof vi.fn>})=>{g.parent=vp;}),removeChild:vi.fn()};return vp;
 }
@@ -29,4 +29,10 @@ it('never attaches graphics to an already destroyed viewport',()=>{
 it('clears the preview when hover ends',()=>{
  const vp=camera();const view=render(<ReachOverlayLayer viewport={vp as unknown as Viewport} gridSizePx={70}/>);
  state.reachPreview=null;view.rerender(<ReachOverlayLayer viewport={vp as unknown as Viewport} gridSizePx={70}/>);expect(vp.addChild.mock.calls[0][0].visible).toBe(false);
+});
+
+it('hides reach captured for another scene',()=>{
+ const vp=camera();const view=render(<ReachOverlayLayer viewport={vp as unknown as Viewport} gridSizePx={70}/>);
+ state.currentSceneId='other';view.rerender(<ReachOverlayLayer viewport={vp as unknown as Viewport} gridSizePx={70}/>);
+ expect(vp.addChild.mock.calls[0][0].visible).toBe(false);
 });

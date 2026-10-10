@@ -7,7 +7,9 @@ export function validPsionicRoll(level:number,total:number,enhancement:PsionicRo
  const sides=psionicDieSides(level),extra=enhancement.enkindledRolls??[];
  if(extra.length>2||(extra.length>0&&level!==20))return false;
  if(enhancement.surged&&level<7)return false;
- if(!extra.length&&!enhancement.surged)return total<=sides;
+ // A recorded original die is evidence, even without paid enhancements.
+ // Do not accept a changed total merely because it still fits on the die.
+ if(!extra.length&&!enhancement.surged)return total<=sides&&(enhancement.originalRoll===undefined||enhancement.originalRoll===total);
  const originals=[enhancement.originalRoll,...extra];
  if(originals.some(n=>typeof n!=='number'||!Number.isInteger(n)||n<1||n>sides))return false;
  return originals.reduce<number>((sum,n)=>sum+(enhancement.surged?Math.max(4,n!):n!),0)===total;

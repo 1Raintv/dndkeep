@@ -7,6 +7,7 @@
 // (top-right corner of the LA chip) and this component handles placement
 // (flows downward from anchor, clipped to viewport).
 
+import {readSavedLegendarySave} from '../../lib/api/savedLegendarySaves';
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CombatParticipant, MonsterLegendaryAction } from '../../types';
@@ -33,6 +34,17 @@ export default function LegendaryActionPopover({ participant, campaignId, encoun
   const [resolving, setResolving] = useState<MonsterLegendaryAction | null>(null);
 
   const actions = participant.legendary_actions_config ?? [];
+  const [recoverable,setRecoverable]=useState<Set<string>>(new Set());
+  const actionNames=JSON.stringify(actions.map(a=>a.name));
+  useEffect(()=>{
+    let live=true;
+    const names=JSON.parse(actionNames) as string[];
+    Promise.all(names.map(async name=>{
+      const saved=await readSavedLegendarySave({campaignId,encounterId,attacker:{id:participant.id},attackName:name});
+      return saved?.phase==='pending'?name:null;
+    })).then(names=>{if(live)setRecoverable(new Set(names.filter((name):name is string=>name!==null)));}).catch(()=>{if(live)setRecoverable(new Set());});
+    return()=>{live=false;};
+  },[campaignId,encounterId,participant.id,actionNames]);
   const remaining = participant.legendary_actions_remaining ?? 0;
   const total = participant.legendary_actions_total ?? 0;
   // v2.625.0 — in-lair +1 LA use ("Legendary Action Uses: 3 (4 in Lair)")
@@ -44,7 +56,7 @@ export default function LegendaryActionPopover({ participant, campaignId, encoun
   // while the resolver is open to avoid a stacking confusion.
   function handleOpen(option: MonsterLegendaryAction) {
     const cost = option.cost ?? 1;
-    if (cost > remaining) return;
+    if (cost > remaining && !recoverable.has(option.name)) return;
     setResolving(option);
   }
 
@@ -144,7 +156,8 @@ export default function LegendaryActionPopover({ participant, campaignId, encoun
           <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {actions.map((a, i) => {
               const cost = a.cost ?? 1;
-              const canAfford = cost <= remaining;
+              const resume=recoverable.has(a.name);
+              const canAfford = cost <= remaining || resume;
               return (
                 <button
                   key={`${a.name}-${i}`}
@@ -166,7 +179,7 @@ export default function LegendaryActionPopover({ participant, campaignId, encoun
                     color: canAfford ? '#f59e0b' : 'var(--t-3)',
                     flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                   }}>
-                    {a.name}
+                    {resume?'Resume ':''}{a.name}
                   </span>
                   <span style={{
                     fontFamily: 'var(--ff-stat)', fontSize: 10, fontWeight: 900,
@@ -175,7 +188,7 @@ export default function LegendaryActionPopover({ participant, campaignId, encoun
                     background: canAfford ? 'rgba(245,158,11,0.18)' : 'transparent',
                     border: `1px solid ${canAfford ? '#f59e0b60' : 'var(--c-border)'}`,
                   }}>
-                    {cost}
+                    {resume?'Saved':cost}
                   </span>
                 </button>
               );

@@ -14,7 +14,7 @@ test.describe('player map combat (local stack)',()=>{
     const camp=randomUUID(), scene=randomUUID(), enc=randomUUID(), own=randomUUID(), other=randomUUID();
     let ownToken=randomUUID(), otherToken=randomUUID();
     const name=`E2E Movement ${info.project.name} ${camp.slice(0,8)}`;
-    const peerContext=await browser.newContext();const page=await peerContext.newPage();
+    const peerContext=await browser.newContext();const page=await peerContext.newPage();await page.setViewportSize(peer.viewportSize()!);
     const errors:string[]=[];peer.on('pageerror',e=>errors.push(String(e)));
     try {
       // Dedicated campaign: never alter the user's working scene or encounter.
@@ -34,7 +34,7 @@ test.describe('player map combat (local stack)',()=>{
         insert into scene_tokens(id,scene_id,character_id,name,size,x,y,visible_to_all) values
           ('${ownToken}','${scene}','${own}','Movement Player','medium',245,245,true),
           ('${otherToken}','${scene}','${other}','Movement Other','medium',455,245,true);
-        insert into combat_encounters(id,campaign_id,status,current_turn_index) values('${enc}','${camp}','active',0);
+        insert into combat_encounters(id,campaign_id,status,current_turn_index,round_number) values('${enc}','${camp}','active',0,1);
         insert into combat_participants(encounter_id,campaign_id,participant_type,entity_id,name,turn_order,initiative,max_speed_ft,combatant_id)
           select '${enc}','${camp}','character','${other}','Movement Other',0,20,30,combatant_id from scene_token_placements p join combatants c on c.id=p.combatant_id where p.scene_id='${scene}' and c.definition_id='${other}';
         insert into combat_participants(encounter_id,campaign_id,participant_type,entity_id,name,turn_order,initiative,max_speed_ft,combatant_id)
@@ -88,19 +88,29 @@ test.describe('player map combat (local stack)',()=>{
       };
       await open(page);await open(peer,'test-player@dndkeep.local');
       const position=(id:string)=>sql(`select x||','||y from scene_token_placements where id='${id}';`);
-      const drag=async(id:string)=>{
-        await expect.poll(()=>peer.evaluate(id=>{
+      const drag=async(id:string,previewPage?:Page)=>{
+        const driver=previewPage??peer;
+        await expect.poll(()=>driver.evaluate(id=>{
           const vp=(window as any).__PIXI_APP__?.stage.children.find((c:any)=>c.plugins);
           return !!vp?.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
         },id)).toBe(true);
-        const point=await peer.evaluate(id=>{
+        const point=await driver.evaluate(id=>{
           const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
           const t=vp.children.flatMap((c:any)=>c.children??[]).find((c:any)=>c.__tokenId===id);
           const p=t.getGlobalPosition();return {x:p.x,y:p.y,step:70*vp.scale.x};
         },id);
-        const box=(await peer.locator('canvas').first().boundingBox())!;
-        await peer.mouse.move(box.x+point.x,box.y+point.y);await peer.mouse.down();
-        await peer.mouse.move(box.x+point.x,box.y+point.y+point.step,{steps:6});await peer.mouse.up();
+        const box=(await driver.locator('canvas').first().boundingBox())!;
+        await driver.mouse.move(box.x+point.x,box.y+point.y);await driver.mouse.down();
+        await driver.mouse.move(box.x+point.x,box.y+point.y+point.step,{steps:6});
+        if(previewPage){
+          await expect.poll(()=>driver.evaluate(()=>{
+            const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+            const label=vp.children.find((c:any)=>c.label==='token-drag-distance');
+            return label?.visible?{text:label.text,fill:label.style.fill}:null;
+          })).toEqual({text:'5 ft  ·  0 left  ·  Grid snap',fill:0xfca5a5});
+          await driver.screenshot({path:info.outputPath('zero-speed-preview.png')});
+        }
+        await driver.mouse.up();
       };
       const writes:string[]=[];
       peer.on('request',r=>{if(r.method()==='PATCH' && /scene_tokens|scene_token_placements/.test(r.url())) writes.push(r.url());});
@@ -171,6 +181,7 @@ test.describe('player map combat (local stack)',()=>{
       sql(`update combatants set active_conditions=array['Paralyzed'] where campaign_id='${camp}' and definition_id='${own}'`);
       await expect(peer.getByTitle('10 / 0 ft used this turn — 0 ft remaining',{exact:true})).toBeVisible();
       expect(await peer.evaluate(async id=>{const path='/src/lib/movement.ts';return (await import(path)).canMove(id,5);},participant)).toMatchObject({allowed:false,maxSpeed:0});
+      await drag(ownToken,page);expect(position(ownToken)).toBe('245,385');
       expect(errors).toEqual([]);
       const dismiss=peer.getByRole('button',{name:'Dismiss',exact:true});
       while(await dismiss.count()) await dismiss.first().click();

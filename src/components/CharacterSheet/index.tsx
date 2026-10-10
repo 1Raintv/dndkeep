@@ -1,3 +1,8 @@
+import {hasStrongerTelekinesis,psionSpellRange} from '../../rules/psionSpellRange';
+import {unarmedSaveDC} from '../../rules/unarmedStrike';
+import {CampaignDamageRecovery} from './CampaignDamageRecovery';
+import {useCampaignSheetDamage} from '../../lib/hooks/useCampaignSheetDamage';
+import {useActionBudget} from '../../lib/hooks/useActionBudget';
 import {canUpcastSpell} from '../../rules/spellSlots';
 import SharpenedRollPanel from './_shared/SharpenedRollPanel';
 import SavePromptBanner from './SavePromptBanner';
@@ -340,6 +345,11 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
    flatBonus:receipt.bonus,modifier:receipt.bonus,total:receipt.total!,
    label:`${spellMap[receipt.spell]?.name??receipt.spell} — Concentration Save (DC ${receipt.dc}) · ${receipt.outcome==='passed'?'Maintained':'Broken'}`});
  });
+ const campaignDamage=useCampaignSheetDamage(userId,characterRef,saveQueue,frozen,receipt=>{
+  const pending=saveQueue.getPending();
+  const patch={...acceptHitPointReceipt(characterRef,receipt,pending).patch,...acceptConcentrationReceipt(characterRef,receipt,pending).patch};
+  if(Object.keys(patch).length)setCharacter(previous=>({...previous,...patch}));
+ });
  const acceptedSave=useRef<typeof acknowledged>(null);
  useEffect(()=>{
   if(!acknowledged||acceptedSave.current===acknowledged)return;acceptedSave.current=acknowledged;
@@ -388,8 +398,8 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  const oldConcSpell = current['concentration_spell'] as string;
  const newConcSpell = (patch as any).concentration_spell as string | undefined;
  if (oldConcSpell && newConcSpell === '' && newConcSpell !== oldConcSpell) {
- // Most common cause from external sync = round timer ran out via DM tick
- showConcentrationLossToast(oldConcSpell, 'duration timer expired');
+ // v2.869: realtime reports the clear, not its cause. Don't label a failed save as timer expiry.
+ showConcentrationLossToast(oldConcSpell);
  }
  // v2.169.0 — Phase Q.0 pt 10: externally-driven HP / inspiration
  // toasts. When the DM applies damage / heal / gives inspiration
@@ -663,9 +673,9 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  // v2.47.0: Fire a toast notifying the player they lost concentration.
  // `reason` is a short phrase explaining why (e.g. "CON save failed", "timer expired").
  // The spell name is looked up from the previously-concentrated spell ID.
- function showConcentrationLossToast(spellId: string | null, reason: string) {
+ function showConcentrationLossToast(spellId: string | null, reason = '') {
  const spellName = spellId ? (spellMap[spellId]?.name ?? 'your spell') : 'your spell';
- setConcentrationLossToast(`Lost concentration on ${spellName} — ${reason}`);
+ setConcentrationLossToast(`Lost concentration on ${spellName}${reason ? ` — ${reason}` : ''}`);
  // Auto-dismiss after 6 seconds
  setTimeout(() => setConcentrationLossToast(null), 6000);
  }
@@ -787,19 +797,11 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  // regardless of whether it landed on temp HP or current HP.
  const inferredDamage = Math.max(0, character.current_hp - current_hp);
  const totalDamage = damageDealt ?? inferredDamage;
- if(frozen||(!characterRef.current.campaign_id&&standaloneConcentration.blockedHP))return;
- if(!characterRef.current.campaign_id&&totalDamage>0){standaloneConcentration.applyDamage(totalDamage);return;}
- if (totalDamage > 0 && concentrationSpellId) {
- // RAW: DC = max(10, floor(damage / 2)), capped at 30
- const dc = concentrationDC(totalDamage);
- const mode = resolveAutomation('concentration_on_damage', character, activeCampaign);
- if (mode === 'prompt') {
- setConcentrationSaveDC(dc);
- setConcentrationSaveDamage(totalDamage);
- } else if (mode === 'auto') {
- rollConcentrationSave(dc);
- }
- // 'off' → no action
+ if(frozen||standaloneConcentration.blockedHP||campaignDamage.blockedHP)return;
+ if(totalDamage>0){
+  if(characterRef.current.campaign_id)void campaignDamage.applyDamage(totalDamage);
+  else standaloneConcentration.applyDamage(totalDamage);
+  return;
  }
  applyUpdate({ current_hp, temp_hp }, true);
  }
@@ -842,13 +844,17 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  const [expandedActionsSpell, setExpandedActionsSpell] = useState<string | null>(null);
  // v2.36.0: Actions-tab level filter — 'all' | number. Mirrors SpellsTab level tabs.
  const [actionsLevelFilter, setActionsLevelFilter] = useState<number | 'all'>('all');
- const [spellCastThisTurn, setSpellCastThisTurn] = useState(false);
- // Per 2024 rules: if you cast a leveled BONUS ACTION spell, main action = cantrip only
- const [bonusActionSpellCast, setBonusActionSpellCast] = useState(false);
+ const [localActionUsed, setSpellCastThisTurn] = useState(false);
+ // Action spending is separate from the one-spell-slot-per-turn casting rule.
+ const [localBonusUsed, setBonusActionSpellCast] = useState(false);
  // v2.76.0: Reaction state lifted so the Actions-tab filter chiclet and the
  // ActionEconomy panel share one source of truth. Reset on New Turn.
- const [reactionUsedThisTurn, setReactionUsedThisTurn] = useState(false);
+ const [localReactionUsed, setReactionUsedThisTurn] = useState(false);
  const [isDM, setIsDM] = useState(false);
+ const actionBudget=useActionBudget(character.id,!!userId&&(character.user_id===userId||isDM));
+ const spellCastThisTurn=localActionUsed||!!actionBudget.budget?.spent.action;
+ const bonusActionSpellCast=localBonusUsed||!!actionBudget.budget?.spent.bonusAction;
+ const reactionUsedThisTurn=localReactionUsed||!!actionBudget.budget?.spent.reaction;
  // v2.82.0: potion-use modal state. When set, shows a Self/Other chooser;
  // picking Self rolls the heal dice and applies HP to this character, picking
  // Other rolls and logs but leaves HP untouched (the other character's sheet
@@ -1183,8 +1189,8 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  onUpdateXP={xp => applyUpdate({ experience_points: xp })}
  onOpenAvatarPicker={() => setShowAvatarPicker(true)}
  onToggleInspiration={() => applyUpdate({ inspiration: !character.inspiration }, true)}
- onOpenRest={() => {if(!standaloneConcentration.blockedHP)setShowRest(true);}}
- hpDisabled={frozen||standaloneConcentration.blockedHP}
+ onOpenRest={() => {if(!standaloneConcentration.blockedHP&&!campaignDamage.blockedHP)setShowRest(true);}}
+ hpDisabled={frozen||standaloneConcentration.blockedHP||campaignDamage.blockedHP}
  onUpdateAC={ac => applyUpdate({ armor_class: ac }, true)}
  onUpdateSpeed={speed => applyUpdate({ speed }, true)}
  onShare={character.share_token && character.share_enabled ? () => {
@@ -1666,6 +1672,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
      v2.56.0: Now shows the actual damage that triggered the prompt + the formula
      breakdown so users can see why the DC is what it is. RAW: DC = max(10, floor(damage/2)),
      capped at 30. */}
+ <CampaignDamageRecovery controller={campaignDamage} characterId={character.id} frozen={frozen}/>
  <StandaloneConcentrationPanel controller={standaloneConcentration} frozen={frozen} spellName={id=>spellMap[id]?.name??id}/>
  {concentrationSaveDC !== null && concentrationSpellId && <ConcentrationCheckPrompt
  spellName={spellMap[concentrationSpellId]?.name ?? 'Concentration'} damage={concentrationSaveDamage??0}
@@ -1676,8 +1683,9 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  {concentrationSpellId && (() => {
  const spell = spellMap[concentrationSpellId];
  return spell ? (
- <div className="animate-fade-in" style={{
- display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+ <div className="animate-fade-in" role="region" aria-label="Active concentration" style={{
+ // v2.869: let controls wrap instead of shrinking spell details to 15px.
+ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between',
  padding: '14px 18px',
  background: 'linear-gradient(90deg, rgba(167,139,250,0.14), rgba(167,139,250,0.06))',
  border: '2px solid rgba(167,139,250,0.55)',
@@ -1697,7 +1705,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  animation: 'pulse-gold 1.5s ease-in-out infinite',
  }}
  />
- <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', paddingLeft: 14, flex: 1, minWidth: 0 }}>
+ <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', paddingLeft: 14, flex: '1 1 240px', minWidth: 0, overflowWrap: 'anywhere' }}>
  <div style={{ minWidth: 0, flex: 1 }}>
  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 10, color: '#a78bfa', letterSpacing: '0.14em', textTransform: 'uppercase' as const, marginBottom: 3 }}>
  Concentrating
@@ -1705,8 +1713,8 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  <div style={{ fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 15, color: 'var(--t-1)', marginBottom: 2 }}>
  {spell.name}
  </div>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 11, color: 'var(--t-3)' }}>
- {spell.duration} · CON save on damage (DC 10 or half damage)
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 12, lineHeight: 1.5, color: 'var(--t-2)' }}>
+ {spell.duration} · CON save on damage (DC 10 or half damage, whichever is higher; maximum 30)
  </div>
  </div>
  </div>
@@ -1751,7 +1759,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  disabled={isExpired}
  style={{
  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 10, letterSpacing: '0.04em',
- padding: '3px 8px', borderRadius: 'var(--r-sm)', cursor: isExpired ? 'not-allowed' : 'pointer', minHeight: 0,
+ padding: '3px 8px', borderRadius: 'var(--r-sm)', cursor: isExpired ? 'not-allowed' : 'pointer', minHeight: 44,
  background: 'rgba(167,139,250,0.15)',
  border: '1px solid rgba(167,139,250,0.4)',
  color: '#c4b5fd',
@@ -1769,7 +1777,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  style={{
  flexShrink: 0,
  fontFamily: 'var(--ff-body)', fontWeight: 800, fontSize: 12, letterSpacing: '0.04em',
- padding: '8px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer', minHeight: 0,
+ padding: '8px 16px', borderRadius: 'var(--r-md)', cursor: 'pointer', minHeight: 44,
  background: 'rgba(167,139,250,0.15)',
  border: '1px solid rgba(167,139,250,0.5)',
  color: '#c4b5fd',
@@ -2036,7 +2044,9 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  return (
  <div style={{ marginBottom: 'var(--sp-3)' }}>
  <ActionEconomy
- trackPsionicTurns={(psionProgression(character)?.level??0)>=2}
+ trackPsionicTurns={(psionProgression(character)?.level??0)>=1}
+ savedUsed={actionBudget.budget?.spent}
+ savedError={actionBudget.error}
  speedFeet={effectiveSpeed}
  characterId={character.id}
  actionUsedExternal={spellCastThisTurn}
@@ -2587,15 +2597,9 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  // Unarmed Strike — always available per 2024 PHB (p.377)
  // Attack: d20 + STR mod + Proficiency Bonus
  // Damage: flat 1 + STR modifier bludgeoning (no dice roll)
- // v2.87.0: Three modes — Damage (existing), Grapple, Shove (new). Grapple
- // and Shove are contested Athletics checks. We precompute the character's
- // Athletics bonus (STR mod + prof if proficient + prof again if expertise)
- // so the modal can show and roll it without re-deriving.
+ // v2.869: grapple/shove use 8 + STR modifier + proficiency, not Athletics.
  const strMod = computed.modifiers.strength ?? 0;
  const pb = computed.proficiency_bonus ?? 2;
- const isAthleticsProf = (character.skill_proficiencies ?? []).includes('Athletics');
- const isAthleticsExpert = (character.skill_expertises ?? []).includes('Athletics');
- const athleticsBonus = strMod + (isAthleticsProf ? pb : 0) + (isAthleticsExpert ? pb : 0);
  const unarmedStrike: any = {
  id: 'unarmed',
  name: 'Unarmed Strike',
@@ -2607,7 +2611,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  properties: '',
  notes: '',
  unarmedModes: true,
- athleticsBonus,
+ unarmedSaveDC: unarmedSaveDC(strMod,pb),
  };
  // v2.511.0 — Natural weapons from species traits (Tabaxi Cat's Claws,
  // etc.). Any trait with a `naturalWeapon` field becomes an attackable
@@ -3286,7 +3290,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
 
                      {/* Col 4: range */}
                      <div className="arow-range" style={{ textAlign: 'center', minWidth: 0, lineHeight: 1.1 }}>
-                       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatRange(spell.range)}</div>
+                       <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatRange(psionSpellRange(character,spell))}</div>
                      </div>
 
                      {/* Col 5: hit/DC */}
@@ -3366,7 +3370,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
                    {isExpanded && (
                      <div style={{ borderTop: `1px solid ${sc}20`, padding: '12px 14px', background: 'rgba(255,255,255,0.015)' }}>
                        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' as const, marginBottom: 10, alignItems: 'center' }}>
-                         {[['Casting Time', spell.casting_time], ['Range', spell.range], ['Duration', spell.duration], ['Components', spell.components]].map(([k, v]) => v ? (
+                         {[['Casting Time', spell.casting_time], ['Range', psionSpellRange(character,spell)], ['Duration', spell.duration], ['Components', spell.components]].map(([k, v]) => v ? (
                            <div key={k}>
                              <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase' as const, letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 2 }}>{k}</div>
                              <div style={{ fontSize: 12, color: 'var(--t-1)' }}>{v}</div>
@@ -3871,12 +3875,12 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
 
  {/* Col 4: RANGE + TARGET (v2.63.0 stacked) */}
  <div className="arow-range" style={{ textAlign: 'center', minWidth: 0, lineHeight: 1.1 }}>
- <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatRange(spell.range)}</div>
+ <div style={{ fontFamily: 'var(--ff-body)', fontSize: 10, color: 'var(--t-2)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{formatRange(psionSpellRange(character,spell))}</div>
  {(() => {
  // Derive target description: AoE first, else parse description, else "1 target" for ranged spells
  const aoe = (spell as any).area_of_effect as { type: string; size: number } | undefined;
  if (aoe) return <div style={{ fontFamily: 'var(--ff-body)', fontSize: 8, color: 'var(--t-3)', whiteSpace: 'nowrap' as const, overflow: 'hidden', textOverflow: 'ellipsis' }}>{aoe.size}-ft {aoe.type}</div>;
- const rng = (spell.range || '').toLowerCase();
+ const rng = (psionSpellRange(character,spell) || '').toLowerCase();
  if (rng === 'self') return null; // self-buff spells don't need a target line
  if (rng === 'touch' || rng === '—' || rng === '') return null;
  const desc = (spell.description || '').toLowerCase();
@@ -3977,7 +3981,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  <div style={{ borderTop: `1px solid ${sc}20`, padding: '12px 14px', background: 'rgba(255,255,255,0.015)' }}>
  {/* Stats row */}
  <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' as const, marginBottom: 10, alignItems: 'center' }}>
- {[['Casting Time', spell.casting_time], ['Range', spell.range], ['Duration', spell.duration], ['Components', spell.components]].map(([k, v]) => v ? (
+ {[['Casting Time', spell.casting_time], ['Range', psionSpellRange(character,spell)], ['Duration', spell.duration], ['Components', spell.components]].map(([k, v]) => v ? (
  <div key={k}>
  <div style={{ fontSize: 9, fontWeight: 800, textTransform: 'uppercase' as const, letterSpacing: '0.1em', color: 'var(--t-3)', marginBottom: 2 }}>{k}</div>
  <div style={{ fontSize: 12, color: 'var(--t-2)', fontWeight: 500 }}>{v}</div>
@@ -3994,7 +3998,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  }}>{effectLabel}</span>
  </div>
  </div>
- {spellCasting?.className === 'Psion' && <PsionCastingNote subtle={spell.id === 'mage-hand'}/>}
+ <PsionCastingNote psionic={spellCasting?.className === 'Psion'} subtle={spellCasting?.className === 'Psion'&&spell.id === 'mage-hand'} stronger={hasStrongerTelekinesis(character,spell)}/>
  <p style={{ fontSize: 13, color: 'var(--t-2)', lineHeight: 1.65, margin: 0 }}>{spell.description}</p>
 
  {/* v2.49.0: Upcast trigger button — appears for spells that support
@@ -4429,7 +4433,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
 
  </div>
  {/* v2.96.0 — Phase D: initiative strip for players on their sheet */}
- <InitiativeStrip isDM={false} />
+ <InitiativeStrip isDM={false} characterId={character.id} />
  {/* v2.443.0 — Suspense boundary for lazy modals. They self-open
      based on state, so fallback={null} doesn't flicker. */}
  <Suspense fallback={null}>

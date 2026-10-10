@@ -1,7 +1,7 @@
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {test,expect} from '@playwright/test';
-import {gateDbSuite} from './helpers';
+import {gateDbSuite,finishEmptyFixtureReactionWindow} from './helpers';
 const sql=(q:string)=>execFileSync('docker',['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'],{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 const auth=(u:string,q:string)=>`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${u}","role":"authenticated"}';${q};commit;`;
 test.describe('Sharpened Mind damage resolution',()=>{
@@ -17,6 +17,7 @@ test.describe('Sharpened Mind damage resolution',()=>{
    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${enc}','${campaign}','active',1,0);
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,combatant_id) values('${cp}','${enc}','${campaign}','character','${char}','Actor',0,'${cb}');
    insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,target_participant_id,attacker_name,attacker_type,target_name,attack_name,attack_kind,attack_source,hit_result,state,damage_dice,damage_type,chain_id,damage_final,psionic_damage_dice) values('${attack}','${campaign}','${enc}','${cp}','${cp}','Actor','character','Target','Destructive Thoughts','auto_hit','melee','hit','damage_rolled','13','psychic','${randomUUID()}',13,'{"version":1,"sides":8,"originalRolls":[1,5,3],"rolls":[1,5,3],"modifier":4}');update combatants set temp_hp=3 where id='${cb}';update characters set current_hp=100,max_hp=100 where id='${char}';commit;`);
+  finishEmptyFixtureReactionWindow(sql,dm,attack,'post_damage_roll');
  });
  test.afterEach(()=>sql(`delete from campaigns where id='${campaign}';delete from characters where id='${char}';delete from auth.users where id in('${dm}','${player}')`));
  const encoded=(v:unknown)=>`'${JSON.stringify(v).replaceAll("'","''")}'::jsonb`;
@@ -33,17 +34,18 @@ test.describe('Sharpened Mind damage resolution',()=>{
  }
  function nextAttack(){
   const id=randomUUID();sql(`insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,target_participant_id,attacker_name,attacker_type,target_name,attack_name,attack_kind,attack_source,hit_result,state,damage_dice,damage_type,chain_id,damage_final,psionic_damage_dice)
-   select '${id}',campaign_id,encounter_id,attacker_participant_id,target_participant_id,attacker_name,attacker_type,target_name,attack_name,attack_kind,attack_source,hit_result,'damage_rolled',damage_dice,damage_type,'${randomUUID()}',13,psionic_damage_dice from pending_attacks where id='${attack}'`);return id;
+   select '${id}',campaign_id,encounter_id,attacker_participant_id,target_participant_id,attacker_name,attacker_type,target_name,attack_name,attack_kind,attack_source,hit_result,'damage_rolled',damage_dice,damage_type,'${randomUUID()}',13,psionic_damage_dice from pending_attacks where id='${attack}'`);finishEmptyFixtureReactionWindow(sql,dm,id,'post_damage_roll');return id;
  }
  // v2.867: exercise real paid declaration and queue, then controlled saved dice.
  function psychicSpell(source='class:Psion',passed=false){
   sql(`delete from pending_attacks where id='${attack}';update characters set prepared_spells=ARRAY['mind-spike'],spell_sources='{"mind-spike":["${source}"]}',spell_preparation_sources='{"mind-spike":["${source}"]}',spell_slots='{"2":{"total":1,"used":0}}' where id='${char}'`);
-  const context={source,spellLevel:2,saveDC:18,combat:{kind:'save',attackMode:null,damageDice:'3d8',damageType:'Psychic',attackBonus:null,targetAC:null,saveAbility:'WIS',saveSuccessEffect:'half',actorCombatantId:cb,target:{participantId:cp,entityId:char,type:'character',combatantId:cb}}};
+  const context={source,spellLevel:2,saveDC:18,actionKind:'action',isBonusAction:false,combat:{kind:'save',attackMode:null,damageDice:'3d8',damageType:'Psychic',attackBonus:null,targetAC:null,saveAbility:'WIS',saveSuccessEffect:'half',actorCombatantId:cb,target:{participantId:cp,entityId:char,type:'character',combatantId:cb}}};
   run(`select declare_spell_cast_atomic('${attack}','${char}','${cp}','mind-spike','Mind Spike',2,'{"total":1,"used":0}',${encoded(context)})`,player);
   sql(`update pending_spell_casts set expires_at=now()-interval '1 minute' where id='${attack}'`);
   run(`select settle_declared_spell_atomic('${attack}')`,player);run(`select queue_declared_spell_attack('${attack}')`,player);
   const packet={version:1,components:[{key:'base',source:'base',label:'Mind Spike',expression:'3d8',damageType:'psychic',rolls:[1,5,3],dieKinds:['rolled','rolled','rolled'],modifier:0,rawTotal:9}]};
   sql(`update pending_attacks set state='damage_rolled',save_result='${passed?'passed':'failed'}',damage_rolls=array[1,5,3],damage_raw=9,damage_final=${passed?4:9},damage_components=${encoded(packet)} where id='${attack}'`);
+  finishEmptyFixtureReactionWindow(sql,dm,attack,'post_damage_roll');
  }
  test('paid Psychic save applies resistance and one atomic receipt',()=>{
   psychicSpell();const p=preview();expect(p.damageAfter).toBe(4);const first=apply(p);expect(first.settlement).toMatchObject({damage:4,afterHP:99,afterTempHP:0});expect(apply(p).replayed).toBe(true);expect(uses()).toBe(0);

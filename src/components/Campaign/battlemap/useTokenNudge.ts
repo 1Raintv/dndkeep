@@ -46,8 +46,11 @@ export function useTokenNudge({ blocked, selectedIds, gridSize, width, height, c
     moveRef.current=move;
     const onKey = (event: KeyboardEvent) => {
       const delta: Record<string, [number, number]> = { ArrowLeft: [-1,0], ArrowRight: [1,0], ArrowUp: [0,-1], ArrowDown: [0,1] };
-      if (!delta[event.key] || event.ctrlKey || event.metaKey || event.altKey) return;
-      if (event.target instanceof HTMLElement && event.target.closest('input,textarea,select,[contenteditable="true"]')) return;
+      if (!delta[event.key] || event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
+      // v2.869 — editing/overlay keys must never become shared token moves.
+      if (event.target instanceof Element && event.target.closest('input,textarea,select,button,summary,a,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[role="dialog"],[aria-modal="true"]')) return;
+      // Modal ownership begins before focus necessarily reaches its controls.
+      if ([...document.querySelectorAll('[aria-modal="true"],dialog[open]')].some(el=>el.getClientRects().length>0)) return;
       event.preventDefault();
       if (!event.repeat) void move(...delta[event.key]);
     };

@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import {rollSavingThrow} from './savingThrows';
+import {rollSavingThrow,exhaustionPenalty} from './savingThrows';
 afterEach(()=>vi.restoreAllMocks());
 import { savingThrowPassed } from './savingThrows';
 it('standard saves use the total even on natural 1 and 20', () => {
@@ -33,3 +33,6 @@ it('upkeep preserves standard saves and an explicit natural-extremes house rule'
 it('automatic failure never rolls dice or turns into a success',()=>{
  const random=vi.spyOn(Math,'random');expect(rollSavingThrow(30,10,{advantage:true,forceFailure:true})).toEqual({d20:1,total:31,rolls:[],passed:false});expect(random).not.toHaveBeenCalled();
 });
+
+it.each([0,1,2,3,4,5,6])('exhaustion level %s reduces the save total by twice its level',level=>{expect(exhaustionPenalty(level)).toBe(2*level);});
+it.each([-1,7,0.5,NaN,Infinity])('rejects invalid exhaustion %s',level=>{expect(()=>exhaustionPenalty(level)).toThrow('Invalid exhaustion');});

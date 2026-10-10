@@ -1,7 +1,7 @@
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {test,expect} from '@playwright/test';
-import {gateDbSuite} from './helpers';
+import {gateDbSuite,finishEmptyFixtureReactionWindow} from './helpers';
 const sql=(q:string)=>execFileSync('docker',['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'],{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 const auth=(u:string,q:string)=>`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${u}","role":"authenticated"}';${q};commit;`;
 test.describe('Atomic Destructive Thoughts application',()=>{
@@ -16,6 +16,7 @@ test.describe('Atomic Destructive Thoughts application',()=>{
    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${enc}','${campaign}','active',1,0);
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,combatant_id) values('${cp}','${enc}','${campaign}','character','${char}','Actor',0,'${cb}');
    insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,target_participant_id,attacker_name,attacker_type,target_name,attack_name,attack_kind,attack_source,hit_result,state,damage_dice,damage_type,chain_id,damage_final,psionic_damage_dice) values('${attack}','${campaign}','${enc}','${cp}','${cp}','Actor','character','Target','Destructive Thoughts','auto_hit','melee','hit','damage_rolled','13','psychic','${randomUUID()}',13,'{"version":1,"sides":8,"originalRolls":[1,5,3],"rolls":[1,5,3],"modifier":4}');update combatants set temp_hp=3 where id='${cb}';update characters set current_hp=20,max_hp=20 where id='${char}';commit;`);
+  finishEmptyFixtureReactionWindow(sql,dm,attack,'post_damage_roll');
  });
  test.afterEach(()=>sql(`delete from campaigns where id='${campaign}';delete from characters where id='${char}';delete from auth.users where id in('${dm}','${player}')`));
  const context=(id=attack)=>JSON.parse(sql(auth(dm,`select get_pending_damage_context('${id}')`)));

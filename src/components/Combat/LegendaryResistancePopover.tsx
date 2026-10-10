@@ -13,6 +13,7 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import {useToast} from '../shared/Toast';
 import {
   spendLegendaryResistanceManually,
   resetLegendaryResistance,
@@ -32,6 +33,7 @@ interface Props {
 export default function LegendaryResistancePopover({
   participant, campaignId, encounterId, anchor, dmUserName, inLair, onClose,
 }: Props) {
+  const {showToast}=useToast();
   const [busy, setBusy] = useState<'spend' | 'reset' | null>(null);
 
   const total = participant.legendary_resistance ?? 0;
@@ -51,6 +53,8 @@ export default function LegendaryResistancePopover({
         encounterId,
         dmUserName,
       });
+    } catch(error) {
+      showToast(error instanceof Error ? error.message : 'Legendary Resistance change could not be confirmed. Refresh combat before retrying.', 'error');
     } finally {
       setBusy(null);
       onClose();
@@ -68,6 +72,8 @@ export default function LegendaryResistancePopover({
         encounterId,
         dmUserName,
       });
+    } catch(error) {
+      showToast(error instanceof Error ? error.message : 'Legendary Resistance change could not be confirmed. Refresh combat before retrying.', 'error');
     } finally {
       setBusy(null);
       onClose();

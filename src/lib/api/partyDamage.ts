@@ -1,3 +1,4 @@
+import {verifyConcentrationState} from './standaloneConcentration';
 import {psionicRpc} from './psionicTurns';
 import {readConcentrationResult,resolveConcentrationSave} from './concentrationSaves';
 import {validPartyDamageContext,validPartyDamageRequest,verifyPartyDamageReceipt,type PartyDamageRequest,type PartyDamageReceipt} from '../partyDamageRequest';
@@ -9,6 +10,17 @@ const args=(r:PartyDamageRequest)=>({p_campaign_id:r.campaignId,p_character_id:r
 export async function submitPartyDamage(input:PartyDamageRequest):Promise<PartyDamageReceipt>{
  if(!validPartyDamageRequest(input))throw new Error('The saved damage is invalid. No new damage was sent.');const r=structuredClone(input);
  return verifyPartyDamageReceipt(await psionicRpc('apply_party_damage',args(r),true),r);
+}
+/** Sheet callers need ordered concentration state as well as HP, including on
+ * replay after a later cast. Never reconstruct it from the original hit. */
+export async function submitPartySheetDamage(input:PartyDamageRequest){
+ if(!validPartyDamageRequest(input))throw new Error('The saved damage is invalid. No new damage was sent.');
+ const r=structuredClone(input),raw=await psionicRpc('apply_party_damage',args(r),true);
+ const receipt=verifyPartyDamageReceipt(raw,r);
+ const c=verifyConcentrationState((raw as {character:unknown}).character,r.characterId);
+ return {...receipt,character:{...receipt.character,concentration_spell:c.concentration_spell,
+  concentration_revision:c.concentration_revision,concentration_slot_level:c.concentration_slot_level,
+  concentration_rounds_remaining:c.concentration_rounds_remaining,concentration_casting_context:c.concentration_casting_context}};
 }
 export async function cancelPartyDamage(input:PartyDamageRequest):Promise<boolean>{
  if(!validPartyDamageRequest(input))throw new Error('The saved damage is invalid.');const r=structuredClone(input);

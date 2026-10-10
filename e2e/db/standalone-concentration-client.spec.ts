@@ -29,9 +29,11 @@ test.describe('Standalone concentration client (local stack)', () => {
     if (userId) sql(`delete from action_logs where character_id='${charId}';delete from characters where user_id='${userId}'; delete from auth.users where id='${userId}';`);
   });
 
-  test('creation and both dice survive lost responses and browser reloads',async({page})=>{
+  for(const source of ['feat','stony'])test(`${source}: creation and both dice survive lost responses and browser reloads`,async({page})=>{
     sql(`update characters set constitution=14,saving_throw_proficiencies='{constitution}',gained_feats=array['War Caster'],
       concentration_spell='detect-magic',concentration_rounds_remaining=100,nat_1_20_saves=false where id='${charId}'`);
+    if(source==='stony')sql(`update characters set gained_feats='{}',class_name='Psion',subclass='Metamorph',level=10,class_resources='{"psionic-energy-dice":8}' where id='${charId}';
+      begin;set local request.jwt.claims='{"sub":"${userId}","role":"authenticated"}';select dndkeep_private.begin_mutable_form('${charId}','${randomUUID()}',dndkeep_private.action_turn_context('${charId}')->>'turnId',2,false,'{"kind":"stony","resistance":"Fire"}');commit;`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     let creations=0;const createEndpoint='**/rest/v1/rpc/queue_standalone_concentration_save';
     await page.route(createEndpoint,async route=>{creations++;const result=await route.fetch();expect(result.ok()).toBe(true);await route.abort();});
@@ -46,7 +48,8 @@ test.describe('Standalone concentration client (local stack)', () => {
       const path='/src/lib/api/standaloneConcentration.ts',api=await import(path);const saved=api.savedStandaloneCreations(userId,charId);
       if(saved.length!==1)throw new Error('Creation recovery missing');return api.queueStandaloneSave(saved[0]);
     },{charId,userId});
-    expect(row).toMatchObject({request_id:first.id,save_bonus:5,has_advantage:true});
+    expect(row).toMatchObject({request_id:first.id,save_bonus:source==='stony'?6:5,has_advantage:true});
+    if(source==='stony')sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+600 where character_id='${charId}'`);
     let rolls=0;const rollEndpoint='**/rest/v1/rpc/settle_standalone_concentration_save';
     await page.route(rollEndpoint,async route=>{rolls++;const result=await route.fetch();expect(result.ok()).toBe(true);await route.abort();});
     await page.evaluate(async({userId,row})=>{
@@ -59,7 +62,7 @@ test.describe('Standalone concentration client (local stack)', () => {
       if(saved.length!==1||saved[0].rolls.join(',')!=='3,17')throw new Error('Original dice missing');
       const receipt=await api.confirmStandaloneRoll(saved[0]);return {receipt,left:api.savedStandaloneRolls(userId,charId).length,pending:(await api.loadStandaloneSaves(charId)).pending.length};
     },{charId,userId});
-    expect(recovered).toMatchObject({receipt:{outcome:'passed',rolls:[3,17],total:22,replayed:true},left:0,pending:0});
+    expect(recovered).toMatchObject({receipt:{outcome:'passed',rolls:[3,17],total:source==='stony'?23:22,replayed:true},left:0,pending:0});
     expect(sql(`select count(*) from action_logs where id='${first.id}'`)).toBe('1');expect(sql(`select concentration_spell from characters where id='${charId}'`)).toBe('detect-magic');
     sql(`delete from action_logs where id='${first.id}'`);
   });

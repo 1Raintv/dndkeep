@@ -13,7 +13,9 @@
 // Kept deliberately lean — spells, AoE, and multi-target attacks come in
 // v2.101+.
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import {readActiveMutableForm} from '../../lib/api/mutableForm';
+import {mutableFormAttackRange} from '../../rules/mutableForm';
 import { useCombatSelector } from '../../context/CombatContext';
 import { declareAttack, rollAttackRoll, type DeclareAttackInput } from '../../lib/pendingAttack';
 import TargetPickerModal from './TargetPickerModal';
@@ -24,6 +26,8 @@ interface Props {
   /** Attack bonus (includes proficiency, ability mod, magic item bonuses).
    *  Only used when attackKind='attack_roll'. */
   attackBonus?: number;
+  /** Actual selected ability contribution, excluding proficiency and item bonuses. */
+  attackAbilityModifier?: number;
   /** Damage dice expression like "1d8+3". */
   damageDice: string;
   damageType: string;
@@ -55,6 +59,7 @@ interface Props {
 export default function PlayerAttackButton({
   characterId,
   attackBonus,
+  attackAbilityModifier,
   damageDice,
   damageType,
   attackName,
@@ -74,9 +79,12 @@ export default function PlayerAttackButton({
   const encounter = useCombatSelector(s => s.encounter);
   const participants = useCombatSelector(s => s.participants);
   const [picking, setPicking] = useState(false);
+  const [pickerRange, setPickerRange] = useState(maxRangeFt);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const inFlight = useRef(false);
+  const selectionEpoch = useRef(0);
+  useEffect(() => () => { selectionEpoch.current++; }, []);
   // v2.855: preserve the original request and callback across ambiguous responses.
   // This is component-lifetime recovery; durable atomic spell payment is separate.
   const pending = useRef<{input: DeclareAttackInput; onDeclared?: () => void} | null>(null);
@@ -90,8 +98,50 @@ export default function PlayerAttackButton({
   // buttons stay the happy path.
   if (!encounter || encounter.status !== 'active' || !myParticipant) return null;
 
+  // v2.869 — only melee weapon/unarmed reach uses this bonus. Spell range
+  // (including Touch) has its own optional Mutable Form casting rule.
+  const usesMeleeReach = attackKind === 'attack_roll' && source !== 'spell' && attackMode === 'melee';
+  async function currentRange() {
+    return usesMeleeReach
+      ? mutableFormAttackRange(maxRangeFt, attackMode, await readActiveMutableForm(characterId))
+      : maxRangeFt;
+  }
+  async function openPicker() {
+    if (inFlight.current) return;
+    const epoch = ++selectionEpoch.current;
+    inFlight.current = true; setBusy(true); setError('');
+    try {
+      const range = usesMeleeReach ? await currentRange() : maxRangeFt;
+      if (epoch !== selectionEpoch.current) return;
+      setPickerRange(range);
+      setPicking(true);
+    } catch {
+      if (epoch === selectionEpoch.current) setError('Reach could not be verified. Try opening the target picker again.');
+    } finally { if (epoch === selectionEpoch.current) { inFlight.current = false; setBusy(false); } }
+  }
+
   async function handlePick(target: CombatParticipant) {
     if (inFlight.current || pending.current || !encounter || !myParticipant) return;
+    if (usesMeleeReach) {
+      const epoch = selectionEpoch.current;
+      inFlight.current = true; setBusy(true);
+      try {
+        // Recheck before creating a request: expiry while the picker is open
+        // must not authorize a newly out-of-reach target or spend its cost.
+        const liveRange = await currentRange();
+        if (epoch !== selectionEpoch.current) return;
+        if (liveRange !== pickerRange) {
+          setPicking(false);
+          setError('Reach changed. Open the target picker and choose again.');
+          return;
+        }
+      } catch {
+        if (epoch !== selectionEpoch.current) return;
+        setPicking(false);
+        setError('Reach could not be verified. Choose your target again.');
+        return;
+      } finally { if (epoch === selectionEpoch.current) { inFlight.current = false; setBusy(false); } }
+    }
     setPicking(false);
     pending.current = {onDeclared, input: {
         requestId: crypto.randomUUID(),
@@ -109,6 +159,7 @@ export default function PlayerAttackButton({
         attackKind,
         // Attack-roll specifics
         attackBonus: attackKind === 'attack_roll' ? (attackBonus ?? 0) : null,
+        attackAbilityModifier: attackKind === 'attack_roll' ? attackAbilityModifier ?? null : null,
         targetAC: attackKind === 'attack_roll' ? target.ac : null,
         // Save-based specifics
         saveDC: attackKind === 'save' ? saveDC ?? null : null,
@@ -173,7 +224,7 @@ export default function PlayerAttackButton({
   return (
     <span style={{display:'inline-flex',flexDirection:'column',alignItems:'flex-end',gap:4,minWidth:0,maxWidth:180}}>
       <button
-        onClick={() => {if (pending.current) void submitDeclaration(); else setPicking(true);}}
+        onClick={() => {if (pending.current) void submitDeclaration(); else void openPicker();}}
         disabled={busy}
         title={`Attack a target with ${attackName} — runs full combat resolution`}
         style={buttonStyle}
@@ -184,14 +235,16 @@ export default function PlayerAttackButton({
       {picking && (
         <TargetPickerModal
           participants={participants}
+          selectionDisabled={busy}
+          showMeleeReach={usesMeleeReach}
           excludeParticipantId={myParticipant.id}
           title={`Attack with ${attackName}`}
           subtitle={`${attackKind === 'save' ? `${saveAbility ?? ''} DC ${saveDC ?? '—'} save · ` : attackKind === 'attack_roll' ? `${(attackBonus ?? 0) >= 0 ? '+' : ''}${attackBonus ?? 0} to hit · ` : ''}${damageDice} ${damageType}`}
           onPick={handlePick}
-          onCancel={() => setPicking(false)}
+          onCancel={() => { selectionEpoch.current++; inFlight.current = false; setBusy(false); setPicking(false); }}
           fromParticipant={myParticipant}
           campaignId={encounter.campaign_id}
-          maxRangeFt={maxRangeFt}
+          maxRangeFt={pickerRange}
           normalRangeFt={normalRangeFt}
         />
       )}

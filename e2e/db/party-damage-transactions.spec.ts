@@ -23,6 +23,25 @@ test.describe('Atomic party damage',()=>{
  const apply=(ctx=context(),damage=10)=>JSON.parse(sql(auth(dm,call(ctx,damage))));
  const state=()=>JSON.parse(sql(`select jsonb_build_object('hp',current_hp,'temp',temp_hp,'spell',concentration_spell,'marker',last_campaign_damage_id,'failures',death_saves_failures,'conditions',active_conditions) from characters where id='${char}'`));
  const count=(table:string)=>sql(`select count(*) from ${table} where character_id='${char}'`);
+ test('Stony expiry invalidates an unapplied damage preview without changing permanent defenses',()=>{
+  sql(`update characters set subclass='Metamorph',level=10,class_resources='{"psionic-energy-dice":8}' where id='${char}';
+   begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';
+   select dndkeep_private.begin_mutable_form('${char}','${randomUUID()}',dndkeep_private.action_turn_context('${char}')->>'turnId',2,false,'{"kind":"stony","resistance":"Fire"}');commit;`);
+  const ctx=context();expect(ctx.character.damage_resistances).toContain('fire');
+  sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+600 where character_id='${char}'`);
+  expect(()=>apply(ctx)).toThrow(/Party state changed/);expect(state().hp).toBe(50);
+  expect(count('dndkeep_private.party_damage_events')).toBe('0');
+  expect(context().character.damage_resistances??[]).not.toContain('fire');
+  expect(sql(`select coalesce(damage_resistances,array[]::text[])::text from characters where id='${char}'`)).toBe('{}');
+ });
+ test('stable-state changes invalidate a preview even with unchanged counters',()=>{
+  sql(`update characters set current_hp=0,temp_hp=0,concentration_spell='' where id='${char}'`);
+  const ctx=context();expect(ctx.character.is_stable).toBe(false);
+  sql(`update characters set is_stable=true where id='${char}'`);
+  expect(()=>apply(ctx,1)).toThrow();expect(state().failures).toBe(0);
+  apply(context(),1);
+  expect(sql(`select is_stable::text||':'||death_saves_failures from characters where id='${char}'`)).toBe('false:1');
+ });
  test('captures species choices and rejects a legacy changed after preview',()=>{
   sql(`update characters set species='Tiefling',species_choices='{"tieflingLegacy":"abyssal"}' where id='${char}'`);
   const ctx=context();expect(ctx.character.species_choices).toEqual({tieflingLegacy:'abyssal'});
@@ -52,10 +71,42 @@ test.describe('Atomic party damage',()=>{
   const ctx=context();const rows=await Promise.all([parallel(auth(dm,call(ctx))),parallel(auth(dm,call(ctx,10,randomUUID(),randomUUID())))]);
   expect(rows.filter(r=>r.code===0)).toHaveLength(1);expect(rows.filter(r=>r.code!==0)[0].error).toContain('Party state changed');expect(state().hp).toBe(48);
  });
- test('permissions reject players, outsiders and anonymous clients',()=>{
-  const q=call(context());for(const user of [owner,outsider])expect(()=>sql(auth(user,q))).toThrow(/current DM only/);
-  expect(()=>sql('set role anon;'+q)).toThrow(/permission denied/);
-  expect(()=>sql(auth(owner,`select * from dndkeep_private.party_damage_events`))).toThrow(/permission denied/);expect(state().hp).toBe(50);
+ test('owner previews and applies their own damage; the DM replays the same receipt',()=>{
+  const ctx=JSON.parse(sql(auth(owner,`select get_party_damage_context('${campaign}','${char}')`)));
+  expect(ctx).toEqual(context());
+  expect(JSON.parse(sql(auth(owner,call(ctx))))).toMatchObject({afterHP:48,afterTempHP:0,checkId:save,replayed:false});
+  expect(apply(ctx)).toMatchObject({afterHP:48,checkId:save,replayed:true});
+  expect(count('pending_concentration_saves')).toBe('1');expect(count('character_history')).toBe('1');
+ });
+ test('owner cancellation fences a late DM application',()=>{
+  const ctx=context();
+  expect(JSON.parse(sql(auth(owner,call(ctx).replace('apply_party_damage','cancel_party_damage'))))).toMatchObject({canceled:true});
+  expect(()=>apply(ctx)).toThrow(/was canceled/);expect(state().hp).toBe(50);
+ });
+ test('permissions reject another campaign member, outsiders and anonymous clients on every entry point',()=>{
+  const ctx=context();
+  const queries=[`select get_party_damage_context('${campaign}','${char}')`,call(ctx),call(ctx).replace('apply_party_damage','cancel_party_damage')];
+  for(const q of queries){
+   expect(()=>sql(auth(outsider,q))).toThrow(/character owner or current DM/);
+   expect(()=>sql('set role anon;'+q)).toThrow(/permission denied/);
+  }
+  sql(`insert into campaign_members(campaign_id,user_id,role) values('${campaign}','${outsider}','player')`);
+  for(const q of queries)expect(()=>sql(auth(outsider,q))).toThrow(/character owner or current DM/);
+  expect(()=>sql(auth(owner,`select * from dndkeep_private.party_damage_events`))).toThrow(/permission denied/);
+  expect(state().hp).toBe(50);expect(count('dndkeep_private.party_damage_events')).toBe('0');
+ });
+ test('a previous owner cannot replay or cancel after ownership changes',()=>{
+  const ctx=context();sql(auth(owner,call(ctx)));
+  sql(`update characters set user_id='${outsider}' where id='${char}'`);
+  for(const q of [`select get_party_damage_context('${campaign}','${char}')`,call(ctx),call(ctx).replace('apply_party_damage','cancel_party_damage')])
+   expect(()=>sql(auth(owner,q))).toThrow(/character owner or current DM/);
+  expect(apply(ctx).replayed).toBe(true);expect(state().hp).toBe(48);
+ });
+ test('campaign removal blocks old campaign requests even for the character owner and former DM',()=>{
+  const ctx=context();sql(`update characters set campaign_id=null where id='${char}'`);
+  for(const user of [owner,dm])for(const q of [`select get_party_damage_context('${campaign}','${char}')`,call(ctx),call(ctx).replace('apply_party_damage','cancel_party_damage')])
+   expect(()=>sql(auth(user,q))).toThrow(/character owner or current DM/);
+  expect(state().hp).toBe(50);expect(count('dndkeep_private.party_damage_events')).toBe('0');
  });
  test('changed snapshots and malformed damage fail before writing',()=>{
   const ctx=context();sql(`update characters set temp_hp=9 where id='${char}'`);expect(()=>apply(ctx)).toThrow(/Party state changed/);
@@ -79,6 +130,26 @@ test.describe('Atomic party damage',()=>{
  test('damage at zero HP and massive damage update death failures',()=>{
   sql(`update characters set current_hp=0,temp_hp=8,death_saves_failures=1 where id='${char}'`);
   apply(undefined,1);expect(state()).toMatchObject({hp:0,temp:7,failures:2});
+ });
+ for(const combat of [false,true])for(const damage of [49,50])test(`zero-HP massive threshold ignores temp HP (${combat}/${damage})`,()=>{
+  sql(`update characters set current_hp=0,temp_hp=80,death_saves_failures=0,is_stable=true where id='${char}'`);
+  let participant:string|null=null;
+  if(combat){const encounter=randomUUID();participant=randomUUID();sql(`insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaign}','active',1,0);
+   insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values('${participant}','${encounter}','${campaign}','character','${char}','Damage fixture',0);
+   update combatants set current_hp=0,max_hp=50,temp_hp=80,death_save_failures=0,is_stable=true where id=(select combatant_id from combat_participants where id='${participant}')`);}
+  const ctx=context();apply(ctx,damage);expect(state()).toMatchObject({hp:0,temp:80-damage,failures:damage===50?3:1,spell:''});
+  if(participant)expect(sql(`select is_dead::text||':'||is_stable::text from combatants where id=(select combatant_id from combat_participants where id='${participant}')`)).toBe(`${damage===50}:false`);
+  const after=state();expect(apply(ctx,damage).replayed).toBe(true);expect(state()).toEqual(after);expect(count('dndkeep_private.party_damage_events')).toBe('1');
+ });
+ for(const damage of [62,63])test(`positive-HP massive threshold still subtracts temp HP (${damage})`,()=>{
+  sql(`update characters set current_hp=5,temp_hp=8 where id='${char}'`);apply(undefined,damage);expect(state()).toMatchObject({hp:0,temp:0,failures:damage===63?3:0});
+ });
+ test('massive zero-HP history failure rolls back death state and concentration',()=>{
+  sql(`update characters set current_hp=0,temp_hp=80,death_saves_failures=0 where id='${char}'`);const before=state(),ctx=context(),fn='reject_massive_'+request.replaceAll('-','');
+  sql(`create function public.${fn}() returns trigger language plpgsql as $$ begin if new.id='${request}' then raise exception 'fixture history failure';end if;return new;end $$;create trigger ${fn} before insert on character_history for each row execute function public.${fn}()`);
+  try{expect(()=>apply(ctx,50)).toThrow(/fixture history failure/);expect(state()).toEqual(before);expect(count('dndkeep_private.party_damage_events')).toBe('0');}
+  finally{sql(`drop trigger ${fn} on character_history;drop function public.${fn}()`);}
+  apply(ctx,50);expect(state().failures).toBe(3);
  });
  test('massive excess damage records death',()=>{
   apply(undefined,108);expect(state()).toMatchObject({hp:0,temp:0,failures:3});
@@ -130,6 +201,25 @@ test.describe('Atomic party damage',()=>{
   expect(apply(undefined,55)).toMatchObject({afterHP:0,concentrationBroken:true,checkId:null});
   const combat=JSON.parse(sql(`select jsonb_build_object('dead',is_dead,'failures',death_save_failures,'buffs',active_buffs) from combatants where id=(select combatant_id from combat_participants where id='${participant}')`));
   expect(combat).toEqual({dead:true,failures:3,buffs:[{key:'other',source:'spell:detect-magic',casterParticipantId:'someone-else'}]});expect(state().spell).toBe('');
+ });
+
+ test('party concentration captures exhaustion and retains it after later recovery',()=>{
+  sql(`update characters set exhaustion_level=2,saving_throw_proficiencies=array['constitution'] where id='${char}'`);
+  const ctx=context();expect(ctx.character.exhaustion_level).toBe(2);apply(ctx);
+  expect(sql(`select con_bonus from pending_concentration_saves where id='${save}'`)).toBe('1');
+  sql(`update characters set exhaustion_level=0 where id='${char}'`);expect(apply(ctx).replayed).toBe(true);
+  expect(sql(`select con_bonus from pending_concentration_saves where id='${save}'`)).toBe('1');
+ });
+ test('stale temporary effects reject before HP or a concentration offer changes',()=>{
+  const ctx=context();sql(`update characters set active_buffs='[{"name":"Bless","saveBonus":0}]' where id='${char}'`);
+  expect(()=>apply(ctx)).toThrow(/Party state changed/);expect(state().hp).toBe(50);expect(count('pending_concentration_saves')).toBe('0');
+ });
+ test('active combat exhaustion overrides stale sheet exhaustion',()=>{
+  const encounter=randomUUID(),participant=randomUUID();sql(`insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${encounter}','${campaign}','active',1,0);
+   insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values('${participant}','${encounter}','${campaign}','character','${char}','Damage fixture',0);
+   update combatants set exhaustion_level=2,active_buffs='[{"name":"Bane"}]' where id=(select combatant_id from combat_participants where id='${participant}')`);
+  const ctx=context();expect(ctx.combatant.exhaustion_level).toBe(2);expect(ctx.combatant.active_buffs).toEqual([{name:'Bane'}]);
+  apply(ctx);expect(sql(`select con_bonus from pending_concentration_saves where id='${save}'`)).toBe('-2');
  });
 
 });

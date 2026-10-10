@@ -1,14 +1,14 @@
 // @vitest-environment happy-dom
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
-const mocks=vi.hoisted(()=>({advance:vi.fn(),turn:vi.fn(),solo:vi.fn(),toast:vi.fn(),encounter:null as null|{id:string;status:string},actor:null as null|{participant_type:string;entity_id:string}}));
-vi.mock('../../context/CombatContext',()=>({useCombatSelector:(select:(s:unknown)=>unknown)=>select({encounter:mocks.encounter}),useCombatCurrentActor:()=>mocks.actor}));
+const mocks=vi.hoisted(()=>({advance:vi.fn(),turn:vi.fn(),solo:vi.fn(),toast:vi.fn(),loading:false,encounter:null as null|{id:string;status:string},actor:null as null|{participant_type:string;entity_id:string}}));
+vi.mock('../../context/CombatContext',()=>({useCombatSelector:(select:(s:unknown)=>unknown)=>select({encounter:mocks.encounter,loading:mocks.loading}),useCombatCurrentActor:()=>mocks.actor}));
 vi.mock('../../lib/api/psionicTurns',()=>({getEnkindledTurn:mocks.turn,advancePsionicSoloTurn:mocks.solo,PsionicRequestError:class extends Error{definitelyNotPaid=true;}}));
 vi.mock('../../lib/combatEncounter',()=>({advanceTurn:mocks.advance}));
 vi.mock('../shared/Toast',()=>({useToast:()=>({showToast:mocks.toast})}));
 import ActionEconomy from './ActionEconomy';
 afterEach(cleanup);
-beforeEach(()=>{vi.clearAllMocks();mocks.encounter={id:'fight',status:'active'};mocks.actor={participant_type:'character',entity_id:'psion'};mocks.advance.mockResolvedValue({ok:true});});
+beforeEach(()=>{mocks.loading=false;vi.clearAllMocks();mocks.encounter={id:'fight',status:'active'};mocks.actor={participant_type:'character',entity_id:'psion'};mocks.advance.mockResolvedValue({ok:true});});
 function mount(id='psion') {const reset=vi.fn();const view=render(<ActionEconomy speedFeet={30} characterId={id} actionUsedExternal onNewTurn={reset}/>);return {reset,...view};}
 const end=()=>screen.getByRole('button',{name:/End Turn/});
 it('keeps spent actions until combat advancement is confirmed, and ignores repeated clicks',async()=>{
@@ -49,4 +49,20 @@ it('retries an uncertain tabletop advance with the same request, without resetti
 it('does not reset the shared Psion turn while another combatant is acting',async()=>{
  mocks.actor={participant_type:'creature',entity_id:'goblin'};mocks.turn.mockResolvedValue({turn:{encounterId:'fight',round:1,index:1,turnId:'turn'},used:null});const reset=vi.fn();
  render(<ActionEconomy characterId="psion" speedFeet={30} trackPsionicTurns onNewTurn={reset}/>);fireEvent.click(end());await waitFor(()=>expect(reset).toHaveBeenCalledTimes(1));expect(mocks.solo).not.toHaveBeenCalled();expect(mocks.advance).not.toHaveBeenCalled();
+});
+it('shows saved spending and does not offer a local undo',()=>{
+ const changed=vi.fn();const view=render(<ActionEconomy characterId="psion" speedFeet={30} onActionUsed={changed} savedUsed={{action:false,bonusAction:true,reaction:false}}/>);
+ const bonus=screen.getByRole('button',{name:'Bonus Action Used'});expect((bonus as HTMLButtonElement).disabled).toBe(true);fireEvent.click(bonus);expect(changed).not.toHaveBeenCalled();
+ view.rerender(<ActionEconomy characterId="psion" speedFeet={30} onActionUsed={changed} savedUsed={{action:false,bonusAction:false,reaction:false}}/>);
+ expect((screen.getByRole('button',{name:'Bonus Action Available'}) as HTMLButtonElement).disabled).toBe(false);
+});
+
+it('cannot reset or advance before combat finishes loading',async()=>{
+ mocks.loading=true;mocks.encounter=null;mocks.actor=null;
+ const {reset,rerender}=mount();const loading=screen.getByRole('button',{name:/Loading turn/});
+ expect((loading as HTMLButtonElement).disabled).toBe(true);fireEvent.click(loading);
+ expect(reset).not.toHaveBeenCalled();expect(mocks.advance).not.toHaveBeenCalled();expect(mocks.turn).not.toHaveBeenCalled();
+ mocks.loading=false;mocks.encounter={id:'fight',status:'active'};mocks.actor={participant_type:'character',entity_id:'psion'};
+ rerender(<ActionEconomy characterId="psion" speedFeet={30} actionUsedExternal onNewTurn={reset}/>);
+ fireEvent.click(end());await waitFor(()=>expect(reset).toHaveBeenCalledTimes(1));expect(mocks.advance).toHaveBeenCalledWith('fight',expect.any(Function),expect.any(Function));
 });

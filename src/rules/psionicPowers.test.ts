@@ -98,3 +98,60 @@ it('Warp requires the subclass but does not require an Energy Die for the base u
  expect(resolvePsionicPower({...c,subclass:'Psi Warper',level:2},use,true)).toBeNull();
  expect(resolvePsionicPower({...c,subclass:'Psi Warper',class_resources:{'psionic-energy-dice':0}},use,true)).toMatchObject({cost:0,feet:30});
 });
+
+
+it.each([null,'0',false,-1,0.5,NaN,Infinity,2147483647])('rejects malformed Connection counter %s without blocking Propel',raw=>{
+ const invalid={...c,feature_uses:{'Telepathic Connection':raw}} as unknown as typeof c;
+ expect(psionicPowerState(invalid)).toMatchObject({valid:true,connectionValid:false,connectionFree:false});
+ for(const free of [true,false])expect(resolvePsionicPower(invalid,{kind:'connection',free,roll:4})).toBeNull();
+ expect(resolvePsionicPower(invalid,{kind:'propel',mode:'free',roll:0},true)).toMatchObject({feet:5,cost:0});
+});
+it.each([undefined,0,1,2147483646])('accepts valid Connection counter %s including missing legacy value',uses=>{
+ const feature_uses:Record<string,number>=uses===undefined?{}:{'Telepathic Connection':uses};
+ const saved={...c,feature_uses};
+ const free=uses===undefined||uses===0;
+ expect(psionicPowerState(saved)).toMatchObject({connectionValid:true,connectionFree:free});
+ expect(resolvePsionicPower(saved,{kind:'connection',free,roll:4})).toMatchObject({cost:free?0:1,patch:{feature_uses:{'Telepathic Connection':(uses??0)+1}}});
+});
+
+
+it.each(['free','technique'] as const)('rejects Energy Die enhancements on %s Propel',mode=>{
+ const psykinetic={...c,level:20,subclass:'Psykinetic'};
+ const base={kind:'propel' as const,mode,roll:mode==='free'?0:4};
+ expect(resolvePsionicPower(psykinetic,base,true)).toMatchObject({cost:0,feet:mode==='free'?5:20});
+ for(const enhancement of [{surged:true,originalRoll:1},{enkindledRolls:[2],originalRoll:2},{originalRoll:4}]) {
+  for(const failed of [true,false])expect(resolvePsionicPower(psykinetic,{...base,...enhancement},failed)).toBeNull();
+ }
+});
+it.each([1,-1,NaN,Infinity])('rejects a fabricated roll on the no-die push (%s)',roll=>{
+ expect(resolvePsionicPower(c,{kind:'propel',mode:'free',roll},true)).toBeNull();
+});
+
+// Independent UA progression table: exercise every legal class ordering so total
+// character level cannot silently upgrade a multiclass Psion's die or pool.
+const propelLevels = [
+ [1,6,4],[2,6,4],[3,6,4],[4,6,4],[5,8,6],
+ [6,8,6],[7,8,6],[8,8,6],[9,8,8],[10,8,8],
+ [11,10,8],[12,10,8],[13,10,10],[14,10,10],[15,10,10],
+ [16,10,10],[17,12,12],[18,12,12],[19,12,12],[20,12,12],
+] as const;
+for(const order of ['primary','secondary'] as const){
+ it.each(propelLevels.filter(([level])=>order==='primary'||level<20))(
+  `${order} Psion level %i: d%i, pool %i; every Propel roll and save outcome`,(level,sides,pool)=>{
+   const hero=order==='primary'
+    ?{class_name:'Psion',level,subclass:'Psi Warper'}
+    :{class_name:'Fighter',level:20-level,subclass:'Champion',secondary_class:'Psion',secondary_level:level,secondary_subclass:'Psi Warper'};
+   expect(psionicPowerState(hero)).toMatchObject({valid:true,level,sides,dice:pool,warp:level>=3,technique:false});
+   for(const failed of [true,false]){
+    expect(resolvePsionicPower(hero,{kind:'propel',mode:'free',roll:0},failed)).toMatchObject({feet:failed?5:0,cost:0});
+    for(let roll=1;roll<=sides;roll++){
+     const use={kind:'propel' as const,mode:'powered' as const,roll};
+     expect(resolvePsionicPower(hero,use,failed)).toMatchObject({feet:failed?5*roll:0,cost:failed?1:0,patch:{class_resources:{'psionic-energy-dice':pool-(failed?1:0)}}});
+     const warp=resolvePsionicPower(hero,{...use,movement:'warp'},failed);
+     if(level<3)expect(warp).toBeNull();
+     else expect(warp).toMatchObject({feet:failed?30:0,cost:failed?1:0});
+    }
+    expect(resolvePsionicPower(hero,{kind:'propel',mode:'powered',roll:sides+1},failed)).toBeNull();
+   }
+  });
+}

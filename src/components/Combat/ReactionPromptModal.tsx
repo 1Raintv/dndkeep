@@ -6,17 +6,19 @@
 // offer is auto-declined via client-side timer (DB janitor could also do this
 // on a schedule later).
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
-import { checkedWrite } from '../../lib/api/checked';
+import {acceptOpportunityAttack} from '../../lib/api/opportunityAttack';
 import {useCounterspellChoice} from '../../lib/hooks/useCounterspellChoice';
 import { acceptReaction, declineReaction, expireReaction } from '../../lib/pendingReaction';
-import { declareAttack, rollAttackRoll } from '../../lib/pendingAttack';
+import { rollAttackRoll } from '../../lib/pendingAttack';
 import type { PendingReaction, PendingAttack } from '../../types';
 
-// v2.316: HP/conditions/buffs/death-save reads come from combatants via JOIN.
-import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from '../../lib/combatParticipantNormalize';
+
+import {lazyWithRetry} from '../../lib/lazyWithRetry';
+const TelepathReactionPrompt=lazyWithRetry(()=>import('./TelepathReactionPrompt'));
+const savedTelepath=(key:string)=>key==='telepath_distraction'||key==='telepath_bolstering';
 
 interface Props {
   campaignId: string;
@@ -79,11 +81,11 @@ export default function ReactionPromptModal({ campaignId }: Props) {
   useEffect(() => {
     // audit fix: this component is always mounted as a listener — only tick
     // the 4 Hz countdown clock while there's actually something to count down.
-    if (!(allOffers.length)) return;
+    if (!allOffers.some(offer=>!savedTelepath(offer.reaction_key))) return;
     setNow(Date.now()); // fresh baseline the moment an offer appears
     const id = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(id);
-  }, [allOffers.length]);
+  }, [allOffers]);
 
   // Auto-expire any offer whose expires_at has passed
   useEffect(() => {
@@ -91,6 +93,7 @@ export default function ReactionPromptModal({ campaignId }: Props) {
     // housekeeping, and a Cleave offer must expire on its own timer
     // even though this modal never renders it.
     for (const o of allOffers) {
+      if(savedTelepath(o.reaction_key))continue; // Saved dice require explicit settlement.
       const exp = new Date(o.expires_at).getTime();
       if (now >= exp) {
         expireReaction(o.id).catch(() => {});
@@ -133,8 +136,8 @@ export default function ReactionPromptModal({ campaignId }: Props) {
     // Other reactions (Shield, Uncanny Dodge, Absorb Elements) belong to the
     // player who owns the reacting character.
     return offers.filter(o =>
-      o.reaction_key === 'opportunity_attack'
-      && (o.reactor_type === 'monster' || o.reactor_type === 'npc')
+      savedTelepath(o.reaction_key)||(o.reaction_key === 'opportunity_attack'
+      && (o.reactor_type === 'creature' || o.reactor_type === 'monster' || o.reactor_type === 'npc'))
     );
   }, [isDM, allOffers]);
 
@@ -186,69 +189,20 @@ export default function ReactionPromptModal({ campaignId }: Props) {
   // auto-rolls the attack roll. The DM's AttackResolutionModal picks up from
   // attack_rolled and walks through damage + apply as normal.
   async function onAcceptOA() {
-    if (!urgent) return;
+    if (!urgent || busy) return;
     setBusy(true);
-    const mover = urgent.decision_payload as any;
-    if (!mover || !mover.mover_participant_id) { setBusy(false); return; }
-
-    // Fetch encounter + participant details needed by declareAttack
-    const { data: reactorPartRaw } = await (supabase as any)
-      .from('combat_participants')
-      .select('encounter_id, participant_type, ' + JOINED_COMBATANT_FIELDS)
-      .eq('id', urgent.reactor_participant_id)
-      .single();
-  const reactorPart = reactorPartRaw ? normalizeParticipantRow(reactorPartRaw) : reactorPartRaw;
-    const { data: targetPart } = await supabase
-      .from('combat_participants')
-      .select('ac, participant_type')
-      .eq('id', mover.mover_participant_id)
-      .single();
-
-    const bonusNum = parseInt(oaBonus, 10) || 0;
-    const attack = await declareAttack({
-      campaignId,
-      encounterId: (reactorPart?.encounter_id as string | null) ?? null,
-      attackerParticipantId: urgent.reactor_participant_id,
-      attackerName: urgent.reactor_name,
-      attackerType: urgent.reactor_type,
-      targetParticipantId: mover.mover_participant_id,
-      targetName: mover.mover_name,
-      targetType: (targetPart?.participant_type as any) ?? null,
-      attackSource: 'weapon', attackMode:'melee',
-      attackName: `${oaName.trim() || 'Opportunity Attack'} (OA)`,
-      attackKind: 'attack_roll',
-      attackBonus: bonusNum,
-      targetAC: (targetPart?.ac as number | null) ?? null,
-      damageDice: oaDice.trim() || '1d6',
-      damageType: oaType.trim() || 'slashing',
-    });
-
-    if (attack) {
-      // Auto-roll to attack_rolled so the DM's AttackResolutionModal engages
-      await rollAttackRoll(attack.id);
-      // Mark the reactor's reaction as used + close out the offer
-      await checkedWrite('combat_participants.update reaction-used', { participantId: urgent.reactor_participant_id }, supabase
-        .from('combat_participants')
-        .update({ reaction_used: true })
-        .eq('id', urgent.reactor_participant_id));
-    }
-
-    await checkedWrite('pending_reactions.update accept', { reactionId: urgent.id }, supabase
-      .from('pending_reactions')
-      .update({
-        state: 'accepted',
-        decided_at: new Date().toISOString(),
-        decision_payload: {
-          ...(urgent.decision_payload ?? {}),
-          attack_id: attack?.id ?? null,
-          attack_name: oaName,
-          attack_bonus: bonusNum,
-          damage_dice: oaDice,
-          damage_type: oaType,
-        },
-      })
-      .eq('id', urgent.id));
-    setBusy(false);
+    setAcceptError(null);
+    try {
+      const receipt=await acceptOpportunityAttack(urgent,{
+        name:oaName.trim()||'Opportunity Attack',bonus:Number(oaBonus),
+        dice:oaDice.trim()||'1d6',damageType:oaType.trim()||'slashing',
+      });
+      // Only the first acceptance starts the roll. A recovered declared attack
+      // remains in the DM queue; retries must never reroll a completed attack.
+      if(!receipt.replayed)await rollAttackRoll(receipt.attackId);
+    } catch(error) {
+      setAcceptError(error instanceof Error?error.message:'Could not accept this Opportunity Attack.');
+    } finally {setBusy(false);}
   }
 
   async function onDecline() {
@@ -261,6 +215,8 @@ export default function ReactionPromptModal({ campaignId }: Props) {
   const timerColor = secondsLeft > 60 ? '#34d399' : secondsLeft > 20 ? '#fbbf24' : '#f87171';
   const progressPct = Math.max(0, Math.min(100, (secondsLeft / 120) * 100));
 
+  if(savedTelepath(urgent.reaction_key))return <Suspense fallback={null}><TelepathReactionPrompt key={urgent.id} offer={urgent} isDM={isDM} onSettled={()=>void load()}/></Suspense>;
+
   return createPortal(
     <div style={{
       position: 'fixed', inset: 0,
@@ -268,7 +224,7 @@ export default function ReactionPromptModal({ campaignId }: Props) {
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       zIndex: 30000, padding: 20,
     }}>
-      <div style={{
+      <div data-oa-prompt={urgent.reaction_key==='opportunity_attack'?'':undefined} style={{
         background: 'var(--c-card)', borderRadius: 14,
         border: `2px solid ${timerColor}`,
         maxWidth: 440, width: '100%',

@@ -1,9 +1,18 @@
+import { readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { gateDbSuite, signInAsSeedDm } from './helpers';
 
 const sql = (q: string): string => execFileSync('docker', ['exec', '-i', 'supabase_db_dndkeep', 'psql', '-U', 'postgres', '-d', 'postgres', '-t', '-A', '-v', 'ON_ERROR_STOP=1'], { input: q, encoding: 'utf8' }).trim();
+
+async function openConnection(page:import('@playwright/test').Page){
+ if(!await page.getByRole('region',{name:'Telepathic Connection controls'}).isVisible())await page.locator('.arow-grid').filter({has:page.getByText('Telepathic Connection',{exact:true})}).getByRole('button',{name:'Range / extend',exact:true}).click();
+}
+async function endConnectionTurn(page:import('@playwright/test').Page){
+ await page.getByRole('button',{name:/End Turn/}).locator('visible=true').first().click();
+ await expect(page.getByRole('button',{name:'Bonus Action Available',exact:true})).toBeEnabled();
+}
 
 test.describe('Psionic Restoration (local stack)', () => {
   gateDbSuite();
@@ -35,25 +44,39 @@ test.describe('Psionic Restoration (local stack)', () => {
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     const button=(name:string)=>page.getByRole('button',{name,exact:true}).locator('visible=true').first();
     const dice=()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`);
-    await button('Free 5 ft').click();await expect(page.getByRole('dialog',{name:'Telekinetic Propel'})).toBeVisible();
-    if(secondary)await expect(page.getByRole('dialog',{name:'Telekinetic Propel'})).toContainText('DC 17 Strength');
-    await button('Save failed').click();expect(dice()).toBe('2');
-    await button('Powered (1 die)').click();await button('Save passed').click();await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Telekinetic Propel' and notes like 'Passed STR save%'`)).toBe('1');expect(dice()).toBe('2');
-    await button('Powered (1 die)').click();
-    await page.screenshot({path:info.outputPath('propel-save.png')});
-    await button('Save failed').click();await expect.poll(dice).toBe('1');
-    await button('Extend (free)').click();await button('Cancel').click();expect(dice()).toBe('1');
-    await button('Extend (free)').click();await button('Extend telepathy').click();
-    await expect(button('Extend (1 die)')).toBeEnabled();
+    const ability=page.locator('.arow-grid').filter({has:page.getByText('Telekinetic Propel',{exact:true})});
+    const dialog=page.getByRole('dialog',{name:'Telekinetic Propel',exact:true});
+    const openPropel=async()=>{await ability.getByRole('button',{name:'Use / resume'}).click();await expect(dialog).toBeVisible();};
+    const declarePropel=async(mode:'free'|'powered',outcome:'passed'|'failed')=>{
+      await openPropel();await dialog.getByLabel('Target',{exact:true}).fill('Tabletop goblin');
+      await dialog.getByRole('checkbox').check();await dialog.getByLabel('Movement',{exact:true}).selectOption(mode);
+      await dialog.getByRole('button',{name:'Declare Bonus Action'}).click();
+      await expect(dialog).toContainText(`Strength save DC ${secondary?17:11}`);
+      await expect(page.getByRole('button',{name:'Bonus Action Used',exact:true})).toBeDisabled();
+      await dialog.getByRole('button',{name:`Save ${outcome}`,exact:true}).click();
+      await expect(dialog.getByRole('status')).toContainText(`Saved: ${outcome}.`);
+      await dialog.getByRole('button',{name:'Close for later'}).click();
+      await page.getByRole('button',{name:/End Turn/}).locator('visible=true').first().click();
+      await expect(page.getByRole('button',{name:'Bonus Action Available',exact:true})).toBeEnabled();
+    };
+    await declarePropel('free','failed');expect(dice()).toBe('2');
+    await declarePropel('powered','passed');expect(dice()).toBe('2');
+    expect(sql(`select count(*) from dndkeep_private.propel_declarations where character_id='${charId}' and outcome='passed'`)).toBe('1');
+    await declarePropel('powered','failed');await expect.poll(dice).toBe('1');
+    expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${charId}'`)).toBe('3');
+    await openConnection(page);await button('Extend telepathy (free)').click();await button('Cancel').click();expect(dice()).toBe('1');
+    await openConnection(page);await button('Extend telepathy (free)').click();await button('Roll and extend').click();
+    await expect(button('Extend telepathy (1 die)')).toBeEnabled();
     await expect.poll(()=>sql(`select feature_uses->>'Telepathic Connection' from characters where id='${charId}'`)).toBe('1');
-    expect(dice()).toBe('1');await page.reload();await expect(button('Extend (1 die)')).toBeEnabled();
-    await button('Extend (1 die)').click();await button('Extend telepathy').click();await expect.poll(dice).toBe('0');
-    await expect(button('Powered (1 die)')).toBeDisabled();await expect(button('Extend (1 die)')).toBeDisabled();await expect(button('Spend Die (1d8)')).toBeDisabled();await expect(button('Free 5 ft')).toBeEnabled();
-    await button('Free 5 ft').scrollIntoViewIfNeeded();await page.screenshot({path:info.outputPath('psion-powers.png')});
+    expect(dice()).toBe('1');await page.reload();await openConnection(page);await expect(button('Extend telepathy (1 die)')).toBeEnabled();
+    await endConnectionTurn(page);await button('Extend telepathy (1 die)').click();await button('Roll and extend').click();await expect.poll(dice).toBe('0');
+    await expect(button('Extend telepathy (1 die)')).toBeDisabled();await expect(button('Spend Die (1d8)')).toBeDisabled();
+    await openPropel();await expect(dialog.locator('option[value="powered"]')).toBeDisabled();await expect(dialog.locator('option[value="free"]')).toBeEnabled();
+    await page.screenshot({path:info.outputPath('psion-powers.png')});await dialog.getByRole('button',{name:'Close for later'}).click();
     await page.getByRole('button',{name:/^Rest$/}).locator('visible=true').first().click();await page.getByTitle('End short rest',{exact:true}).click();
-    await expect.poll(dice).toBe('1');await expect(button('Extend (1 die)')).toBeEnabled();
+    await expect.poll(dice).toBe('1');await expect(button('Extend telepathy (1 die)')).toBeEnabled();
     await page.getByRole('button',{name:/^Rest$/}).locator('visible=true').first().click();await button('Take Long Rest').click();
-    await expect.poll(dice).toBe('6');await expect(button('Extend (free)')).toBeEnabled();expect(errors).toEqual([]);
+    await expect.poll(dice).toBe('6');await expect(button('Extend telepathy (free)')).toBeEnabled();expect(errors).toEqual([]);
   });
 
   for (const secondary of [false,true]) for (const view of ['Actions','Features']) test(`Psionic Restoration from ${view} (${secondary?'secondary':'primary'} Psion) refills dice, persists and refreshes only after a Long Rest`,async({page},info)=>{
@@ -104,14 +127,27 @@ test.describe('Psionic Restoration (local stack)', () => {
     const button=(name:string)=>page.getByRole('button',{name,exact:true}).locator('visible=true').first();
     const warning=button('Check Psionic Energy Dice');
     await expect(warning).toBeDisabled({timeout:20_000});
-    for(const label of ['Powered (1 die)','Extend (free)','Roll bonus','Free 5 ft','Spend Die (1d8)'])await expect(button(label)).toBeDisabled();
+    await openConnection(page);for(const label of ['Extend telepathy (free)','Roll bonus','Spend Die (1d8)'])await expect(button(label)).toBeDisabled();
     expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('1.5');
+    const invalidPropel=page.locator('.arow-grid').filter({has:page.getByText('Telekinetic Propel',{exact:true})});
+    await invalidPropel.getByRole('button',{name:'Use / resume'}).click();
+    const invalidDialog=page.getByRole('dialog',{name:'Telekinetic Propel',exact:true});
+    await invalidDialog.getByLabel('Target',{exact:true}).fill('Tabletop goblin');await invalidDialog.getByRole('checkbox').check();
+    await invalidDialog.getByRole('button',{name:'Declare Bonus Action'}).click();
+    await expect(invalidDialog.getByRole('alert')).toContainText('Resources or feature eligibility changed');
+    expect(sql(`select count(*) from dndkeep_private.propel_declarations where character_id='${charId}'`)).toBe('0');
+    expect(sql(`select count(*) from dndkeep_private.action_claims where character_id='${charId}'`)).toBe('0');
+    await invalidDialog.getByRole('button',{name:'Close for later'}).click();
     await warning.evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));
     await page.screenshot({path:info.outputPath('invalid-psionic-pool.png')});
     await page.getByRole('button',{name:/^Rest$/}).locator('visible=true').first().click();
     await button('Take Long Rest').click();
     await expect.poll(()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('6');
-    await expect(button('Powered (1 die)')).toBeEnabled();await expect(button('Extend (free)')).toBeEnabled();
+    await expect(button('Extend telepathy (free)')).toBeEnabled();
+    const propel=page.locator('.arow-grid').filter({has:page.getByText('Telekinetic Propel',{exact:true})});
+    await propel.getByRole('button',{name:'Use / resume'}).click();
+    const dialog=page.getByRole('dialog',{name:'Telekinetic Propel',exact:true});
+    await expect(dialog.locator('option[value="powered"]')).toBeEnabled();await dialog.getByRole('button',{name:'Close for later'}).click();
     await button('Spend Die (1d8)').click();
     await expect.poll(()=>sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('5');
     await button('Spend Die (1d8)').click();
@@ -120,41 +156,67 @@ test.describe('Psionic Restoration (local stack)', () => {
   });
 
   for(const secondary of [false,true])test(`Surge (${secondary?'secondary':'primary'} Psion) boosts base powers while preserving their separate Energy Die costs`,async({page},info)=>{
-    // A slow history insert must not discard the next independent power.
-    let release!:()=>void;const pending=new Promise<void>(r=>release=r);
-    let delayed=false,heldConnection=false;
-    await page.route('**/rest/v1/action_logs*',async route=>{
-      if(!delayed && route.request().method()==='POST' && route.request().postDataJSON()?.action_name==='Telekinetic Propel') {
-        delayed=true;await pending;
-      }
-      if(route.request().method()==='POST' && route.request().postDataJSON()?.action_name==='Telepathic Connection'){heldConnection=true;await pending;}
-      await route.continue();
-    });
-    try {
     sql(`update characters set level=7,hit_dice_spent=0 where id='${charId}'`);
     if(secondary)sql(`update characters set class_name='Fighter',level=11,subclass='Champion',secondary_class='Psion',secondary_level=7,secondary_subclass='Telepath',intelligence=18 where id='${charId}'`);
     await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
     const button=(name:string)=>page.getByRole('button',{name,exact:true}).locator('visible=true').first();
-    await expect(button('Powered (1 die)')).toBeVisible({timeout:20_000});
+    const ability=page.locator('.arow-grid').filter({has:page.getByText('Telekinetic Propel',{exact:true})});
+    await expect(ability.getByRole('button',{name:'Use / resume'})).toBeVisible({timeout:20_000});
+    const propel=page.getByRole('dialog',{name:'Telekinetic Propel',exact:true});
+    const spendSurge=async(sides=6)=>{if(secondary)await page.getByRole('button',{name:new RegExp(`^Spend 1d${sides} ·`)}).click();else await button('Spend 1 Hit Point Die').click();};
+    const declare=async()=>{
+      await ability.getByRole('button',{name:'Use / resume'}).click();
+      await propel.getByLabel('Target',{exact:true}).fill('Tabletop goblin');await propel.getByRole('checkbox').check();
+      await propel.getByLabel('Movement',{exact:true}).selectOption('powered');await propel.getByRole('button',{name:'Declare Bonus Action'}).click();
+      await spendSurge();
+    };
+    const closeAndEndTurn=async()=>{
+      await propel.getByRole('button',{name:'Close for later'}).click();await page.getByRole('button',{name:/End Turn/}).locator('visible=true').first().click();
+      await expect(page.getByRole('button',{name:'Bonus Action Available',exact:true})).toBeEnabled();
+    };
     await page.evaluate(()=>{Math.random=()=>0.01;});
     const resources=()=>sql(`select hit_dice_spent||':'||(class_resources->>'psionic-energy-dice') from characters where id='${charId}'`);
-    await button('Powered (1 die)').click();await button('Spend 1 Hit Point Die').click();
-    const propel=page.getByRole('dialog',{name:'Telekinetic Propel'});
-    await expect(propel).toContainText('Psionic Surge treats 1 as 4: 20 ft');
-    if(secondary)await expect(propel).toContainText('DC 18 Strength');
+    await declare();await expect(propel).toContainText('Saved dice total: 4.');
+    await expect(propel.getByTestId('propel-movement')).toHaveCount(0);
+    if(secondary)await expect(propel).toContainText('Strength save DC 18');
     await expect.poll(resources).toBe('1:2');
     await page.screenshot({path:info.outputPath('surged-propel.png')});
-    await button('Save passed').click();await expect(propel).toBeHidden();expect(resources()).toBe('1:2');
-    await button('Extend (free)').click();await button('Extend telepathy').click();await button('Spend 1 Hit Point Die').click();
-    await expect.poll(resources).toBe('2:2');await expect(button('Extend (1 die)')).toBeEnabled();
-    await expect.poll(()=>heldConnection).toBe(true);expect(delayed).toBe(true);release();
-    await expect.poll(()=>sql(`select count(*) from action_logs where character_id='${charId}' and action_name='Telepathic Connection' and notes like 'Telepathy range 100 ft%'`)).toBe('1');
-    await button('Powered (1 die)').click();await button('Spend 1 Hit Point Die').click();
-    await expect(propel).toBeVisible();await button('Cancel').click();await expect.poll(resources).toBe('3:2');
-    await button('Extend (1 die)').click();await button('Extend telepathy').click();await button('Keep roll of 1').click();
+    await button('Save passed').click();await expect(propel.getByRole('status')).toContainText('Saved: passed.');expect(resources()).toBe('1:2');await closeAndEndTurn();
+    await openConnection(page);await button('Extend telepathy (free)').click();await button('Roll and extend').click();await spendSurge(10);
+    await expect.poll(resources).toBe('2:2');await expect(button('Extend telepathy (1 die)')).toBeEnabled();
+    await expect.poll(()=>sql(`select roll_result->>'total' from dndkeep_private.connection_declarations where character_id='${charId}'`)).toBe('4');
+    await expect(page.getByRole('region',{name:'Telepathic Connection controls'})).toContainText('Telepathy · 100 ft');
+    await endConnectionTurn(page);
+    await declare();await expect(propel).toContainText('Saved dice total: 4.');
+    await propel.getByRole('button',{name:'Cancel use',exact:true}).click();
+    await page.getByRole('dialog',{name:'Cancel this Propel use?'}).getByRole('button',{name:'Cancel use',exact:true}).click();
+    await expect(propel.getByRole('status')).toContainText('Saved: cancelled.');await expect.poll(resources).toBe('3:2');await closeAndEndTurn();
+    expect(sql(`select count(*) from dndkeep_private.connection_declarations where character_id='${charId}'`)).toBe('1');
+    await button('Extend telepathy (1 die)').click();await button('Roll and extend').click();await button(secondary?'Keep original roll':'Keep roll of 1').click();
     await expect.poll(resources).toBe('3:1');
-    await page.reload();await expect(button('Powered (1 die)')).toBeVisible();expect(resources()).toBe('3:1');
-    } finally {release();}
+    await page.reload();await expect(ability.getByRole('button',{name:'Use / resume'})).toBeVisible();expect(resources()).toBe('3:1');
+    if(secondary)expect(JSON.parse(sql(`select hit_dice_spent_by_type from characters where id='${charId}'`))).toEqual({'6':2,'10':1});
+  });
+
+  test('invalid Restoration uses block meditation without changing the saved pool',async({page},info)=>{
+    sql(`update characters set class_resources=class_resources || '{"psionic-restoration":"1"}'::jsonb where id='${charId}'`);
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+    const payments:string[]=[];page.on('request',r=>{if(r.url().includes('/rpc/settle_psionic_energy'))payments.push(r.url());});
+    await signInAsSeedDm(page,email);await page.goto(`/character/${charId}`);
+    const warning=page.getByRole('button',{name:'Check Psionic Restoration uses',exact:true}).locator('visible=true').first();
+    await expect(warning).toBeDisabled({timeout:20_000});
+    await warning.evaluate(el=>el.scrollIntoView({block:'center',behavior:'instant'}));
+    await page.screenshot({path:`.tmp/restoration-guard-${info.project.name}.png`});
+    if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
+      const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');
+      const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
+      await warning.evaluate(el=>el.setAttribute('data-restoration-check','true'));
+      const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[data-restoration-check]')");
+      const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);
+    }
+    expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${charId}'`)).toBe('2');
+    expect(sql(`select count(*) from psionic_energy_uses where character_id='${charId}'`)).toBe('0');
+    expect(payments).toEqual([]);expect(errors).toEqual([]);
   });
 
 });

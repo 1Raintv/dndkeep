@@ -27,8 +27,16 @@ export function psionicRestorationStatus(character:PsionicRestorationState) {
   const raw=resources['psionic-energy-dice'];
   const pool=psionicPoolRemaining(level,raw);
   const remaining=pool??0;
-  const used=(character.feature_uses?.['Psionic Restoration']??0)>0 || resources['psionic-restoration']===0;
-  const reason=!progression||level<5?'Requires Psion level 5':pool===null?'Check Psionic Energy Dice':used?'Used · Long Rest':remaining===maximum?'Dice full':null;
+  // v2.869 — match the server's saved-use guard before inviting meditation.
+  // Missing legacy counters are allowed; null, strings and fractional counters
+  // are not evidence that the once-per-Long-Rest use is still available.
+  const restoration=resources['psionic-restoration'];
+  const spent=character.feature_uses?.['Psionic Restoration'];
+  const validRestoration=restoration===undefined||restoration===0||restoration===1;
+  const validSpent=spent===undefined||(typeof spent==='number'&&Number.isSafeInteger(spent)&&spent>=0);
+  const validTrackers=validRestoration&&validSpent;
+  const used=(typeof spent==='number'&&spent>0) || restoration===0;
+  const reason=!progression||level<5?'Requires Psion level 5':pool===null?'Check Psionic Energy Dice':!validTrackers?'Check Psionic Restoration uses':used?'Used · Long Rest':remaining===maximum?'Dice full':null;
   return {maximum,remaining,recovered:pool===null?0:maximum-remaining,used,reason};
 }
 export function restorePsionicDice(character:PsionicRestorationState) {

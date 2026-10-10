@@ -1,3 +1,4 @@
+import {notifyActionBudgetChanged} from './actionBudget';
 import type {ConfirmedSpellAction} from '../../rules/spellActionCost';
 export type DeclaredSpellCast=PendingSpellCast&{actionContext?:ConfirmedSpellAction|null};
 import {supabase} from '../supabase';
@@ -48,11 +49,11 @@ export function declarePaidSpell(request:SpellDeclarationRequest):Promise<Declar
    p_spell_id:captured.spellId,p_spell_name:captured.spellName,p_slot:captured.slotLevel,p_expected_slot:captured.expectedSlot,p_context:captured.context});
   const row=(data as {cast?:Partial<PendingSpellCast>}|null)?.cast;
   const cast=verifiedCast(row,captured),action=(data as {actionContext?:unknown}).actionContext;
-  if(action===undefined||action===null)return {...cast,actionContext:null};
+  if(action===undefined||action===null){notifyActionBudgetChanged();return {...cast,actionContext:null};}
   const a=action as Partial<ConfirmedSpellAction>,uuid=(v:unknown)=>typeof v==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
   if(!uuid(a.encounterId)||a.encounterId!==cast.encounter_id||!uuid(a.turnId)||(a.currentTurnId!==null&&!uuid(a.currentTurnId))
    ||!['action','bonusAction','reaction'].includes(a.kind??'')||captured.context.actionKind!==a.kind)throw new Error('The casting action receipt could not be verified.');
-  return {...cast,actionContext:a as ConfirmedSpellAction};
+  notifyActionBudgetChanged();return {...cast,actionContext:a as ConfirmedSpellAction};
  })().finally(()=>{if(active.get(recordKey)?.promise===promise)active.delete(recordKey);});
  active.set(recordKey,{request:serialized,promise});return promise;
 }

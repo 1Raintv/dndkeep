@@ -1,4 +1,5 @@
-export type SpellActionKind='action'|'bonusAction'|'reaction';
+import type {ActionKind} from './actionBudget';
+export type SpellActionKind=ActionKind;
 export interface ConfirmedSpellAction {encounterId:string;turnId:string;currentTurnId:string|null;kind:SpellActionKind}
 /** v2.863: capture the action type when declaring, before reload/catalog changes. */
 export function spellActionKind(castingTime:string|null|undefined):SpellActionKind|undefined {

@@ -30,7 +30,7 @@ export default function PsionicRestorationButton({persistence,character}:{persis
   }
   return <button type="button" onClick={meditate} disabled={pending || !!status.reason}
     title={status.reason??`Recover ${status.recovered} Psionic Energy Dice after 1 minute`}
-    style={{padding:'6px 10px',fontSize:11,minHeight:36,borderRadius:6,color:'#c4b5fd',background:'rgba(167,139,250,0.15)',border:'1px solid rgba(167,139,250,0.45)'}}>
+    style={{minWidth:0,maxWidth:'100%',whiteSpace:'normal',overflowWrap:'anywhere',padding:'6px 10px',fontSize:11,minHeight:36,borderRadius:6,color:'#c4b5fd',background:'rgba(167,139,250,0.15)',border:'1px solid rgba(167,139,250,0.45)'}}>
     {status.reason??'Meditate (1 min)'}
   </button>;
 }

@@ -28,7 +28,7 @@ import type { Json } from '../types/supabase';
  *  resulting row will have a `combatants` property populated by
  *  Supabase's PostgREST FK join. */
 export const JOINED_COMBATANT_FIELDS =
-  'combatants:combatant_id ( current_hp, max_hp, temp_hp, ' +
+  'mutable_form_speed_bonus, combatants:combatant_id ( current_hp, max_hp, temp_hp, ' +
   'active_conditions, condition_sources, active_buffs, ' +
   'exhaustion_level, death_save_successes, death_save_failures, ' +
   'is_stable, is_dead )';

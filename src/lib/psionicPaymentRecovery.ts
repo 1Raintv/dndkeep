@@ -17,8 +17,9 @@ function valid(value:unknown):value is PendingPsionicPayment{
  if(v.kind==='healing')return validHitDiceHealingRequest(r);
  if(v.kind==='rest')return validPsionicRestRequest(r);
  if(!validPsionicEnhancementLink(r))return false;
- if((r.activationId!==undefined||r.effectRollId!==undefined)&&v.kind!=='surge'&&v.kind!=='enkindled')return false;
- if(v.kind==='surge')return ((r.activationId===undefined&&r.effectRollId===undefined)||r.hitDie!==undefined)&&dice(r.rolls,14)&&(r.hitDie===undefined||[6,8,10,12].includes(r.hitDie as number));
+ const linked=r.connectionId!==undefined||r.propelId!==undefined||r.activationId!==undefined||r.effectRollId!==undefined;
+ if(linked&&v.kind!=='surge'&&v.kind!=='enkindled')return false;
+ if(v.kind==='surge')return (!linked||r.hitDie!==undefined)&&dice(r.rolls,14)&&(r.hitDie===undefined||[6,8,10,12].includes(r.hitDie as number));
  if(v.kind==='energy')return Array.isArray(r.rolls)&&(
   (r.operation==='recover-die'&&r.count===1&&r.rolls.length===0&&r.sourceFeature==='Manual Energy Die recovery')||
   ((r.operation==='refresh-misty-step'||r.operation==='use-misty-step'||r.operation==='recover-misty-step')&&r.count===(r.operation==='refresh-misty-step'?1:0)&&r.rolls.length===0&&r.sourceFeature==='Free Misty Step (Teleportation)')||
@@ -27,6 +28,7 @@ function valid(value:unknown):value is PendingPsionicPayment{
   (r.operation==='spend'&&Number.isInteger(r.count)&&Number(r.count)>=1&&Number(r.count)<=12&&
    (r.rolls.length===0||(dice(r.rolls,12)&&r.rolls.length===r.count))));
  if(v.kind!=='enkindled'||!Number.isInteger(r.count)||Number(r.count)<1||Number(r.count)>2||!dice(r.baseRolls,12)||!dice(r.extraRolls,2)||(r.extraRolls as unknown[]).length!==r.count)return false;
+ if((r.connectionId!==undefined||r.propelId!==undefined||r.activationId!==undefined)&&(r.baseRolls as unknown[]).length!==1)return false;
  const turn=r.turn as Record<string,unknown>|undefined;
  return !!turn&&typeof turn==='object'&&(
   (Number.isSafeInteger(turn.soloTurn)&&Number(turn.soloTurn)>=0)||

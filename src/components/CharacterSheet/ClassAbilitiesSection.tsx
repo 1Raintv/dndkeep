@@ -29,7 +29,9 @@ import { formatOutcomesLog, type TargetOutcome } from '../../lib/classAbilityOut
 import { supabase } from '../../lib/supabase';
 import SlotBoxes, { PALETTE_TEAL, PALETTE_PSI, type SlotBoxesPalette } from './_shared/SlotBoxes';
 import PsionicDicePool from './_shared/PsionicDicePool';
-import PsionicPowerButton from './_shared/PsionicPowerButton';
+import ConnectionControls from './_shared/ConnectionControls';
+import PropelControls from './_shared/PropelControls';
+import TeleporterCombatControls from './_shared/TeleporterCombatControls';
 import ManualPropelResolution from './_shared/ManualPropelResolution';
 import {resolvePsionicPower,type PsionicPowerUse} from '../../rules/psionicPowers';
 import PsionicRestorationButton from './_shared/PsionicRestorationButton';
@@ -663,6 +665,8 @@ function ClassAbilityRows({ persistence, character, combatFilter, onUpdate, user
  {ability.name}
  </span>
  </div>
+ {/* Warp modifies the failed-save movement; this row never grants another action. */}
+ {ability.name==='Warp Propel'&&<div style={{fontSize:11,color:'var(--t-2)',whiteSpace:'normal'}}>Propel modifier · same Bonus Action</div>}
  </div>
 
  {/* Col 3: TIME — v2.500.0 — Pre-v2.500 this column was empty
@@ -797,7 +801,7 @@ function ClassAbilityRows({ persistence, character, combatFilter, onUpdate, user
  const target = e.target as HTMLElement;
  if (target.closest('button')) e.stopPropagation();
  }} style={{ display: 'flex', justifyContent: 'flex-end', gap: 4, flexWrap: 'nowrap' as const, alignItems: 'center', width: '100%' }}>
- {conditionalDiscipline?.id==='destructive-thoughts' ? <DestructiveThoughtsButton persistence={persistence} character={resourceCharacter} onUpdate={onUpdate}/> : conditionalDiscipline?.id==='biofeedback' ? <BiofeedbackButton persistence={persistence} character={resourceCharacter} onUpdate={onUpdate}/> : conditionalDiscipline?.conditionalOutcome ? <ConditionalPsionicButton persistence={persistence} character={resourceCharacter} discipline={conditionalDiscipline} onUpdate={onUpdate} campaignId={campaignId}/> : (['Telekinetic Propel','Warp Propel','Telepathic Connection'].includes(ability.name)) ? <PsionicPowerButton persistence={persistence} character={character} onUpdate={onUpdate} warp={ability.name==='Warp Propel'} kind={ability.name==='Telepathic Connection'?'connection':'propel'} onUse={async(use:PsionicPowerUse)=>{await handleUseAbility({...ability,psionicUse:use});}}/> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton persistence={persistence} character={character} onUpdate={onUpdate}/> : ability.psionicDie && (conditionalDiscipline || ability.actionType !== 'free') ? <PsionicDieRollButton persistence={persistence} character={resourceCharacter} onUpdate={onUpdate} feature={ability.name} label={conditionalDiscipline?.id==='psionic-guards'?'Activate Guards':conditionalDiscipline?'Use discipline':restingLabel} onRolled={(value,sides)=>setPsionicRollHistory(prev=>[{value,die:`d${sides}`},...prev].slice(0,5))}/> : ability.actionType !== 'free' && (
+ {ability.name==='Teleporter Combat' ? <TeleporterCombatControls character={resourceCharacter} userId={userId}/> : conditionalDiscipline?.id==='destructive-thoughts' ? <DestructiveThoughtsButton persistence={persistence} character={resourceCharacter} onUpdate={onUpdate}/> : conditionalDiscipline?.id==='biofeedback' ? <BiofeedbackButton persistence={persistence} character={resourceCharacter} onUpdate={onUpdate}/> : conditionalDiscipline?.conditionalOutcome ? <ConditionalPsionicButton persistence={persistence} character={resourceCharacter} discipline={conditionalDiscipline} onUpdate={onUpdate} campaignId={campaignId}/> : (['Telekinetic Propel','Warp Propel'].includes(ability.name)) ? <PropelControls character={resourceCharacter} campaign={campaign} persistence={persistence} warp={ability.name==='Warp Propel'}/> : ability.name==='Telepathic Connection' ? <button style={{minHeight:36,padding:'6px 10px'}} onClick={()=>setExpandedAbility(isExpanded?null:ability.name)}>Range / extend</button> : ability.name==='Psionic Restoration' ? <PsionicRestorationButton persistence={persistence} character={character} onUpdate={onUpdate}/> : ability.psionicDie && (conditionalDiscipline || ability.actionType !== 'free') ? <PsionicDieRollButton persistence={persistence} character={resourceCharacter} onUpdate={onUpdate} feature={ability.name} label={conditionalDiscipline?.id==='psionic-guards'?'Activate Guards':conditionalDiscipline?'Use discipline':restingLabel} onRolled={(value,sides)=>setPsionicRollHistory(prev=>[{value,die:`d${sides}`},...prev].slice(0,5))}/> : ability.actionType !== 'free' && (
  <button
  onClick={() => handleUseAbility(ability, maxUses !== undefined ? 1 : undefined)}
  disabled={isPedPoolRow && (psionicPoolRemaining(character.level,character.class_resources?.['psionic-energy-dice'])??0)<1}
@@ -872,6 +876,8 @@ function ClassAbilityRows({ persistence, character, combatFilter, onUpdate, user
  </div>
  );
  })()}
+
+ {ability.name==='Telepathic Connection'&&isExpanded&&<div style={{padding:12}}><ConnectionControls persistence={persistence} character={resourceCharacter}/></div>}
 
  {/* v2.324.0 — T3: description moved out of the always-visible band
      into the expanded panel. Short description renders first

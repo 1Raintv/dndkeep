@@ -46,3 +46,19 @@ it('secondary Psion meditation restores six dice rather than the primary level p
  await waitFor(()=>expect(update).toHaveBeenCalledOnce());
  expect(update).toHaveBeenCalledWith({class_resources:{'psionic-energy-dice':6,'psionic-restoration':0,other:3},feature_uses:{'Psionic Restoration':1}});
 });
+
+it('blocks malformed saved uses before opening meditation',()=>{
+ const update=vi.fn();const c={...initial,class_resources:{...initial.class_resources,'psionic-restoration':'1'}} as unknown as Character;
+ render(<ModalProvider><PsionicRestorationButton character={c} onUpdate={update}/></ModalProvider>);
+ const button=screen.getByRole('button',{name:'Check Psionic Restoration uses'}) as HTMLButtonElement;
+ expect(button.disabled).toBe(true);fireEvent.click(button);
+ expect(screen.queryByRole('button',{name:'Complete meditation'})).toBeNull();expect(update).not.toHaveBeenCalled();
+});
+it('rechecks malformed counters arriving while meditation confirmation is open',async()=>{
+ const update=vi.fn();const view=render(<ModalProvider><PsionicRestorationButton character={initial} onUpdate={update}/></ModalProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Meditate (1 min)'}));
+ const c={...initial,feature_uses:{'Psionic Restoration':-1}};
+ view.rerender(<ModalProvider><PsionicRestorationButton character={c} onUpdate={update}/></ModalProvider>);
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Complete meditation'})));
+ expect(update).not.toHaveBeenCalled();
+});

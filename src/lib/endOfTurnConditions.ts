@@ -1,5 +1,4 @@
-import {rollSavingThrow} from '../rules/savingThrows';
-import {getPsionicGuardsSaveAdvantage} from './api/psionicDisciplines';
+import {resolveConditionTurnSave} from './api/conditionTurnSaves';
 // v2.445.0 — End-of-turn condition processing.
 //
 // Called by advanceTurn(encounterId) on the OUTGOING participant
@@ -33,9 +32,7 @@ import {getPsionicGuardsSaveAdvantage} from './api/psionicDisciplines';
 // gets handled naturally by this processor running for each in turn.
 
 import { supabase } from './supabase';
-import { emitCombatEvent, newChainId } from './combatEvents';
 import { JOINED_COMBATANT_FIELDS, normalizeParticipantRow } from './combatParticipantNormalize';
-import { getTargetSaveBonus } from './pendingAttack';
 import { removeCondition } from './conditions';
 // v2.476.0 — Cross-encounter immunity dual-write (Ship 2 of arc).
 import { grantImmunity, resolveParticipantToEntity, type ResolvedEntity } from './campaignImmunities';
@@ -53,6 +50,7 @@ interface ConditionSourceEntry {
 
 export interface ProcessEndOfTurnConditionsInput {
   participantId: string;
+  turnId: string;
   campaignId: string;
   encounterId: string;
   /** The current round when the turn ended. Round-bound expiry uses
@@ -85,12 +83,13 @@ export async function processEndOfTurnConditions(
     persisted: [],
   };
 
-  const { data: partRaw } = await (supabase as any)
+  const { data: partRaw, error: readError } = await (supabase as any)
     .from('combat_participants')
     .select('combatant_id, entity_id, participant_type, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .maybeSingle();
-  if (!partRaw) return result;
+  if (readError) throw new Error(readError.message);
+  if (!partRaw) throw new Error('The outgoing combatant could not be loaded.');
   const part = normalizeParticipantRow(partRaw);
   const combatantId = (part.combatant_id as string | null) ?? null;
   if (!combatantId) return result;
@@ -112,71 +111,18 @@ export async function processEndOfTurnConditions(
   const grantTuples: Array<{ sourceKind: string; sourceParticipantId: string }> = [];
 
   // Phase A — Re-save for any condition with a save_to_end spec.
-  // Iterate over a snapshot of `conds` because removeCondition mutates
+  // Iterate over a snapshot of `conds` because settlement mutates
   // underlying combatants row. Derived entries are skipped in both phases.
   for (const condName of conds.slice()) {
     const src = sources[condName];
     // v2.847: derived effects follow their parent, never a second save/expiry.
     if (!src || src.source?.startsWith('cascade:') || !src.save_to_end) continue;
 
-    const { ability, dc } = src.save_to_end;
-    const sb = await getTargetSaveBonus(input.participantId, ability);
-    // v2.821: Guards lasts through this outgoing turn. The next turn's
-    // clock is advanced only after upkeep, so read protection before rolling.
-    const advantage=part.participant_type==='character' && !!part.entity_id &&
-      await getPsionicGuardsSaveAdvantage(part.entity_id,ability);
-    const {d20,total,passed,rolls}=rollSavingThrow(sb.bonus,dc,{advantage,naturalExtremes:sb.naturalExtremes});
-
-    await emitCombatEvent({
-      campaignId: input.campaignId,
-      encounterId: input.encounterId,
-      chainId: newChainId(),
-      sequence: 0,
-      actorType: input.participantType === 'character' ? 'player'
-                : input.participantType === 'creature' || input.participantType === 'monster' || input.participantType === 'npc' ? 'monster'
-                : 'system',
-      actorName: input.participantName,
-      targetType: 'self',
-      targetName: input.participantName,
-      eventType: 'condition_resave',
-      payload: {
-        condition: condName,
-        d20,
-        total,
-        bonus: sb.bonus,
-        dc,
-        ability,
-        passed,
-        trigger: 'end_of_turn',
-        advantage,
-        psionic_guards: advantage,
-        individual_results: rolls,
-      },
-      visibility: input.hiddenFromPlayers ? 'hidden_from_players' : 'public',
-    });
-
-    if (passed) {
-      // Remove condition + record source-keyed immunity for the rest
-      // of the encounter. Strict RAW grants 24-hour immunity which
-      // would persist across encounters; that's a future ship.
-      await removeCondition({
-        participantId: input.participantId,
-        conditionName: condName,
-        campaignId: input.campaignId,
-        encounterId: input.encounterId,
-      });
-      if (src.source_kind && src.source_attacker_id) {
-        grantTuples.push({
-          sourceKind: src.source_kind,
-          sourceParticipantId: src.source_attacker_id,
-        });
-      }
-      result.endedBySave.push(condName);
-      // Also remove from local sources so phase B doesn't touch it.
-      delete sources[condName];
-    } else {
-      result.persisted.push(condName);
-    }
+    const save=await resolveConditionTurnSave({participantId:input.participantId,turnId:input.turnId,condition:condName});
+    if(save.passed){
+      // Removal, immunity and event already committed with the save receipt.
+      result.endedBySave.push(condName);delete sources[condName];
+    }else result.persisted.push(condName);
   }
 
   // Phase B — Round-bound expiry. Run AFTER re-saves so we don't
@@ -214,9 +160,9 @@ export async function processEndOfTurnConditions(
   // campaign_condition_immunities table got the cross-encounter row.
   // Ship 5 dropped the legacy column; only the new-table write remains.
   //
-  // grantTuples was populated as we walked Phase A + Phase B above —
-  // it carries (sourceKind, sourceParticipantId) for every condition
-  // that ended via save or auto-expiry. We resolve unique source
+  // grantTuples contains only duration-expiry grants; successful re-saves
+  // commit immunity in their transaction. This list carries each condition
+  // that ended via auto-expiry. We resolve unique source
   // participant_ids → entity_ids in batch and UPSERT one row per
   // grant against campaign_condition_immunities.
   //

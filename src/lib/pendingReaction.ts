@@ -1,3 +1,6 @@
+import {attackReactionOffers} from './api/attackReactionOffers';
+import {readMutableFormBenefits} from './api/mutableForm';
+import {hasTelekineticDisorient} from '../rules/telekineticTechniques';
 // v2.98.0 — Phase E of the Combat Backbone
 //
 // Reaction offer lifecycle + Shield (the reference implementation).
@@ -648,24 +651,29 @@ export async function offerReactionsFor(
   attack: PendingAttack,
   triggerPoint: 'post_attack_roll' | 'post_damage_roll' | 'pre_damage_applied',
 ): Promise<number> {
+  const saved=await attackReactionOffers(attack.id,triggerPoint,null,null);
+  if(saved!==null)return saved;
+  const finish=(keys:string[])=>attackReactionOffers(attack.id,triggerPoint,attack.updated_at,keys).then(n=>n!);
   // Load the target participant and — if character — its character row
-  if (!attack.target_participant_id) return 0;
-  const { data: tgt } = await supabase
+  if (!attack.target_participant_id) return finish([]);
+  const { data: tgt, error: targetError } = await supabase
     .from('combat_participants')
     .select('id, name, participant_type, entity_id, reaction_used')
     .eq('id', attack.target_participant_id)
     .single();
-  if (!tgt) return 0;
-  if (tgt.reaction_used) return 0;              // already used reaction this round
+  // v2.869: an unreadable reactor is not proof that no reaction is eligible.
+  if (targetError || !tgt) throw new Error('Reaction target could not be verified. Refresh the attack before continuing.');
+  if (tgt.reaction_used) return finish([]);              // already used reaction this round
 
   let reactorChar: Character | null = null;
   if (tgt.participant_type === 'character') {
-    const { data: c } = await supabase
+    const { data: c, error: characterError } = await supabase
       .from('characters')
       .select('*')
       .eq('id', tgt.entity_id)
       .single();
-    reactorChar = (c as Character) ?? null;
+    if (characterError || !c) throw new Error('Reaction character could not be verified. Refresh the attack before continuing.');
+    reactorChar = c as Character;
   }
 
   // v2.128.0 — Phase K: compute reactor↔attacker Chebyshev distance from
@@ -676,14 +684,15 @@ export async function offerReactionsFor(
   if (attack.attacker_participant_id) {
     const { loadActiveBattleMap, findTokenForParticipant, distanceBetweenTokensFt } =
       await import('./battleMapGeometry');
-    const bmap = await loadActiveBattleMap(attack.campaign_id);
+    const bmap = await loadActiveBattleMap(attack.campaign_id, {throwOnError:true});
     if (bmap) {
       // Target participant = reactor; already have tgt. Attacker needs a lookup.
-      const { data: atkPart } = await supabase
+      const { data: atkPart, error: attackerError } = await supabase
         .from('combat_participants')
         .select('id, name, participant_type, entity_id')
         .eq('id', attack.attacker_participant_id)
         .maybeSingle();
+      if (attackerError || !atkPart) throw new Error('Reaction range could not be verified. Refresh the attack before continuing.');
       if (atkPart) {
         const reactorToken = findTokenForParticipant(tgt as any, bmap.tokens);
         const attackerToken = findTokenForParticipant(atkPart as any, bmap.tokens);
@@ -695,35 +704,8 @@ export async function offerReactionsFor(
   }
 
   const candidates = REACTION_REGISTRY.filter(r => r.triggerPoint === triggerPoint);
-  const offers: Omit<PendingReaction, 'id' | 'created_at' | 'updated_at'>[] = [];
-
-  for (const entry of candidates) {
-    if (entry.isEligible({ attack, reactorCharacter: reactorChar, reactorToAttackerFt })) {
-      const offeredAt = new Date();
-      const expiresAt = new Date(offeredAt.getTime() + DEFAULT_TIMER_SECONDS * 1000);
-      offers.push({
-        campaign_id: attack.campaign_id,
-        pending_attack_id: attack.id,
-        reactor_participant_id: tgt.id,
-        reactor_name: tgt.name,
-        reactor_type: tgt.participant_type as 'character' | 'monster' | 'npc',
-        reaction_key: entry.key,
-        reaction_name: entry.name,
-        trigger_point: triggerPoint,
-        offered_at: offeredAt.toISOString(),
-        expires_at: expiresAt.toISOString(),
-        decided_at: null,
-        state: 'offered',
-        decision_payload: null,
-      });
-    }
-  }
-
-  if (offers.length > 0) {
-    await checkedWrite('pending_reactions.insert offers', { count: offers.length }, supabase.from('pending_reactions').insert(offers));
-  }
-
-  return offers.length;
+  const keys=candidates.filter(entry=>entry.isEligible({attack,reactorCharacter:reactorChar,reactorToAttackerFt})).map(entry=>entry.key);
+  return finish(keys);
 }
 
 /**
@@ -906,7 +888,7 @@ export async function offerOpportunityAttacks(
   const pdata = ((pdataRaw ?? []) as any[]).map(normalizeParticipantRow);
   const participants = (pdata ?? []) as Array<{
     id: string; name: string; participant_type: 'character' | 'monster' | 'npc';
-    entity_id: string; combatant_id: string | null; is_dead: boolean; reaction_used: boolean;
+    entity_id: string; combatant_id: string | null; is_dead: boolean; reaction_used: boolean; active_buffs?: unknown;
   }>;
 
   // Eligibility checks per candidate reactor:
@@ -923,6 +905,7 @@ export async function offerOpportunityAttacks(
     if (reactor.id === input.moverParticipantId) continue;
     if (reactor.is_dead) continue;
     if (reactor.reaction_used) continue;
+    if (hasTelekineticDisorient(reactor.active_buffs)) continue;
 
     // Hostility: characters are hostile to monsters/npcs and vice versa.
     // Future Phase H can expand with per-campaign factions if needed.
@@ -964,8 +947,15 @@ export async function offerOpportunityAttacks(
     const cellsFromStart = gapToCell(input.fromRow, input.fromCol);
     const cellsFromEnd = gapToCell(input.toRow, input.toCol);
 
-    const hadInReach = cellsFromStart <= STANDARD_REACH_CELLS;
-    const stillInReach = cellsFromEnd <= STANDARD_REACH_CELLS;
+    // v2.869 — resolve the saved form at movement time. A stale sheet badge
+    // must not offer an attack while the mover remains inside extended reach.
+    // Read failures propagate before the batched insert; never guess base reach.
+    // Weapon-specific reach selection remains a separate OA limitation.
+    const form = reactor.participant_type === 'character'
+      ? await readMutableFormBenefits(reactor.entity_id) : null;
+    const reachCells = STANDARD_REACH_CELLS + (form?.reachBonus ?? 0) / 5;
+    const hadInReach = cellsFromStart <= reachCells;
+    const stillInReach = cellsFromEnd <= reachCells;
     if (!hadInReach || stillInReach) continue;
 
     const offeredAt = new Date();

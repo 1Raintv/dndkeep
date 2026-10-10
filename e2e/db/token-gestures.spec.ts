@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
 import { gateDbSuite, signInAsSeedDm } from './helpers';
 import { SAVE_TIMEOUT_MS } from '../../src/components/Campaign/battlemap/saveTimeout';
@@ -103,6 +104,81 @@ test.describe('token gestures (local stack)', () => {
     } finally {
       release();await page.unroute('**/rest/v1/scene_token*');
       await page.evaluate(async original=>{const p='/src/lib/api/tokensApiRouter.ts';const api=await import(/* @vite-ignore */ p);if((window as any).__moveCampaignId)await api.updateTokenPos(original.id,original.x,original.y,{campaignId:(window as any).__moveCampaignId});},token);
+    }
+  });
+  test('a delayed refresh does not redraw a token removed by a newer event',async({page},info)=>{
+    await openMap(page);const token=await ilyana(page),campaignId=await campaignIdOf(page);
+    let captured!:()=>void,release!:()=>void;const ready=new Promise<void>(r=>captured=r),held=new Promise<void>(r=>release=r);let first=true;
+    await page.route('**/rest/v1/scene_token*',async route=>{
+      if(first&&route.request().method()==='GET'){first=false;const response=await route.fetch();captured();await held;await route.fulfill({response});}else await route.continue();
+    });
+    const drawn=()=>page.evaluate(id=>{
+      const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);
+      return vp.children.flatMap((c:any)=>c.children??[]).some((c:any)=>c.__tokenId===id);
+    },token.id);
+    try{
+      await page.evaluate(async campaignId=>{const p='/src/components/Campaign/battlemap/refreshSceneTokens.ts';const {refreshSceneTokens}=await import(/* @vite-ignore */ p);const s='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ s);(window as any).__lateDeleteRefresh=refreshSceneTokens(useBattleMapStore.getState().currentSceneId,campaignId);},campaignId);
+      await ready;
+      // Simulate the store update made by a newer deletion event; preserve the shared fixture in the database.
+      await page.evaluate(async id=>{const s='/src/lib/stores/battleMapStore.ts';const {useBattleMapStore}=await import(/* @vite-ignore */ s);useBattleMapStore.getState().removeToken(id);},token.id);
+      await expect.poll(drawn).toBe(false);release();await page.evaluate(()=>(window as any).__lateDeleteRefresh);
+      expect((await state(page)).tokens[token.id]).toBeUndefined();await expect.poll(drawn).toBe(false);
+      await page.screenshot({path:info.outputPath('deleted-token-stays-absent.png')});
+    }finally{release();await page.unroute('**/rest/v1/scene_token*');}
+  });
+  test('editing and modal arrows cannot nudge the selected map token',async({page})=>{
+    await openMap(page);const token=await ilyana(page);const point=await tokenPoint(page,token.id);await page.mouse.click(point.x,point.y);
+    await expect(page.getByRole('button',{name:'Find selection',exact:true})).toBeEnabled();
+    let writes=0;await page.route('**/rest/v1/scene*',async route=>{
+      if(route.request().method()==='PATCH'){writes++;await route.fulfill({status:200,contentType:'application/json',body:'[]'});}else await route.continue();
+    });
+    // Positive control: a canvas arrow reaches the actual nudge handler. The
+    // rejected write keeps the shared fixture intact and restores its position.
+    await page.keyboard.press('ArrowRight');await expect.poll(()=>writes).toBe(1);
+    await expect.poll(()=>pendingOn(page,token.id)).toBe(false);
+    await expect.poll(async()=>(await state(page)).tokens[token.id].x).toBe(token.x);
+    for(const attributes of [{contenteditable:''},{contenteditable:'plaintext-only'},{role:'textbox'},{role:'dialog'}]){
+      await page.evaluate(attributes=>{const el=document.createElement('div');el.id='keyboard-owner';el.tabIndex=0;el.textContent='Map editing fixture';for(const [key,value] of Object.entries(attributes))el.setAttribute(key,value);document.body.append(el);el.focus();},attributes);
+      await page.keyboard.press('ArrowRight');await page.locator('#keyboard-owner').evaluate(el=>el.remove());
+    }
+    await page.evaluate(()=>{const modal=document.createElement('div');modal.id='keyboard-owner';modal.setAttribute('aria-modal','true');modal.style.cssText='position:fixed;top:0;left:0;width:100px;height:100px';document.body.append(modal);window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true}));});
+    await page.locator('#keyboard-owner').evaluate(el=>el.remove());
+    expect(writes).toBe(1);expect((await state(page)).tokens[token.id]).toMatchObject({x:token.x,y:token.y});
+  });
+  test('cancelling a confirmation keeps map fullscreen and selection intact',async({page},info)=>{
+    await openMap(page);const tokens=Object.values((await state(page)).tokens) as any[];
+    const selected=tokens.filter(t=>['Ilyana Vell','Nyx Quickfingers'].includes(t.name));expect(selected).toHaveLength(2);
+    for(const token of selected){const p=await tokenPoint(page,token.id);await page.keyboard.down('Shift');await page.mouse.click(p.x,p.y);await page.keyboard.up('Shift');}
+    await expect(page.getByText('2 selected',{exact:true})).toBeVisible();
+    await page.getByTitle('More selection actions').click();
+    await page.getByRole('toolbar',{name:'Selected tokens'}).getByRole('button',{name:'✕ Delete'}).click();
+    const confirm=page.getByRole('dialog',{name:'Delete 2 tokens?'});await expect(confirm).toBeVisible();
+    await page.keyboard.press('Escape');await expect(confirm).toBeHidden();
+    await expect(page.locator('.battle-map-fullscreen')).toBeVisible();await expect(page.getByText('2 selected',{exact:true})).toBeVisible();
+    for(const token of selected)expect((await state(page)).tokens[token.id]).toBeDefined();
+    await page.screenshot({path:info.outputPath('cancel-preserves-map.png')});
+    // Once the overlay is gone, an unobstructed Escape still exits the map.
+    await page.evaluate(()=>window.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true})));
+    await expect(page.locator('.battle-map-fullscreen')).toBeHidden();
+  });
+  test('selection controls stay beside the rail and clear of the header',async({page},info)=>{
+    await openMap(page);const tokens=Object.values((await state(page)).tokens) as any[];
+    for(const token of tokens.filter(t=>['Ilyana Vell','Nyx Quickfingers'].includes(t.name))){const p=await tokenPoint(page,token.id);await page.keyboard.down('Shift');await page.mouse.click(p.x,p.y);await page.keyboard.up('Shift');}
+    const bar=page.getByRole('toolbar',{name:'Selected tokens'});await expect(bar).toBeVisible();
+    for(const size of [page.viewportSize()!,{width:851,height:393}]){
+      await page.setViewportSize(size);await page.getByTitle('More selection actions').click();
+      await expect(bar.getByRole('button',{name:'✕ Delete'})).toBeVisible();
+      await expect.poll(async()=>{const b=(await bar.boundingBox())!;return b.x>=0&&b.x+b.width<=size.width&&b.y>=0&&b.y+b.height<=size.height;}).toBe(true);
+      if(size.width<=1000){const b=(await bar.boundingBox())!;expect(b.x).toBeGreaterThanOrEqual(76);expect(b.y).toBeGreaterThanOrEqual(50);expect(b.y).toBeLessThan(100);}
+      const exit=page.getByTitle('Exit fullscreen (Esc)',{exact:true}).locator('visible=true').first();
+      const b=(await bar.boundingBox())!,h=(await exit.boundingBox())!;expect(b.x>=h.x+h.width||b.x+b.width<=h.x||b.y>=h.y+h.height||b.y+b.height<=h.y).toBe(true);
+      if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
+        const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
+        const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('.map-selection-actions,.map-selection-actions *')");
+        const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);
+      }
+      await page.screenshot({path:info.outputPath(`selection-layout-${size.width}.png`)});
+      await page.getByTitle('More selection actions').click();
     }
   });
   test('map help uses the roomier side of a raised navigation dock',async({page},info)=>{
@@ -388,6 +464,33 @@ test.describe('token gestures (local stack)', () => {
     }
     expect((await state(page)).tokens).toEqual(before);expect(errors).toEqual([]);
   });
+  test('map navigation fits narrow phone widths without overlapping controls',async({page},info)=>{
+    await page.setViewportSize({width:320,height:740});await openMap(page);
+    const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
+    const selected=Object.values((await state(page)).tokens).filter((t:any)=>['Ilyana Vell','Nyx Quickfingers'].includes(t.name)) as any[];
+    expect(selected).toHaveLength(2);
+    for(const token of selected){const p=await tokenPoint(page,token.id);await page.keyboard.down('Shift');await page.mouse.click(p.x,p.y);await page.keyboard.up('Shift');}
+    const bar=page.getByRole('toolbar',{name:'Selected tokens'});await expect(bar).toBeVisible();await bar.getByTitle('More selection actions').click();
+    const nav=page.getByRole('toolbar',{name:'Map navigation'});
+    for(const width of [320,360,393]){
+      await page.setViewportSize({width,height:740});
+      await nav.getByRole('button',{name:'Fit map',exact:true}).click();
+      await page.screenshot({path:info.outputPath(`navigation-${width}.png`)});
+      const controls=page.locator('.map-navigation,.map-selection-actions').locator('button:enabled:visible,select:visible,summary:visible');
+      for(let i=0;i<await controls.count();i++)await controls.nth(i).click({trial:true,timeout:2500});
+      if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){
+        const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8'),body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();
+        const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('.map-navigation,.map-navigation *, .map-selection-actions,.map-selection-actions *')"),report=await page.evaluate('('+scoped+'\n})()');
+        expect(report.sideways).toBe(false);expect(report.clipped).toEqual([]);expect(report.pastEdge).toEqual([]);
+      }
+      const bounds=await controls.evaluateAll(els=>els.map(el=>{const r=el.getBoundingClientRect();return {label:el.getAttribute('aria-label')??el.textContent,x:r.x,y:r.y,right:r.right,bottom:r.bottom};}));
+      for(let i=0;i<bounds.length;i++)for(let j=i+1;j<bounds.length;j++){
+        const a=bounds[i],b=bounds[j],overlap=Math.min(a.right,b.right)-Math.max(a.x,b.x)>1&&Math.min(a.bottom,b.bottom)-Math.max(a.y,b.y)>1;
+        expect(overlap,`${a.label} overlaps ${b.label} at ${width}px`).toBe(false);
+      }
+    }
+    expect(errors).toEqual([]);
+  });
   test('camera keyboard shortcuts stay on the map and out of controls',async({page},info)=>{
     const errors:string[]=[];page.on('pageerror',e=>errors.push(String(e)));
     await openMap(page);
@@ -399,6 +502,16 @@ test.describe('token gestures (local stack)', () => {
     await page.keyboard.press('=');await expect(zoom).toHaveValue('120');
     await page.keyboard.press('-');await expect(zoom).toHaveValue('100');
     await page.mouse.down();await page.keyboard.press('=');await expect(zoom).toHaveValue('100');await page.mouse.up();
+    // A released touch and a separate mouse hover cannot unlock the remaining touch.
+    await page.evaluate(()=>{
+      for(const pointerId of [41,42])window.dispatchEvent(new PointerEvent('pointerdown',{pointerId,pointerType:'touch',buttons:1}));
+      window.dispatchEvent(new PointerEvent('pointerup',{pointerId:41,pointerType:'touch',buttons:0}));
+    });
+    await page.mouse.move(box.x+box.width/2+1,box.y+box.height/2);
+    await page.keyboard.press('=');await expect(zoom).toHaveValue('100');
+    await page.evaluate(()=>window.dispatchEvent(new PointerEvent('pointerup',{pointerId:42,pointerType:'touch',buttons:0})));
+    await page.keyboard.press('=');await expect(zoom).toHaveValue('120');
+    await page.keyboard.press('-');await expect(zoom).toHaveValue('100');
     await zoom.focus();await page.keyboard.press('=');await expect(zoom).toHaveValue('100');await zoom.blur();
     // v2.741 — simulate the brief focus gap after a dialog opens away from the pointer.
     const camera=()=>page.evaluate(()=>{const vp=(window as any).__PIXI_APP__.stage.children.find((c:any)=>c.plugins);return {x:vp.center.x,y:vp.center.y,scale:vp.scale.x};});
@@ -844,6 +957,7 @@ test.describe('token gestures (local stack)', () => {
 
   test('cancelled drag restores both accounts and ignores other pointers', async ({ page, browser }, info) => {
     test.setTimeout(60_000);
+    let restore:(()=>Promise<void>)|undefined;
     const peerContext = await browser.newContext();
     const peer = await peerContext.newPage();
     const errors: string[] = [];
@@ -863,6 +977,7 @@ test.describe('token gestures (local stack)', () => {
         return { id: t.__tokenId, sx: p.x, sy: p.y };
       }, Object.values(peerTokens).filter((t: any) => t.name === 'Ilyana Vell').map((t:any) => t.id));
       const origin = (await state(page)).tokens[token.id];
+      const campaignId=await campaignIdOf(page);restore=()=>setTokenPos(page,token.id,origin.x,origin.y,campaignId);
       const box = (await page.locator('canvas').first().boundingBox())!;
       await page.mouse.move(box.x+token.sx, box.y+token.sy);
       await page.mouse.down();
@@ -883,15 +998,27 @@ test.describe('token gestures (local stack)', () => {
         await expect.poll(async () => { const t=(await state(p)).tokens[token.id]; return [t.x,t.y]; }).toEqual([origin.x,origin.y]);
         await expect.poll(async () => (await state(p)).locks[token.id]).toBeFalsy();
       }
-      // Cancellation also releases the token for the very next gesture.
-      await page.mouse.move(box.x+token.sx, box.y+token.sy);
-      await page.mouse.down();
-      await page.mouse.move(box.x+token.sx+40, box.y+token.sy+10, { steps: 4 });
-      await expect.poll(async () => (await state(peer)).locks[token.id]).toBeTruthy();
-      await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 })));
-      await page.mouse.up();
-      await expect.poll(async () => (await state(peer)).tokens[token.id].x).toBe(origin.x);
-      await expect.poll(async () => (await state(peer)).locks[token.id]).toBeFalsy();
+      // Cancellation also releases the token for the next gesture, including
+      // a hidden tab that does not dispatch a window blur.
+      for(const cancellation of ['pointercancel','hidden'] as const){
+        await page.mouse.move(box.x+token.sx, box.y+token.sy);
+        await page.mouse.down();
+        await page.mouse.move(box.x+token.sx+40, box.y+token.sy+10, { steps: 4 });
+        await expect.poll(async () => (await state(peer)).locks[token.id]).toBeTruthy();
+        if(cancellation==='pointercancel')await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 })));
+        else await page.evaluate(()=>{
+          Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});
+          try{document.dispatchEvent(new Event('visibilitychange'));}
+          finally{delete (document as any).visibilityState;}
+        });
+        // Assert restoration BEFORE release: a late pointerup is not a drop.
+        for(const view of [page,peer]){
+          await expect.poll(async()=>{const t=(await state(view)).tokens[token.id];return [t.x,t.y];}).toEqual([origin.x,origin.y]);
+          await expect.poll(async()=>(await state(view)).locks[token.id]).toBeFalsy();
+        }
+        expect((await state(page)).dragging).toBeNull();
+        await page.mouse.up();
+      }
       expect(writes, 'cancelled gestures never persist a drop').toHaveLength(0);
       // A real drop snaps, persists, and reaches the other account. Move one
       // unobstructed cell inside the fixture guard room, then restore it.
@@ -914,7 +1041,7 @@ test.describe('token gestures (local stack)', () => {
       }
       expect(errors).toEqual([]);
       await page.screenshot({ path: info.outputPath('token-cancelled.png') });
-    } finally { await peerContext.close(); }
+    } finally { await page.mouse.up();try{await restore?.();}finally{await peerContext.close();} }
   });
 
   // ── v2.746 — drop-shift track ─────────────────────────────────────────

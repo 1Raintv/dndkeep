@@ -120,9 +120,6 @@ export function SelectionActionBar(props: {
       style={{
         zIndex: 30, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
         padding: '6px 10px',
-        background: 'rgba(15,16,18,0.94)',
-        border: '1px solid var(--c-border)',
-        boxShadow: '0 6px 20px rgba(0,0,0,0.45)',
         maxWidth: 'calc(100% - 24px)',
       }}
       // The canvas below listens for pointerdown to start a marquee;
@@ -142,7 +139,7 @@ export function SelectionActionBar(props: {
       </span>
       <button ref={moreRef} style={btn} type="button" aria-expanded={expanded} aria-controls={actionsId}
         onClick={()=>setExpanded(v=>!v)} title="More selection actions">{expanded?'Less':'More'}</button>
-      <button style={{ ...btn, color: 'var(--t-3)' }} disabled={busy} onClick={onClear} title="Clear selection (Esc)">
+      <button style={btn} disabled={busy} onClick={onClear} title="Clear selection (Esc)">
         Clear
       </button>
       <div id={actionsId} className="map-selection-more" hidden={!expanded}>

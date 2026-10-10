@@ -177,18 +177,18 @@ export interface WeaponItem {
   id: string;
   name: string;
   attackBonus: number;      // total to-hit modifier
+  /** Ability contribution alone; excludes proficiency, magic and other bonuses. */
+  attackAbilityModifier?: number;
   damageDice: string;       // e.g. "1d8"
   damageBonus: number;      // flat bonus to damage
   damageType: string;       // "slashing" | "piercing" | "bludgeoning" | etc.
   range: string;            // "Melee" | "Ranged (80/320 ft.)" etc.
   properties: string;       // comma-separated: "Versatile, Finesse" etc.
   notes: string;
-  // v2.87.0: Unarmed Strike 2024 PHB — shows Damage/Grapple/Shove mode picker
-  // instead of a simple damage button. Only set on the synthesized Unarmed
-  // Strike row; regular weapons leave this undefined. athleticsBonus supplies
-  // the STR mod + proficiency/expertise for the contested checks used by
-  // Grapple and Shove modes.
+  /** Synthesized Unarmed Strike row; base STR save DC is independent of skill expertise. */
   unarmedModes?: boolean;
+  unarmedSaveDC?: number;
+  /** Legacy display data; never use an Athletics bonus as the grapple/shove DC. */
   athleticsBonus?: number;
 }
 
@@ -366,6 +366,8 @@ export interface Character {
 
   // Conditions
   active_conditions: ConditionName[];
+  /** Persisted provenance distinguishes derived incapacity from independent effects. */
+  condition_sources?: Record<string, {source?: string; [key: string]: unknown}>;
   exhaustion_level?: number;  // 0-6 per 2024 rules; 0 = no exhaustion, 6 = death
 
   // v2.474.0 — Cross-encounter condition immunity snapshot. JSONB
@@ -403,6 +405,7 @@ export interface Character {
   advanced_deep_edits_unlocked?: boolean;
 
   // Death saves (only relevant when current_hp === 0)
+  is_stable?: boolean; // Explicit stable-at-zero-HP state.
   death_saves_successes: number;  // 0–3; three successes stabilizes the character
   death_saves_failures: number;   // 0–3; three failures = dead
 
@@ -860,6 +863,8 @@ export interface CombatParticipant {
   bonus_used: boolean;
   reaction_used: boolean;
   movement_used_ft: number;
+  /** Read-only projection from the current saved form; never persist to base Speed. */
+  mutable_form_speed_bonus?: 0 | 5;
   /** v2.399.0 — Multiattack support. attacks_per_action is the
    *  multiattack budget (1 by default; 3 for a creature with a
    *  Multiattack action; 2 for Fighters L5+). attacks_remaining
@@ -969,7 +974,7 @@ export interface PendingAttack {
 
   target_participant_id: string | null;
   target_name: string;
-  target_type: 'character' | 'monster' | 'npc' | 'object' | 'area' | 'self' | null;
+  target_type: 'character' | 'creature' | 'monster' | 'npc' | 'object' | 'area' | 'self' | null;
 
   attack_source: string | null;
   attack_mode?: 'melee' | 'ranged' | null;
@@ -978,9 +983,12 @@ export interface PendingAttack {
   attack_kind: AttackKind;
 
   attack_bonus: number | null;
+  attack_ability_modifier?: number | null;
+  graze_resolution_version?: 1 | null;
   target_ac: number | null;
   attack_d20: number | null;
   attack_total: number | null;
+  attack_roll_snapshot?: import('../rules/attackRollSnapshot').AttackRollSnapshot | null;
   hit_result: HitResult | null;
 
   save_dc: number | null;
@@ -988,6 +996,7 @@ export interface PendingAttack {
   save_success_effect: string | null;
   save_d20: number | null;
   save_total: number | null;
+  save_penalty?: {penalty:number;die:number|null;saveId:string;saveKind:string;consumedIds:string[];expiredIds:string[]} | null;
   save_result: SaveResult | null;
 
   damage_dice: string | null;
@@ -1032,7 +1041,7 @@ export interface PendingReaction {
   pending_attack_id: string | null;
   reactor_participant_id: string;
   reactor_name: string;
-  reactor_type: 'character' | 'monster' | 'npc';
+  reactor_type: 'character' | 'creature' | 'monster' | 'npc';
   reaction_key: string;           // 'shield' | 'uncanny_dodge' | ...
   reaction_name: string;          // 'Shield'
   trigger_point: ReactionTriggerPoint;

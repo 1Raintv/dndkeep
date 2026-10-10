@@ -72,6 +72,10 @@ test.describe('Counterspell source choices (local stack)',()=>{
    if(loseResponse){await expect.poll(()=>rpcBodies.length).toBe(2);expect(rpcBodies[1]).toBe(rpcBodies[0]);}
    expect(sql(`select count(*) from dndkeep_private.counterspell_acceptances where offer_id='${offer}'`)).toBe('1');
    expect(sql(`select count(*) from combat_events where campaign_id='${camp}' and event_type='reaction_used'`)).toBe('1');
+   await expect(page.getByRole('button',{name:'Reaction Used',exact:true})).toBeDisabled({timeout:10000});
+   await page.reload();await expect(page.getByRole('button',{name:'Reaction Used',exact:true})).toBeDisabled({timeout:10000});
+   expect(sql(`select count(*) from dndkeep_private.action_claims where request_id='${offer}' and grant_id='normal:reaction'`)).toBe('1');
+
    expect(errors).toEqual([]);
   }finally{
    sql(`delete from pending_reactions where campaign_id='${camp}';delete from pending_spell_casts where campaign_id='${camp}';delete from pending_attacks where campaign_id='${camp}';`);

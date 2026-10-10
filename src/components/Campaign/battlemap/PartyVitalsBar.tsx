@@ -13,10 +13,12 @@ export function PartyVitalsBar({characters,onCharacterClick}:{
  // Party occupies the left lane; dice buttons stay in the reserved right lane.
  useMapControlClearance(ref,false,!!characters?.length);
  const [collapsed,setCollapsed]=useState(()=>{
-  try{return typeof window!=='undefined'&&localStorage.getItem(PARTY_PANEL_COLLAPSED_KEY)==='1';}catch{return false;}
+  // v2.869: reserve scarce phone/landscape space unless the user chose otherwise.
+  const compact=typeof window!=='undefined'&&(window.matchMedia?.('(max-width: 600px), (max-height: 500px)').matches??false);
+  try{const saved=localStorage.getItem(PARTY_PANEL_COLLAPSED_KEY);return saved==='1'?true:saved==='0'?false:compact;}catch{return compact;}
  });
  const toggleCollapsed=useCallback(()=>setCollapsed(prev=>{
-  try{if(!prev)localStorage.setItem(PARTY_PANEL_COLLAPSED_KEY,'1');else localStorage.removeItem(PARTY_PANEL_COLLAPSED_KEY);}catch{/* Storage is optional. */}
+  try{localStorage.setItem(PARTY_PANEL_COLLAPSED_KEY,prev?'0':'1');}catch{/* Storage is optional. */}
   return !prev;
  }),[]);
  if(!characters?.length)return null;

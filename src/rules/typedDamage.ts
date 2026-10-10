@@ -1,4 +1,4 @@
-import {applyDamageAffinities,type DamageModifier} from './damageAffinities';
+import {DAMAGE_TYPES,applyDamageAffinities,type DamageModifier} from './damageAffinities';
 import {readDamageComponents,type DamageComponentRecord} from './damageComponents';
 import {sharpenedIgnoresResistance,type SharpenedDamageSource} from './sharpenedMindDamage';
 /** SRD 5.2.1 p.17: combine damage of the same type before its resistance;
@@ -13,7 +13,10 @@ const normalized=(s:string)=>s.trim().toLowerCase();
 export function resolveTypedDamage(record:DamageComponentRecord,defenses:TypedDamageDefenses,adjustments:TypedDamageAdjustment={},
  sharpened:{active:boolean;sources:Readonly<Record<string,SharpenedDamageSource>>}={active:false,sources:{}}):TypedDamageResult {
  const packet=readDamageComponents(record);
- if(!packet||![defenses.immune,defenses.resistant,defenses.vulnerable,adjustments.resistantTypes??[]].every(a=>Array.isArray(a)&&a.every(t=>typeof t==='string'))
+ const known=(v:unknown)=>typeof v==='string'&&(normalized(v)==='all'||DAMAGE_TYPES.some(t=>t===normalized(v)));
+ if(!packet||![defenses.immune,defenses.resistant,defenses.vulnerable,adjustments.resistantTypes??[]].every(a=>Array.isArray(a)&&a.every(known))
+  ||packet.components.some(c=>c.damageType!==null&&!DAMAGE_TYPES.some(t=>t===c.damageType))
+  ||(defenses.resistanceAll!==undefined&&typeof defenses.resistanceAll!=='boolean')
   ||![undefined,1,0.5,0].includes(adjustments.multiplier))throw new Error('Typed damage inputs could not be verified.');
  const matches=(values:readonly string[],type:string|null)=>type!==null&&values.some(v=>normalized(v)===type||normalized(v)==='all');
  const resisted=(type:string|null)=>!!defenses.resistanceAll||matches(defenses.resistant,type)||matches(adjustments.resistantTypes??[],type);

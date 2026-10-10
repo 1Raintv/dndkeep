@@ -5,6 +5,9 @@
   transform: translateX(-50%);
   border-radius: 14px;
   box-sizing: border-box;
+  background: linear-gradient(180deg,#242530,#171820);
+  border: 1px solid #454654;
+  box-shadow: 0 8px 24px #0009;
 }
 .map-selection-move { display: inline-flex; gap: 4px; }
 .map-selection-move button { min-width: 36px; min-height: 36px; }
@@ -12,15 +15,17 @@
 .map-selection-more[hidden] { display:none; }
 .map-selection-actions button:focus-visible { outline:2px solid #e4bd69;outline-offset:2px; }
 
-/* v2.699 — keep selection actions below the header and beside the tool rail. */
-@media (max-width: 600px) {
+/* v2.869 — stay below the header and beside the rail, including narrow landscape. */
+@media (max-width: 1000px) {
   .map-selection-actions {
-    top: 132px;
+    top: 60px;
     left: 76px;
     right: 12px;
     transform: none;
     border-radius: 12px;
   }
+}
+@media (max-width: 600px) {
   .map-selection-actions button { min-height: 40px; }
   .map-selection-move { order:2;width:100%; }
   .map-selection-move button { flex:1; }

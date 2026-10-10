@@ -31,3 +31,10 @@ it('rejects unsafe aggregate damage and vulnerability multiplication',()=>{
  expect(()=>resolveTypedDamage(packet([['psychic',Number.MAX_SAFE_INTEGER],['psychic',1]]),none)).toThrow('supported number range');
  expect(()=>resolveTypedDamage(packet([['psychic',Number.MAX_SAFE_INTEGER]]),{...none,vulnerable:['psychic']})).toThrow('supported number range');
 });
+
+it.each(['fire from spells','mystery',''])('requires review for unsupported defense %s',type=>{
+ expect(()=>resolveTypedDamage(packet([['fire',7]]),{...none,resistant:[type]})).toThrow('could not be verified');
+});
+it('rejects unknown component types instead of treating them as unresisted',()=>{
+ expect(()=>resolveTypedDamage(packet([['custom-energy',7]]),none)).toThrow('could not be verified');
+});

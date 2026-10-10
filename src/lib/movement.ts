@@ -1,3 +1,4 @@
+import {resetMovementAtomically} from './api/movementReset';
 // v2.107.0 — Phase G of the Combat Backbone
 //
 // Movement tracking: compute grid distance, check remaining speed, commit a
@@ -8,6 +9,7 @@
 // (v2.108) adds Dash, Disengage, and the Opportunity Attack reaction entry
 // that fires when a creature leaves a hostile's reach.
 
+import {hasTelekineticBoost} from '../rules/telekineticTechniques';
 import {combatMovementAllowance} from '../rules/combatMovement';
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
@@ -35,13 +37,15 @@ export function computeChebyshevFt(
 }
 
 /** Adapter shared by the map, initiative strip, validator and movement log. */
-export function movementAllowanceForParticipant(row:{is_dead?:boolean|null;max_speed_ft?:number|null;active_conditions?:string[]|null;exhaustion_level?:number|null;active_buffs?:unknown;dash_used_this_turn?:boolean|null}):number {
+export function movementAllowanceForParticipant(row:{is_dead?:boolean|null;max_speed_ft?:number|null;active_conditions?:string[]|null;exhaustion_level?:number|null;active_buffs?:unknown;dash_used_this_turn?:boolean|null;mutable_form_speed_bonus?:unknown}):number {
  const conditions=row.active_conditions??[];
  return combatMovementAllowance({baseSpeed:row.max_speed_ft??30,
   immobilized:row.is_dead===true||conditionsSpeedZero(conditions),halved:conditionsSpeedHalved(conditions),
   exhaustionLevel:row.exhaustion_level??0,
   masterySlowed:Array.isArray(row.active_buffs)&&row.active_buffs.some(b=>b?.key==='mastery_slowed'),
   dashed:row.dash_used_this_turn===true,
+  telekineticBoost:hasTelekineticBoost(row.active_buffs),
+  mutableForm:row.mutable_form_speed_bonus===5,
  });
 }
 
@@ -62,12 +66,13 @@ export async function canMove(
   participantId: string,
   distanceFt: number,
 ): Promise<MovementCheck> {
-  const { data: dataRaw } = await (supabase as any)
+  const { data: dataRaw,error } = await (supabase as any)
     .from('combat_participants')
     .select('movement_used_ft, max_speed_ft, dash_used_this_turn, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', participantId)
     .single();
-  const data = dataRaw ? normalizeParticipantRow(dataRaw) : dataRaw;
+  if(error||!dataRaw?.combatants||![0,5].includes(dataRaw.mutable_form_speed_bonus))throw new Error('Movement effects could not be verified. Refresh before moving.');
+  const data = normalizeParticipantRow(dataRaw);
 
   const currentUsed = (data?.movement_used_ft as number | null) ?? 0;
   const maxSpeed=movementAllowanceForParticipant(data??{});
@@ -90,6 +95,7 @@ export async function canMove(
 // per-turn movement budget for the remainder of the turn).
 
 export interface TakeDashInput {
+  turnId: string | undefined;
   campaignId: string;
   encounterId: string | null;
   participantId: string;
@@ -110,107 +116,19 @@ export type MovementActionResult =
   | { ok: true }
   | { ok: false; reason: string };
 
-export async function takeDash(input: TakeDashInput): Promise<MovementActionResult> {
-  const { data: cur, error: curErr } = await supabase
-    .from('combat_participants')
-    .select('dash_used_this_turn, action_used, max_speed_ft')
-    .eq('id', input.participantId)
-    .single();
-  if (curErr) {
-    console.error('[takeDash] fetch failed:', curErr);
-    return { ok: false, reason: curErr.message ?? 'Failed to load participant' };
-  }
-  if (!cur) return { ok: false, reason: 'Participant not found' };
-  if (cur.dash_used_this_turn) return { ok: false, reason: 'Already dashed this turn' };
-
-  const { error: updErr } = await supabase
-    .from('combat_participants')
-    .update({
-      dash_used_this_turn: true,
-      action_used: true,
-    })
-    .eq('id', input.participantId);
-  if (updErr) {
-    console.error('[takeDash] update failed:', updErr);
-    return { ok: false, reason: updErr.message ?? 'Failed to apply Dash' };
-  }
-
-  const chainId = newChainId();
-  await emitCombatEvent({
-    campaignId: input.campaignId,
-    encounterId: input.encounterId,
-    chainId,
-    sequence: 0,
-    actorType:
-      input.participantType === 'character' ? 'player'
-      : isCreatureParticipantType(input.participantType) ? 'creature'
-      : 'system',
-    actorName: input.participantName,
-    targetType: null,
-    targetName: null,
-    eventType: 'dash',
-    payload: {
-      bonus_ft: cur.max_speed_ft ?? 30,
-    },
-  });
-  return { ok: true };
+export function takeDash(input: TakeDashInput): Promise<MovementActionResult> {
+  return takeMovementAction(input,'dash');
 }
-
-// ─── Disengage ───────────────────────────────────────────────────
-// v2.108.0 — Phase G: take the Disengage action. Costs an action. Suppresses
-// Opportunity Attack offers for the rest of this turn.
-
-export interface TakeDisengageInput {
-  campaignId: string;
-  encounterId: string | null;
-  participantId: string;
-  participantName: string;
-  // v2.363.0 — see TakeDashInput note.
-  participantType: 'character' | 'creature' | 'monster' | 'npc';
+export type TakeDisengageInput=TakeDashInput;
+export function takeDisengage(input: TakeDisengageInput): Promise<MovementActionResult> {
+  return takeMovementAction(input,'disengage');
 }
-
-export async function takeDisengage(input: TakeDisengageInput): Promise<MovementActionResult> {
-  const { data: cur, error: curErr } = await supabase
-    .from('combat_participants')
-    .select('disengaged_this_turn, action_used')
-    .eq('id', input.participantId)
-    .single();
-  if (curErr) {
-    console.error('[takeDisengage] fetch failed:', curErr);
-    return { ok: false, reason: curErr.message ?? 'Failed to load participant' };
-  }
-  if (!cur) return { ok: false, reason: 'Participant not found' };
-  if (cur.disengaged_this_turn) return { ok: false, reason: 'Already disengaged this turn' };
-
-  const { error: updErr } = await supabase
-    .from('combat_participants')
-    .update({
-      disengaged_this_turn: true,
-      action_used: true,
-    })
-    .eq('id', input.participantId);
-  if (updErr) {
-    console.error('[takeDisengage] update failed:', updErr);
-    return { ok: false, reason: updErr.message ?? 'Failed to apply Disengage' };
-  }
-
-  const chainId = newChainId();
-  await emitCombatEvent({
-    campaignId: input.campaignId,
-    encounterId: input.encounterId,
-    chainId,
-    sequence: 0,
-    actorType:
-      input.participantType === 'character' ? 'player'
-      : isCreatureParticipantType(input.participantType) ? 'creature'
-      : 'system',
-    actorName: input.participantName,
-    targetType: null,
-    targetName: null,
-    eventType: 'disengage',
-    payload: {},
-  });
-  return { ok: true };
+async function takeMovementAction(input:TakeDashInput,kind:'dash'|'disengage'):Promise<MovementActionResult>{
+  try{
+    const {commitMovementAction}=await import('./api/movementActions');
+    await commitMovementAction(input.encounterId,input.participantId,input.turnId,kind);
+    return {ok:true};
+  }catch(error){return {ok:false,reason:error instanceof Error?error.message:'Movement action could not be confirmed.'};}
 }
 
 /**
@@ -291,35 +209,18 @@ export async function logMovement(input: LogMovementInput): Promise<void> {
     toCol: input.toCol,
   });
 
-  // v2.634.0 — Aura/Emanation movement triggers. Handles BOTH RAW
-  // directions: the mover walking into a stationary Emanation, and an
-  // Emanation origin moving so the area sweeps over creatures. Runs
-  // after the OA offers so the log reads in the order play happens.
-  // Defensive: an aura failure must never break movement.
-  if (input.encounterId) {
-    try {
-      const { evaluateAurasOnMovement } = await import('./auras');
-      await evaluateAurasOnMovement({
-        campaignId: input.campaignId,
-        encounterId: input.encounterId,
-        moverParticipantId: input.participantId,
-        fromRow: input.fromRow,
-        fromCol: input.fromCol,
-        toRow: input.toRow,
-        toCol: input.toCol,
-      });
-    } catch (err) {
-      console.error('[logMovement] aura movement evaluation failed', err);
-    }
-  }
+  // v2.869: the token transaction records movement aura evidence. The DM
+  // reviews it through the atomic save flow before advancing combat. Never
+  // also apply legacy damage here: retrying movement could damage twice.
+
 }
 
 // ─── Reset Movement ──────────────────────────────────────────────
 // v2.412.0 — Per-participant "do-over" for the active turn. Resets
 // movement_used_ft to 0 AND clears Dash + Disengage flags so the
-// turn returns to its start-of-turn state. Useful when a player
-// (or DM) misclicks during the active turn and wants to undo the
-// movement / Dash / Disengage choice without ending the turn.
+// movement allowance can be corrected without ending the turn.
+// v2.869: this clears movement benefits, NOT their spent Action.
+// Server receipts make retries safe; token positions are unchanged.
 //
 // What this does NOT reset:
 //   • action_used / bonus_used / reaction_used — those are spent
@@ -335,65 +236,16 @@ export interface ResetMovementInput {
   campaignId: string;
   encounterId: string | null;
   participantId: string;
+  turnId: string | undefined;
   participantName: string;
   participantType: 'character' | 'creature' | 'monster' | 'npc';
 }
 
 export async function resetMovement(input: ResetMovementInput): Promise<MovementActionResult> {
-  const { data: cur, error: curErr } = await supabase
-    .from('combat_participants')
-    .select('movement_used_ft, dash_used_this_turn, disengaged_this_turn, max_speed_ft')
-    .eq('id', input.participantId)
-    .single();
-  if (curErr) {
-    console.error('[resetMovement] fetch failed:', curErr);
-    return { ok: false, reason: curErr.message ?? 'Failed to load participant' };
+  try {
+    await resetMovementAtomically(input.encounterId,input.participantId,input.turnId);
+    return {ok:true};
+  } catch(error) {
+    return {ok:false,reason:error instanceof Error?error.message:'Movement reset could not be confirmed.'};
   }
-  if (!cur) return { ok: false, reason: 'Participant not found' };
-
-  const previousUsed = (cur as any).movement_used_ft ?? 0;
-  const previousDash = !!(cur as any).dash_used_this_turn;
-  const previousDisengage = !!(cur as any).disengaged_this_turn;
-
-  // Nothing to do — silently succeed so a stray button click on a
-  // fresh turn doesn't flood the log with no-op events.
-  if (previousUsed === 0 && !previousDash && !previousDisengage) {
-    return { ok: true };
-  }
-
-  const { error: updErr } = await supabase
-    .from('combat_participants')
-    .update({
-      movement_used_ft: 0,
-      dash_used_this_turn: false,
-      disengaged_this_turn: false,
-    })
-    .eq('id', input.participantId);
-  if (updErr) {
-    console.error('[resetMovement] update failed:', updErr);
-    return { ok: false, reason: updErr.message ?? 'Failed to reset movement' };
-  }
-
-  const chainId = newChainId();
-  await emitCombatEvent({
-    campaignId: input.campaignId,
-    encounterId: input.encounterId,
-    chainId,
-    sequence: 0,
-    actorType:
-      input.participantType === 'character' ? 'player'
-      : isCreatureParticipantType(input.participantType) ? 'creature'
-      : 'system',
-    actorName: input.participantName,
-    targetType: null,
-    targetName: null,
-    eventType: 'reset_movement',
-    payload: {
-      previous_used_ft: previousUsed,
-      previous_dashed: previousDash,
-      previous_disengaged: previousDisengage,
-      max_speed_ft: (cur as any).max_speed_ft ?? 30,
-    },
-  });
-  return { ok: true };
 }

@@ -109,6 +109,16 @@ export function CombatProvider({ campaignId, children }: CombatProviderProps) {
         table: 'combatants',
         filter: `campaign_id=eq.${campaignId}`,
       }, load)
+      // v2.869: form activation/rest/equipment and declared campaign time can
+      // change a computed movement bonus without updating the participant row.
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'characters',
+        filter: `campaign_id=eq.${campaignId}`,
+      }, load)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'campaigns',
+        filter: `id=eq.${campaignId}`,
+      }, load)
       .subscribe();
 
     return () => { supabase.removeChannel(ch); };

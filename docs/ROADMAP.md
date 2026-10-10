@@ -1,5 +1,2182 @@
 # DNDKeep — Two-Track Roadmap
 
+### Typed damage calculation on the server (private preparation)
+
+The remaining general-hit gap is confirmed in `pendingAttack.applyDamage`: its
+legacy branch applies `damage_final`, with another Petrified reduction, rather
+than resolving each saved type. `apply_saved_save_damage` also retains that flat
+contract for non-psychic monster saves. Therefore the earlier Stony context
+projection is NOT proof that these routes apply its resistance. Do not expose
+complete Mutable Form activation on that assumption.
+
+Migration `20261011000500_typed_damage_affinity_calculation.sql` adds a private,
+immutable calculation matching `rules/typedDamage.ts`. It validates the original
+component/dice evidence, groups same-type damage before rounding, applies explicit
+save adjustments before immunity/resistance/vulnerability, handles blanket and
+per-type resistance without stacking, and restricts Sharpened bypass by source.
+Ambiguous half-damage allocation across bypass/resisted sources fails closed.
+Unknown defenses/types and unsafe totals also fail closed; the client rules now
+reject unknown defense strings instead of silently treating them as absent.
+
+66 database parity cases cover every damage type and independently assert totals,
+plus mixed fire/psychic damage, immunity, duplicate resistance, rounding, Sharpened,
+malformed evidence, overflow and private privileges. This function does not read
+HP or prove eligibility: its future enclosing transaction must derive defenses,
+adjustments and source provenance from locked state, never arbitrary client flags.
+No public grant, caller wiring or HP behavior change is claimed here.
+
+Next: derive known/explicitly reviewed defense inputs from the saved context and
+wire the complete monster-save transaction first; then ordinary hits together
+with mastery, retaliation, concentration and replay. Never feed the existing
+flattened `damage_final` into this calculator and apply resistance a second time.
+The normal aura UI already supplies the reviewed resolver; the old direct aura
+function is only an optional fallback/test path and still needs retirement.
+Evidence: `.tmp/typed-damage-calculation-{apply,db,gate,lint}.log`.
+Full gate passed (4,839 unit tests, TS 193/193, entry 256.1 KB). The final
+66-case database run passes after restoration. Removing resistance makes the
+mixed Stony/fire regression fail (expected 9, received 12). Local SQL lint has no
+new-function findings; reapplying in a rolled-back transaction succeeds.
+Additional evidence: `.tmp/typed-damage-calculation-{mutation,db-final,idempotence}.log`.
+Local migration count is now 351; production and retained rehearsals unchanged.
+
+
+### Aura defense suggestions from saved context (unreleased)
+
+The live end-turn/movement aura review now preselects a defense when its saved
+context provides complete, supported information. This includes Stony resistance
+projected by the preceding migration, species choices, typed buffs, and Petrified.
+Immunity wins; resistance and vulnerability remain a combined choice. The same
+canonical damage-type list is now exported from the pure rules layer, preserving
+existing imports through the library module.
+
+Missing/qualified defenses, unknown creature lists, malformed buffs and missing
+Tiefling legacy remain manual. A suggestion does not approve targeting, base save
+modifiers, concentration modifiers, or the DM review checkbox. The DM can override
+it. A new context clears the previous edits and confirmations before continuing.
+Existing saved proposals keep their original reviewed choice during recovery.
+
+Pure/component regressions cover these boundaries. The actual end-turn review
+runs with and without Stony on desktop/mobile, then postpones and resumes the
+same rolls before atomically finishing the turn. Evidence:
+`.tmp/aura-defense-{unit,browser,gate}.log`; snapshots
+`.tmp/aura-input-{false,true}-{desktop,mobile}.png`.
+Full verification passes (4,835 unit tests, TS 193/193, entry 256.1 KB).
+Four desktop/mobile browser cases pass with the official overflow probe and clean
+console/network checks. Both Stony screenshots were inspected. Disabling the
+prefill makes the new real-browser test fail (expected resistance, received blank);
+restoring it passes again. Mutation evidence: `.tmp/aura-defense-mutation.log`.
+No migration or new public endpoint. The older direct aura resolver, complete
+mixed-damage/standalone review, sheet effect display, and Mutable Form activation
+controls remain follow-up work. Production unchanged.
+
+
+### Stony resistance in saved damage contexts (local, unreleased)
+
+Migration `20261010235500_mutable_form_damage_resistance.sql` projects the active
+Stony choice into party and pending-attack character damage contexts. It reuses
+the private, clock-verified Mutable Form reader, adds only the selected type,
+and preserves manual defenses without writing the permanent character list.
+Existing resistance math performs one reduction with downward rounding, before
+vulnerability; immunity wins. A missing effect clock fails closed.
+
+Context comparison rejects expiry between preview and an unapplied hit. Saved
+successful damage receipts still replay after expiry without recalculating or
+writing HP again. Verified paths include party area damage preview/application
+and atomic Graze. This is not yet a claim that aura, standalone manual damage,
+every mixed-damage path, or the sheet defense display is integrated. Those call
+sites still need review before exposing the complete Mutable Form player flow.
+Conditional-defense review retains its existing explicit DM override contract.
+
+Tests cover all nine choices, duplicate resistance, immunity, vulnerability,
+expiry, unchanged permanent lists, private helper privileges, stale party
+previews and saved receipt replay. The actual party UI test loses the response,
+expires Stony, then recovers after reload. Removing the two context projections
+makes both the Graze and real-party-preview regressions fail; restored afterward.
+Evidence: `.tmp/stony-resistance-{tests,graze,mutation,regression,gate,lint}.log`.
+Full verification passes (4,817 unit tests, TS 193/193, entry 256.1 KB).
+All 131 desktop database/browser regression cases pass, plus the mobile Stony
+party preview/recovery case. Local SQL lint has no findings for the three changed
+functions. Inspected mobile screenshot: `.tmp/stony-resistance-mobile.png`.
+
+Applied only to the normal local Docker database, then reapplied in a rolled-back
+transaction to check idempotence. Preserved foreign local ledger version
+20261008213500 after CLI refusal. Repo now has 350 migrations; both retained
+release rehearsal stacks and hosted preview verification still need updating.
+Production unchanged; no new public endpoint or client grant.
+
+
+### Propel target loading fails closed (unreleased)
+
+Rechecked the requested Propel contract: adjacent Bonus Action entries, optional
+Energy Die, payment only on a failed save, and Warp destination within 30 ft of
+the caster on the same horizontal plane. Warp does not add Prone or another
+Bonus Action. Target size, visibility and range still require explicit review;
+movement instructions do not automatically relocate map tokens.
+
+Found a client readiness gap: reopening after a failed/mismatched combat roster
+read retained the old target options and an actionable turn context. The dialog
+now clears old targets and publishes the new declaration context only after the
+roster is successfully loaded for that encounter. Existing saved uses retain
+their independent recovery path. Server validation remains the final authority.
+
+Three regression cases cover a failed read, missing encounter and changed
+encounter, no roll/declaration, and successful reopening. All three fail against
+the original implementation. Evidence: `.tmp/propel-roster-{unit,mutation}.log`.
+Full gate passes (4,817 unit tests, TS 193/193, entry 256.1 KB), along with
+eight real-sheet desktop/mobile cases for adjacent Bonus Actions, optional rolls,
+conditional spending and reload recovery. Evidence:
+`.tmp/propel-roster-{gate,browser}.log`. No database schema change or production
+write. Stony resistance remains the next broader Psion integration.
+
+
+### Readable concentration status card on narrow sheets (local)
+
+The active-spell card now reserves readable width for spell details and wraps the
+timer/Drop controls below them when needed. Both buttons have 44px targets. The
+duration/save reminder is larger and higher contrast, and now states the DC 30
+ceiling. The card is an accessible named region for assistive technology.
+
+Four actual-sheet browser cases pass across desktop/mobile, with and without a
+round timer, using a long spell name. They check readable text width, clipping,
+control hit-testing and the real Drop write. Restoring the old layout reproduces
+a 15px text column and fails the regression. Centered screenshots show both
+controls unobstructed; the official overflow probe is clean on mobile and only
+reports existing sidebar label truncation on desktop.
+Evidence: `.tmp/concentration-card-{layout,mutation,final-gate}.log` and
+`.tmp/concentration-status-{desktop,mobile}.png`.
+Full `npm run verify` passes (4,814 tests, TS 193/193, entry 256.1 KB).
+Production unchanged. Stony damage resistance remains the next rules integration.
+
+
+### Stony Epidermis concentration advantage (local)
+
+Migration `20261010234500_mutable_form_concentration.sql` snapshots Stony's
+advantage into campaign and solo damage-triggered concentration saves. Existing
+checks retain their original dice contract through activation, expiry and replay;
+other Mutable Form choices do not grant the benefit. Advantage cannot be edited
+after creation. Cancellation tombstones skip the live-effect lookup.
+
+The shared active-form calculation now has a private, non-client-callable reader
+for trusted transactions; the existing public/shared reader keeps its original
+owner/campaign authorization. Solo clients honor the server's damage-time
+advantage instead of reconstructing only feats, while still validating boolean
+shape, War Caster entitlement, request identity, DC and modifiers. This preserves
+class benefits after expiry without rerolling or weakening database ownership.
+The shared prompt and solo history say "advantage" without falsely attributing
+Stony to War Caster.
+
+New tests cover Stony, other choices, immutable campaign/solo offers, unknown
+clocks, cancellation, internal-reader privileges, expiry and two-die replay.
+Actual-sheet desktop/mobile tests cover both War Caster and Stony without the
+feat; the API recovery case keeps the original pair across lost responses and
+reload after expiry. Full `npm run verify` passes (4,814 tests, TS 193/193, entry
+256.1 KB). Local database lint has no findings for the changed functions.
+All 56 existing campaign/solo concentration regressions pass; teardown required
+stopping that run's verified Vite process after all cases completed. Four final
+prompt checks pass across desktop/mobile, and reverting the inaccurate War Caster
+label makes the Stony browser case fail. Prompt screenshots are readable. The
+whole-page overflow probe still finds the previously noted desktop ability-range
+label and a separate narrow mobile concentration-status card; queue the latter
+for UI repair. Migration reapplication succeeds in rollback; all 349 repo
+migrations are local and foreign version 20261008213500 remains untouched.
+Evidence: `.tmp/stony-*.log`.
+
+This implements concentration advantage only. Stony's resistance, other pending
+Mutable Form benefits/public controls, and final release rehearsals remain open.
+The migration is local only; production is unchanged.
+
+
+### Player melee reach previews share targeting geometry (local)
+
+The player melee weapon/unarmed picker now publishes its verified range and live
+attacker footprint to the existing Pixi reach overlay. Canonical token identity
+and footprint geometry handle ordinary, Large and Huge tokens. Loading, movement,
+submission and closing remove the picker preview; cleanup does not erase a newer
+preview owned by another control. Both player and monster previews carry their
+scene ID, and the renderer refuses a preview from another scene.
+
+Focused unit coverage checks footprint centers, position/range updates, cleanup,
+scene changes, missing token identity and invalid ranges. Actual-sheet browser
+checks assert the overlay metadata matches the active and expired Mutable Form
+picker range. A real Pixi browser fixture checks rendered pixel bounds at 5/10
+feet, clearing on close and hiding across scenes on desktop/mobile. Screenshots
+reviewed at both sizes. Full `npm run verify` passes (4,809 tests, TS 193/193,
+entry 256.1 KB). Disconnecting preview publication makes the pixel-boundary test
+fail, proving it guards the connection. All six restored browser cases pass;
+the official overflow probe is clean for the map fixture on desktop/mobile. Evidence: `.tmp/player-reach-overlay-*.log`.
+
+This visualizes the current picker allowance; final selection still rechecks the
+saved form. It is not atomic server-side range enforcement. Weapon-specific
+opportunity attacks and other unfinished Mutable Form effects remain open.
+Production unchanged.
+
+
+### Mutable Form melee weapon targeting (local)
+
+PlayerAttackButton now reads the saved active form before opening a melee
+weapon/unarmed target picker and adds its reach bonus to the weapon's base reach
+(5 -> 10 feet; Reach 10 -> 15). It rechecks before creating an attack request.
+If reach changed or the read failed, selection stops without declaring or paying;
+the player reopens the picker with current reach. Cancellation invalidates an
+outstanding read so its eventual response cannot submit the abandoned selection.
+Ranged weapons and spell ranges are unchanged; Touch casting is a separate rule.
+
+Validation: full `npm run verify` passes (4,795 tests, TS 193/193, entry 256.1 KB).
+Four actual-sheet browser cases cover normal/Reach weapons on desktop/mobile,
+selectable extended-boundary targets, expiry rejection with zero pending attacks,
+and disabled targets after reopening. Removing the reach bonus makes the new
+browser case fail on its boundary target; restoring it passes all four cases.
+Screenshots reviewed at both viewports. The official overflow probe reports no
+mobile findings or sideways scrolling. Desktop reports pre-existing sidebar
+label/email truncation and a clipped `Self (30-ft radius)` ability label behind
+the modal; the ability-range label is queued for the polish pass.
+Evidence: `.tmp/mutable-form-picker-{gate,browser,mutation,layout}.log`.
+
+This is target-picker validation, not an atomic server-side range constraint.
+Map reach overlays, weapon-specific opportunity reach, and the other unfinished
+Mutable Form integrations remain open. Production unchanged.
+
+
+### Mutable Form opportunity-attack boundary (local)
+
+Opportunity-attack offers now read the character reactor's saved active form
+before comparing departure against ordinary reach. While active, a 5-to-10-foot
+move stays within reach; a 10-to-15-foot move leaves it. Each movement reads the
+current effect again, so expiry restores the original boundary. Creature reactors
+skip the character read. Disengage and Disorient still suppress offers. A failed
+effect read rejects the offer calculation before any batched offers are inserted.
+This does not roll back movement that has already been recorded.
+
+Focused validation: 83 tests pass across opportunity offers, the typed active
+reader and Mutable Form rules. Coverage includes diagonals, entering reach,
+remaining outside reach, expiry, suppressed reactions and failed reads.
+Full `npm run verify` passes (4,776 tests, TS 193/193, entry 256.1 KB).
+Evidence: `.tmp/mutable-form-reach-gate.log`.
+
+This change covers the existing ordinary-reach opportunity-offer path only.
+Weapon-specific reach selection, melee target pickers/overlays, and mover-size
+handling remain separate work; it does not claim those paths are complete.
+Production unchanged.
+
+
+### Mutable Form movement projection and realtime refresh (local)
+
+Migration `20261010231500_mutable_form_speed_projection.sql` adds a read-only
+computed participant field from the saved active form. Shared participant reads
+now carry its 0/+5 Speed modifier into the existing map, initiative and movement
+allowance calculation. The bonus precedes reductions, halving and Dash; it never
+rewrites max_speed_ft. `canMove` refuses missing/invalid effect reads instead of
+falling back to an unverified 30-foot allowance.
+
+CombatProvider reloads on character and campaign updates as well as combat rows.
+The live test exposed that campaigns were not in supabase_realtime, preventing
+this subscription from refreshing. The migration adds campaigns idempotently;
+existing campaign RLS still controls visibility. Actual provider/selector and
+PostgREST checks now verify 30 -> 35 -> 70 -> 60 on activation, Dash and expiry,
+with the same fresh pre-move allowance and unchanged stored base Speed.
+
+Validation: 50 focused unit cases pass; full `npm run verify` passes (4,768 tests,
+TS 193/193, 256.1 KB entry). All 27 attack/movement browser cases pass after the
+publication fix. Lint/advisors have no Mutable Form findings; reapplication passes
+in rollback. Evidence: `.tmp/mutable-form-speed-{unit,browser,regression,
+final-gate,final-lint,final-advisors,idempotence}.log`.
+All 348 repo migrations are local; foreign 20261008213500 is preserved. Production
+and the old release-rehearsal stacks are unchanged.
+
+This updates displayed allowances and fresh pre-move checks, not a new atomic
+server-side movement-budget transaction. Remaining Mutable Form work includes
+sheet stats, reach, resistances, concentration, Touch casting, Stride/Flexibility
+and Flesh Weaver actions, activation history and public controls with recovery.
+
+### Mutable Form AC participates in shared attack resolution (local)
+
+`rollAttackRoll` now reads the target character's active Mutable Form before any
+dice are rolled and adds its +1/+2/+3 AC alongside existing cover and buff bonuses.
+A read failure blocks resolution rather than silently omitting protection.
+Migration `20261010230000_mutable_form_attack_ac.sql` checks first-roll target AC
+against the current character target, buffs, cover and active form. It covers old
+RPCs and direct writes as well as the history wrapper. Stale defense submissions
+roll back; later reactions/replays retain the immutable original attack evidence.
+Permanent armor_class values are not changed.
+
+Three live browser cases verify all three bonus combinations, stacking, expiry,
+replayed original results and rejected stale writes. The entire attack-outcome
+suite passes (26 cases), including history rollback, ownership, concurrent rolls
+and one-use markers. Full `npm run verify` passes (4,756 tests, TS 193/193,
+256.1 KB entry). Lint/advisors have no Mutable Form findings; reapplication passes
+in rollback. Evidence: `.tmp/mutable-form-ac-{db,regression,gate,lint,advisors,
+idempotence}.log`. All 347 repo migrations are local; foreign 20261008213500 is
+preserved. Production and the older release rehearsals are unchanged.
+
+Remaining Mutable Form scope: sheet AC display, movement/reach, resistance and
+concentration integration, Touch casting, Stride/Flexibility actions, Flesh Weaver
+healing, activation history and public activation UI with durable recovery.
+The AC integration is tested using private fixture activations; players still
+cannot activate the unfinished feature through a new public control.
+
+### Mutable Form current-effects reader (consumers not yet wired)
+
+Migration `20261010224500_mutable_form_active_state.sql` exposes only the active
+form ID, duration, selected benefits and current armor status. Owner, current
+campaign DM and current members may read; outsiders and anonymous callers cannot.
+No dice, payment receipts, HP receipt or inventory are shared. Expired/ended forms
+return null; unknown game-clock state throws rather than silently removing bonuses.
+Armor changes are read live; shields and unequipped armor do not suppress Stride.
+
+`src/lib/api/mutableForm.ts` validates the narrow response before deriving benefits
+through the existing domain rules. Malformed durations, choices, armor flags or
+unexpected private fields fail closed. Five local database cases cover expiry,
+armor changes, clock failure and actual authenticated/anonymous/DM/member access.
+72 focused unit cases pass; full `npm run verify` passes (4,756 tests, TS 193/193,
+256.1 KB entry). Lint/advisors have no Mutable Form findings and reapplication
+succeeds in a rollback. Evidence: `.tmp/mutable-form-active-{unit,db,gate,lint,
+advisors,idempotence}.log`.
+
+All 346 repository migrations are applied locally; foreign 20261008213500 remains.
+The reader alone does NOT apply bonuses to the sheet or map. Next integration must
+update both the display and authoritative resolution: movementAllowanceForParticipant
+and saved movement validation, effectiveCombatAC/attack snapshots, melee reach,
+concentration saves, resistances, Touch casting and Stride/Flexibility actions.
+Avoid copying modifiers into permanent base scores or trusting a cached effect badge.
+Activation UI, history and saved retry recovery remain pending; production unchanged.
+
+### Mutable Form temporary-HP application (private; UI still pending)
+
+Migration `20261010223000_mutable_form_temporary_hp.sql` captures effective INT
+at declaration. It supports the canonical equipped/attuned Headband of Intellect
+without lowering higher natural INT or trusting homebrew names/override fields.
+Changing equipment or INT after declaration cannot change the saved modifier.
+Legacy declarations without captured INT remain review-only rather than guessing.
+
+The private application combines the finalized/enhanced roll and saved modifier,
+minimum 1, with an explicit keep-existing/replace choice. Character and matching
+map pools update together; disagreement blocks application. Replay returns current
+character HP without restoring a consumed grant, rejects a changed choice, and
+never duplicates history. Expired/replaced/rest-ended forms cannot grant HP late;
+expiration does not subtract already-granted temporary HP. Application history and
+action log are written in the same transaction as HP and its receipt.
+
+Validation: 27 local database checks pass; the strengthened high-natural-INT test
+also passes with both canonical and spoofed Headbands equipped. Full `npm run
+verify` passes (4,730 tests, TS 193/193, 256.1 KB entry). Local lint/advisors have
+no Mutable Form findings; migration reapplication succeeds in a rollback.
+Evidence: `.tmp/mutable-form-hp-{db,high-int,gate,lint,advisors,idempotence}.log`.
+All 345 repository migrations are applied locally; foreign 20261008213500 remains
+preserved. Production and the 343-migration rehearsal databases are unchanged.
+
+Remaining: active timed combat modifiers, activation/enhancement history, typed
+API and receipt validation, public dispatcher, UI choices and durable recovery.
+The private HP transaction does not yet make the feature usable by players.
+
+### Mutable Form saved backend (private; not yet player-accessible)
+
+Migration `20261010220000_saved_mutable_form.sql` adds an owner-checked private
+activation ledger. Declaration atomically claims the shared Bonus Action, pays
+one/two Energy Dice, stores one original face and the ability/inventory context,
+and binds the selected improvement. Exact retries recover the same receipt;
+changed requests fail. New forms replace earlier timed forms. Saved Enkindled
+and Surge payments finalize one repeatable total without rerolling or extra
+Energy Dice. Durations use the existing game clock; Restoration consumes 60
+seconds, a completed rest ends the form, and unknown clock state stays unknown.
+
+16 local database tests pass, including simultaneous requests, rollback on failed
+payment, class order, level/choice restrictions, ownership/private privileges,
+replacement, time boundaries, rest/Restoration and enhanced roll recovery.
+Full `npm run verify` passes (4,730 tests, TS 193/193, 256.1 KB entry). Local lint
+has 20 existing entries and no Mutable Form findings; advisors likewise report
+no Mutable Form findings. Migration reapplication succeeds inside a rolled-back
+transaction. Evidence: `.tmp/mutable-form-{db,saved-gate,lint,advisors,idempotence}.log`.
+
+Normal local DB has all 344 repo migrations plus the preserved foreign
+20261008213500 entry. CLI refused that foreign history, so only the new file and
+its ledger entry were applied together in a local transaction. Production remains
+unchanged. The earlier fresh/upgrade rehearsals stop at 343 migrations and need
+this migration before their comparisons can certify the current branch.
+
+The backend deliberately has no public dispatcher yet. Remaining before rollout:
+finalize effective INT and temporary-HP application/replacement, timed combat
+modifiers, atomic history, typed API/receipts, player choices and durable recovery.
+Private declaration/payment tests do NOT prove playable Mutable Form automation.
+
+### Mutable Form rules foundation (not yet wired to activation)
+
+The owner-provided UA update pp.7–8 is now represented by pure rules in
+`src/rules/mutableForm.ts`: Metamorph/Psion-level eligibility, one-die activation,
+optional level-6 Flesh Weaver second die, one temporary-HP roll with INT and
+minimum 1, 60/600-second duration, and mandatory level-10 choice. All nine Stony
+Epidermis resistances are explicit; its advantage is concentration-only. Flesh
+Weaver and Unnatural Flexibility stack to +3 AC. Superior Stride reads current
+armor state, retaining the base +5 Speed/reach while suppressing its own movement
+benefits in armor. Touch range is optional per Action casting and source-agnostic.
+Enhanced rolls use the existing canonical validator; the function makes no writes.
+
+46 focused cases cover boundaries, multiclass order, resource/roll validation,
+all improvement choices, armor changes, separate costs and untouched input.
+Full `npm run verify` passes (4,730 tests, TS 193/193, 256.1 KB entry).
+Evidence: `.tmp/mutable-form-{unit,gate}.log`. No schema or UI change.
+This is preparation for the complete feature, not a playable activation. Remaining:
+- Saved idempotent activation must atomically claim the Bonus Action, pay Energy
+  Dice, bind the original roll/paid enhancements and log the result.
+- Use the existing private `psionic_duration_clocks` game-time source (also used
+  by Connection), not wall-clock timers; test turn/time/rest and expiry behavior.
+- Resolve temporary-HP replacement separately from timed modifiers. Expiry must
+  not subtract the original grant from whatever HP remain.
+- Wire active reach/Speed, AC, resistance, concentration saves and per-cast Touch
+  range. Flexibility escape applies to nonmagical restraints or Grappled only.
+- Flesh Weaver healing remains a separately paid, slot-casting-only effect.
+- Add actual player controls, durable retry/reload recovery, database concurrency
+  tests and desktop/mobile verification before claiming automation is complete.
+
+### Psykinetic Mage Hand range and carrying guidance (local; not released)
+
+Stronger Telekinesis now adds 30 feet to Mage Hand's casting range in Actions,
+Spells, cast details and utility history. Canonical Psion progression gates the
+modifier at Psykinetic level 3 in either multiclass order, for any casting source.
+The character's spell details also show the 20-pound carrying limit. Shared SRD
+spell data and attribution remain intact; no increased hand movement or tether
+is inferred from the owner's UA update (p.9).
+
+Validation: full `npm run verify` passes (4,684 tests, TS 193/193, 256.1 KB entry).
+16 pure-rule cases and two cast-history cases cover eligibility and unchanged
+base data. Four desktop/mobile browser cases cover primary/secondary Psion,
+Actions/Spells and removal of the modifier after changing subclass. Screenshots
+and scoped overflow checks pass. Disabling the range modifier fails the browser
+regression at 30 instead of 60 feet; original source restored and all checks rerun.
+Evidence: `.tmp/psion-mage-hand-{unit,browser,mutation,restored,gate}.log`.
+No schema changes or production writes. Prior head 285f25d4 now has both hosted
+CI gates and Vercel deployment green; authenticated preview smoke remains pending.
+
+### Connection recovers interrupted roll preparation (local; not released)
+
+Connection now saves versioned entropy, Energy Die size and the original
+turn/free-use choice before deriving a face through canonical dice utilities.
+A failed final write can be recovered after reload with the exact same roll.
+Every send/retry first durably saves the complete request; continued storage
+failure never reaches the server or consumes an action, die or free use.
+Existing complete requests stay compatible. Legacy seedless/corrupt markers
+remain blocked, and changing recovered dice, turn or free-use evidence is refused.
+
+26 unit cases cover all four die sizes for free/paid extensions, initial and
+repeated storage failure, legacy compatibility and invalid evidence. Four real
+browser reload cases verify the original roll, no payment before storage recovers,
+then one action/receipt and the correct Energy Die/free-use counters. Disabling
+seed decoding and separately omitting the send durability guard both fail the new
+browser regression; original source restored before final verification.
+
+Validation: full `npm run verify` passes (4,666 tests, TS 193/193, 256.1 KB entry).
+Final 12 desktop/mobile checks cover storage recovery, rejected retries, duration
+and the existing overflow probe. Screenshots inspected. Evidence:
+`.tmp/connection-seed-{unit,browser,restored,gate}.log` and
+`.tmp/connection-seed-{decode,durability}-mutation.log`.
+No schema changes; production unchanged. Prior head 1e7b4f38 has both CI gates
+green; Vercel preview remains build-rate-limited. Broader subclass state automation
+(Bulwark Mind, Mutable Form, Destructive Trance) is still incomplete.
+
+### Connection preserves committed-but-unconfirmed extensions (local; not released)
+
+Connection now distinguishes freshly generated first sends from saved retries.
+A definitive rejection may discard a fresh request; a later rejection retains the
+original request because an earlier lost reply may follow a committed extension.
+Successful replay finishes the saved roll and clears recovery without new dice,
+a second Bonus Action, another free-use increment or another Energy Die payment.
+
+New real-browser regressions cover free and paid extensions plus safe recovery
+from a fresh rejection. The first two failed before the fix because the retry
+button disappeared; the fresh rejection case already passed and remains green.
+Tests commit both lost replies, reload, simulate a later 403, then replay the same
+request. Source recheck: owner-provided UA update p.3 requires an available Energy
+Die even for the first-free extension, matching the existing availability guard.
+
+Validation: all 34 Connection lifecycle cases pass across desktop/mobile,
+including ownership, one-hour game duration, rest expiry, Surge/Enkindled and
+existing official overflow checks. Full `npm run verify`: 4,642 tests,
+TS 193/193, 256.1 KB entry. Screenshots inspected. Evidence:
+`.tmp/connection-retry-{before,browser,gate}.log`.
+No schema changes; production unchanged. Current prior-head preview remains
+build-rate-limited. Next: Connection's seedless preparation marker still blocks
+recovery after a failed final storage write; apply reload-safe saved entropy.
+
+### Propel retains uncertain requests after later rejection (local; not released)
+
+A lost reply can follow a committed declaration or failed-save settlement. A later
+permission/rule rejection describes only that retry; it cannot establish that the
+original action or payment never happened. Propel now retains the exact saved
+request across such errors and reloads. Only a newly generated declaration with a
+definitive rejection on its first send may be discarded. Verified success still
+clears recovery; saved outcomes cannot be replaced while confirmation is pending.
+
+Three component regressions cover fresh rejection, restored declaration retry and
+saved outcome retry. Local browser tests really commit each request, drop both
+replies, simulate a later 403, reload, then confirm identical payloads. Both paths
+retain exactly one Bonus Action claim and one Energy Die expenditure. Restoring
+the old catch handler makes the retry button disappear and fails the new test.
+
+Validation: 30 focused component tests; full `npm run verify` passes with 4,642
+tests, TS 193/193 and 256.1 KB entry. Four desktop/mobile fault tests and the final
+eight-case recovery run pass. Screenshots inspected. Evidence:
+`.tmp/propel-retry-{unit,browser,mutation,restored,gate}.log`.
+No schema changes; production unchanged. Prior head 2a3fce29 has both CI gates
+green and its Vercel deployment pending. Next: the same rejection-discard pattern
+exists in ConnectionControls and needs equivalent first-send/retry coverage.
+
+### Propel recovers interrupted roll preparation (local; not released)
+
+A failed browser-storage write after rolling previously left a seedless marker
+that permanently blocked Propel after reload. New paid-die/free-d4 preparations
+save a versioned random seed, die size and exact reviewed target before deriving
+the face through canonical dice utilities. Reload reconstructs the same request;
+confirmation durably saves it before sending. Base 5-ft movement saves directly
+without random generation. Existing complete requests remain compatible; legacy
+seedless or corrupt markers remain blocked rather than inventing dice.
+
+Validated exact target/roll recovery, retained conditional Energy Die cost and
+one Bonus Action, with no server declaration/payment before the interrupted
+preparation is confirmed. Changing a recovered target/roll is rejected. Added
+real desktop/mobile reload regressions for Energy Dice and the Psykinetic d4;
+disabling seed recovery fails the new browser regression at the intended guard.
+
+Validation: 48 focused tests, full `npm run verify` (4,639 tests, TS 193/193,
+256.1 KB entry), and 12 desktop/mobile browser cases pass. Screenshots inspected.
+Evidence: `.tmp/propel-seed-{unit,mutation,browser,gate}.log`.
+No schema changes. Prior-head Vercel preview is build-rate-limited; production
+unchanged. Next recovery audit: distinguish first-request rejection from a later
+rejection after an earlier unconfirmed send; the latter cannot prove no payment.
+
+### Propel relationship and narrow map controls (local; not released)
+
+Warp remains immediately after Telekinetic Propel, now explicitly labelled
+"Propel modifier · same Bonus Action". Both entry dialogs explain that teleport
+replaces movement after a failed save and uses the same Bonus Action. Existing
+free / Energy Die choices, conditional payment, target restrictions and fixed
+Warp destination remain intact. No database or rules changes in this pass.
+
+Verified free failure, powered success/failure, reload recovery and exactly one
+Bonus Action on desktop and mobile. Three new component cases cover guidance
+from either entry and its absence for another subclass. Removing the shared-action
+label makes the browser regression fail at the intended assertion.
+
+Map navigation and expanded two-token selection controls pass the official
+overflow probe, hit testing and pairwise overlap checks at 320/360/393 px in both
+browser projects. No layout overlap was found. Clear selection now uses the same
+text contrast as adjacent enabled actions. An intentionally shifted zoom control
+fails the regression because it intercepts Pan clicks; mutation restored.
+
+Validation: full `npm run verify` passes, 4,630 unit tests, TS 193/193,
+256.1 KB entry; 10 local desktop/mobile browser cases pass. Screenshots inspected.
+Evidence: `.tmp/propel-linked-{gate,browser,mutation}.log`,
+`.tmp/map-narrow-mutation.log`. Production unchanged; release gates remain below.
+
+### Camera shortcuts retain multi-pointer ownership (local; not released)
+
+Map zoom/Fit/Find/Previous shortcuts now track pressed pointer IDs independently.
+A released finger, unrelated pointerup, or hovering mouse cannot unlock shortcuts
+while another touch or pen remains held. Cancellation removes only that pointer;
+blur/hidden visibility clears stale ownership and requires fresh map hover.
+Listeners are cleaned up on unmount. Existing text-field, modal, overlay and
+browser-shortcut exclusions remain intact.
+
+Four new unit cases cover overlapping pointers and visibility. Three fail against
+the previous implementation. The live map's desktop/mobile shortcut regression
+also proves a released touch plus separate mouse hover cannot zoom while the second
+touch is held; normal shortcuts resume afterward and token positions stay unchanged.
+Full gate: 4,627 tests, TS 193/193, entry 256.1 KB. Evidence:
+.tmp/map-pointer-shortcuts-{mutation,browser,gate}.log. No layout/database change.
+
+### Hidden-tab single-token drag cancellation (local; not released)
+
+Single-token drag now cancels on a hidden-document visibility change, matching
+group drag and map panning. Previously only pointer cancellation, Escape and blur
+ended that preview; backgrounding without blur could leave a displaced token and
+peer lock active. Cancellation restores the origin, clears preview/drag state,
+releases the peer lock and ignores a later pointer release instead of saving it.
+The listener is removed during scene/viewport cleanup.
+
+The two-account local browser regression now simulates hidden visibility without
+blur and checks both DM and player positions BEFORE pointer release. Desktop and
+mobile pass; screenshots inspected. Removing the listener makes the regression
+fail with the displaced position. Exact restoration passes again, alongside the
+normal-drop test that checks every sampled position remains on the previewed cell.
+Test cleanup restores the fixture even when a regression fails.
+
+Full gate passes: 4,623 tests, TS 193/193, entry 256.1 KB. Evidence:
+.tmp/map-hidden-drag.log, -mutation.log, -restored.log, -gate.log and desktop/mobile
+PNGs. No database migration or production change. Continue map navigation and
+control polish; Psion subclass automation gaps remain queued above/in prior entries.
+
+### Potent Thoughts progression consistency (local; not released)
+
+Potent Thoughts now uses psionProgression, like the other Psion powers. Its
+separate level check previously granted the Intelligence damage bonus for malformed
+primary levels, invalid combined totals, or duplicate Psion classes. Eleven new
+invalid-progression cases fail against the previous implementation. Valid Psion
+levels qualify at six in either class order; total-level cantrip scaling and
+explicit Psion casting-source ownership remain covered, including negative INT.
+The live SpellCastButton and SpellsTab both use this shared damage rule.
+
+Owner-provided UA2025-Psion+Update.pdf p.10 rechecked: six Psion levels, Psion
+cantrip damage only. Full gate passes: 4,623 unit tests, TS 193/193, entry 256.1 KB.
+Evidence: .tmp/potent-thoughts-{mutation,gate}.log. No database or layout change.
+
+Further source review confirms Bulwark Mind remains description-only: level six,
+start-of-turn activation for one Energy Die, ten-minute duration, Psychic resistance
+and free Energy Die bonuses to INT/WIS/CHA saves. Implement its complete saved
+activation/timer/damage/save flow before exposing a spending button. Preserve the
+source's Incapacitated restriction; confirm its scope before extending resistance
+behavior. Ability-check Bolstering also still needs an original-check lifecycle.
+Continue map navigation/token review alongside this queued subclass work.
+
+### Release rehearsals refreshed through 343 (production unchanged)
+
+Both retained databases (fresh-origin and main-upgrade-origin) resumed from 332
+and applied the same 11 pending files through 20261010213000. Existing migration
+copies matched repository bytes before the missing files were copied. Both full
+ordered ledgers exactly match all 343 repository versions. Public/private schema
+dumps, including owners and grants, are identical after CRLF normalization only:
+`6d62218d77cef7bcd966a74557c827665b35f012be6a90140fb077e8c51827bb`.
+
+Both SQL lint runs have the same 20 function diagnostics as their 332 baselines,
+with no errors or added diagnostics. Both security scans retain only the existing
+keep_warm mutable-search-path and client_errors permissive-insert findings. The
+Telepath dispatcher exists, authenticated can execute it, anon cannot, and
+authenticated cannot execute its private history helper. Both rehearsal stacks
+are stopped with volumes preserved; the normal local stack remains running.
+
+Read-only production preflight on October 10 returned zero for all seven checks.
+Production still has 233 migrations through 20261008211300; ordered version MD5
+`1a3de08c0a19ec990f1cd7716f389b13` matches the first 233 repository versions
+(110 pending). This is a point-in-time check; repeat immediately before merge.
+
+Both GitHub gates and Vercel deployment passed for b045edc0. Vercel accepted this
+build after the earlier rate-limit failures. Hosted preview still redirects to
+Vercel login in the in-app browser, so its running app remains unverified. PR214
+stays open/draft; no merge or production migration was performed. Release needs
+hosted preview access, final-head checks and fresh production preflight. Continue
+independent Psion ability review and map work while that access is unavailable.
+
+Evidence: .tmp/{release-rehearsal,main-upgrade-rehearsal}-343-{start,up,stop}.log,
+-schema.sql, -verification.json, -lint.json and -advisors.json. Previous code gate:
+4,611 unit tests, 63 desktop Telepath cases, six mobile cases, TS 193/193.
+
+### Reload-safe Telepath dice preparation (local; not released)
+
+New preparations durably save a versioned random UUIDv4 and the reviewed request
+before calculating die faces. Canonical dice code maps its independent first/last
+48-bit random sections to one base die or up to two Enkindled dice; UUID version
+and variant bits are excluded. Recovery consumes no new entropy. A failed final
+write, closed tab or reload can reconstruct the same request and dice, then use
+existing Refresh/Retry controls. Submission still requires saving the complete
+request before network access, and server eligibility/payment checks remain in force.
+
+This replaces the preceding same-tab-only in-memory fallback. Existing complete
+drafts continue to work. Unversioned/corrupt preparation markers cannot reconstruct
+unknown faces and remain blocked for explicit review; clearing site data is not a
+recovery procedure. No UI layout or database schema changes. Production unchanged.
+
+Validation: full gate passes with 4,611 tests, TS 193/193, clean hooks and
+256.1 KB entry bundle. All 63 desktop Telepath cases and six mobile recovery,
+review and saved-prompt cases pass. Changed production files have zero lint
+messages. Evidence: .tmp/telepath-seed-{gate,browser,full,mobile}.log and lint JSON.
+The existing PR checks passed for c93aa188; Vercel still reports its deployment
+rate limit. Next: refresh both retained migration rehearsals through 343, then
+final release checks. Ability-check Bolstering remains separate queued work.
+
+### Interrupted Telepath storage recovery (local; not released)
+
+A completed base or Enkindled roll now remains in memory if its storage write
+fails. The existing in-app Refresh/Retry controls can save and submit those exact
+faces once storage works again. Requests cannot reach the server before that save
+succeeds. A unique durable preparation marker binds the retained result to its
+original request; changed drafts cannot be overwritten and callers cannot mutate
+the retained dice. Markers now preserve the original reviewed request or declaration
+and enhancement count before RNG.
+
+This is same-tab recovery, not crash recovery. Reloading or closing the tab before
+the completed roll is saved still leaves an unresolved marker and blocks new dice;
+no missing faces are invented. Legacy/corrupt markers remain blocked. The error
+explicitly says to keep the tab open and not reload or clear site data. Next:
+explicit handling of those unresolved markers, followed by retained migration
+rehearsals and release checks. Production unchanged.
+
+Validation: 18 focused recovery tests; full gate passes with 4,606 tests,
+TS 193/193, clean hooks and 255.7 KB entry bundle. Evidence:
+.tmp/telepath-interruption-gate.log. Prior head 35cbd70c passed both GitHub gates;
+Vercel currently reports deployment rate limiting (retry in 24 hours).
+
+### Atomic Telepath combat history (local; not released)
+
+Migration 20261010213000 records declaration, paid Enkindled/Surge and final
+resolution/cancellation in the same transaction as their saved lifecycle steps.
+Entries retain base/adjusted dice, original/final attack totals, outcome and explicit
+incremental resource costs. Replays do not add entries. Existing declarations are
+not backfilled with invented events. Original offer names avoid reading a departed
+character's current private state for history. DM cleanup keeps its single override
+entry, includes the reason in visible text, and identifies prior spending as retained
+instead of charging the Reaction again in history metadata.
+
+Forced history failures prove rollback of Reaction/offer creation, Hit Dice/payment
+receipts, and final attack/Energy/decision changes. All 61 Telepath desktop cases
+passed; 18 final desktop/mobile cleanup/history cases passed after the retained-cost
+metadata refinement. Combat log screenshots inspected; official overflow probe clean.
+Full gate: 4,602 tests, TS 193/193, entry 255.7 KB. SQL lint: 20 existing findings,
+none in the changed functions; security findings remain keep_warm/client_errors.
+Exact local ledger verified. Repo chain: 343; retained release rehearsals need
+333–343. Production unchanged. PR214 CI was green at prior head 88e87d80.
+Evidence: .tmp/telepath-history-{focused,full,final,gate}.log, lint/advisors JSON,
+and desktop/mobile PNGs.
+
+Next: explicit recovery for interrupted pre-roll drafts, then migration rehearsals
+and release checks. Ability-check Bolstering still requires its own event lifecycle;
+attack reactions now have review, saved player controls and durable history.
+
+
+### DM Telepath attack review and declaration (local; not released)
+
+AttackResolutionModal now offers a separate DM review panel after an attack roll.
+It discovers encounter Telepaths (including secondary-class Psions), loads scoped
+eligibility, and requires explicit distance/visibility confirmation. Hit/crit offers
+Distraction; miss/fumble offers Bolstering with server-enforced level requirements.
+The live attack, turn and range are rechecked before preparing RNG. Preparation
+and submission reuse durable drafts; the attack dialog's action lock prevents
+advancing damage during declaration. Saved offers then use the player/DM prompt.
+Waiting text now identifies saved reactions instead of promising a 120-second expiry.
+Delayed context reads are discarded after changing the selected character.
+
+Four desktop/mobile end-to-end checks pass from review through saved settlement
+for both features, confirming one Reaction claim and Energy charged only on actual
+outcome change. Explicit range and confirmation checks block rolling; removing the
+range guard makes the test fail. Compact mobile form and desktop screenshots were
+inspected; official overflow probe passes. Five new unit cases cover discovery,
+multiclass eligibility, failures, stale selection and pending-request recovery.
+Full gate passed: 4,602 tests, TS 193/193, entry 255.7 KB.
+Evidence: .tmp/telepath-review-{gate,ui-final,mutation}.log and desktop/mobile PNGs.
+
+Before release: add durable normal-reaction combat history, resolve interrupted
+preparation drafts explicitly, finish release migration rehearsals/CI and broader
+integration checks. Ability-check Bolstering still needs its own saved event path;
+this UI only automates attack reactions. No migration or production change here.
+
+
+### Saved Telepath player/DM prompt (local; new declaration controls still pending)
+
+ReactionPromptModal now routes saved Distraction/Bolstering offers to a dedicated
+lazy-loaded panel. It displays saved dice and original attack evidence, explains
+conditional Energy cost, and exposes apply/cancel, Enkindled, Surge pool selection,
+refresh and exact-request retry. The current campaign DM also sees saved offers
+and has reasoned cleanup when the character/context is unavailable. Generic expiry
+and countdown updates exclude Telepath; direct accept/decline paths are bypassed.
+The panel traps focus among visible controls, including the DM cleanup disclosure.
+
+Four real desktop/mobile checks pass: DM completion with a lost Surge reply and
+exact-request retry, and owning-player Enkindled+Surge cancellation. Each preserves
+spent Hit Dice and conditional Energy costs. Expired timestamps do not auto-close
+saved offers. Screenshots inspected; official overflow probe clean. Removing the
+saved prompt branch makes the regression fail, and exact restoration passes.
+Full gate passed: 4,597 tests, TS 193/193, entry 255.7 KB. Evidence:
+.tmp/telepath-prompt-{gate,ui-final,mutation}.log; desktop/mobile PNGs alongside.
+
+Next: DM review/create controls for new Distraction/Bolstering attack declarations,
+interrupted-draft resolution and normal reaction history. Do not claim fresh
+Telepath automation is exposed yet: this step only handles already saved offers.
+Ability-check Bolstering remains a separate lifecycle. No migration or production
+change; retained release rehearsal and CI checks remain required before merging.
+
+
+### Durable Telepath drafts and cross-tab locking (not UI-wired)
+
+Telepath preparation now persists an interruption marker before RNG, then saves
+the exact reviewed request and dice. Enkindled preparation uses the same protocol.
+Submission holds a per-character Web Lock, retains every failed/uncertain draft,
+and clears only after the typed API verifies success. A later permission error
+cannot prove an earlier lost response did not commit. Conflicting pending outcomes
+and new preparations are blocked. Unsupported browser locking fails before RNG;
+corrupt/interrupted storage is preserved for recovery rather than discarded.
+
+14 new unit cases cover storage failure before/after RNG, changed outcomes,
+input mutation, malformed data, unsupported locking and enhancement eligibility.
+Four authenticated desktop/mobile browser cases pass: two tabs compete and only
+one rolls; lost begin/finish replies survive reload and replay with one Reaction
+claim and one conditional Energy payment. Full gate passed: 4,597 tests,
+TS 193/193, entry 255.7 KB. Evidence: .tmp/telepath-draft-{unit,db,gate}.log.
+No migration or production change.
+
+Next: actual DM review and player saved-use controls using this draft flow. Recheck
+live context before fresh preparation; preparation alone is not server permission.
+Replace generic ReactionPromptModal timer/accept/decline handling for Telepath,
+provide explicit interrupted-draft recovery, and add normal reaction history before
+enabling new declarations. Ability-check Bolstering remains separate.
+
+
+### Telepath client lifecycle validation (not yet UI-wired)
+
+Added typed begin/read/list/enhance/finish/cancel adapters for the authenticated
+saved-reaction dispatcher. Responses must agree on declaration/character/attack,
+original reviewed context, Reaction claim, base die, enhancement identities and
+ordering, adjusted dice, attack outcome and conditional Energy receipt. Validation
+uses the saved Psion level, so later progression changes do not hide old records.
+Requests are copied before asynchronous calls and retain their identities across
+retries. Malformed successes remain uncertain, never authorization to reroll.
+Surge calculation and attack outcome reuse the canonical rules modules.
+
+39 unit cases cover malformed evidence, natural 20/1, Bolstering thresholds,
+conditional costs, enhancement order, duplicate list rows and changed requests.
+Six authenticated desktop/mobile browser cases pass: lost begin/finish replies
+followed by reload/list recovery, and actual Enkindled+Surge completion/cancellation
+through the typed API. Full gate passed: 4,583 tests, TS 193/193, entry 255.7 KB.
+No migration this step.
+Evidence: .tmp/telepath-client-{unit,db,gate}.log. Production unchanged.
+
+Next: durable browser drafts before rolling, actual DM review/player saved-use
+controls, and explicit Telepath handling in ReactionPromptModal (generic timeout,
+accept and decline paths cannot settle a saved Telepath declaration). Do not enable
+new offer creation until those paths are integrated. Normal reaction history still
+needs implementation; ability-check Bolstering remains a separate event lifecycle.
+
+
+### Original-campaign Telepath cleanup (local backend; not UI-wired)
+
+Migration 20261010200000 lets the original campaign's current DM cancel an
+unresolved saved Telepath reaction after its character leaves or moves. It locks
+in the same order as normal settlement, rechecks campaign ownership, and saves
+the reason and a combat-history event in one transaction. Repeated requests return
+the saved cancellation; completed rolls cannot be undone. The Reaction and paid
+Hit Dice stay spent, with no Energy charge or attack-roll change. Character owners
+and unrelated DMs cannot use this cleanup endpoint.
+
+Client validation rejects inconsistent identities/costs and retries the same saved
+request. Full verification passed: 4,544 unit tests, TS 193/193, entry 255.7 KB.
+SQL lint: 20 existing function findings, no errors or cancellation findings.
+All 90 desktop/mobile Telepath cases passed, plus eight focused cancellation
+checks including concurrent requests, history-write rollback and paid Hit Dice.
+Security advisor findings remain keep_warm/client_errors. Exact local ledger
+verified. Evidence: .tmp/telepath-cancel-{db,focused,gate}.log and
+.tmp/telepath-cancel-{lint,advisors}.json. Repo chain: 342; retained release
+rehearsals need 333–342. Production unchanged. The cancellation control and normal
+Telepath review/recovery UI remain next; this checkpoint adds their backend/API.
+
+
+### Authenticated Telepath lifecycle (local backend; not released or UI-wired)
+
+Migration 20261010195500 exposes a scoped telepath_reaction dispatcher for context,
+per-attack list, read, begin, enhance, finish and cancel. Fresh declarations retain
+the existing DM-only distance/visibility review. The character's owning campaign
+member can recover and finish a reviewed use; strangers, departed members and
+foreign declaration identities are rejected. Original campaign scope is checked
+on replay as well as first use. Low-level functions and saved tables stay private.
+The read surface returns linked enhancement identities and original/adjusted dice
+without applying another payment. Changed subclasses can still recover/cancel.
+
+Eight focused database/browser cases passed after fixing two fixtures (an attack
+cannot legally move campaigns; browser Auth needs non-null creation timestamps).
+They cover DM review, member revocation, malformed requests, campaign separation,
+Surge/Enkindled recovery and cancellation, and two lost responses each for begin
+and finish followed by list recovery after reload. Exactly one Reaction claim and
+one conditional Energy Die payment remain. All 40 Telepath database/browser
+cases passed on the full rerun. The full gate passed: 4,534 tests,
+TS 193/193, entry 255.7 KB. SQL lint has no new diagnostics (20 existing functions);
+security findings remain keep_warm/client_errors. Exact local ledger verified.
+
+Still required before enabling controls: client receipt validation, DM spatial
+review and player saved-use controls, integration with enhancement/recovery UI,
+and durable Telepath reaction history. In particular, the original DM needs a
+narrow orphan-cancellation path if the character leaves/moves campaign while a
+saved reaction is unresolved: current authorization correctly denies departed
+members, but the current-campaign character helper also denies the former DM.
+Do not relax general membership checks to address that. Ability-check Bolstering
+remains separate from this attack lifecycle. Repo chain: 341; retained release
+rehearsals still need 333–341. Production unchanged.
+Evidence: .tmp/telepath-dispatcher-{verified-db,full-db,gate}.log and
+.tmp/telepath-dispatcher-{lint,advisors}.json.
+
+
+### Revised post-roll reaction checks (local; not released)
+
+Migration 20261010193500 adds private, server-owned attack outcome revisions and
+keys post-roll offer batches by revision. Changes to total, AC, hit result, cover
+or participant/kind bindings while attack_rolled require a new eligibility check.
+The existing dispatcher still adopts prior accepted/declined/expired offers with
+their original identities and deadlines; it never reopens them. A previously
+empty miss batch no longer suppresses a newly eligible Shield after Bolstering.
+Unrelated metadata edits preserve the current check. Damage advancement rejects
+an unchecked revision, including an attempt to change outcome and advance in the
+same write. Damage windows retain their existing once-only batches.
+
+Validation: full gate passed (4,534 tests, TS 193/193, entry 255.7 KB). The combined
+local reaction/Telepath run passed 53 cases and exposed one outdated fixture that
+changed identity while jumping to damage. Splitting that fixture into identity
+restoration, authenticated reaction check and advancement restored the intended
+terminal-context test. It and a new real saved-Bolstering case passed: conditional
+one-die payment, no extra revision on replay, new defender Shield offer, and damage
+held until a decision. Other new cases cover concurrent outcome/check writes,
+accepted/declined/expired decision preservation, stale candidates and private-table
+protection. All eight desktop/mobile combat-dialog and Graze recovery flows
+passed with the new revision checks. SQL lint adds no diagnostics (20 existing warning functions); security
+findings remain keep_warm/client_errors. Exact local migration ledger verified.
+
+This provides follow-up checks for the existing defensive reaction registry. It
+does not yet expose Telepath controls, add their authenticated lifecycle dispatcher,
+or automate ability-check Bolstering. Repo chain: 340; retained release rehearsals
+still need 333–340. No production migration/deployment performed.
+Evidence: .tmp/reaction-revisions-{db,bolstering,gate,ui}.log and
+.tmp/reaction-revisions-{lint,advisors}.json.
+
+
+### Durable attack-roll history (local; not released)
+
+New live attack rolls use record_pending_attack_roll_with_history. It composes
+existing authorization, shared-actor locking, original-roll evidence and Sap/Vex
+consumption with cover, attack-roll and buff-contribution events in one database
+transaction. Failed history inserts undo the roll and marker consumption. Replays
+and concurrent callers return the saved winner without duplicate or losing-die
+history. Advantage/disadvantage retains both d20s; original target AC, effective
+cover AC, exhaustion and buff dice remain visible. The canonical SQL dice-evidence
+checker rejects impossible buff faces/totals, and the wrapper checks overall math.
+The client no longer performs separate fire-and-forget writes for these events.
+
+Legacy rolls recorded through the older endpoint replay as-is; missing historical
+roll details are not invented or backfilled. This closes history loss for the new
+live roll transaction, not every legacy combat event writer. Telepath reaction
+controls still require subsequent reaction windows and authenticated integration;
+ability-check Bolstering remains separate work. The previous manual-declaration
+follow-up was stale: DeclareAttackModal has no live importer or mounted path.
+
+Validation: full gate passed (4,534 tests, TS 193/193, entry 255.7 KB). All 23 local
+attack cases passed, plus final wrapper checks for player authorization and exact
+history. Coverage includes two dropped responses after commit, concurrent winners,
+forced history failure rollback, invalid dice, and original/alternate d20 evidence.
+All eight desktop/mobile combat-dialog and Graze recovery flows passed.
+SQL lint adds no diagnostics (20 existing warning functions, no errors); security
+advisor findings remain keep_warm/client_errors. Exact local migration ledger
+verified for 20261010191500. Repo chain is now 339; retained fresh/main-upgrade
+rehearsals still need 333–339. Production unchanged.
+Evidence: .tmp/attack-history-{final-gate,final-db,final-auth,dialog}.log,
+.tmp/attack-history-final-lint.json, .tmp/attack-history-advisors.json.
+
+
+### Manual attack ability review (local; not released)
+
+The sheet now exposes Add Custom Attack and named Edit/Remove controls. Its
+optional ability-modifier field is independent of total attack/damage bonuses:
+zero and negative values persist, blank stays unknown, and fractional/invalid
+values cannot save. Editing preserves the reviewed value instead of dropping it.
+Saving/removing manual attacks excludes generated inventory, species and unarmed
+rows, preventing copies in character.weapons. The old DeclareAttackModal has no live importer (its mount was removed in
+v2.411); it is not an active manual-entry gap.
+
+Validation: full gate passed (4,533 unit tests, TS baseline lowered 194 to 193,
+entry 255.7 KB). Local desktop/mobile browser flows verify persistence across
+reloads, zero/negative/blank values, fractional rejection and no generated copies.
+Console/HTTP checks and the official modal overflow probe pass. Removing modifier
+persistence made the browser regression fail on the stored value; restored code
+passed. Screenshots reviewed and modal spacing improved. No migration added.
+Evidence: .tmp/manual-weapon-*-gate.log, .tmp/manual-weapon-*-e2e.log,
+.tmp/manual-weapon-mutation.log. Production remains unchanged.
+
+
+### Graze combat dialog integrated (local; not released)
+
+New weapon declarations opt into the saved Graze path. The eager grazeOnMiss HP
+writer has been deleted: attack rolling only determines the outcome and offers
+reactions. Once reactions finish, the DM combat dialog checks mastery and offers
+Use Graze / Decline Graze for a final miss. A later hit hides that choice; a later
+miss restores it. Older attacks or missing ability snapshots show manual-review
+text and can continue without adding Graze; they are never guessed or backfilled.
+
+A saved use/decline opens the dedicated application panel, which shows the typed
+base damage and recorded defenses. Conditional/missing defenses can receive a
+noted ruling tied to the inspected context. Graze bypasses the generic fudge/HP
+path and settles atomically. The immutable decline is distinct from an ordinary
+miss via migration 20261010185000's DM-only choice reader. Generic applyDamage
+also routes saved Graze choices to the atomic endpoint. The compact form keeps
+checkboxes beside labels and its action buttons reachable on mobile.
+
+Validation: final gate passed (4,514 tests, TS 194/194, entry 255.7 KB). All four
+use/decline browser flows passed on desktop/mobile with the official overflow
+probe and screenshots inspected. The final four-case browser rerun also checked
+console errors and HTTP failures, allowing the deliberately aborted choice replies.
+They assert unchanged HP after rolling and
+choosing, no choice when the final outcome becomes a hit, recovery after two lost
+choice replies, conditional resistance application, and exactly one HP/history
+settlement. These simulate the changed final outcome; they do not certify the
+still-unexposed Telepath reaction UI. Removing the choice made the test fail at
+Use Graze; exact restoration passed. All 53 broader attack-outcome, Graze and
+combat-dialog recovery cases passed. SQL lint has no Graze diagnostics (20 other
+existing function warnings). Exact local migration ledger verified.
+
+Evidence: `.tmp/graze-ui-{release-gate,polished-e2e,console-e2e,mutation,restored,regression}.log`,
+`.tmp/graze-ui-lint.json`, and `.tmp/graze-{choice,damage}-*.png`.
+Remaining: reviewed ability selection for manually configured weapon/declaration
+rows; Telepath numerical reaction integration and subsequent reaction windows;
+durable attack history; release rehearsals through migration 338. No production
+migration or deployment performed in this work.
+
+
+### Atomic Graze application — stage 2 (local; not released or wired into UI)
+
+Migration 20261010184800 records participant bindings with the Graze choice and
+adds a DM-scoped application endpoint. It composes the existing locked pool/life
+settlement with HP, death state, concentration, combat events, applied state and
+an RLS-protected replay receipt in one transaction. Missing post-damage reaction
+evidence rolls back every write. Replays are checked before looking up mutable
+target state; authorization is rechecked first. Pre-binding Graze receipts require
+review rather than being adopted.
+
+The application verifies the recorded ability, component, original target and
+miss before writing. It applies known typed immunity/resistance/vulnerability and
+Petrified resistance. Absorb Elements contributes resistance once, even when the
+old reaction handler already halved damage_final. Other changed/fudged totals are
+rejected. Unknown or conditional defenses need an explicit immunity/resistance/
+vulnerability ruling with a note, bound to the exact reviewed context. A changed
+context cannot apply that stale ruling. Declined Graze remains zero without
+requiring irrelevant defense decisions. The API resumes any committed
+concentration check instead of applying another hit.
+
+Validation: 32 database cases passed, including pool/life/concentration effects,
+resistance/immunity/vulnerability, rollback, original participant checks, lost
+responses and simultaneous application. Two further cases check stale manual
+reviews and application receipt privacy; both passed. The final full gate passed
+(4,504 tests, TS 194/194, entry 255.7 KB). SQL lint reports no Graze diagnostics
+(20 other existing function warnings). Exact local migration ledger verified.
+Evidence: `.tmp/graze-apply-{unit,final-db,extra-db,final-gate}.log` and
+`.tmp/graze-apply-lint.json`.
+
+Still required before release: wire new declaration opt-in, use/decline controls,
+defense review and atomic application into the combat dialog; remove eager
+Graze HP writes; verify hit-to-miss and miss-to-hit reactions plus desktop/mobile
+recovery. No player flow changed in this backend stage. Release rehearsals must
+include migrations 333–337. The broader Telepath and map work remains open.
+
+
+### Graze choice recording — stage 1 (local; not released or wired into UI)
+
+Migration 20261010183300 adds an opt-in resolution version that must be supplied
+at declaration and cannot later change. Legacy attacks remain null because the
+old Graze handler may already have written HP. The new DM-scoped recording RPC
+accepts use/decline only for a final missed mastered weapon attack against a
+current creature target, with a known captured ability modifier and weapon damage
+type. It checks encounter/participant/character bindings and the exact attack
+snapshot. Total cover, missing mastery, unknown modifiers/types and stale attacks
+are rejected. The existing reaction barrier must pass before recording.
+
+A private damage receipt preserves the optional choice. Same-choice retries return
+the winner; opposite choices cannot replace it, including concurrent requests.
+The stored typed component contains only the nonnegative ability contribution,
+no dice or magic/proficiency bonuses. Declining records zero with no components.
+This stage neither writes HP nor consumes hit-only buffs. The API verifies saved
+evidence and surfaces errors. Rule reference: [2024 Basic Rules, Graze](https://www.dndbeyond.com/sources/dnd/br-2024/equipment/#Graze).
+
+Validation: 18 local database cases passed (13 initial + 5 additional cases for
+zero/negative/unknown modifiers, legacy declarations and simultaneous choices).
+Full gate passed (4,499 tests, TS 194/194, entry 255.7 KB); SQL lint has no new Graze diagnostics (20 existing function
+warnings). Exact local ledger statement verified. Evidence:
+`.tmp/graze-record-{db,extra,gate}.log`, `.tmp/graze-record-lint.json`.
+
+NEXT, required before release: atomic Graze HP/life/concentration/history
+application with reviewed damage defenses; optional use/decline controls after
+reactions; new-client declaration opt-in; remove eager grazeOnMiss writes. The
+existing UI still uses that legacy path, so this stage alone does not repair the
+player experience. Also test hit-to-miss/miss-to-hit reactions and lost responses.
+Release rehearsals must now include migrations 333–336.
+
+
+### Declared attack ability snapshot (local; not released)
+
+Migration 20261010182115 saves an optional integer ability contribution on each
+pending attack. A private trigger rejects every later change, including null
+backfills and clearing an existing value; existing rows remain null. No permission
+to call the trigger function is granted to application roles. Local application
+preserved the foreign ledger row and verified the exact new migration statement.
+
+Generated weapon rows pass the selected modifier through the combat button, which
+keeps its original request across rerenders/retries. Single- and multi-target
+writes retain the value separately from attack totals. Mastery effects prefer this
+captured value, including zero/negative modifiers. Existing attacks and manual
+weapon rows without metadata retain the old stat fallback for now. Follow-up:
+provide reviewed ability selection for manual declarations, require verified
+values for automated Graze, and move Graze after final reactions into atomic
+HP/history application. The current eager Graze writer remains a release blocker.
+
+Validation: full gate passed (4,487 tests, TS 194/194, entry 255.7 KB).
+All 34 desktop/mobile attack-outcome database cases passed, including live
+creation, retry, immutable updates and null handling for the new column. SQL lint
+has no diagnostics for the new guard; 20 pre-existing function warnings remain.
+Evidence: `.tmp/ability-snapshot-{unit,db,final-gate}.log` and
+`.tmp/ability-snapshot-lint.json`. No production changes. Release rehearsals still
+need migrations 333–335.
+
+
+### Weapon ability classification (local; not released)
+
+Inventory weapons now use the known weapon category instead of treating every
+range string without "Melee" as ranged. This corrects Strength-based weapons
+listed with 5/10 ft. reach and thrown melee weapons. Known ranged weapons retain
+Dexterity when range text is absent; Finesse uses the higher STR/DEX modifier even
+when inventory properties are missing. Mastery calculation shares that selection
+rule, including ranged Finesse weapons. Custom weapons still use explicit range
+and property text as a fallback.
+
+Generated weapon rows retain the ability contribution separately from proficiency
+and magic bonuses. The subsequent snapshot work above now persists it for new
+weapon attacks. Manual ability selection and final-outcome Graze damage remain
+open; this classification change does not claim to fix those. Thirty focused regression cases passed.
+Full gate passed: 4,476 tests, TS 194/194, entry 255.7 KB. Evidence:
+`.tmp/weapon-ability-gate.log`. No schema or production changes.
+
+
+### Required reaction checks before damage (local; not released)
+
+Migration 20261010175150 strengthens attack state advancement: an attack-roll
+window needs a saved post_attack_roll batch before damage recording, and applying
+damage needs a post_damage_roll batch. An empty batch is valid evidence; no row
+is not. Existing unanswered offers still block first. Save/automatic-hit attacks
+do not acquire an invented attack-roll window. Cancellation remains available.
+The trigger shares the attack lock with offer creation; failure also rolls back
+HP/history changes performed in the same transaction. This does not make the
+remaining legacy multi-request HP writer atomic or stop unrelated direct HP edits.
+
+The DM attack dialog recovers its current window before exposing resumed controls,
+including a saved damage preview after a dropped response. Recovery errors use
+the existing locked refresh state. Fixture-only empty windows now use the public
+authenticated dispatcher. The Sharpened Mind spell fixture also needed its required
+Action context restored; all 31 Sharpened cases then passed, including the eight
+previously failing paid-spell paths. No rules guard was relaxed for those fixtures.
+
+Validation: final full gate passed (4,446 tests, TS 194/194, entry 255.7 KB).
+The 50 damage-recording/application cases passed; all 31 Sharpened cases passed
+on rerun. The broader save/completion/Bolt/Psychic run passed 141 of 142; its one
+remaining condition-timing fixture reused a settled request ID. Giving the second
+condition a new ID (and asserting different attacks) restored the intended check;
+that case and six final barrier/completion cases passed together. Desktop/mobile
+dialog checks passed all four cases with the official overflow probe; screenshots
+were inspected. Removing resumed damage-window recovery made the new receipt
+assertion fail (0 instead of 1); restoring the exact bytes passed again.
+
+Local ledger text matches migration 20261010175150 exactly. Final SQL lint has no
+guard diagnostics (20 other functions still report warnings). Security advisor
+has only the existing keep_warm/client_errors warnings. Artifacts:
+`.tmp/reaction-barrier-final-gate.log`, `reaction-barrier-atomic.log`,
+`reaction-barrier-sharpened.log`, `reaction-barrier-more.log`,
+`reaction-barrier-final-cases.log`, `reaction-barrier-ui.log`,
+`reaction-barrier-mutation.log`, `reaction-barrier-restored.log`, and
+`.tmp/reaction-barrier-{desktop,mobile}.png`.
+
+Further integration review: Telepath changes to a saved hit/miss may make a new
+reaction eligible. Define a subsequent reaction window without reopening declined
+or expired offers from the original batch before exposing those controls. Also
+finish durable attack history and move Graze into the atomic damage pipeline with
+the actual captured attack ability modifier. Fresh/main-upgrade rehearsals are
+still at 332 and must include 333/334 before release.
+
+
+### Saved attack reaction offers and recovery (local; not released)
+
+Migration 20261010174241 adds a private, RLS-enabled receipt table keyed by
+attack and reaction window. The authenticated, scoped dispatcher serializes on
+the attack row; it owns offer identity, names and deadlines. A first empty batch
+is durable too. Replays return the original count, never reset a decision or
+extend a timer. Existing legacy offers are adopted without duplication. The
+existing eligibility registry supplies only whitelisted reaction keys; it does
+not supply writable offer rows. This does not add Telepath eligibility yet.
+
+Attack-roll retries recover offers without rolling again. Damage recording and
+application recover their preceding window before advancement; the existing SQL
+barrier holds damage when an unanswered offer is restored. No loose insert is
+used on this path. Read failures still surface, and an existing receipt bypasses
+fresh eligibility reads that could otherwise suppress or reopen an old choice.
+
+Validation: full gate passed (4,443 tests, TS 194/194, entry 255.7 KB). Twenty-seven
+combined database/browser cases passed, plus the additional attacking-player
+membership-revocation case. Coverage includes simultaneous requests, dropped
+responses after commit, zero-offer receipts, all terminal decisions, stale and
+foreign requests, private table access, and recovered offers blocking damage.
+Local SQL lint: no diagnostics for the new function, 20 other function warnings
+remain. Security advisor: only the existing keep_warm/client_errors warnings.
+The normal local migration ledger matches the file exactly. Artifacts:
+`.tmp/attack-offers-{gate,db-final,member}.log`, `.tmp/attack-offers-lint.json`,
+`.tmp/attack-offers-advisors.json`.
+
+Remaining: durable attack history, Graze deferral and actual ability-modifier
+capture, full Telepath controls/check triggers, and a server-level requirement
+that every new window be finalized before direct damage RPCs can advance it.
+The app restores offers before advancing, but this is not yet a missing-batch
+barrier against older clients or arbitrary direct writes. Fresh/main-upgrade
+rehearsals remain at 332; rerun through 333 before release. Production unchanged.
+
+
+### Attack reaction failures are visible (local; not released)
+
+Attack-triggered reaction offers now reject failed/missing target, character,
+and mapped attacker reads instead of reporting zero eligible reactions. Map
+lookups use the existing strict-read option so an unavailable scene is not
+mistaken for a theater-of-the-mind encounter. Returned and thrown offer-insert
+errors also propagate instead of reporting the requested offer count as saved.
+The existing attack modal catches these failures, shows them, and reloads saved
+combat state. Existing Counterspell tests are preserved separately.
+
+This is error reporting, not a durable reaction barrier: the original attack
+roll may already be committed, and its replay currently skips offer creation.
+Missing-offer recovery, transactionally saved history, and deferring Graze until
+post-roll reactions settle remain required before exposing Telepath controls.
+Graze also needs the actual attack ability modifier captured at declaration,
+then the shared typed damage/life/concentration application path; the current
+STR/DEX reconstruction and direct HP write are not sufficient.
+
+Focused validation: 12 attack-offer cases plus 7 existing Counterspell cases
+passed without database access. The full gate passed: 4,427 tests, the existing
+TypeScript baseline, hooks, rules, coordinates, anchors, build and bundle budget
+(entry 255.7 KB). Artifact: `.tmp/reaction-offer-errors-gate.log`. Production has
+not been changed.
+
+
+
+### Release rehearsal refreshed through 332 (production unchanged)
+
+Both retained databases (fresh-origin and main-upgrade-origin) applied the full
+332-file ledger through 20261010172839. Existing rehearsal migration copies
+matched repository bytes before adding files. Public/private schema dumps,
+including owners and grants, agree after CRLF-to-LF normalization only:
+`7d236cb9b98e40d611fa532b5b6ddf4777148d0bd8d42323cc1a107a8e958e79`.
+The raw dumps differed solely by line endings. Both temporary stacks are stopped
+with recoverable volumes retained; the normal Docker stack remains running.
+
+The CLI lint output is an object with a results array. Earlier summaries that
+iterated its top-level keys incorrectly reported no new-function diagnostics.
+Correct parsing found an unread receipt variable in propel_movement_api;
+migration 20261010172839 replaces those assignments with PERFORM. Both rehearsal
+lint results now report zero errors and diagnostics on 20 other functions.
+This is not a claim that all SQL warnings are resolved.
+
+Validation: the full gate passed (4,415 tests, TS 194/194, entry 255.7 KB) and all
+22 movement database cases passed after cleanup. Normal local migration text
+was verified against its exact ledger statement. Rehearsal artifacts are
+`.tmp/supabase_db_dndkeep-{release-rehearsal,main-upgrade}-332-schema.sql` and
+`.tmp/{release-rehearsal,main-upgrade-rehearsal}-332-*`.
+
+Read-only production preflight on October 10 returned zero for all seven checks.
+Production still has 233 migrations through 20261008211300; its ordered version
+MD5 `1a3de08c0a19ec990f1cd7716f389b13` matches the repository prefix (99 pending).
+Remote main remains 03671386d191e1a24b75c38d72e250fa4e4fd29a.
+
+Both GitHub CI checks and Vercel preview build succeeded for f84a3237. Preview:
+https://dndkeep-7xyrckpnl-rainontwitch-5403s-projects.vercel.app
+Opening it redirects to Vercel SSO login; hosted smoke verification is therefore
+still unproven. Do not count a successful build as a browser smoke test. Keep the
+PR draft until the final-head checks and protected preview are verified; rerun
+production preflight immediately before merge. The broader Psion and map goal
+remains active while preview access is unavailable.
+
+
+
+### Propel post-save movement — player flow connected (unreleased)
+
+New declarations now defer movement until the final failed save. The player
+chooses push/pull or eligible Warp in the same Propel dialog, with no second
+Bonus Action, roll or Energy Die charge. Both adjacent ability rows use this
+shared flow. Successful saves never offer movement. The Warp instruction keeps
+the destination visible, unoccupied, horizontal and within 30 feet of the caster;
+no Prone effect is invented. Map placement is still manual.
+
+Movement requests persist before sending. Lost replies recover the same server
+choice; reload discovery also finds failed-save choices without browser storage.
+An explicit close preserves an earlier concurrent choice, otherwise records no
+movement. Turn guards require choosing or closing before advancement.
+
+Migration 20261010170730 adds truthful history: save settlement records movement
+pending, and the first choice/closure adds exactly one separate history entry.
+A distinct begin_deferred operation prevents older databases from spending a
+Bonus Action on an unrecognized new flow. Movement-aware protocol markers cover
+reads, completion and linked enhancements; old tabs cannot list/read/finish new
+deferred uses with their obsolete movement instructions. Legacy uses still work.
+
+Validation: full gate passes with 4,415 unit tests, TS 194/194 and entry 255.7 KB.
+All 30 desktop/mobile Propel browser cases passed. The new post-save/reload/lost-
+reply case passed with the official overflow probe at both viewports; screenshots
+reviewed. Disabling deferred declaration made that regression fail at the missing
+Warp choice; restoring passed. Follow-up checks cover the distinct operation and
+old-client protocol (8 flow cases and 4 protocol cases across both viewports).
+All 22 movement database cases also passed against the final migration.
+SQL lint has no changed-function diagnostics; security findings remain
+keep_warm/client_errors. Exact local ledger verified. Repo chain: 331; retained
+release rehearsals: 321. Logs: `.tmp/propel-ui-*`.
+
+Next: refresh both release rehearsals, inspect hosted checks and review deployment
+readiness. Broader Psion work remains: Telepath UI/ability-check triggers, Graze
+reaction timing and full ability audit. Map destination automation/polish remains
+open. Nothing in this entry claims production deployment or complete automation.
+
+
+
+### Deferred Propel movement — turn boundaries (not released)
+
+Migration 20261010170333 extends the shared combat assertion to unresolved
+post-save movement. Clock preparation, outgoing effects/reservations, direct
+initiative changes and encounter completion now require choosing or closing
+movement first. Direct active-encounter shutdown also runs the assertion.
+Solo turn changes/deletion share the character lock with choices and reject
+unresolved deferred movement; parent deletion still cascades normally.
+A confirmed choice or explicit no-movement closure releases the boundary.
+
+Validation: all 41 combined movement/turn-boundary database-browser checks passed,
+including the existing reservation race tests. Full gate passed (4,403 unit tests,
+entry 255.7 KB; TS 194/194). SQL lint has no new guard diagnostics; security
+findings remain keep_warm/client_errors. Exact local ledger verified. Repo chain:
+330; retained rehearsals: 321. Logs: `.tmp/propel-boundary-{db,gate,lint,advisors}.*`.
+
+Deferred begin is still private. Remaining before enabling it: player controls,
+uncertain local request recovery, truthful post-save action history, and movement
+instructions that consume the new receipt. Then verify desktop/mobile flows and
+release rehearsals. Map destination placement remains manual.
+
+
+
+### Post-save Propel movement — recovery API and validation (not released)
+
+Migration 20261010165910 exposes owner-scoped read/choose/close/list operations
+through an authenticated invoker facade. Creating deferred declarations remains
+private. Paginated recovery includes older unresolved failed saves, so loss of
+browser storage does not erase them. Closing after turn/progression/roster changes
+records no movement; a concurrent saved choice wins and cannot be erased.
+
+The client API validates the complete original declaration/payment plus the
+separate movement receipt: character/declaration, target, original/enhanced dice,
+Warp subclass/level and movement distance. Inconsistent successful replies remain
+uncertain. Existing and new recovery lists share cursor/page validation.
+
+Validation: all 19 local database cases pass; full gate passes with 4,403 unit
+tests and entry 255.7 KB (TS remains 194/194). SQL lint has no new-function
+warnings/errors; security findings remain keep_warm/client_errors. Exact local
+ledger verified. Repo chain: 329; retained rehearsals: 321. Logs:
+`.tmp/propel-recovery-{db,gate,lint,advisors}.*`.
+
+Player integration is still incomplete: preserve uncertain local requests,
+show/recover the post-save choice in Propel controls, resolve turn-boundary and
+history behavior, then enable the deferred begin path. Map placement remains
+manual and requires destination review. No production changes in this step.
+
+
+
+### Post-save Propel movement — private saved decision (not released)
+
+Migration 20261010165336 adds opt-in deferred movement declarations and a
+separate one-time push/Warp receipt. The original declaration, dice, save,
+Energy payment and Bonus Action receipt stay unchanged. A new choice requires
+the settled failed save, original Psion progression, original turn and combat
+participant bindings; Warp additionally requires Psi Warper level three.
+Exact retries recover the winner without charging or reopening the choice.
+Legacy declarations cannot be converted: their movement may already be applied.
+
+Both entry points remain private and denied to authenticated/anonymous clients.
+This is backend preparation, not a player-facing fix. Remaining integration:
+scoped dispatcher and strict client receipt validation; recoverable post-save
+selection and interrupted/expired choices; turn-boundary handling; durable
+history; map destination review. The client must display the new movement receipt
+instead of the legacy result.feet once opted into this flow. Do not enable the
+new declaration through the existing UI without completing those dependencies.
+
+Validation: 15 local database cases cover costs, retries, ownership, class and
+turn changes, legacy rejection, combat identity changes and concurrent saves.
+Full gate passed (4,389 unit tests; entry 255.7 KB); SQL lint reports no errors
+or new-function warnings. Security findings remain keep_warm/client_errors.
+Exact local ledger verified. Repo chain: 328; retained rehearsals: 321.
+Logs: `.tmp/propel-movement-{gate,db,lint,advisors}.*`.
+
+
+
+### Propel number audit — all class levels (unreleased)
+
+Rechecked the existing Bonus Action controls, optional Energy Die and adjacent
+Warp Propel row against the requested behavior. Added an independent progression
+matrix covering all 20 primary Psion levels and all 19 legal secondary Psion
+levels, every ordinary die face, both save outcomes and the level-three Warp
+unlock. Checks preserve the fixed caster-relative 30-foot Warp destination,
+conditional one-die cost and rejection of rolls above the class-level die size.
+Added component regressions proving both free choices remain usable with an
+empty Energy pool and never roll a die. Full gate: 4,389 unit tests; entry 255.7 KB.
+All 28 desktop/mobile Propel browser checks passed, including lost responses,
+reload recovery and Legendary Resistance. Desktop/mobile target screenshots
+reviewed. Logs: `.tmp/propel-review-gate.log`, `.tmp/propel-review-browser.log`.
+
+Remaining accuracy issue: the saved declaration currently locks push versus Warp
+before the save. The rule permits choosing Warp after failure. Follow up with a
+saved post-save movement choice (no second Bonus Action or reroll), including
+recovery and map destination validation. Current movement itself remains manual.
+Do not call Propel fully automated or this branch released.
+
+
+### Telepath timing — original attack trigger context (local; not released)
+
+Migration 20261010163856 captures the original encounter turn token and both
+participant/combatant identities when a new immutable attack roll is saved.
+Capture shares the attack transaction; existing/legacy rolls are not guessed
+or backfilled. Missing encounter or participant evidence remains unverified.
+
+Telepath preparation now requires the same original turn and identities.
+Advancing then rewinding initiative does not reopen an old attack; rebinding a
+participant or combatant definition also rejects preparation. Fresh attacks on
+an enemy turn still permit off-turn reactions. The client validates the returned
+trigger-turn identity against the shared action context before offering dice.
+
+This completes trigger-turn capture for attack-based preparation; it does not
+expose Telepath controls or address ability-check event capture. Next integration
+still includes durable offers/history, Graze deferral, authenticated dispatcher,
+payment recovery and the player/DM controls. Repo chain is 327; retained release
+rehearsals cover 321. Production remains unchanged.
+
+Validation: all 47 combined attack/Telepath database-browser cases passed.
+Full gate passed (4,348 unit tests; entry 255.7 KB). SQL lint reports no errors
+or new-function warnings; security findings remain keep_warm/client_errors.
+Exact local migration ledger verified.
+
+
+### Telepath reactions — linked enhancements (local; not released)
+
+Migration 20261010163401 records the original Psion turn context and links
+Surge/Enkindled receipts to each Telepath declaration. New enhancements require
+unchanged turn, progression, attack revision and roster, plus an open saved
+offer. Each kind has one identity; Enkindled must precede Surge. Exact payment
+retries still recover after completion without another Hit Die charge.
+
+Final settlement uses the saved base plus paid extra dice and Surge adjustments.
+Only the base Energy Die can be charged, and only when the outcome changes.
+Ineffective and canceled reactions retain Energy Dice; already-paid Hit Dice
+and the Reaction remain spent. The saved result carries original and adjusted
+dice for the eventual recovery display.
+
+Validation: all 28 Telepath database/browser cases passed, covering level-20
+combined totals, wrong Hit Die pools, unearned Enkindled, changed contexts,
+ordering/duplicate enhancement rejection, cancellation and replay. Full gate
+passed (4,346 unit tests; entry 255.7 KB). SQL lint has no errors/new-function
+warnings; security findings remain keep_warm/client_errors. Exact local ledger
+verified. Repo chain is 326; retained release rehearsals cover 321.
+
+Application execution remains disabled: authenticated dispatcher, payment
+recovery links, trigger-turn capture, player/DM controls, ability-check events,
+durable attack offers/history and Graze deferral still need integration.
+
+
+### Telepath reactions — private saved lifecycle (local; not released)
+
+Migration 20261010162629 adds saved Distraction/Bolstering attack declarations.
+Beginning preserves the original base die, reviewed attack revision, roster
+bindings and explicit DM range/visibility confirmation; it claims the shared
+Reaction and creates an offer that holds damage progression. Exact declaration
+retries reuse that record. No Energy Die is charged at declaration.
+
+Finishing locks the attack/roster, checks the original turn and progression,
+then applies the numerical modifier and conditionally charges one Energy Die
+in the same transaction. Natural critical hits stay critical. Ineffective
+rolls retain the die but keep the Reaction spent. Concurrent completion reuses
+one result/payment. Stale state or insufficient energy leaves the declaration
+recoverable; explicit cancellation keeps the Reaction spent and charges no
+Energy Die. A timer or direct offer deletion cannot discard an unfinished use.
+
+The functions/table remain private and unavailable to application roles.
+Do not enable a dispatcher/UI yet: linked Surge/Enkindled, player recovery,
+original attack trigger-turn capture, spatial review integration, ability-check
+Bolstering, durable attack history/offers and Graze deferral remain unfinished.
+DM confirmation here is an explicit adjudication, not automatic line of sight.
+
+Validation: 20 database/browser suite cases and six follow-up cases passed,
+including roster/progression guards and simultaneous completion. Full gate:
+4,346 unit tests, entry 255.7 KB. SQL lint has no errors/new-function warnings;
+security findings remain keep_warm/client_errors. Local ledger matches exact
+migration bytes. Repo chain is 325; retained release rehearsals cover 321.
+
+
+### Reaction windows — server-side attack barrier (local; not released)
+
+Migration 20261010162103 serializes new attack-linked reaction offers against
+advancement of their parent attack. An open offer blocks the transition into
+recorded damage or applied state; a late offer cannot attach to an already
+passed stage. Offered rows remain open until a saved decision, even when the
+wall-clock deadline has passed. Cancellation and recording terminal decisions
+remain available. Campaign/encounter mismatches are rejected.
+
+The barrier runs beneath the damage RPC, so rejection also rolls back any
+one-use damage rider consumption in that transaction. Trigger functions are
+private and not directly executable by application roles; their reads include
+other players' offers despite per-reactor RLS. Existing table RLS still governs
+who can create/update offers and attacks. No UI or production changes.
+
+This does not yet create Telepath offers or settle their conditional payments.
+It also does not make legacy client HP writes transactional, recover missing
+post-roll offers/history, or defer Graze. Those remain required follow-up work.
+Validation: all 35 local database/browser checks passed, including open-offer
+rollback, late-offer/advancement races, lost damage replies and HP settlement.
+The full gate passed (4,346 unit tests; entry 255.7 KB). SQL lint has no errors
+or new-trigger warnings; security findings remain keep_warm/client_errors.
+Repository chain is now 324; retained release rehearsals still cover 321.
+
+
+### Attack accuracy — combine advantage sources before cancellation (not released)
+
+Condition and mastery sources now enter one rules-layer calculation before
+advantage/disadvantage cancel. Previously, a condition pair collapsed to
+`normal`, allowing Sap or Vex to incorrectly reintroduce disadvantage or
+advantage. Both sources remain present regardless of how many effects grant
+one side. Existing Prone distance and Invisible handling are preserved; this
+change does not add visibility adjudication for special senses.
+
+Source: [2024 rules, Advantage/Disadvantage](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game).
+Pure tests cover the source combinations; a local browser/database regression
+checks seven real rolls, including kept dice, number of dice and consumption
+of the applicable mastery markers. No database migration or UI changes.
+
+
+### Attack recording — atomic mastery consumption (local; not released)
+
+Migration 20261010161121 records the original attack snapshot and consumes
+applicable Sap/Vex markers in one transaction. The actor lock serializes
+competing attacks; stale attack revisions or changed buffs reject the roll
+without spending markers. Exact retries return the already-saved attack and
+leave newly acquired markers untouched. Authorization checks the campaign DM
+or owning campaign-member character; anonymous callers are denied.
+
+The live attack path uses this RPC and removes the independent marker writer.
+Attacker effects now load even when the target is manually named. Failed
+participant/condition reads stop before rolling instead of assuming no effects.
+The immutable snapshot remains the receipt; this does not make caller-supplied
+attack modifiers or critical conditions server-derived. Reaction offers,
+attack history and Graze still need durable post-roll settlement; Telepath
+acceptance remains unfinished and must not be enabled before that work.
+
+Validation: full gate passed (4,334 unit tests; entry 255.7 KB), plus eleven
+local database/browser cases including lost replies, simultaneous competing
+rolls, player/DM authorization, failed evidence and free-text-target Sap.
+SQL lint reports no errors or warnings for the new functions; security advisors
+show only existing keep_warm/client_errors findings. Repo chain is now 323;
+retained release rehearsals still cover 321. Production was not changed.
+
+
+### Connection integration — player controls (local; not released)
+
+The actual character-sheet row now opens saved Connection controls in its
+expanded detail area. A new extension persists its original roll before any
+request, then uses the shared Bonus Action/payment lifecycle and linked
+Surge/Enkindled. Interrupted declarations can be confirmed after reload;
+finishing recovery retains paid enhancements and never rerolls. Unknown
+payments stay in the existing payment recovery panel.
+
+The view shows the strongest active extension and its remaining game time,
+refreshes on relevant events/focus and periodically, and returns to base range
+at expiry. Overlapping bonuses do not add together; a weaker active extension
+can reappear after a stronger one expires. Invalid clocks/unfinished rolls are
+marked for review. Refreshing does not make the range flash or restart duration.
+The obsolete, now-unimported PsionicPowerButton and its obsolete UI tests were
+removed; current controls are covered by the saved-lifecycle browser tests.
+
+Desktop/mobile fixture and real-sheet checks cover lost begin replies, reload,
+exactly one free-use claim, range/time refresh, expiry and scoped overflow.
+Screenshots were inspected; a mutation removing the displayed bonus fails the
+regression. Existing power tests now advance the turn between Connection Bonus
+Actions and verify saved results instead of the retired client-only history
+insert. Final verification: 24 desktop database/browser cases and five mobile
+power/control cases passed, along with the full project gate. No new migration
+beyond the existing 320-file branch chain.
+
+### Connection integration — durable enhancement recovery (not released)
+
+Surge/Enkindled requests now carry an exclusive `connectionId` through the
+existing payment hooks, browser recovery store and authenticated dispatcher.
+The client verifies the returned declaration identity. Mixed parents, wrong
+feature names, changed saved identities, missing Surge die selection and
+multi-base-roll Connection enhancements are rejected before payment.
+
+A real local browser test drops both responses after Surge commits, reloads,
+then confirms the saved request through the production payment helper. The
+result stays four, exactly one Hit Die remains spent, and recovery clears only
+after the verified replay. Shared enhancement prompts preserve the parent link.
+No new migration. Player controls and active-range display remain to integrate.
+
+### Connection integration — authenticated API (local; not released)
+
+Migration 20261010145806 exposes the owner-checked lifecycle through one
+invoker RPC. Begin/read/finalize return the saved declaration and remaining
+game-time duration; listing includes active effects and unknown clocks for
+review, while expired declarations remain readable by identity. The dispatcher
+also routes linked enhancement payments. Anonymous execution remains denied.
+
+The client API freezes begin requests and checks declaration identity, Bonus
+Action claims, Energy Die receipts, original/adjusted rolls and duration bounds.
+Malformed successes remain uncertain rather than clearing recovery. Unit tests
+cover altered receipts and duplicate list entries; the local database suite
+checks authenticated responses against the actual browser-loaded validator.
+Player controls and durable enhancement recovery are not switched over yet.
+Repository count is 320 migrations; release rehearsals still cover 318.
+
+### Connection integration — private saved lifecycle (local; not released)
+
+Migration 20261010145159 adds private Connection declarations and linked
+Surge/Enkindled receipts. Beginning a declaration atomically claims its Bonus
+Action and first-free/paid Energy Die use, preserving the original roll and
+game-clock start. Finalization recovers that same roll without renewing its
+hour. Enhancement retries reuse their payment; expired/rest-ended/missing-clock
+uses cannot spend new Hit Dice. Restoration accounts for one elapsed minute;
+completed supported rests end the effect. Owner checks and revoked direct
+execution keep this private until the player-facing dispatcher is integrated.
+
+Local database coverage includes first-free and later paid extensions, changed
+replays, failed-payment action rollback, shared Bonus Action limits, linked
+Surge and Enkindled totals, exact expiry, restoration, short rests, ownership
+and missing clocks. Existing player controls have not switched to this lifecycle.
+Next: public receipt validation/dispatcher, durable client recovery, active
+range display and desktop/mobile verification. Overlapping active extensions
+must be resolved at the range-read layer; saved durations do not stack.
+
+Repository migration count is now 319. The 318-migration isolated release
+rehearsals predate this private lifecycle and must be refreshed before release.
+
+### Connection integration — shared rules foundation (not released)
+
+`telepathicConnection` now owns the validated base/extended range calculation;
+the current power resolver uses it. Regression cases cover secondary Psion
+levels, Telepath's level-six increase, Surge and Enkindled totals, exact one-hour
+expiry, backward/invalid clocks and one-minute meditation without immediate
+expiry. The duration helper accepts authoritative elapsed game time only.
+It is not yet connected to a saved effect or UI: linked server declarations,
+atomic settlement and range display remain the next implementation work.
+
+### Next Psion integration: saved Telepathic Connection range
+
+Code audit on 2026-10-10 confirms the current extension saves its Energy Die
+payment and emits a range/history message, but does not persist a timed range
+state. `ClassAbilitiesSection.finalizeAbilityUse` pays the base original roll;
+`PsionicPowerButton` separately offers Surge/Enkindled. The active telepathy
+range must not be reconstructed from unlinked enhancement history or toast text.
+Existing numeric rules match the owner UA update: base 30 ft (Telepath level 6:
+60 ft), plus ten times the final roll, one hour, Bonus Action, first extension
+per Long Rest free but requiring an available Energy Die.
+
+Implementation requirements for the next integration:
+- Save a Connection declaration before enhancements; bind every enhancement to
+  that declaration, as Propel already does. Preserve the final verified roll.
+- Settle the shared Bonus Action, first-free claim/die cost and timed effect
+  together. A lost reply or reload must recover the same result without a new
+  roll, die spend, action claim or fresh duration.
+- Use campaign/standalone game-time clocks, not elapsed browser wall time.
+  Store the original clock context; handle campaign transfers, clock recovery,
+  and overlapping extensions explicitly rather than silently stacking them.
+  In particular, the existing Sharpened Mind recovery token changes on
+  one-minute Restoration; reusing that invalidation would incorrectly end a
+  one-hour Connection. Its elapsed-seconds clock can be shared, but rest/time
+  advancement and effect expiration need their own verified policy.
+- Read the active range on the sheet and in future Telepath reaction targeting.
+  Do not claim Distraction/Bolstering automation: neither has a dedicated row in
+  the current class combat ability catalog.
+- Verify base and level-six ranges, Surge/Enkindled totals, first-free/paid uses,
+  short/long rest behavior, overlapping uses, exact expiry, reload, lost replies,
+  ownership, multiclass context and desktop/mobile display.
+
+This remains unfinished automation. No timed Connection effect or Telepath
+reaction implementation was added by the audit.
+
+### Production data preflight (2026-10-10; not released)
+
+Production's exact 233-version ledger matches the repository through
+20261008211300, with 85 later migrations pending and no earlier missing or
+foreign versions. None of 108 production combat participants violate the new
+legendary-action cap. Stable-state backfill candidates and pending legacy death
+saves are also zero. `scripts/check-psion-release-preflight.sql` preserves these
+read-only, count-only checks for repeating immediately before release. The
+checks are point-in-time evidence, not proof of all runtime compatibility.
+
+Vercel's preview check for 90477d8a failed with its build-rate-limit result.
+No merge or production migration was attempted.
+
+### Production preflight — activity and data compatibility (read-only)
+
+Rechecked live production on 2026-10-10 after c50b02c1. Its 233 migration
+versions exactly match the repository prefix through 20261008211300 (ordered
+version-list MD5 1a3de08c0a19ec990f1cd7716f389b13). There are 88 pending files.
+
+Reviewed pending top-level data changes and constraints. The stable-character
+backfill affects zero rows; expiring legacy pending death-save prompts affects
+zero rows; the legendary pool constraint has zero incompatible rows. Existing
+Psion turn state has two rows, which receive the new action epoch default.
+New receipt tables are created by this pending chain, so later alterations to
+those tables start without legacy production rows. These observations cover
+migration data shape, not every replacement function's runtime behavior.
+
+Expanded scripts/check-psion-release-preflight.sql with active encounters,
+unresolved attacks, open reaction offers and offered concentration saves.
+The exact read-only script returned zero for all seven checks on production.
+Concentration prompts use offered; death-save prompts use pending. The local
+script also ran successfully and correctly reported two existing active local
+encounters; no local sessions were modified or cleared.
+
+Repeat this preflight immediately before release. A zero count is not a lock,
+a deployment, or proof that every old browser/client will remain compatible.
+No production writes were performed. Remaining release work includes Telepath
+reaction transaction integration, preview availability and final release checks.
+
+### Release rehearsal refresh — 321 migrations (not released)
+
+Both retained isolated databases (fresh-chain origin and main-upgrade origin)
+applied Connection lifecycle/API and original attack evidence migrations. Exact
+ledger sets match all 321 repository files. Existing rehearsal migration bytes
+were checked before copying only the three new files. This refresh extends the
+retained rehearsals; it is not a newly reset empty-database run.
+
+SQL lint has zero errors. Expanded schema comparison is identical across 1,159
+columns, 372 function bodies/signatures/ACLs, 248 indexes, 128 policies, 422
+constraints, 94 triggers and 105 table/view security records. Inventory SHA256:
+78b156a52974ab5eefcf8f61ef3f25a73396d901434cb502e84c3bc0f7fe008c.
+
+Rollback-only probes passed on both databases: replaying the three DDL files;
+authenticated Connection begin/finalize/replay with one Energy ledger entry and
+one Bonus Action claim; correct one-hour duration and total; anonymous execution
+denied; private table reads and direct guard execution denied to authenticated.
+Fixture data and replayed DDL were rolled back. Both rehearsal stacks were then
+stopped with volumes preserved; the normal development stack was left running.
+
+This does not prove compatibility with all populated production data, finish
+Telepath reaction integration, or authorize claiming a deployed release. Vercel
+preview is still rate-limited. No production writes or merge were performed.
+
+### Release rehearsal refresh — 318 migrations (not released)
+
+Both retained isolated databases (fresh-chain origin and main-upgrade origin)
+applied the technique-closure migration successfully. Their ledger version
+sets now exactly match all 318 repository migrations. SQL lint reports no
+errors. Public/private schemas match across 1,139 columns, 364 function
+signatures/bodies/ACLs, 128 policies and 244 indexes, with normalized function
+line endings. Anonymous users cannot execute the new closure RPC;
+authenticated users can invoke its existing ownership-checked implementation.
+Both rehearsal stacks were stopped with their volumes preserved.
+
+A read-only production ledger check on 2026-10-10 found 233 applied migrations,
+latest 20261008211300: the branch has not been released there. These retained
+local rehearsals do not prove compatibility with populated production data;
+that remains release work. Two targeted read-only checks found zero characters
+needing the stable-state backfill and zero pending legacy death saves that the
+migration would expire, at the time of inspection. These counts do not cover
+all pending migrations. No production writes were performed.
+
+### Free Propel validation audit (local; not released)
+
+Rechecked the owner-provided UA update's Energy Dice table (all 20 levels),
+one-minute/once-per-Long-Rest Restoration, and Connection's base ranges.
+Existing values match. The shared power resolver now rejects Surge/Enkindled
+metadata on the no-die push and Psykinetic free d4, plus nonzero or invalid
+rolls on the no-die push. These options do not roll an Energy Die; accepting
+that metadata could produce false enhancement/payment notes. Regression tests
+cover both save outcomes and retain valid free movement. This is a client
+rules validation change, not a new payment or database path.
+
+### Compact-screen party panel (local; not released)
+
+The map party panel starts collapsed on viewports at most 600 px wide or
+500 px high unless a saved Show/Hide preference exists. Explicit expansion is
+now saved as well as collapse, so mobile users who want visible HP/AC retain
+that choice after reload. Desktop defaults remain expanded. Browser coverage
+checks first-load defaults, both persisted choices, portrait and landscape,
+plus the existing real player/DM movement sequence. Storage failure keeps the
+responsive default and does not block the controls.
+
+### Zero-speed map preview (local; not released)
+
+Dragging the active token with a zero movement allowance now shows the red
+budget warning and zero feet remaining. Zero Speed no longer falls through to
+the neutral out-of-combat preview. Real DM/player browser tests verify the
+Paralyzed token's red preview and unchanged saved position at desktop/mobile
+widths, alongside existing ownership, failed-write rollback and movement limits.
+The fixture now starts at round one to match the server's combat lifecycle.
+
+### Interrupted technique closure (local; not released)
+
+An uncertain Boost/Disorient/Bolt choice can now be closed without adding an
+effect, including after its turn, subclass or target roster changes. Closure
+and technique selection share the declaration lock: an already committed effect
+wins, otherwise an immutable no-effect receipt blocks late effect requests.
+The browser saves closure intent before sending, so reloads never resume the
+old effect after the user requested closure. Failed closure confirmation remains
+recoverable. No extra action or Energy Die is spent.
+
+The new closure migration brings the repo to 318 migrations. The 317-migration
+rehearsals below predate this addition; production remains unchanged.
+
+### Release rehearsal refresh — 317 migrations (not released)
+
+Both retained isolated rehearsal databases (fresh-chain origin and main-upgrade
+origin) applied the five migrations added since their 312-migration checkpoint.
+Their ledger version sets exactly match all 317 repo migrations; SQL lint passes.
+Across public/dndkeep_private, they match on 1,139 columns, 362 function
+signatures/bodies/permissions, 128 policies and 244 indexes, after normalizing
+CRLF to LF inside function bodies. Anonymous execution of the new Bolt,
+Opportunity Attack and technique-list endpoints is denied; authenticated direct
+receipt inserts are denied and the Bolt receipt table has RLS enabled.
+
+This extends the existing rehearsals; it is not a new empty-database rebuild.
+It does not prove compatibility with populated production data. Rehearsal
+containers are stopped with their volumes retained. Production remains untouched.
+Both hosted CI Gate runs passed for 497a16e2 (38058502546 and 38058499497).
+Vercel continued to report its build-rate limit. Do not treat local migration
+success as a release.
+
+### Telekinetic Bolt damage checkpoint (local; not released)
+
+New Bolt declarations use a private, idempotent settlement receipt. The saved
+Force total respects resistance, immunity, vulnerability, Petrified, and typed
+wards; HP, temporary HP, life state, concentration bookkeeping and history share
+one transaction. The original caster/target bindings and saved die total are
+verified before application. Old declarations, altered damage and unknown or
+conditional defenses stop for review rather than guessing. A dedicated DM
+resolution choice for conditional defenses remains needed; this checkpoint does
+not claim those targets are fully automated. Additional desktop/mobile checks
+verify character HP synchronization, one concentration save after damage, no
+save under immunity, concentration ending at zero HP, and recovery after a
+committed application reply is lost. Production migration is pending.
+
+### Propel player-view regression checkpoint (not released)
+
+Desktop/mobile checks now cover adjacent Telekinetic Propel / Warp Propel rows,
+both Bonus Action badges, the level-5 d8 option, and Warp's free / powered
+choices. Successful saves retain the Energy Die; failed powered saves spend
+one. Failed Warp uses retain the caster-relative, horizontal 30-foot destination.
+Opening the other variant after resolution cannot spend a second Bonus Action.
+These checks exercise disposable local characters; production is unchanged.
+
+### Save-resolution audit checkpoint (local branch; not released)
+
+Canonical `creature` targets now receive the existing Legendary Resistance
+choice after a failed save, alongside legacy `monster`/`npc` targets. A failed
+resistance read stops resolution instead of silently skipping the choice.
+Save events also classify these creatures correctly. Desktop/mobile browser
+checks verify the real resistance prompt, blocked damage while awaiting the
+choice, successful resistance, and one charge spent. Screenshots inspected;
+full verification passes, with the TypeScript baseline lowered from 198 to 197.
+Code checkpoint: `9d7b4b8`. No production deployment in this checkpoint.
+
+Remaining audit findings: Mind Sliver's next-save penalty is not automated;
+it needs one-use consumption and correct expiry across saving-throw paths.
+Legendary Resistance acceptance still uses legacy separate writes and needs
+an atomic concurrency review. This fix does not claim those paths are complete.
+
+### In progress — Shared action budget (Propel connected locally; not released)
+
+`src/rules/actionBudget.ts` defines action declarations against verified grants,
+immutable request identities and the actor's own-turn epoch. One Bonus Action
+covers either Propel variant regardless of save outcome. A historical replay
+returns the original claim without spending today's grant. Reactions remain
+spent across other creatures' turns. Haste grants only its listed actions and
+one attack; Action Surge cannot fund Magic or become another Bonus Action.
+Spell action types now reuse the shared type rather than defining another.
+
+Rules checked against the 2024 [Playing the Game](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game),
+[Fighter](https://www.dndbeyond.com/sources/dnd/br-2024/character-classes), and
+[Haste](https://www.dndbeyond.com/spells/2619141-haste) references. The module is a
+pure transaction contract, not an authorization boundary or completed feature.
+No ability yet calls its planner; no production budget changes in this checkpoint.
+The 33 focused cases and full gate pass: 2,914 units / 260 files, TypeScript
+199/199, clean hooks/RAW/coordinates/anchors, build and 255.2 KB entry.
+Changed rule modules lint clean.
+
+Teleporter Combat origin checkpoint (local only):
+`20261009164359_teleporter_combat_windows.sql` records qualifying free Misty
+Step casts atomically with their payment and Bonus Action. It snapshots Psion
+level (including secondary Psion), excludes pre-level-6 casts even if retried
+after leveling, and rejects old-turn or subsequent-action origins. An identity
+sequence orders same-transaction actions; transaction timestamps cannot do so.
+The table and inspection helper are private and grant no casting permission.
+All 55 action-context SQL cases pass, including six new origin cases; the full
+release gate passes. No player UI or production behavior changed here.
+
+The subsequent `20261009192652_teleporter_combat_cantrip_claims.sql` checkpoint
+consumes one free-Misty-Step origin with the child spell declaration. The child
+uses its parent's Bonus Action receipt without another normal Action claim.
+The consumed record survives pending-cast pruning; exact retries replay and
+concurrent choices cannot consume it twice. A private built-in cantrip ID list
+rejects relabeled leveled spells and long castings; the client request builder
+captures parent, source and target for recovery. Neither picker nor live UI is
+connected yet. The server still requires the stored Psion ownership source.
+Custom cantrips are unsupported until trusted metadata can be validated.
+Verification: 104 action-context/spell-settlement SQL cases pass, plus the full
+release gate (3,001 unit tests, TypeScript 198/198, 255.2 KB entry). Changed
+TypeScript files lint clean; SQL lint reports no issues in the changed functions.
+Anon/authenticated cannot directly read or insert child records.
+
+
+Catalog audit corrected [Mending](https://www.dndbeyond.com/spells/2619033-mending)
+from one Action to one minute. [Produce Flame](https://www.dndbeyond.com/spells/2618901-produce-flame)
+also has stale casting metadata: its 2024 Bonus Action creates the flame, and a
+separate Magic action throws it. Both are excluded from Teleporter follow-ups;
+Produce Flame's cast/throw flow still needs repair before changing its metadata.
+A parity test protects the private ID list against catalog drift.
+
+`20261009193638_teleporter_combat_slotted_origins.sql` now captures slotted
+Misty Step at declaration and activates the follow-up on successful settlement.
+Eligibility is captured before leveling/retries, including multiclass Psi
+Warper casting Misty Step through another class. Later turns or subsequent
+shared Actions expire it; reactions while resolving the parent are permitted.
+A countered parent remains explicitly `interrupted` and cannot automatically
+fund a child. The owner/DM-scoped recovery endpoint exposes waiting, ready and
+interrupted records for both free and slotted casts. The TypeScript reader
+rejects malformed or contradictory receipts and preserves read failures.
+Verification: all 112 action-context/spell-settlement SQL cases pass, including
+interrupted and saved-through parent casts. Full gate passes with 3,016 units,
+198 TypeScript baseline and 255.2 KB entry; changed TS and SQL functions lint
+clean. The recovery facade is invoker and unavailable to anonymous callers.
+
+
+The local Teleporter Combat row now opens a recovered cantrip picker. It filters
+confirmed Psion sources and exact one-Action cantrips, preserves the parent in
+saved requests, and connects utility and single-target damage paths to the
+existing declaration/target/recovery flow. Failed availability reads remove
+casting choices; character switches ignore stale responses. Mage Hand and Mind
+Sliver have desktop/mobile browser coverage with a real parent/child record,
+unchanged normal Action and saved target after reload. The skill overflow probe
+passes on the changed dialog, and screenshots were inspected. Removing the
+parent link made the browser test fail (expected one child, received zero);
+the exact source was restored. Full gate passes with 3,022 unit tests,
+TypeScript 198/198 and 255.2 KB entry. All 16 desktop/mobile Propel and
+damaging-spell recovery cases pass after restoring the mutation.
+
+True Strike, area/multi-attack cantrips, healing and non-damaging saves display
+an explicit manual-resolution limitation without spending a cast. Solo and
+interrupted parents also remain explicit limitations. These paths still need
+their actual resolution flow before the feature can be called complete.
+
+Still required for Teleporter Combat: finish weapon/area/save-only/solo follow-up
+resolution, decide the interrupted-parent rule, and cover intervening legacy
+activity before release. Local `public.spells` contains 32 rows and no level-0 rows:
+do not depend on it as a complete cantrip catalog or trust client-supplied spell
+level. `spellActionKind` includes long castings' initial Actions and cannot be
+used as this feature's eligibility test. Origin inspection currently observes
+shared claims only; legacy action writers must also be covered before release.
+These checkpoints are not deployed and do not complete the feature.
+The verified 2024 Counterspell source is
+https://www.dndbeyond.com/spells/2619072-counterspell (not legacy spell 2051).
+It describes interruption, loss of effect and the casting action, and preserves
+the slot. Whether the separate Teleporter Combat trigger follows an interrupted
+Misty Step still needs an explicit rules interpretation; do not infer it from
+slot reimbursement.
+
+
+Local database checkpoints (not deployed):
+
+- `20261009144010_shared_action_turn_context.sql` reuses the existing
+  `psionic_turn_starts` observer. Its separate action epoch changes only on an
+  actual turn-context change, not rest/effect-expiry updates. Actor selection is
+  shared with Psion effects and skips dead combatants. The earlier unshipped
+  duplicate clock implementation was removed from the migration and local DB.
+- `20261009144534_shared_action_claims.sql` adds private action claims and extra
+  grants. Character locks serialize competing tabs; exact retries return the
+  original claim even on later turns. Normal budgets respect existing combat
+  flags. Haste/Action Surge grants retain restrictions, and action/resource
+  changes roll back together when composed in one transaction.
+
+All 18 new SQL cases and 96 existing Psion discipline/turn/Sharpened cases pass.
+The full release gate also passes (2,914 units, 199 TypeScript baseline, 255.2 KB
+entry). New SQL cases cover concurrency, replay, rollback, off-turn reactions,
+incapacitation, legacy flags, extra-grant restrictions, dead-actor selection,
+solo turns and direct caller privileges. Changed functions lint clean and local
+advisors have no findings naming the new/changed objects. These are private
+composition helpers, not public action or feature APIs. Extra-grant activation,
+all feature/target verification, non-incapacitation reaction restrictions,
+immutable power rolls/targets, saved recovery and player UI integration remain.
+No production action-budget behavior has changed. The stale-dialog release
+v2.869 is independently verified live.
+
+`20261009145709_psionic_propel_declarations.sql` adds the private Propel
+lifecycle: declaration claims the Bonus Action and freezes mode, movement,
+base die, caster snapshot and target. Paid Enkindled/Surge receipts attach to
+that declaration; roll finalization prevents later enhancement edits. A failed
+save spends one Energy Die for powered use; passed/cancelled uses spend none.
+Cancellation retains the action and any already-paid Hit Dice. A failed payment
+leaves the same pending result recoverable, and cursor paging exposes all
+unfinished declarations after browser storage is lost. Warp remains 30 feet
+from the caster, independent of the roll, and adds no condition.
+
+Target membership and self-targeting are checked in combat. Actual size, sight
+and range still require explicit tabletop confirmation; no map token moves.
+Verification: all 28 local action/Propel SQL cases pass (26 lifecycle cases
+plus two multiclass/Warp number checks); full gate passes with 2,914 unit tests.
+SQL lint and local advisors have no findings for the Propel objects.
+
+Recovery UI, saved-DC presentation and all action-writer integration remain
+unfinished. The underlying lifecycle helpers remain private; the next migration
+adds the scoped feature facade. No production changes have been applied. This checkpoint does not reserve an Energy Die while a save is
+pending; a concurrent spend can defer final payment, which must be recovered
+without a new action/roll. Review this workflow before enabling it for players.
+
+`20261009150703_psionic_propel_api.sql` adds one authenticated, owner/DM-checked
+Propel facade. Generic action/grant helpers remain inaccessible to app roles.
+The client API validates declaration identity, Bonus Action receipt, frozen dice,
+conditional costs and recovery cursors before acknowledging a result. Existing
+Surge/Enkindled payment and recovery paths now support a single Propel parent;
+a request cannot name multiple feature parents. The authenticated local flow
+passes through begin, read/list, finalize and finish; another owner is denied.
+The player controls are now connected on this working branch; these migrations remain local.
+Verification: full gate passes (2,933 units / 261 files, TypeScript 199/199,
+255.2 KB entry); the additional Surge retry/parent-substitution test also passes.
+Authenticated SQL flow passes; SQL lint/advisors report no Propel findings.
+
+Recovery continuation now reads paid Enkindled dice and Surge status from the
+scoped Propel API before offering choices. `continuePropel` retains the saved
+base/extras, skips already-paid enhancements, blocks unknown payment receipts,
+and freezes old-turn rolls without offering new costs. The local database test
+confirms both enhancements are readable before finalization without mutating it.
+Full gate: 2,945 units / 262 files, TypeScript 199/199, entry 255.2 KB;
+changed modules lint clean and SQL lint has no Propel findings. The controls below
+now call this continuation; this is not a deployed UI change.
+
+Propel player controls are connected in `ClassAbilitiesSection` (including
+secondary Psions using the real character, not the projected class row). Full gate
+passes: 2,953 units / 264 files, TypeScript 199/199, 255.2 KB entry. Target
+selection/legality confirmation precedes the declaration and roll. The declared
+caster snapshot supplies the save DC; exact begin/outcome requests persist before
+sending, and server paging exposes unfinished uses after reload. Closing keeps a
+use pending; cancellation keeps the action and paid Hit Dice. Energy receipts
+are acknowledged without a second write. Desktop/mobile browser checks passed
+for target selection, declaration, reload recovery and conditional die cost;
+the saved-DC regression fails when deliberately changed to use current stats.
+Screenshots inspected; dialog-scoped skill overflow checks clean. Whole-sheet
+probe still reports pre-existing +/- button and Free Misty Step label clipping.
+
+Release work still required:
+update the older Propel E2E selectors/turn assumptions, cover combat
+recovery and enhancement flows in-browser, and connect every other action
+writer before treating the shared budget as enforced. Map movement and target
+size/sight/range remain manual. No release/version bump for this working branch.
+
+Combat save assistance is connected to the saved declaration. The existing
+save resolver accepts a bound encounter/target, disables target substitution,
+and refuses automatic resolution if that encounter or participant disappeared.
+The declared DC is retained; existing save bonuses, natural-extremes house rule,
+willing failures and Psionic Guards handling are reused. Solo/combat stored-turn
+formats are validated separately. No save is inferred when the dialog closes.
+Four local browser cases pass (solo reload + combat rolled save, desktop/mobile),
+with clean console/network and inspected screenshots. Full gate passed with
+2,956 unit tests, 199 TypeScript errors at baseline, and 255.2 KB entry; five
+additional malformed-turn cases pass in the focused 44-test rerun. The bound
+selection test fails under deliberate target-filter removal, then passes restored.
+The shared budget still does not feed every action writer or its UI indicators.
+
+`20261009154619_psionic_propel_history.sql` (local only) now saves confirmed
+save evidence, conditional payment, outcome and one action-log entry in the same
+transaction. Exact repeated/concurrent confirmations share the entry and cost;
+a log-write failure rolls both outcome and cost back. The saved request retains
+target, DC, every save die, kept die, bonus, total, advantage and the natural-
+extremes preference. Arithmetic/outcome checks reject contradictory evidence;
+manual/willing results do not invent dice. History also identifies original power
+dice, resolved total, Enkindled extras, Surge and manual movement limits.
+Five targeted SQL checks pass (evidence replay, rejection, log rollback,
+concurrency and private-helper grants); four desktop/mobile browser cases also
+pass and verify combat evidence/history. Full gate: 2,973 units / 265 files,
+199 TypeScript baseline, 255.2 KB entry; two later receipt/storage tests pass in
+the focused 40-test run. New SQL objects have no lint/advisor findings and changed
+client modules lint clean. The migration has been applied/recorded locally only.
+
+Save dice are still provisional until confirmation; confirmed outcome requests
+survive reload in browser storage. If final payment cannot commit, the server
+keeps the declaration unfinished and the browser retains that exact outcome.
+Recovery after losing that browser state before successful commit remains a
+case to harden, along with all shared action writers and visible action flags.
+
+Remaining implementation and required evidence:
+
+- Server derives grants, turn ownership, conditions and feature eligibility;
+  clients cannot invent an Action Surge/Haste grant or claim Magic is a feature.
+  Serialize competing claims, immutable receipts, resource costs and declaration
+  history in one transaction. Prove duplicate/concurrent/reload behavior in SQL.
+- Track an actor's own-turn epoch separately from the global encounter nonce.
+  Existing `psionic_turn_context_internal` returns the global nonce even off-turn;
+  using it alone would wrongly refill reactions on each opponent's turn.
+- Give Propel a persisted declaration/roll/target identity before the save and
+  enhancements. Finish the same request after pass/fail; do not refund action
+  for a passed save or recover against a different turn. Save and recover pending
+  work after reload. Preserve paid enhancement receipts on cancellation.
+- Replace local-only sheet toggles and integrate paid/free/manual spell actions,
+  class powers, attack sequences, Dash/Disengage, reactions and turn transitions.
+  `movement.takeDash` currently writes participant flags separately; spell
+  receipts restore local flags but do not enforce this shared budget.
+- Preserve explicit corrections, Action Surge/Haste restrictions and attack
+  subcounts, solo play, additional actors, Ready/reaction timing, permission
+  boundaries and simultaneous-tab use. Verify complete desktop/phone flows.
+
+
+
+`20261009155514_shared_action_budget_read.sql` (local only) exposes an
+owner/DM-checked read of saved normal-action claims plus existing combat flags.
+The sheet now retains the recorded Used state after reload, prevents local undo
+of saved spending, and refreshes on confirmed turn changes. Failed reads retain
+last confirmed spending; late responses cannot update another character. Level-1
+Psions also advance the solo turn counter. Movement +/- controls no longer clip.
+Desktop/mobile reload and End Turn checks pass, including the scoped UI overflow
+probe and inspected screenshots. The saved-spending regression fails when that
+state is deliberately removed. Full gate: 2,985 units / 267 files; TypeScript
+baseline reduced to 198; entry stays 255.2 KB. The shared claims still need to
+write combat flags and cover other action writers atomically before release.
+
+`20261009160851_shared_action_combat_flags.sql` (local only) mirrors normal
+Bonus Actions, reactions and non-Attack actions into combat flags in the claim
+transaction. Stale flag resets retain current claims; the next actual own-turn
+epoch clears mirrored spending, including reactions before the first observed
+turn. Replays cannot mark the new turn spent, cancellations keep their claim,
+and failed transactions roll flags back. Extra grants and Attack sequence
+counters remain separate. All 39 prior/current SQL cases passed, followed by
+six targeted refresh cases (including the new first-turn case); four browser
+flows and two privilege checks passed across desktop/mobile. Full code gate
+passes (2,985 units, 198 TypeScript baseline, 255.2 KB entry); changed functions
+lint clean. Spell/attack/other legacy writers still need atomic integration.
+
+`20261009161444_shared_spell_action_claims.sql` (local only) reserves a normal
+casting action in the same transaction as the paid declaration, including
+cantrips. Missing/invalid action types, off-turn normal actions and conflicting
+Propel/spell spending roll back the declaration and slot together. Retries retain
+the original claim; Counterspell refunds only the slot, not the action. Casting
+locks now order character/encounter/participant consistently with Propel while
+retaining cast/advisory locks for settlement/cancellation. Verified declarations
+notify the sheet to refresh saved action indicators.
+Four targeted SQL cases, 22 delivery cases, two final missing-action/refund
+checks and four desktop/mobile Mind Spike/Witch Bolt recovery flows pass. Full
+gate: 2,986 units / 267 files, 198 TypeScript baseline, 255.2 KB entry. Changed
+functions lint clean. The spell-slot fixtures now use explicit casting actions,
+real own-turn progression and separate Action/Bonus Action/Reaction budgets. All
+46 settlement cases pass, plus two added rollback checks proving a rejected cast
+leaves neither a claim nor a spent combat flag. Counterspell test setup no longer
+resets reactions on every acceptance; refresh happens only during turn advance.
+The full gate remains green. Remaining before release: free/manual casting,
+extra-action eligibility, and server verification of declared casting metadata.
+The existing slot-per-turn limit remains distinct from the shared action budget.
+
+`20261009162438_shared_counterspell_reaction.sql` (local only) reserves the
+Counterspell reaction in the same transaction as its slot, save and acceptance.
+Stale flag resets cannot restore it; the next own turn refreshes it, and old
+acceptance replays do not spend the refreshed reaction. Lock order now matches
+other action spending after cast/offer serialization. The client refreshes its
+saved-action indicator only after validating the acceptance receipt.
+All 86 Counterspell/payment/delivery SQL regressions pass, including competing
+reaction requests, rollback and later-turn replay. Four desktop/mobile browser
+cases confirm source selection, lost-response retries and Reaction Used after
+reload. Full gate passes: 2,987 units / 267 files, TypeScript 198/198, 255.2 KB
+entry; changed functions lint clean. Still a working branch, not deployed.
+
+`20261009163045_shared_misty_step_action.sql` (local only) composes free
+Psi Warper Misty Step with the shared Bonus Action in its existing resource
+transaction. Paid/manual restoration restores only the feature use, never the
+Bonus Action. Replays do not spend a later turn; failed writes roll back both
+trackers. It spends no spell slot, so an Action spell remains available under
+the separate slot rule. The existing payment-recovery event refreshes the sheet.
+Five focused SQL cases and the full 15-case energy ledger suite plus the
+free-cast/Action-spell combination pass. Six desktop/mobile Propel/Misty Step
+flows verify spending and reload persistence. Full gate remains green (2,987
+units, 198 TypeScript baseline, 255.2 KB entry); new function lint clean.
+Audit follow-up: Teleporter Combat is present in feature descriptions, but a
+source search found no dedicated automation for its attached Psion cantrip.
+Verify and implement that exception before calling Psi Warper automation complete.
+Manual destination/visibility validation and other free/solo casts remain.
+
+Psi Warper description audit: verified the original UA p.8 against the Update
+p.7 carry-forward note. Warp Space, Teleporter Combat, Duplicitous Target and
+Mass Teleportation now share one complete description across the sheet and
+creation data, removing duplicate prose and unsupported restrictions/outcomes.
+Source: [original UA](https://media.dndbeyond.com/compendium-images/ua/the-psion/mXCPWlh2yy5tBKqP/UA2025-ThePsion.pdf).
+These remain private UA references, not SRD content. Full gate passes (2,988
+units, 198 TypeScript baseline, 255.2 KB entry). Desktop/mobile rendering and
+scoped overflow checks pass; screenshots inspected. Removing a required target
+condition makes the new browser regression fail. Teleporter Combat's attached
+cantrip remains unimplemented; this checkpoint corrects reference data only.
+
 ### v2.869 — Pending Psion rolls keep their original context
 
 Power confirmations now invalidate when the character, campaign, Psion
@@ -4953,3 +7130,4020 @@ The daily continuous-improvement loop (once infra lands): keep-warm ping fires �
 RAW regression suite runs and posts status → drift opens an issue with specifics.
 Human involvement drops to skimming status and doing the irreducible RAW judgment
 calls in gated sessions.
+
+### Mind Sliver timing foundation (not connected to live combat yet)
+
+`src/rules/mindSliver.ts` plans one-use penalty consumption and caster-owned
+end-of-next-turn expiry. It separates expired records from consumed records,
+rejects missing/ambiguous/stale clocks, and isolates encounters and targets.
+Overlapping instances produce one d4 penalty. Consuming all active instances
+on that save follows the interpretation that each instance refers to the same
+next saving throw; this is distinct from adding their penalties together.
+
+Sources: [licensed 2024 spell reference](https://roll20.net/compendium/dnd5e/Spells%3AMind%20Sliver?expansion=32231&iframe=true)
+and [2024 combining spell effects](https://www.dndbeyond.com/sources/dnd/br-2024/spells).
+No spell prose was copied into the planner. These tests establish the domain
+contract only; Mind Sliver's secondary effect remains unautomated in the app.
+
+Next integration must extend the existing turn observer (not add an independent
+clock), persist the spell's casting-time context, and attach the effect only
+after the failed save is final, including any Legendary Resistance decision.
+Save settlement must lock/consume applicable records together with the result
+and return the original receipt on retries. Spell saves, Propel/class saves,
+concentration, and sheet/death saves must use that same consumption boundary.
+Damage-triggered concentration must see the applied effect before it resolves.
+Solo/non-encounter duration needs an explicit supported turn boundary too.
+
+Integration evidence: `psionic_turn_starts` currently tracks characters only
+with UUID epochs; it has no completed-turn ordinal. The planner's ordinal
+inputs therefore require a verified adapter/extension, not invented client
+round arithmetic. Non-character casters also need coverage. `advanceTurn`
+currently runs end-of-turn ticks before advancing initiative, so their saves
+must settle before the outgoing caster's effect expires. Existing buff sweeps
+run at turn start and cannot express this boundary correctly.
+
+Verification: 23 focused timing/consumption cases and changed-file lint pass;
+full project verification passes with TypeScript 197/197 and 255.2 KB entry.
+No runtime or UI behavior changed in this foundation checkpoint.
+
+### Mind Sliver saved-turn adapter (local only)
+
+`20261009201350_next_save_turn_context.sql` derives the planner's caster
+ordinals from existing `combat_clock_transitions` receipts. It creates no
+second initiative clock and works for character and creature participants.
+A +1 offset handles the initial actor and casts before a caster's first turn.
+Callers capture `castTurnOrdinal` and `turnId` at casting; later reads pass
+that saved turn ID and use `lastEndedTurnOrdinal` for expiry.
+
+The private helper checks that the active actor matches the last saved turn,
+rejects disconnected history/manual jumps, and rejects a saved casting turn
+absent from that history. The first-receipt case is checked too. It is not an
+authenticated endpoint; a future authorized effect transaction must call it.
+Pending integration remains effect application and atomic save consumption,
+including concentration, class features, and standalone saves. No player-facing
+automation was enabled by this migration.
+
+Local CLI migration apply encountered the preserved weapon branch's extra
+`20261008213500` ledger row. That row was retained. Only this reviewed migration
+was applied transactionally to local Docker, with its own ledger entry; the
+helper and ledger entry were verified. Nothing was applied to production.
+
+Validation: all 46 desktop/mobile-configured SQL transaction checks pass
+(23 cases per configuration), including creature casters and roster drift;
+private-schema SQL lint reports no errors. These are database tests, not visual
+UI verification. The first fixture used an invalid combatant definition label;
+corrected to the existing `custom` storage label with a `creature` participant.
+An unrelated damage-dialog unit test timed out during the first concurrent
+full-gate run; its isolated 10-test suite passes unchanged. Final full-gate
+result is recorded below after rerun.
+
+Final full gate passes unchanged: 3,052 unit tests, TypeScript 197/197,
+clean hooks/RAW/coordinates/anchors, successful build and 255.2 KB entry.
+
+### Atomic Legendary Resistance decisions (local branch; not released)
+
+`20261009202011_atomic_legendary_resistance.sql` now settles the DM's choice,
+charge usage, final save and accepted-use combat event in one transaction.
+Attack locking serializes repeated decisions; participant locking prevents two
+different failed saves spending the last charge. Exact retries return the
+saved result, conflicting decisions reject, and authorization precedes replay.
+Expired/cancelled attacks and exhausted charges cannot become successful saves.
+The existing in-lair extra use remains limited to creatures with base uses;
+hidden targets produce hidden log events.
+
+`src/lib/api/legendaryResistance.ts` replaces the failed-save flow's independent
+client writes. The prompt catches failures, displays a retry message and releases
+its controls; same-frame clicks cannot race. This is a prerequisite for applying
+Mind Sliver only after its final failed-save outcome. Mind Sliver effect creation
+and consumption still remain to be connected.
+
+Manual LR spending/reset controls still use legacy writes and need their own
+atomic settlement; this change does not claim all resource editing is serialized.
+The existing lair-flag reader also needs error handling so failed reads cannot
+silently suppress an in-lair extra-use prompt. Local migration applied with its
+ledger entry while preserving the other branch's weapon migration. No prod apply.
+
+Validation: 24 local SQL/browser cases pass across desktop and mobile settings,
+including a simulated failed request followed by a successful retry; both error
+screenshots were inspected. Nine focused API/dialog unit tests pass. Full gate:
+3,061 units, TypeScript 197/197, clean hooks/RAW/coordinates/anchors, build and
+255.2 KB entry. Private-schema SQL lint is clean. Rollback coverage forces the
+receipt insert to fail and verifies charge, save and event all roll back.
+
+### Mind Sliver saved origins and final-save activation (local only)
+
+`20261009202736_mind_sliver_effect_origins.sql` captures a declared Mind Sliver's
+canonical spell ID, target and casting-time turn context in a private record.
+These records do not depend on the lifetime of pending casts or attacks.
+The helper validates Intelligence/zero-slot/no-effect-on-success settings and
+uses the existing saved-turn adapter. A display-name match cannot create an
+origin; the private spell-payment ID is authoritative.
+
+After a verified delivery, a final failed save changes the waiting origin to
+active. A pending Legendary Resistance decision keeps it waiting; acceptance
+marks it resisted, while decline activates it. Counterspell, cancellation and
+successful saves do not activate it. Resolution after its expiry marks it
+expired. Target/context tampering aborts the save write. Delivery must have
+its private receipt before any save update can activate an effect.
+
+This is persistent effect lifecycle state, not completed player automation:
+active records are not yet consumed by save settlement and no penalty is
+added to rolls by this migration. Character-origin declared casts are covered;
+other caster and standalone paths still need equivalent trusted origins.
+The next change must consume these records atomically with the first eligible
+save, including concentration caused by the same spell's damage.
+
+An `active` record is not itself proof of current eligibility: the eventual
+consumption transaction must re-read caster turn context and expire stale
+records before rolling. This migration detects late initial resolution, but
+does not run a separate turn sweep. Existing records therefore remain dormant
+until that consumer is implemented; no UI should present them as an applied
+penalty merely from the stored status.
+
+Verification: 26 focused Mind Sliver SQL cases pass across desktop/mobile
+configurations (22 lifecycle cases, then four real atomic-resistance cases
+rerun after correcting the creature fixture's definition link). Two actual
+Teleporter-picker browser cases confirm a saved waiting origin for the chosen
+target. The broader 62-case delivery suite passed before adding the stricter
+receipt guard; the final focused runs cover that guard. Full project gate
+passes: 3,061 units, TypeScript 197/197, build and 255.2 KB entry. SQL lint and
+changed-test lint pass. An ambiguous SQL column reference exposed by execution
+was corrected before these final runs. Local-only migration; not deployed.
+
+### Shared next-save penalty consumption (local only; not wired to save RPCs)
+
+`20261009203825_next_save_penalty_consumption.sql` adds a private transaction
+component for attack, concentration, feature, sheet and death saves. Every kind
+locks the same target participant, rechecks caster-owned expiry and records an
+immutable request/result receipt. Overlapping Mind Sliver records are consumed
+together for one d4; expired or already-consumed records contribute nothing.
+Automatic failures consume the next-save trigger without generating a die.
+The helper accepts a saved canonical-dice proposal; it generates no SQL dice.
+
+Exact retries replay the same receipt, including after combat ends. Changed
+dice/context reject. The helper cannot apply a spell's effect to its own
+original save. If the enclosing save transaction fails, consumption and its
+receipt roll back too. Mind Sliver activation now takes the same participant
+lock, ordering a newly activated effect relative to concurrent saves.
+
+There is no standalone public consumption endpoint. Authorized save settlement
+RPCs still need to call this component and include its penalty in their result;
+client handlers must save the proposed die and display the returned receipt.
+Until those callers are connected, player rolls remain unchanged. This helper
+alone does not prove all save paths or automatic-failure handling are complete.
+
+Validation: 24 focused SQL cases pass across both test configurations, plus two
+integration cases consuming a real declared Mind Sliver effect after pending
+cast/attack pruning. Full gate passes (3,061 units, TypeScript 197/197, clean
+hooks/RAW/coordinates/anchors, build and 255.2 KB entry); SQL and changed-test
+lint pass. Applied to local Docker with its ledger entry; no production apply.
+
+### Concentration now consumes Mind Sliver (local branch; release still gated)
+
+`20261009204354_concentration_next_save_penalty.sql` connects the shared penalty
+transaction to campaign concentration settlement. It selects the advantage die,
+subtracts the saved d4 once, then decides concentration and cleans up owned
+spell effects in the same transaction. The resulting penalty receipt is saved
+on the offer, returned on replay and included in the combat log. Obsolete
+casting offers consume nothing; failed settlement rolls the penalty back.
+
+The public RPC retains its name and older arguments with an optional penalty
+die. Legacy clients can resolve ordinary saves, but a live penalty requires
+the missing die before any write commits. The old private signature forwards
+to the new implementation, so it cannot bypass consumption. A pending effect
+with an unverifiable/inactive encounter still requires review rather than
+silently disappearing. Between-encounter offers without effects retain their
+existing behavior.
+
+The client stores its d4 proposal alongside the original d20/advantage pair,
+validates returned penalty receipts and preserves them through lost responses.
+The concentration result names Mind Sliver's deduction. This is only the
+concentration connection: ordinary attack saves, class saves, sheet/death saves
+still need the same boundary. Do not release the combined Mind Sliver feature
+while another save could happen first and leave its penalty unconsumed.
+
+Visual verification found and fixed a pre-existing misleading toast: every
+external concentration clear was labeled timer expiry. Realtime only reports
+the clear, so it now gives a neutral loss notice; actual timer-button expiry
+retains its specific reason. Desktop/mobile screenshots confirm the penalty
+result text and corrected toast, with no horizontal page overflow.
+
+Validation so far: 80 existing/new SQL and recovery cases pass in the broad
+run; its two new advantage fixtures were corrected to create a real War Caster
+offer rather than alter an immutable snapshot, and both pass on rerun. Two new
+player-facing penalty cases pass, including the final toast correction. All
+32 concentration API unit cases pass, including saved d4/retry and malformed
+receipt handling. Private-schema SQL lint passes. These checks do not yet
+prove the complete Mind Sliver damage-to-concentration chain end to end or
+penalty consumption by other save kinds; those remain release requirements.
+
+Final full gate after the toast fix passes: 3,067 unit tests, TypeScript
+197/197, hooks/RAW/coordinates/anchors, build and 255.2 KB entry. Migration
+applied to local Docker with its ledger entry; no production deployment.
+
+### Preserve lair-only resistance on failed reads (unreleased)
+
+Lair reads now live behind the resistance repository and reject query errors,
+missing encounters and malformed flags. A failed creature save cannot silently
+skip its final in-lair resistance charge when that setting is unavailable.
+No-encounter callers still receive zero bonus. Manual resistance controls surface
+failures through the existing error toast instead of an unhandled rejection.
+
+Regression coverage includes rejected/stale/malformed reads, no save write or
+combat event after a failed lookup, and manual-control error reporting. The
+actual desktop/mobile save flow now starts with only the lair charge remaining:
+a forced read failure records no result, then a successful retry offers and
+spends that last charge atomically. Both browser cases pass; the mobile retry
+screenshot confirms the 1/4 in-lair display and visible retry message. Browser
+fault injection blocks service workers so requests reach the test interceptor.
+
+This is a prerequisite for ordinary-save penalty settlement, not its completion.
+Ordinary saves still need persisted dice and atomic settlement; retrying an
+unrecorded save can currently reroll. Manual resistance spending/reset remains
+non-atomic. Mind Sliver's other save consumers remain release requirements.
+
+Final gate passes: 3,081 unit tests, TypeScript 197/197, hooks/RAW/coordinates/anchors, build and 255.2 KB entry. No new migration or production deployment.
+
+### Atomic ordinary-save settlement (local backend; client wiring pending)
+
+`20261009210500_atomic_attack_saves.sql` adds DM-authorized context and settlement
+RPCs. One transaction chooses the appropriate d20, applies cover/exhaustion and
+the submitted DM modifiers, consumes Mind Sliver, determines Legendary
+Resistance, saves the result and writes combat history. Failures roll everything
+back. Different saves serialize on their target; only the first qualifying save
+can consume a given next-save effect. No SQL dice generator was introduced.
+
+The context records target identity, conditions, buffs, exhaustion, house rule
+and active Psionic Guards. Changes reject a stale submission. Buff identities
+must match the current snapshot and contribution totals must add up; the DM's
+base modifier and individual buff results remain submitted inputs, as in the
+existing DM-controlled flow. Automatic failures use no dice and still consume
+the next-save trigger. Save/cover/buff history preserves hidden-target visibility.
+
+Replay keeps the winning dice and penalty but returns the current attack row,
+so a subsequent Legendary Resistance decision is not overwritten by the older
+failed-save receipt. Authorization is checked before replay. The receipt table
+and raw helper functions have no direct authenticated access.
+
+Validation: 46 database cases pass across the two configured test projects,
+plus two focused cases using a real Psionic Guards activation. They cover
+penalty outcomes, lair resistance, automatic failure, disadvantage, cover,
+exhaustion, house rules, stale context, unauthorized access, competing retries,
+competing saves, rollback, invalid dice, hidden logs, post-combat replay and
+condition-table parity. These are SQL integration cases, not UI checks. Full
+gate passes (3,081 units, TypeScript 197/197, hooks/RAW/coordinates/anchors,
+build and 255.2 KB entry). Private-schema SQL lint and test lint pass.
+
+Applied only to local Docker with its migration ledger entry. The browser's
+`rollSave` still uses its legacy path. Next: replace that path with saved client
+dice proposals and receipt validation, render the penalty, preserve Counterspell
+settlement, and block legacy writes from bypassing the new boundary. Then verify
+the actual spell/save UI, including lost responses and stale settings. This
+backend alone is not releasable Mind Sliver automation; other save consumers and
+the full damage-to-concentration chain are still pending.
+
+### Ordinary save controls use the transaction (unreleased)
+
+`rollSave` now delegates to `src/lib/api/attackSaves.ts`; the old separate
+save/Legendary Resistance/event writes were removed. The client saves its d20
+pool, buff rolls, penalty proposal and context before settlement. Failed or
+unverifiable responses retain that proposal; concurrent clicks share one
+request. Successful confirmation removes it. A recorded result still retries
+Counterspell settlement without rolling again.
+
+The recovery panel shows saved dice and bonus. Changing a bonus requires an
+explicit settings review, then a separate confirmation. Reviews preserve
+compatible dice and retain temporarily unused dice (including the penalty die),
+adding only newly required dice. Failed reads keep the previous proposal.
+Corrupt storage refuses a replacement roll. The result banner names Mind
+Sliver's deduction and separates it from the ordinary modifier in its equation.
+
+`20261009213000_guard_attack_save_writes.sql` blocks direct browser inserts of
+resolved saves and updates to save result/dice/penalty/resistance-decision
+fields. Invoker trigger security allows the authorized definer transactions to
+perform those writes. Old browser bundles receive a reload instruction instead
+of bypassing effect consumption. Applied to local Docker only, with ledger row.
+
+Validation: the 48 ordinary-save SQL cases still pass with the guard installed;
+four additional SQL cases reject legacy inserts/updates. Desktop/mobile UI
+checks exercise failed settings reads, failed settlement, reload recovery,
+explicit bonus review, a committed save whose response is lost, one penalty/log
+entry, and the last lair resistance charge. A fixture alert selector was narrowed
+after lost-response coverage legitimately produced multiple alerts; both final
+UI cases pass. Screenshots inspected; recovery panel stays within the modal.
+Fifteen API tests cover stored proposals, concurrent clicks, changed settings,
+blocked/corrupt storage, module reload, malformed receipts and competing winners.
+Three recovery-control tests and save/Counterspell delegation tests pass.
+
+Final full gate: 3,082 units, TypeScript 197/197, hooks/RAW/coordinates/anchors,
+build and 255.2 KB entry. Old client-only save math tests were replaced by the
+real SQL and delegation coverage. Public/private SQL lint reports no errors;
+changed-file lint has warnings only. No deployment yet: class/Propel, sheet,
+death, creature/standalone origins and full declared-spell damage-to-concentration
+coverage still need completion before Mind Sliver can be called complete.
+
+### Class-save condition evidence corrected (unreleased)
+
+The remaining feature-save audit found that the class resolver only applied
+Psionic Guards Advantage. It now applies the existing condition table's automatic
+failure and Disadvantage flags too. No dice are generated for an automatic
+failure; a Disadvantage roll keeps the lower die. Logs distinguish a condition
+failure from a willing failure. Automatic failures no longer show a misleading
+numerical roll badge. Manual outcome buttons retain the original rule flags.
+
+Propel's evidence contract and server validator now support optional
+`disadvantage` and `automaticFailure` fields, preserve legacy records, and verify
+die count, kept face and forced outcome. Opposing Advantage/Disadvantage cancels
+to one die. The migration is
+`20261009215000_propel_condition_save_evidence.sql`, applied only to local Docker
+with a ledger entry. A bad kept face or invented automatic-failure die rejects
+before the conditional Energy Die cost or history commits.
+
+Unit coverage checks the new evidence contract and actual class resolver.
+Desktop/mobile Propel tests cover normal, Paralyzed and Encumbered targets,
+including a 20/1 Disadvantage pair and a Paralyzed target with a +30 bonus.
+The powered use still spends exactly one Energy Die on failure. Negative server
+submissions preserve both the pool and unresolved declaration. Six initial UI
+cases pass, four stronger condition/validation cases pass, and two final
+Paralyzed cases pass after removing the cosmetic badge and log arithmetic.
+Screenshots inspected on desktop/mobile. SQL lint and changed-test lint pass.
+
+Still incomplete: feature conditions are read from the modal's participant
+snapshot, not revalidated at resource settlement. This correction does not yet
+consume Mind Sliver for class saves. Next work must connect an authoritative
+feature-save transaction, preserve retries, and apply the penalty before deciding
+Propel's conditional cost. General feature buff/exhaustion handling also needs
+review. No production deployment of this branch.
+
+Final full gate passes: 3,087 unit tests, TypeScript 197/197, hooks/RAW/coordinates/anchors, build and 255.2 KB entry.
+
+### Declared Propel refreshes live save conditions (unreleased)
+
+`20261009221000_shared_feature_save_context.sql` extracts the existing ordinary
+save target-state reader into one private helper. Ordinary saves preserve their
+same context shape. A new scoped Propel read requires the authorized character,
+its unresolved finalized declaration, the original active encounter and the
+bound target. It returns current conditions, buffs, exhaustion, house-rule
+flags and remaining Legendary Resistance (including lair allowance), without
+spending resources or changing the declaration. The raw helper is not exposed.
+
+Propel's assisted save now passes its declaration ID into the class resolver
+and refreshes that context immediately before rolling. A newly applied condition
+therefore takes effect even if the dialog was already open. Read failures leave
+the target unresolved and generate no dice. Other class abilities retain their
+current modal-snapshot behavior. The API validates identities and state rather
+than interpreting a failed read as an empty condition list.
+
+Validation: 74 database/browser cases pass: 16 new context cases, 52 ordinary-save
+regressions using the extracted reader, and six desktop/mobile Propel flows.
+The Paralyzed browser case applies the condition after opening the dialog and
+still produces a no-dice failure. Fifteen API validation cases and two added
+class-control tests pass. Full gate: 3,104 units, TypeScript 197/197,
+hooks/RAW/coordinates/anchors, build and 255.2 KB entry. SQL lint passes.
+Applied only to local Docker, with migration ledger entry; branch not deployed.
+
+This read is not settlement authorization. Next: preserve the submitted context
+and dice, recheck/lock the target at settlement, consume Mind Sliver, and derive
+the final result before paying Propel's conditional cost. Legendary Resistance
+needs a DM decision before finalizing a failed feature save. Buff/exhaustion
+values are returned for that transaction but are not newly applied by this
+change. Full feature/standalone/death-save coverage remains a release gate.
+
+
+### Propel settlement rechecks condition evidence (unreleased)
+
+`20261009224000_propel_settlement_condition_guard.sql` now checks assisted
+Propel save evidence inside the same transaction as conditional Energy Die
+payment. It locks the encounter, participant and combatant state, then compares
+current automatic-failure, advantage/disadvantage and natural-extremes flags
+against the submitted roll. Changed flags, missing targets and ended encounters
+reject before payment or history writes. Completed receipt replays bypass fresh
+eligibility checks and never charge again. Explicit manual/tabletop outcomes
+remain adjudicated outcomes rather than fabricated rolls.
+
+The target character is locked before encounter/participant rows. Simultaneous
+cross-character resolutions can encounter PostgreSQL deadlock detection; that
+transaction rolls back rather than committing a partial cost and can be retried.
+This does not yet make every save input authoritative: buff/exhaustion arithmetic,
+Mind Sliver consumption, Legendary Resistance decisions, target replacement
+identity at declaration, and persistent dice review after stale-context rejection
+remain open. Do not deploy the combined branch as complete feature-save support.
+
+Validation: focused database regressions cover changed/removed automatic failure,
+new disadvantage, ended encounters, zero rejected-use cost/history, successful
+retry, and receipt replay after conditions change. Migration applied only to local
+Docker with its ledger entry; unrelated preserved migration history unchanged.
+
+Final checks: 12 focused SQL cases passed, including an actual concurrent
+condition update held open while settlement waits. All 16 browser scenarios
+pass across desktop/mobile (12 unaffected cases in the initial run; four
+Teleporter cases rerun after repairing an out-of-scope variable in their test
+fixture). Required gate: 3,104 unit tests, TypeScript 197/197, hooks, RAW,
+coordinates, anchors, build and 255.2 KB entry. Private SQL lint has zero errors;
+existing warning-level findings remain. Changed test files pass ESLint.
+
+
+### Propel penalty and resistance transaction (unreleased backend)
+
+`20261009231000_propel_save_settlement.sql` adds a scoped, persistent save receipt
+for a declared combat Propel. `settle_propel_save` authorizes the character owner
+or campaign DM, locks current target state, rejects stale context, validates dice
+and buff contribution identity/totals, applies exhaustion and the shared Mind
+Sliver consumer, and calculates the actual result. With no resistance decision,
+the receipt, next-save consumption, conditional Energy Die cost and history
+commit together. Any payment failure rolls the whole operation back. Competing
+submissions return the winning dice, not a replacement roll.
+
+A penalized failure with remaining Legendary Resistance commits its save and
+consumed next-save effect, then waits without spending an Energy Die. The DM-only
+`decide_propel_resistance` validates the original target, active encounter and
+current charges (including lair allowance). Accepting spends one resistance and
+finishes passed with no Energy Die; declining finishes failed with its conditional
+cost. Decision, charge and completion share a transaction. Replays are idempotent;
+a conflicting repeat is rejected. Later conditions do not change a recorded save.
+Legacy manual finish/cancel cannot bypass a pending decision.
+
+The immutable receipt retains original failed dice and penalty even when
+resistance changes the final outcome. Accepted resistance stores no fabricated
+passed roll in the legacy `save_details`; the new receipt is the detailed source.
+`get_propel_save` provides owner/DM recovery. Raw tables/helpers stay private.
+
+Remaining integration: wire the new API into Propel controls with persisted dice,
+explicit stale-context review, penalty presentation and a recoverable DM decision.
+Existing controls still use the older save route; this backend is not advertised
+as player-facing support yet. Submitted base bonus and DC remain reviewed inputs
+(the client must derive DC from the declaration snapshot); buff dice expression
+arithmetic is not fully server-derived. Feature/standalone/death coverage and full
+declared Mind Sliver-to-damage-to-concentration testing remain release gates.
+Migration applied only to local Docker, preserving unrelated ledger entries.
+
+Validation: 35 focused checks pass: 20 new transaction cases, 12 prior context/
+condition regressions, and three desktop browser save flows. They include
+concurrent roll submissions and resistance decisions, owner/outsider permissions,
+penalty-driven failure, lair-only resistance, automatic failure, buff/exhaustion
+arithmetic, stale inputs and payment rollback. The first run exposed only a test
+reader parsing SQL NULL as empty JSON; corrected and all cases passed. Full gate:
+3,104 unit tests, TypeScript 197/197, hooks, RAW, coordinates, anchors, build and
+255.2 KB entry. Changed test lint and private SQL error-level lint pass.
+
+
+### Propel save controls use the transaction (unreleased)
+
+The real Propel controls now open `PropelSaveControls`, using `propelSaves.ts`
+for durable dice preparation, confirmation and resistance decisions. The target
+is fixed to the declaration; DC comes from its character snapshot. The reviewed
+base bonus is separate from active buffs, exhaustion and Mind Sliver. Recorded
+penalties and final Energy Die costs are shown, and automatic failures do not
+invent a displayed d20. Combat passed/failed shortcut buttons are removed from
+this view; solo/tabletop manual outcomes remain available.
+
+Proposals persist before confirmation. Explicit context review keeps compatible
+d20/buff/penalty dice and adds only newly required rolls. Invalid receipts,
+blocked storage and network errors do not silently replace a throw. Concurrent
+confirmations share the operation; conflicting decisions are rejected. The
+owner can recover a waiting receipt, while only the campaign DM sees resistance
+buttons and the server enforces that permission. Accepted resistance preserves
+the failed roll while explaining the final success and zero Energy Die cost.
+
+Completed saves are absent from the server's unfinished list. The launcher now
+also lists browser proposals with unconfirmed responses, so a reload after a
+lost successful response can recover that completed receipt. Verified receipt
+reads clear the browser proposal. New declarations wait while one needs review.
+
+Validation includes lost responses on both transport attempts, reload before
+confirmation, reload while waiting for resistance, reload after completed
+payment, explicit bonus review preserving dice, and both resistance choices on
+desktop/mobile. Screenshots were inspected for saved-dice, waiting and final
+states; the modal-scoped standard overflow probe (including fixed ancestors)
+passes in the resistance scenarios. Fault injection seeds the active Mind Sliver
+effect; full declared-spell-to-save integration remains a separate release gate.
+
+Still open: old clients/direct legacy completion can bypass a new receipt when
+none exists (the server blocks bypass once a receipt is pending); unsupported
+save consumers/origins, manual LR writes, and DM discovery outside opening this
+character's saved use. The combined branch is not deployed. Do not call all
+Psion or Mind Sliver automation complete based on these focused checks.
+
+Final gate: 3,126 unit tests, TypeScript 197/197, hooks, RAW, coordinates,
+anchors, build and 255.2 KB entry. Twenty-two new API recovery/validation tests
+pass. Ten desktop/mobile save scenarios pass: six condition/completed-recovery
+cases and four pending-resistance/lost-response cases. Changed-file ESLint and
+diff whitespace checks pass. No production migration or deployment performed.
+
+
+### Combat Propel cannot bypass its recorded save (unreleased)
+
+`20261010000500_require_recorded_propel_saves.sql` closes the legacy completion
+path for unresolved combat declarations. Direct passed/failed submissions,
+including otherwise plausible rolled details, require the private save receipt.
+The modern settlement transaction supplies that receipt before payment. An old
+client receives a reload/Resolve combat save instruction instead of silently
+skipping Mind Sliver or Legendary Resistance. Existing completed receipts replay
+without retroactive saves or extra costs. Pre-save cancellation and solo/tabletop
+manual outcomes retain their prior behavior.
+
+The save-evidence, history rollback, concurrency and stale-context regressions
+now use the modern public transaction. Private payment-helper tests still test
+that internal primitive; its lack of authenticated/anonymous execute permission
+remains asserted. New regressions cover both forged outcomes with live Mind
+Sliver and resistance, unchanged effect/resources/history after rejection,
+subsequent modern resolution, cancellation, old completed receipts, and solo
+manual resolution. Local Docker only; unrelated migration ledger preserved.
+
+Next-save coverage inventory, traced to live importers: end-of-turn condition
+saves run from `combatEncounter.ts` through `endOfTurnConditions.ts` and currently
+roll/remove effects in separate client calls. Death saves have three writers:
+automatic turn-start in `combatEncounter.ts`, prompted saves through
+`deathSaves.ts`/`DeathSavePromptModal`, and sheet `DeathSaves.tsx`. These all need
+shared authoritative save/penalty handling; no pure death-save domain module
+currently unifies their outcome math. Other class, sheet and standalone save
+consumers/origins remain open. This branch is still not a complete Mind Sliver
+release and has not been deployed.
+
+Source check for the next integration: [2024 Playing the Game](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game#DeathSavingThrows)
+confirms death saves are not tied to an ability score; stabilization resets both
+counters, and natural 1/20 have their specific death-save effects. Current client
+writers do not consistently reset both counters on stabilization. The same
+source's Saving Throws section permits choosing failure without rolling: that
+option must return through an explicit authorized resolution path, not the old
+combat completion bypass. The new combat Propel dialog does not yet offer it.
+These are concrete accuracy items, not claims of completed support.
+
+Verification: all 101 database regressions pass (76 action/Propel/context cases
+and 25 settlement/compatibility cases). Full gate passes: 3,126 unit tests,
+TypeScript 197/197, hooks, RAW, coordinates, anchors, build and 255.2 KB entry.
+Private SQL error-level lint, changed-test ESLint and diff whitespace checks pass.
+
+### Combat Propel: choosing failure without a roll (unreleased)
+
+The combat save dialog now offers DM-confirmed voluntary failure. The choice is
+saved before confirmation and survives reload or a lost response. The caster
+cannot choose failure on another creature's behalf. Target-player self-approval
+is not implemented; this is an explicit DM adjudication path.
+
+`20261010003500_propel_chosen_failure.sql` records the no-roll result and consumes
+any next-save trigger without inventing a d20 or penalty d4. Legendary Resistance
+still requires its separate DM decision. Conditional energy payment, final outcome
+and history retain transaction/replay protection. An existing rolled save cannot
+be replaced by choosing failure, or vice versa. Stale context requires review.
+
+Verified locally: 34 database settlement cases, 27 API tests, and 12 desktop/mobile
+save/recovery scenarios. Screenshots inspected at both sizes; modal overflow checks
+pass. Full gate: 3,131 unit tests, TypeScript 197/197, hooks, RAW, coordinates,
+anchors, production build and 255.2 KB entry. SQL error-level lint, changed-file
+ESLint and whitespace checks pass. Local migration applied without changing the
+unrelated ledger entry. No production migration or deployment performed.
+
+Next: unify death-save outcome math and reset both counters on stabilization;
+then integrate the remaining save consumers before releasing the combined
+Mind Sliver work. The coverage limitations documented above remain open.
+
+### Death-save audit in progress — do not release yet
+
+A shared `src/rules/deathSaves.ts` resolver now distinguishes the natural d20
+from the modified total and resets both counters on stabilization. The two
+combat writers are provisionally wired to it. Nineteen boundary/regression cases
+cover stabilization, natural 1/20, modified totals and invalid input; the full
+verification gate passes. These working-tree changes are NOT release-ready.
+
+Integration review found a persistence dependency that tests did not cover:
+`characters` has no stable flag. `CharacterSheet/DeathSaves.tsx` uses three
+successes as its stable marker, while `combatEncounter.ts` endEncounter copies
+combat counters and intentionally omits combatants.is_stable. Clearing the
+combat counters alone therefore loses the stable state on return to the sheet.
+Complete explicit character stable-state storage, sheet rendering/manual changes,
+combat carry-over, combatant creation, healing/damage/rest resets and realtime
+fields before committing/releasing this integration. The prompted save also
+needs a fresh dying-state check and atomic settlement; its existing multi-write
+path must not be described as retry-safe. Next-save penalties remain unwired here.
+
+Authoritative rules checked again: [2024 Death Saving Throws](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game#DeathSavingThrows).
+A stable creature stays at zero HP; both counters reset. Natural 20 restores
+one HP, natural 1 adds two failures, and ordinary outcomes use DC 10.
+
+Stable-state integration update: `20261010011000_character_stable_state.sql`
+adds `characters.is_stable`, backfills the prior three-success marker, normalizes
+healing/third-success/damage-counter writes, and seeds new combatant life state.
+The sheet now uses the shared resolver and explicit state; realtime and end-of-
+combat carry-over include it. Seven local database cases and desktop/mobile
+reload-and-heal scenarios pass. Screenshots inspected. The existing mobile
+floating history/dice controls crowd the stable panel's lower-right edge; retain
+this as a map/sheet interface follow-up. Four component roll/render cases and
+an explicit stable combat-handoff case pass. Full gate passed with 3,151 tests
+before those five additional tests, which passed separately; TypeScript197/197,
+entry255.2KB. New-file lint passes.
+
+Still uncommitted/unreleased: audit atomic damage context snapshots for the new
+field, existing/reused combatants, direct healing/rest paths and stale pending
+saves before calling this integration complete. The normalizer alone is not an
+atomic death-save settlement and does not consume next-save effects. Local
+migration applied; production untouched.
+
+### Stable-state foundation verified (unreleased)
+
+Supersedes the uncommitted status above: the shared death-save resolver, explicit
+character stable field, sheet use, realtime carry-over, new-combatant seeding and
+combat-end handoff are ready to commit. Damage snapshots now include is_stable;
+a stale preview is rejected before damage applies. Obsolete pending prompts
+expire without rolling after healing, stabilization or death. This check precedes
+the existing writes; it is not a transaction/concurrency guarantee.
+
+Verification: full gate passes with 3,161 unit tests, TypeScript197/197, hooks,
+RAW, coordinates, anchors, build and255.2KB entry. All43 local stable/party-damage/
+pending-damage-life cases pass, including critical damage and zero damage.
+Desktop/mobile sheet reload-and-heal checks and screenshots passed in the prior
+step. SQL error-level lint returns no errors; new-file lint is clean after replacing
+the test builder's any. The five stale-prompt tests were rerun after that type-only
+cleanup. Local migration/ledger updated; no production changes.
+
+Remaining death-save work: atomic resolution and next-save-effect consumption;
+live synchronization between a sheet and an already-existing combatant; and
+pending-prompt roll receipts/history. Reusing a combatant preserves its combat
+life state instead of reinitializing it from the sheet, as before. Broader healing,
+rest and simultaneous-update behavior must be covered by that next integration.
+Do not interpret these tests as complete Mind Sliver or death-save automation.
+
+### Atomic prompted death-save backend (unreleased; UI not yet connected)
+
+`20261010021000_atomic_prompted_death_saves.sql` adds an owner/DM-authorized
+context reader and settlement RPC. Character/prompt/encounter/participant/
+combatant locks protect the result. A private per-prompt receipt returns the
+original outcome on retry. Save result, shared next-save penalty consumption,
+combatant and character life state, pending status and combat event commit or
+roll back together. Natural faces retain death-save rules independently of the
+modified total; exhaustion applies to the total. Natural20 removes Unconscious
+from both records. Obsolete healed/stable/dead/inactive-encounter prompts expire
+without consuming an effect or producing a rolled event. Changed context or
+identity is rejected; private receipt storage is inaccessible to authenticated
+clients. Local migration applied, production untouched.
+
+All19 database cases pass after final identity checks: permissions, concurrent
+replay, stabilization, natural extremes, advantage/disadvantage, exhaustion,
+stale/obsolete state, actual seeded Mind Sliver consumption and rollback.
+Full gate passed (3,161 unit tests, TypeScript197/197, hooks, RAW, coordinates,
+anchors, build,255.2KB entry). SQL error-level lint and new-test ESLint pass.
+
+Not a released feature: the current dialog/automatic/sheet writers still use
+legacy paths. Next connect persisted dice proposals, explicit effect-modifier
+review and result recovery to the new transaction, then block bypass writes.
+Bonus/advantage inputs currently represent reviewed effects; they are not
+server-derived from all equipment/feature sources. Prevent duplicate prompt
+creation for the same turn, cover stale prompts across a revived-then-downed
+life cycle, and add full actual spell-delivery end-to-end evidence. The seeded
+Mind Sliver tests prove consumption, not its complete casting/damage pipeline.
+
+### Player death-save dialog uses atomic settlement (unreleased)
+
+The live `DeathSavePromptModal` now uses `api/deathSaves.ts`. It persists the d20
+pool, proposed penalty d4, effect modifier and reviewed context before confirmation.
+Reload and transport failure preserve dice; compatible context review never
+rerolls existing faces. A second die is added only when advantage/disadvantage
+requires one, and retained if settings later change. Local proposals remain
+listed even when the server has already resolved the offer, allowing recovery
+of a lost acknowledgement. Receipt identity/arithmetic/penalty checks precede
+removing the proposal. Concurrent confirmation clicks share one request.
+
+The superseded client multi-write resolver and its five obsolete tests were
+removed. Eleven API tests now cover persistence, failed/repeated confirmation,
+settings review, storage failure, corrupt data, invalid receipts and discovery.
+Desktop/mobile browser tests commit a save, lose its response deliberately,
+reload twice and confirm the same result with exactly one combat event. Both
+pass. Updated screenshots inspected; the standard overflow probe, scoped to the
+modal with fixed-ancestor skipping disabled, reports no clipping or sideways
+scroll. Checkboxes now align beside their labels on mobile.
+
+Limits remain explicit: effect bonuses/advantage are reviewed inputs, with active
+buffs listed; their dice are not automatically derived yet. Exhaustion and Mind
+Sliver are applied by the server. Automatic turn-start and direct sheet rolls
+still need migration to this path before legacy writes can be blocked. Duplicate
+prompt prevention and revived-then-downed prompt identity remain follow-ups.
+Nothing in this branch has been deployed to production.
+
+Final player-flow gate: 3,167 unit tests, TypeScript197/197, hooks, RAW,
+coordinates, anchors, production build and255.2KB entry all pass. Changed-file
+ESLint and diff whitespace checks pass. Two browser scenarios passed with the
+final layout and overflow probe enabled. No new database migration in this batch.
+
+### Death-save offer identity and duplicate prevention (unreleased)
+
+`20261010032000_death_save_offer_identity.sql` adds a turn token and combatant
+life-state revision to each new offer. Revision advances when zero-HP/stable/dead
+state changes and cannot be manually rewound. Creation locks character, encounter,
+participant and combatant, verifies owner/DM and the actual current actor, and
+returns one offer per participant/turn even after it is resolved. A new turn
+expires an older pending offer. Settlement expires offers from another turn or
+from before healing/stabilization followed by a new downing; it consumes no save
+penalty for those obsolete offers. Old unbound pending offers are expired at
+migration time instead of being attached to an unverifiable dying episode.
+
+Authenticated direct offer insert/update/delete is revoked. The current prompt
+creation caller uses the authorized RPC and passes the exact token returned by
+its turn update. The existing schema type now includes psionic_turn_id.
+
+Verification:10 new database cases pass (creation races, permission boundaries,
+resolved-offer replay, turn changes, heal/down and stable/damage cycles, revision
+rewind rejection, and healthy actors). Existing40 death-save database/browser
+cases pass under the migration. Four API caller tests cover the exact observed
+token, no-offer result, target mismatch and propagated errors. Full gate passes
+with TypeScript197/197 and255.2KB entry; SQL error-level lint and changed-file
+ESLint pass. Migration applied only locally.
+
+Important integration finding: live callers still import advanceTurn from
+combatEncounter.ts, whose turn write/round clock/buff decrement remain the legacy
+client sequence. The existing commitCombatClock API has no live importer. Thus
+caster-owned next-save expiry cannot yet rely on all live transitions being in
+the atomic ledger. Wire the actual turn path (including recovery ordering) before
+claiming complete Mind Sliver expiration. Automatic death saves also still use
+the legacy direct writer; this batch protects prompted offer identity only.
+
+### Durable combat-clock recovery record (unreleased; caller integration pending)
+
+`api/combatTransitionRecovery.ts` persists a user/encounter-scoped exact request
+before confirmation and retains a validated clock receipt. It distinguishes
+clock-pending, clock-confirmed and effects-started. It refuses to replace an
+unfinished transition, coalesces in-process confirmations, preserves the original
+request after transport/storage failure, and requires explicit post-effect
+completion before clearing recovery. An effects-started record is an uncertain
+outcome requiring reconciliation; it is never treated as permission to rerun
+effects. Receipt validation is shared with combatClock.ts. This is a browser
+journal, not a cross-tab server lease or proof that external effects completed.
+
+Eleven new recovery tests and21 existing clock tests pass. Live advanceTurn is
+not wired yet: doing that without restructuring its surrounding effects would
+repeat or skip gameplay on retries. The current function runs outgoing condition
+resaves, end-turn ticks, end-turn auras and movement-feature recovery before
+resetting incoming budgets/recharge/mastery state. After its clock write it also
+increments campaign rounds and decrements buff durations (both must be removed
+when the atomic clock owns them), then emits lair/recharge/refill events, handles
+death saves, runs start-turn ticks and emits turn-boundary events.
+
+Next integration must give those effects durable identities/receipts and resume
+them in order. In particular the automatic death-save writer cannot be replayed;
+it must use the new per-turn offer and atomic save path. Do not clear a saved
+clock request merely because its position was acknowledged. No user-visible
+turn behavior changed in this foundation batch; production remains untouched.
+
+Recovery-foundation final gate:3,182 unit tests, TypeScript197/197, hooks, RAW,
+coordinates, anchors, build and255.2KB entry pass. Changed-file ESLint and diff
+whitespace checks pass. No schema/UI change in this batch.
+
+
+### Automatic turn-start death saves share saved settlement (unreleased)
+
+The live advanceTurn automatic death-save branch now creates the same unique
+per-turn offer as prompted saves and settles through the atomic save transaction.
+Combat buff saveBonus dice and equipped/attuned item save bonuses are captured
+before settlement; exhaustion and next-save penalties remain transaction-owned.
+Retries reuse persisted dice instead of rolling again. Equipment is now part of
+the expected context, so changing gear requires review before settlement.
+Automatic offers stay out of the manual prompt while running; failed attempts
+request owner/DM review and locally saved rolls remain recoverable. The new
+migration is applied only to Docker, not production.
+
+Live desktop/mobile tests cover End Turn into a dying character with Bless,
+Ring of Protection and exhaustion, as well as prompted-save reload/lost-response
+recovery. Database regressions cover automatic-offer identity, review permission,
+and stale equipment rejection without any result write. Existing Propel controls
+passed alongside the death-save transaction suite:84 desktop/mobile cases plus
+4 live death-save dialog/automatic-turn checks. The full gate passed3,191 unit
+tests, TypeScript197/197, hooks, RAW, coordinates, anchors, build and255.2KB entry.
+SQL error-level lint and diff whitespace checks passed. Changed-file ESLint has
+only the existing combatEncounter unused chainId error and standing warnings;
+new files have no lint errors.
+
+Remaining release gates: automatic advantage/disadvantage and sheet-level effects
+are not comprehensively derived; an interruption before dice persistence combined
+with failed review RPC can leave an automatic offer undiscoverable. Add durable
+recovery for that window. The live combat clock still needs ordered side-effect
+recovery and integration with its server ledger; direct sheet saves and other
+save callers still need full next-save penalty coverage. This is an unreleased
+checkpoint, not a claim of complete Mind Sliver or flawless Psion automation.
+
+
+### Interrupted automatic death-save discovery (unreleased)
+
+Server-timed discovery now returns pending automatic offers after60 seconds,
+including offers whose creating browser closed before persisting any dice. The
+sheet checks every15 seconds and on reconnect as well as realtime. Local saved
+dice remain first in the recovery queue; actively running saves in this browser
+stay suppressed. A new manual preparation converts automatic mode to prompt,
+then reloads context before rolling. Resolution mode is part of the expected
+context, so a late automatic request cannot settle after that handoff. An already
+committed receipt still wins on replay. The review RPC uses settlement's
+character-first lock ordering. A result arriving while the dialog is open now
+shows a terminal message and Done instead of trapping the player in an error.
+
+This closes the hidden-offer window noted above. It does not make original
+uncommitted dice available on another device: roll proposals remain local to
+the originating browser. Settlement remains exactly once per offer, but durable
+shared proposals and broader turn-effect recovery remain follow-ups. This new
+migration has been applied only locally; production is unchanged. Automatic
+advantage/disadvantage derivation and other save callers remain release gaps.
+
+
+The live browser regression also exposed an early-click bug: before combat loaded,
+the sheet could treat End Turn as a local reset. ActionEconomy now disables the
+button and guards its handler while combat state is loading. A component test
+checks that neither local trackers nor combat/solo turns change until loading
+finishes. The browser test retains its normal End Turn click to exercise this
+protection instead of hiding the race with an artificial wait.
+
+Recovery final verification:3,196 unit tests, TypeScript197/197, hooks, RAW, coordinates, anchors, production build and255.2KB entry all pass. All28 offer database cases and8 final desktop/mobile dialog cases pass. Changed-file ESLint, SQL error-level lint and diff whitespace checks pass. No production migration or deployment.
+
+
+
+### Death-save waking condition lifecycle (unreleased)
+
+The turn audit found that natural20 settlement removed Unconscious by array
+filter while leaving its derived Incapacitated source behind. That could keep a
+revived Psion unable to act. Atomic death saves now use the existing server
+remove_conditions helper independently on locked combatant and character rows.
+The sheet's natural20 and Regain1HP controls use its canonical pure counterpart.
+Waking removes only the derived incapacity, preserves incapacity required by
+Stunned/Paralyzed or an independent effect, and retains Prone with fall provenance.
+Stabilization at0HP does not remove unconsciousness. Character's type now includes
+its already-persisted condition_sources field; the live read/patch path was traced
+and verified to retain it.
+
+Rules checked against official2024 Basic Rules:
+https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game
+https://www.dndbeyond.com/sources/dnd/br-2024/rules-glossary/
+
+Validation:3,200 unit tests;54 death-save database/browser cases plus2 stable-sheet
+browser cases; TypeScript197/197, hooks, RAW, coordinates, anchors, build and255.2KB
+entry all pass. SQL error-level lint and changed-file lint pass. New migration
+applied only to Docker; production unchanged.
+
+Turn-recovery audit remains open: live advanceTurn separately runs condition
+resaves, buff ticks, auras, movement-feature recovery, incoming budgets/recharge,
+mastery/once-per-turn sweeps and logs. End-of-turn condition resaves still roll,
+log, remove the condition and grant immunity in separate steps, and do not yet
+consume Mind Sliver. processTurnTicks also uses a multi-write client path. Those
+need durable effect identities and atomic outcomes before the clock journal can
+safely resume the complete sequence. The legacy clock has not been switched.
+
+
+### Atomic turn-end condition save foundation (unreleased; not wired live)
+
+New get_condition_turn_save_context / settle_condition_turn_save RPCs validate
+owner/DM access, current actor/turn, active parent condition and its saved ability/DC.
+The shared saving_target_context supplies condition auto-failure, disadvantage,
+Psionic Guards Intelligence advantage, exhaustion and natural-extremes settings.
+The server consumes the shared next-save penalty and commits the roll, cascade
+removal, existing source-immunity policy, event and private receipt together.
+A unique participant/turn/condition identity serializes competing requests and
+returns the first result even after the turn changes or condition disappears.
+Stale settings and transaction errors leave all consequences uncommitted.
+The result carries both reviewedBonus and final bonus for accurate log arithmetic.
+
+This foundation is deliberately not called by processEndOfTurnConditions yet.
+Next: a durable client proposal/recovery API, discovery of existing results before
+rolling, explicit review of changed bonuses, then replace the live multi-write
+condition-save branch. The submitted equipment/buff bonus is still a reviewed
+input, not server-derived. Legendary Resistance choice, duration-only expiry,
+other source-immunity durations and complete buff-tick/clock recovery are not
+implemented by this RPC. Do not claim complete turn automation or deploy the
+broader branch based on these transaction tests alone. Migration applied only
+to the existing local Docker database.
+
+Condition-save foundation validation:32 database regression cases pass, including concurrency, rollback, shared-penalty consumption, Guards, disadvantage, permissions, immunity and replay after turn advance. Full gate passes3,200 unit tests, TypeScript197/197, hooks, RAW, coordinates, anchors, build and255.2KB entry. SQL error-level lint, changed-file ESLint and diff whitespace checks pass. No live UI or production behavior changed in this foundation batch.
+
+
+### Live turn-end condition-save recovery (unreleased)
+
+processEndOfTurnConditions now calls the atomic saved-save path with the exact
+outgoing turn token. Its former roll/log/remove/immunity sequence is removed.
+advanceTurn returns an explicit failure before advancing when a condition save
+cannot be confirmed; it no longer silently skips that save. Initial participant
+read errors also stop this step. Duration-only expiry remains the legacy path.
+
+api/conditionTurnSaves persists the request, d20 pool, compatible buff totals and
+penalty die before settlement. It discovers an authorized committed receipt
+before reading new context or rolling; stale/malformed storage and failed reads
+cannot silently generate replacement dice. Overlapping calls coalesce. Explicit
+review refreshes context while retaining compatible dice and buff rolls. Unknown
+base-bonus confidence blocks automation. The new read RPC permits owner/DM
+recovery after the turn changes or the condition ends, without exposing private
+tables. The migration is applied only to local Docker.
+
+The actual End Turn browser test injects lost acknowledgements after committed
+settlement. Desktop and mobile preserve the outgoing round on the first attempt,
+then advance after reload/retry with one original result and one log entry.
+The first attempt at this fixture lacked a required buff name and crashed the
+initiative strip before clicking; the corrected fixture exercises the intended
+save path successfully.
+
+Remaining: expose saved-condition review controls in the UI (the API is present),
+including uncertain/low-confidence modifiers. getTargetSaveBonus includes effective
+ability-score item overrides but does not yet add all flat equipment save bonuses;
+that shared calculation needs its own audit. Legendary Resistance choices,
+duration-only expiry, buff ticks and full clock-side-effect recovery remain open.
+Do not deploy or call complete based solely on this integration. Proposals remain
+local to the originating browser; cross-device durable dice are still separate work.
+
+Live condition-save verification:3,210 unit tests, TypeScript197/197, hooks, RAW,
+coordinates, anchors, build and255.2KB entry pass. Both live condition retry browser
+cases and44 condition/death-save database/browser regressions pass. SQL error-level
+lint and changed-file ESLint pass with the existing any-type warning. No production
+migration or deployment.
+
+
+### Equipment bonuses in shared combat saves (unreleased)
+
+getTargetSaveBonus now includes eligible flat equipment save bonuses using
+computeActiveBonuses with no combat-buff input. This keeps equipped/attuned gating
+consistent with the sheet and avoids rolling Bless twice. The breakdown names
+the equipment contribution. The runConcentrationSave offer uses the same item
+bonus in addition to effective Constitution and proficiency. Malformed equipment
+save values stop the calculation instead of producing a string/invalid total.
+
+The shared server saving_target_context now fingerprints bonus inputs: character
+inventory, ability scores, progression and save proficiencies, or creature scores,
+proficiencies and CR. Only an opaque revision is returned, so an attacker does not
+receive the target's private inventory. Equipment/stat changes invalidate pending
+attack, Propel and condition-save context comparisons before settlement. The
+migration is applied only locally.
+
+Coverage includes attuned/equipped gating, ability-override plus protection stacking,
+concentration-offer bonuses, and the actual lost-response End Turn flow with both
+Bless and a protection item. A database test changes inventory after the context
+read and verifies rejection without a result or inventory disclosure.
+
+This does not finish all save automation: standaloneDamage/standaloneConcentration
+use a separate caller-supplied modifier contract and require an equipment-bonus
+audit too. Saved-condition review UI is now added below; the underlying review
+API preserves dice. No production deployment yet.
+
+Equipment-save verification:3,218 unit tests and108 database/browser regressions
+pass. TypeScript197/197, hooks, RAW, coordinates, anchors, build and255.2KB entry
+pass. SQL error-level lint is clean. Changed test-file lint passes; pendingAttack
+retains its pre-existing prefer-const error for rolledDamageRiders and standing
+warnings, with no new lint findings from this patch.
+
+
+### Saved condition-roll review controls (unreleased)
+
+The shared initiative strip now discovers saved condition rolls for the current
+actor and turn. DMs can review their current actor; a character sheet exposes
+only its own actor's recovery controls. Opening a review checks the authoritative
+receipt first, so a lost acknowledgement displays the completed result without
+rerolling. Equipment/effect changes can be explicitly reviewed with the base
+save bonus; compatible d20, buff and penalty dice and request identity survive.
+Confirmation remains separate, with changed inputs disabling confirmation until
+review. Closing leaves the saved roll intact. Reloading rediscovers it.
+
+Review and settlement exclude each other while a receipt is loading. A receipt
+read failure preserves the proposal. Local storage cleanup errors no longer hide
+an already verified result. The dialog traps keyboard focus, restores it on close,
+and fits desktop/mobile. Unknown bonuses that prevented the original proposal,
+cross-device dice, and the broader combat-clock integration remain open; this UI
+recovers existing proposals only. No production migration or deployment.
+
+Verification:3,222 unit tests; required type/hooks/RAW/coordinate/anchor/build/budget
+gates green (TypeScript197/197, entry255.2KB). Four local desktop/mobile browser
+cases pass, including receipt recovery, changed equipment with preserved dice,
+one recorded event, resumed turn advancement, keyboard focus and the standard
+overflow probe. Desktop/mobile screenshots reviewed. Changed-file lint clean.
+
+
+### Standalone concentration equipment bonuses (unreleased)
+
+The live standalone damage controller now adds eligible flat equipment save
+bonuses to effective Constitution before creating its durable damage request.
+The server still adds proficiency exactly once. The existing inventory snapshot
+fences equipment changes, and retries retain the original request/bonus. Invalid
+non-integer equipment totals fail before request creation or HP submission.
+
+Live sheet coverage pins an exact DC10 boundary: CON14/proficiency3 with a d20 of4
+fails without the ring and succeeds with an equipped, attuned Ring of Protection.
+Unequipped/unattuned rings are excluded; a nonproficient character still receives
+the ring bonus. Existing War Caster, multiple-hit, reload and lost-response tests
+exercise the same flow. No new migration or UI layout change.
+
+This fixes flat equipment only. The standalone offer contract still needs an
+explicit exhaustion and temporary-save-effect audit (its snapshot currently lacks
+those fields). It must retain damage-time context and receipt replay when expanded.
+The shared combat-clock integration remains a release blocker. Not deployed.
+
+Verification:3,227 unit tests and34 local desktop/mobile concentration-sheet
+regressions pass. Required type/hooks/RAW/coordinate/anchor/build/budget gates
+pass (TypeScript197/197; entry255.2KB). Changed-file ESLint and diff checks clean.
+
+
+### Standalone concentration exhaustion (unreleased)
+
+Standalone damage and concentration creation now capture exhaustion_level in the
+request snapshot. The database derives the 2024 penalty (twice the level) while
+holding the character lock, before changing HP. The stored offer retains that
+bonus if exhaustion changes later. Client verification uses the same pure rule
+and accepts negative bonuses down to the contract's valid lower bound.
+
+Old committed requests replay unchanged. New legacy requests without exhaustion
+are accepted only while actual exhaustion is zero; exhausted characters must
+reload for an explicit snapshot. A stale snapshot rejects before HP changes.
+The new function definitions preserve existing ownership, request identity,
+replay and atomic HP/offer behavior. No old receipts are rewritten.
+
+Migration 20261010000858_standalone_concentration_exhaustion.sql was generated by
+the CLI and applied only to local Docker in a transaction with its ledger entry.
+Normal migration up remains blocked by the unrelated 20261008213500 local ledger
+entry; that entry and local data are preserved. Temporary save effects remain
+separate work; this patch does not claim Bless/Bane or all standalone automation
+complete. The combat-clock release blocker remains. No production deployment.
+
+Rules verified against the official 2024 glossary, Exhaustion / D20 Tests:
+https://www.dndbeyond.com/sources/dnd/br-2024/rules-glossary/#ExhaustionCondition
+
+Follow-up found during this audit: CharacterSheet/index.tsx still has a local
+rollConcentrationSave used by campaign HP-change/prompt paths (callers around494,
+801,1678). It reads computeStats.saving_throws.constitution.total and does not yet
+include flat equipment, exhaustion or temporary save effects. Replace that
+remaining split path with durable shared settlement rather than assuming the
+standalone fix covers campaign manual HP edits.
+
+Verification:3,244 unit tests and140 local database/browser cases pass, including
+both mobile and desktop exhaustion boundaries and legacy receipt recovery.
+Required type/hooks/RAW/coordinate/anchor/build/budget gates pass (197/197 carried
+TypeScript errors; entry255.2KB). Local SQL error-level lint is clean; changed-file
+ESLint has only the existing any-type warning. No production migration or deploy.
+
+
+### Temporary modifiers on standalone concentration saves (unreleased)
+
+Standalone damage/save creation now rolls active saving-throw modifiers with the
+canonical dice module and persists their faces/totals alongside the original
+request before network I/O. The modifier sent to the existing reviewed-bonus
+contract includes these effects; proficiency and exhaustion remain server-added.
+A retry sends the original aggregate and never rolls its effects again. New
+requests snapshot active_buffs; a changed effect rejects before changing HP.
+Old committed requests replay unchanged, while a new legacy request with active
+buffs must reload instead of silently ignoring them. Queue and cancellation bounds
+now both accommodate the bounded effect total.
+
+The death-save effect helper is renamed saveBonuses and shared instead of copied.
+It recognizes the sheet's old Bless (saveBonus:0) and Bane (name-only) presets,
+handles explicit numeric/dice bonuses and signed dice penalties, and avoids
+stacking duplicate named Bless/Bane entries. Positive die faces plus a negative
+multiplier preserve Bane's evidence. Unsupported expressions stop the request.
+Malformed saved effect arithmetic is rejected. Non-concentrating damage creates
+no effect dice. Automatic death saves use the same corrected calculation.
+
+Limits: the server still accepts a reviewed aggregate modifier; it fences the
+source buffs but does not independently derive their dice. Effect faces survive
+unconfirmed requests in this browser; after confirmation the server retains the
+aggregate, not a cross-device effect-dice breakdown. Advantage/disadvantage from
+temporary effects and other legacy campaign-sheet saves remain follow-up work.
+No production migration or deployment. Local migration was applied transactionally
+with its ledger entry, preserving the unrelated local migration-history mismatch.
+
+Rules sources: https://www.dndbeyond.com/spells/2618933-bless and
+https://www.dndbeyond.com/spells/2618900-bane .
+
+Verification:3,250 unit tests and required type/hooks/RAW/coordinate/anchor/build/
+budget gates pass (197/197 TypeScript; entry255.2KB). 108 database/browser cases
+passed in the broad run; both new desktop/mobile effect-recovery cases pass after
+fixing the fixture's global-random sequence and waiting for the committed hit
+before removing effects. This gives110 verified cases. SQL error-level lint is
+clean; changed-file ESLint retains only the existing any-type warning. No deploy.
+
+
+### Shared campaign damage concentration modifiers (unreleased)
+
+The existing DM party-damage flow now includes eligible flat equipment bonuses
+and persisted temporary saving-throw dice in its request. The server adds
+proficiency and subtracts exhaustion exactly once when it creates the durable
+concentration offer. Combatant exhaustion/buffs override stale sheet values in
+an active encounter; between encounters the character snapshot supplies them.
+Effect dice are not rolled when damage is immune, the hit breaks concentration
+at zero HP/incapacitation, or automation suppresses the save.
+
+The context snapshot now includes both sources' effects and exhaustion, so a
+changed modifier invalidates a fresh application before HP/offer writes. Existing
+committed request identities replay before the fresh-context check. Saved request
+validation verifies effect-dice arithmetic; old proposals remain readable for
+receipt recovery or cancellation. This retains DM-only party-damage authorization.
+
+This repairs the live shared transaction that player-sheet damage should reuse.
+CharacterSheet's legacy manual/realtime damage save path has NOT yet been replaced;
+owner-scoped access, sheet recovery controls and stale HP/turn checks remain the
+next integration work. This is not a claim that all campaign saves are fixed.
+
+The migration was created through the CLI, then ordered after the latest existing
+party context definition as 20261010070001_party_concentration_modifiers.sql. Several
+existing versions are ahead of the machine clock, so keeping the CLI's earlier
+stamp would let a later historical migration overwrite this fix on fresh replay.
+Applied only to local Docker with its ledger entry, preserving unrelated local
+history. No production migration or deployment.
+
+Verification:3,253 unit tests and58 local campaign database/browser regressions
+pass. The live recovery case combines a protection item, Bless, Bane, a flat
+modifier and exhaustion, then changes current effects and verifies the original
+offer still settles at the captured total. Required type/hooks/RAW/coordinates/
+anchors/build/budget gates pass (197/197 TypeScript; entry255.2KB), as do changed-
+file ESLint, diff checks and SQL error-level lint. No production deployment.
+
+
+### Propel declaration revalidation (unreleased)
+
+Propel now rechecks live Energy Dice and saved unconfirmed requests after its
+asynchronous turn read, before rolling or declaring. An exhausted pool or a
+request saved by another tab during that read no longer starts another roll.
+It also compares encounter, participant, actor and owner-turn identities rather
+than relying on the turn identifier alone. Server validation remains authoritative;
+these checks prevent avoidable client rolls, not all cross-tab races.
+
+Verification: 3,259 unit tests and the full required gate pass; changed-file
+ESLint and diff checks are clean. All six added regressions fail against the
+original component (the five existing tests still pass), then pass with the fix.
+No visual layout or database changes. Not deployed. Campaign-sheet damage recovery
+and the shared combat-clock integration remain release work described above.
+
+
+### Campaign damage owner access (unreleased)
+
+The shared campaign damage preview, application, and cancellation functions now
+permit the target character's owner as well as the current campaign DM. Another
+campaign member has no such access. Mutations authorize against the locked current
+character before replaying a receipt or changing anything, so an old owner cannot
+recover someone else's damage after ownership changes. Removing the character
+from the campaign blocks old campaign requests for both owner and former DM.
+Existing grants, private ledger restrictions, snapshot validation, concentration
+modifiers, and idempotency are preserved.
+
+Migration 20261010070002_party_damage_owner_access.sql was created with the CLI
+and ordered after the existing future-dated definitions to keep fresh replay
+correct. Applied only to local Docker, with its ledger entry; unrelated local
+migration history was preserved. No production changes.
+
+Verification: 58 database regressions pass across the two configured projects,
+including owner preview/application, DM receipt replay, owner cancellation,
+outsider/member/anonymous rejection, ownership transfer and campaign removal.
+The full gate passes (3,259 unit tests, 197/197 TypeScript, entry255.2KB), changed-
+file ESLint and diff checks are clean, and local SQL lint/security advisors report
+no errors. These SQL tests do not certify player-sheet UI behavior.
+
+Next: wire player-sheet manual damage to this shared transaction after flushing
+queued edits; preserve saved requests across reload; safely reconcile HP and
+concentration receipts; verify interrupted requests in the real sheet. The old
+campaign-sheet damage path is still active until that integration is complete.
+
+
+### Campaign sheet damage recovery (unreleased)
+
+Owner-sheet damage now uses the shared campaign transaction instead of separately
+saving HP and locally rolling concentration. It flushes queued edits, reads a
+fresh damage context, and saves the original hit before sending. The sheet blocks
+HP/rest controls until an uncertain hit is confirmed or canceled; reload preserves
+its identity. Recovery never processes another character's or a group batch from
+the current sheet. Those requests remain available on their original surfaces.
+
+Verified sheet receipts carry ordered current HP and concentration state, so a
+replay cannot restore the hit's old casting. Automatic checks use the existing
+saved concentration result and reread the damage receipt afterward. An unconfirmed
+automatic save keeps the hit recoverable. Prompt checks use the existing shared
+concentration modal. Zero HP ends concentration without an unnecessary save.
+Late previews are rejected after changing sheets, including away-and-back changes;
+new pending edits or another tab's saved hit block new effect rolls.
+
+This removes the legacy local concentration-roll path for manual sheet damage.
+The realtime fallback for externally written HP still exists and remains audit
+work, as do combat-clock journaling and other general saving-throw callers.
+No production deployment or new migration in this batch; owner-access migration
+20261010070002 is its prerequisite.
+
+Verification: 10 local desktop/mobile browser cases cover lost replies, reload,
+cancellation, exact modifiers, automatic failure, and zero HP. No unexpected
+console/HTTP errors; desktop/mobile recovery screenshots inspected and overflow
+checks passed. The unit regressions cover queue ordering, request persistence,
+automatic-save recovery, group/other-character rejection and scope changes.
+The full gate passes; TypeScript debt dropped to196 and CI is ratcheted accordingly.
+
+
+### Turn-effect damage at zero HP (unreleased)
+
+The live buff-tick caller now consumes temporary HP when a character is already
+at zero HP, while still adding the required death-save failure and breaking
+stability. A tick at least as large as maximum HP now records immediate death;
+subsequent healing ticks in that same processing pass cannot revive the dead
+character. The event records the amount, remaining temporary HP and fatal-hit
+reason. Positive-HP overflow handling is preserved.
+
+The death-state calculation lives in rules/deathSaves.ts and uses the canonical
+HP pool helper at the caller. Source: 2024 Basic Rules, Damage at 0 Hit Points
+and Temporary Hit Points:
+https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game#DeathSavingThrows
+No imported rule text or UA licensing change.
+
+Verification: 3,284 unit tests and all required gates pass (196/196 TypeScript,
+entry255.2KB). Five live-caller regression cases fail against the old implementation
+and all six pass with the correction; eight pure rule cases cover fatal/nonfatal
+thresholds and invalid state. Existing buffs.ts lint warnings remain, with no lint
+errors. No UI/database change or production deployment.
+
+The turn-clock audit is not complete. advanceTurn still performs multiple writes
+and non-idempotent effect ticks around its clock update; failed tick writes are
+not yet a durable recovery boundary. Mind Sliver expiry still requires a complete
+transition ledger. Those remain release work, not certified by these arithmetic
+tests. Next integration must cover both outgoing and incoming effects rather than
+just swapping the clock call and risking duplicate damage after a lost reply.
+
+
+### Atomic turn-effect batch boundary (unreleased; caller integration pending)
+
+Migration 20261010070003_atomic_turn_effect_batches.sql adds a DM-only transaction
+for a participant's turn-start or turn-end effect batch. HP/temp HP, death counters,
+stability/death state, one-shot removals and ordered combat events commit together.
+A private unique ledger fences participant + turn + timing. Same-request retries
+return the original receipt without changing later HP or emitting another event;
+a different request ID cannot reapply the same boundary. A receipt reader permits
+recovery after the turn moves, but only for the current DM.
+
+Fresh applications require the current actor/turn and an exact combatant snapshot.
+The lock order is character, encounter, participant, combatant, with identity
+rechecked after locking. New endpoints expose invoker wrappers around private
+privileged functions; direct ledger/state-helper access remains revoked. Mutable
+fields and event types are restricted, pools/counters are bounded, and metadata
+such as target name and visibility comes from the server's participant.
+
+This is a transaction boundary for DM-calculated effect results, NOT independent
+server evaluation of dice or spell rules. It does not yet route the live
+processTurnTicks caller, automate Searing Smite saves, or fix concentration/typed
+resistance gaps in that caller. Read receipts describe the original result, so a
+future client must refresh current combat state rather than replaying old HP into
+its store. No production deployment.
+
+The file was generated by the CLI then ordered after existing future-dated
+migrations for replay safety. Applied only locally with a ledger entry; unrelated
+local migration history was preserved. Verification:22 database cases across the
+two configured projects pass, including concurrent requests, stale state, changed
+request identity, private permissions, former-DM revocation and full rollback on
+an event-insert failure. SQL lint and security advisors are clean. The full gate
+passes (3,284 units,196/196 TypeScript,entry255.2KB); changed-file ESLint and diff
+checks pass.
+
+Next: persist original effect proposals before sending, read receipts before
+rolling, and connect processTurnTicks. Outgoing failures must stop the boundary;
+incoming failures need a resumable phase so retrying cannot accidentally advance
+another turn. Only after both are recoverable should advanceTurn switch to the
+atomic combat-clock API and remove its legacy duplicate clock/buff writes.
+
+
+### Saved turn-effect request client (unreleased; caller integration pending)
+
+src/lib/api/turnEffects.ts now persists complete effect proposals and reads the
+server's participant/turn/timing receipt before preparing any dice. Interrupted
+submissions keep their original request ID and payload. Same-tab requests
+coalesce; server uniqueness resolves competing tabs. Recovery uses the recorded
+winner rather than applying another proposal. Storage is scoped to user,
+encounter, participant, turn and timing, with a discovery function for turn
+recovery controls. Malformed requests/receipts fail closed. JSONB key ordering
+is accepted without weakening outcome comparisons.
+
+An acknowledged receipt is not hidden by browser-cleanup failure. Its state is
+historical and must not be written back as current HP; callers should refresh
+combat state. Preparation callbacks must still guard UI scope and obtain fresh
+turn state. Invalid or stale proposals remain saved for explicit review: there
+is no silent reroll/cancellation path in this API.
+
+Verification:13 client unit regressions and2 actual desktop/mobile browser
+recovery cases pass. The browser drops both commit replies, reloads, then reads
+the original result without invoking the preparation callback or replacing later
+healing. The initial browser fixture lacked auth timestamps; that fixture was
+corrected and the final isolated run passes. Full gate passes (3,297 units,
+196/196 TypeScript,entry255.2KB); ESLint and diff checks pass. No new migration,
+UI layout change or production deployment.
+
+Next: connect processTurnTicks and the turn controller to this client, including
+explicit recovery for an incoming effect that fails AFTER the clock advances.
+The live turn button still uses its older effect writes; these tests verify the
+new API end to end, not a completed turn-controller migration.
+
+### Turn-effect rules planner (unreleased; recovery integration pending)
+
+The live buff tick processor now delegates calculations to src/rules/turnTicks.ts.
+The planner produces complete HP/temp-HP/death-save/stability/death/buff outcomes
+and ordered event payloads without database or logging dependencies. The TurnTick
+type lives with the rules; buffs.ts re-exports it for existing consumers. Dice use
+the canonical roller, with injection for deterministic tests. The legacy adapter
+retains its narrow patch shape so unchanged buff/death fields are not newly
+written from an old snapshot.
+
+Ten new rule cases cover timing selection, dice plus flat amounts, immutable
+inputs and retained metadata, damage/save/removal ordering, lethal interruption,
+healing resets/caps, current temp-HP policy, already-dead actors, creature versus
+character handling, zero-amount one-shots and empty effects. Existing live-caller
+regressions still pass. Full verification passes:3,307 units,196/196 TypeScript,
+RAW/coordinates/anchors/hooks/build/budget,entry255.2KB. Changed-file ESLint has
+zero errors (12 existing any warnings in buffs.ts); diff check passes.
+
+This is preparation for atomic persistence, not completed turn recovery. The
+live caller still has its previous writes and failure handling. Concentration,
+typed defenses, save-ends automation and explicit temp-HP replacement choice
+remain gaps. No UI change, migration or production deployment.
+
+Next: connect the planner to the saved turn-effect client and add an explicit
+incoming-turn recovery phase before changing clock writes. A failure after the
+clock moved must resume effects without advancing again; a changed/dead actor
+must not be interpreted against a shifted filtered roster. Stale saved proposals
+need an explicit review path rather than silent rerolls or indefinite blocking.
+
+### Authorized turn-effect preparation (unreleased; turn button pending)
+
+Migration20261010070004 adds get_turn_effect_context, a public invoker wrapper
+around a private DM-authorized reader. It returns one actor/turn/combatant snapshot
+and rejects stale turns, mismatched or ended encounters, missing combatants and
+an actor no longer occupying the active slot. It does not hold locks after the
+read; commit_turn_effect_batch still validates the turn and exact state before
+writing. Player and former-DM access is rejected; anonymous execution is revoked.
+
+processSavedTurnEffects in src/lib/api/turnEffects.ts now connects this snapshot
+to the canonical turnTicks planner and saved-request client. Receipt/proposal
+recovery precedes fresh preparation. User/identity/state/buff shape checks and
+the caller's UI scope guard run before effect dice. Failed commits keep the
+original computed proposal. Returned receipt HP remains historical and must not
+replace refreshed live state. This adapter has no live advanceTurn caller yet:
+incoming recovery and dead-actor roster handling must be coordinated first.
+
+Verification:11 additional client cases (24 in that module),32 local database /
+browser cases across desktop and mobile, and the full gate pass (3,318 units,
+196/196 TypeScript,entry255.2KB). The actual browser recovery test now uses the
+snapshot+planner adapter, loses both commit replies, reloads, and verifies no
+new preparation, duplicate effects or overwrite of subsequent healing. Database
+SQL lint and security advisors are clean; changed-file ESLint and diff checks
+pass. Only the reviewed local migration was applied and recorded; unrelated
+local ledger version20261008213500 was preserved. No production deployment.
+
+Next: the live turn controller must journal its incoming phase before it can
+fail, resume it before any new advance, and retain the outgoing actor identity
+when death changes the filtered roster. Add explicit stale-proposal review and
+complete clock/other turn-effect coordination before switching the live caller.
+The existing rules gaps (typed defenses, concentration, save-ends automation,
+temp-HP replacement choice) remain open.
+
+### Clock handoff after lethal turn effects (unreleased)
+
+Migration20261010070005 fixes atomic clock handoffs after an end-effect batch
+kills the outgoing actor. The saved end-effect participant anchors the successor
+selection instead of interpreting the old index against the shortened living
+roster. A first-actor death can correctly hand slot zero to its successor without
+advancing the round; a last-actor death wraps exactly once. Conflicting recorded
+outgoing actors and ambiguous initiative positions fail closed.
+
+Every atomic handoff now pre-records its new turn UUID in the private transition
+ledger before updating the encounter, in the same transaction. The turn trigger
+accepts that UUID only for a writer with private-ledger INSERT privilege and an
+exact matching recorded old turn/new turn/index/round. Ordinary authenticated
+writes retain their previous inability to choose or rewind turn IDs. This avoids
+reusing a turn ID when the successor takes the same numeric slot and round.
+Client receipt validation allows this valid non-wrapping slot-zero transition
+while continuing to reject a round wrap into a nonzero slot.
+
+A completed end-effect batch closes fresh effect preparation/application for
+that encounter turn, so the shifted successor cannot receive effects under the
+outgoing actor's old UUID. Original saved receipts remain recoverable. The new
+migration was applied only to local Docker with its ledger entry; unrelated
+history was preserved.
+
+The atomic clock is still not the live advanceTurn writer. This fixes an observed
+integration prerequisite, not the complete live controller. A durable outgoing
+identity before other turn work, incoming-phase recovery, stale-proposal review,
+and coordination of remaining non-atomic turn operations are still required.
+Deletion of an outgoing participant (which cascades its effect receipt) and
+manual roster edits need explicit controller handling before live rollout.
+
+Verification:114 clock/effect database and browser regressions pass across the
+two configured projects, including six new lethal-handoff/security scenarios
+per project, saved-request replay, rollback, next-save expiry, concurrency and
+lost replies. Full gate passes (3,320 units,196/196 TypeScript,entry255.2KB);
+changed-file ESLint, SQL lint, security advisors and diff checks pass. No UI
+layout change or production deployment.
+
+### Server-selected clock preparation (unreleased)
+
+Migration20261010070006 extracts the successor/round calculation into one private
+selector shared by the locked commit and the DM-only get_combat_clock_context
+reader. Preparation includes the recorded outgoing actor after lethal end effects,
+so the client does not duplicate filtered-roster arithmetic. The private selector
+is not executable by authenticated clients. Commit still rechecks the current
+roster and rejects a stale proposal; reading a context does not reserve a turn.
+
+getCombatClockContext validates the returned owner, turn, actor identities,
+positions and counters. prepareCombatTransition saves the server-selected request
+before any clock mutation, coalesces concurrent preparation in a tab, preserves
+existing pending/confirmed work, checks caller scope after the read, and rechecks
+for a request saved by another tab while waiting. Storage failures cannot submit
+a clock mutation. A recovered receipt remains historical; it must not replace
+current encounter state or authorize old effects against a later turn.
+
+This remains a prerequisite for the live controller, not a turn-button rollout.
+Stale saved proposals and losing requests from concurrent tabs still need an
+explicit reconciliation path. Remaining non-atomic aura, recharge, mastery and
+budget operations must be coordinated with outgoing/incoming recovery before
+replacing advanceTurn's legacy clock writes. No production deployment.
+
+Verification:94 local clock/expiry/database/browser cases pass across desktop and
+mobile, including the new preparation, permissions, stale-position and lost-reply
+recovery cases. A recovered old advance leaves a subsequently advanced encounter
+unchanged and performs no new preparation. Full gate passes (3,338 units,
+196/196 TypeScript,entry255.2KB); changed-file ESLint, SQL lint, security advisors
+and diff checks pass. Only the new reviewed migration was applied locally with
+its ledger entry; unrelated local history remains intact.
+
+### Clock winner recovery (unreleased)
+
+Migration20261010070007 adds a DM-authorized historical clock reader keyed by
+encounter and expected outgoing turn, with an index for that lookup. It returns
+null only when no transition is recorded, rejects ambiguous history, remains
+available after combat ends and rechecks current campaign ownership. Anonymous
+callers cannot execute it; the private ledger remains inaccessible to clients.
+
+confirmCombatTransition now reads the authoritative winner before submitting an
+advance. It validates the recorded request and receipt, retaining the original
+proposal when the lookup is unavailable, malformed or points to a different
+actor/position/round. Recovery of its own request confirms the clock without
+resending it. A matching winner with another request ID is saved as clock-observed,
+keeping the original local request and the actual winning receipt distinct.
+
+An observed winner proves only that the clock moved: another caller may already
+have run incoming effects. Therefore beginCombatTransitionEffects and completion
+cannot treat clock-observed as permission to run or silently finish those effects.
+The state survives reload and suppresses additional clock mutations. Explicit
+reconciliation and incoming-effect completion tracking are still required before
+live rollout; this does not resolve every stale-request case or connect the live
+advanceTurn buttons. No production deployment.
+
+Verification:102 local clock/expiry/database/browser regressions pass across
+desktop and mobile. New browser coverage retains a losing local proposal,
+observes the matching server winner, blocks incoming-effect execution, survives
+reload and sends zero additional clock mutations. The original lost-reply case
+also passes with receipt-first confirmation. Full gate passes (3,350 units,
+196/196 TypeScript,entry255.2KB); changed-file ESLint, SQL lint, security advisors
+and diff checks pass. Only the reviewed new migration was applied locally and
+recorded in the ledger; unrelated local history was preserved.
+
+### Live turn-handler overlap guard (unreleased)
+
+advanceTurn now coalesces overlapping calls for one encounter in the same tab.
+InitiativeStrip, DMScreen and the character-sheet action controls all call this
+shared handler, so separate controls cannot start concurrent copies of its
+turn effects and writes. The guard is released after success or failure;
+different encounters remain independent. Unexpected exceptions become an
+explicit failure result for the existing callers rather than an unhandled
+rejection. This does not make a later retry idempotent or coordinate browsers;
+the durable turn-controller migration remains required before branch release.
+
+Five new caller tests cover a full successful advance/effect pass, later calls,
+failed reads, unexpected exceptions and encounter isolation. The browser test
+holds the first encounter read, overlaps two real advanceTurn calls, then checks
+that both share the result and only one encounter write occurred. Desktop and
+mobile pass. The initial fixture's request hold was bypassed by the service
+worker; blocking service workers in this network-controlled fixture (as other
+recovery suites do) fixes the harness. All six affected browser cases pass in
+the final isolated run, including existing lost-reply and competing-request
+recovery cases. No UI layout or database migration change.
+
+Removed an existing unused combat-start chain ID (emitCombatEventChain owns its
+IDs). Type diagnostics fell from196 to195; CI's baseline was ratcheted to195.
+Full gate passes (3,355 units,195/195 TypeScript,entry255.2KB). Changed-file ESLint
+has no errors (34 pre-existing warnings in combatEncounter.ts); diff checks pass.
+No production deployment. Remaining work includes durable incoming/outgoing
+phases, explicit stale/observed-request reconciliation and non-atomic turn
+operations before the legacy clock writes can be replaced.
+
+### Map turn-button feedback (unreleased)
+
+The active InitiativeStrip now disables End Turn while its advance is pending,
+shows Ending… with aria-busy, and blocks repeated clicks immediately. A failure
+stays visible until dismissed and asks the DM to check combat before retrying,
+because the legacy sequence can already have applied partial effects. Delayed
+feedback is suppressed after unmount or switching encounters.
+
+Correction to the preceding entry: DMScreen still imports the shared handler but
+its dashboard tab is retired (absent from navigation and restored-tab whitelist).
+The reachable controls are InitiativeStrip and character-sheet ActionEconomy;
+this change deliberately targets the active map control.
+
+The new local browser regression passes on desktop and mobile: one held request,
+disabled pending control, repeated click ignored, persistent/dismissible failure,
+unchanged turn and clock, no unexpected browser/network errors. Screenshots were
+inspected and the skill overflow probe passes for the controls and toast. Reverting
+the UI fix makes the regression fail on the missing disabled Ending… control;
+restoring it passes both viewports. Changed-file ESLint has zero errors and four
+existing InitiativeStrip warnings. No production deployment; durable turn-phase
+integration and reconciliation remain release prerequisites.
+
+Full required gate passes: 3,355 unit tests, 195/195 TypeScript diagnostics,
+React hooks, RAW, coordinates, anchors, production build and 255.2 KB entry
+budget. Final browser run: two passed; diff check clean.
+
+### Atomic deterministic turn budgets (unreleased)
+
+The saved combat-clock transaction now resets the incoming participant's action,
+Bonus Action, reaction, movement, leveled-spell flag, Dash, Disengage and attack
+count together with the new turn identity. It clears once-per-turn markers for
+that encounter's whole roster, because those apply on every creature's turn.
+Outgoing action budgets and other encounters remain untouched. Roster locks are
+acquired in ID order before successor validation and combatant duration writes.
+
+Receipt replay returns before any reset, preserving actions and markers spent
+after the acknowledged transition. A later failure rolls back the budgets along
+with the clock. The public API and DM authorization stay unchanged. This removes
+a prerequisite for the durable controller, but the legacy live handler still
+needs replacement: remove its separate deterministic resets when wiring this
+transaction. Recharge dice, legendary-action logging, mastery effects, aura work
+and incoming-effect recovery remain separate integration work. No deployment.
+
+Verification: all 114 local clock/expiry/browser cases pass across desktop and
+mobile. Four added cases cover incoming-only reset, encounter-wide marker scope,
+receipt replay after new spending, rollback and rejected/unauthorized requests.
+The reset case failed against the prior database implementation before applying
+the migration. Full gate passes (3,355 units,195/195 TypeScript,255.2 KB entry).
+SQL lint, security advisors, changed-file ESLint and diff checks pass. Migration
+20261010070008 was applied and recorded only in the existing local Docker stack;
+no reset or changes to unrelated migration history. Supabase function guidance
+and the current database changelog were reviewed; no new API dependency.
+
+### Recharge rules prerequisite for durable incoming turns (unreleased)
+
+Review found the legacy advanceTurn loop and MonsterActionPanel labels assume
+all roll-recharge actions succeed on 5–6. That is not the rule: the action's
+listed d6 result/range controls success. The generic usage flag alone does not
+supply that range. The current local catalog has no roll-recharge examples, so
+it cannot establish whether production retained every needed threshold.
+
+Added a pure rules planner that reads explicit action title/usage ranges,
+recognizes single-face recharge, rejects malformed/conflicting data, validates
+all expended actions before rolling and uses the canonical d6 roller once per
+expended action. Its returned plan carries the exact ranges, dice, outcomes and
+remaining actions for a future saved transaction. Unknown thresholds require
+review; none default to 5–6. Prose is deliberately not scanned for unrelated
+ability references. Source: [2024 Basic Rules, Limited Usage](https://www.dndbeyond.com/sources/dnd/br-2024/how-to-use-a-monster#LimitedUsage).
+
+This planner has no live caller yet. Next integration must persist the proposal,
+commit recharge changes/events once per participant/turn, recover receipts before
+rolling, read actual catalog action data and update the panel's hard-coded labels.
+Rest-based recharge is also separate. The existing live recharge loop remains
+incorrect until replaced; this entry does not claim that loop is fixed. No UI,
+database migration or production deployment in this change.
+
+Verification:27 new rule cases pass, including exact-face success, mixed ranges,
+malformed data, conflicting labels, duplicate/missing actions, pre-roll batch
+validation, invalid die values and no-op batches. Final required gate passes
+(3,382 units,195/195 TypeScript,255.2 KB entry); ESLint and diff checks clean.
+
+### Saved recharge batches and browser recovery (unreleased)
+
+Added DM-only preparation, commit and receipt APIs for one recharge batch per
+participant/turn. Preparation validates the active actor and open turn, returns
+its current expended names and accessible catalog actions, and preserves the
+catalog's private-content restrictions. Commit locks campaign, encounter,
+participant and catalog context, compares the complete saved snapshot, validates
+the submitted dice/ranges, derives success, and saves remaining recharge uses,
+ordered visibility-aware combat events and the receipt atomically. Duplicate
+requests replay the original receipt; competing request IDs cannot roll the same
+turn again. Later resource spending survives replay, even after combat ends.
+As with DM-prepared turn-effect damage, the server validates the submitted plan
+and snapshot; it does not independently prove the client's dice fairness or
+re-parse the recharge ranges. The pure rules planner supplies those ranges.
+
+The client now reads receipts before preparing dice, checks owner/scope after
+asynchronous preparation, validates all actions, persists the exact proposal
+before commit, coalesces simultaneous calls, and retains uncertain requests.
+A receipt is historical and must not replace current participant resources.
+Nullable catalog usage labels are accepted without inventing a recharge range.
+
+This API is not wired into the live advanceTurn pipeline yet. It is ready for
+that controller's incoming phase; the old recharge loop and fixed 5–6 labels
+still need replacement together with the remaining timed-effect integration.
+No production deployment or user-data reset. Migration20261010070009 was applied
+and recorded only on the existing local Docker database; unrelated ledger
+history was preserved.
+
+Verification:30 local database cases plus two real-browser lost-reply/reload
+cases pass across desktop/mobile. Browser recovery preserves both original dice
+and later spending, with one preparation and no additional commits after reload.
+Twelve new client unit cases cover persistence, identical retries, receipt-first
+recovery, overlap, scope changes, blocked storage, unknown thresholds, malformed
+snapshots/receipts and retained corrupt requests. Full gate passes (3,394 units,
+195/195 TypeScript,255.2 KB entry). SQL lint, security advisors, changed-file
+ESLint and diff checks pass. Initial unit setup used unavailable jsdom; corrected
+to the repository's existing happy-dom environment, with no new dependency.
+
+### Atomic legendary-action refill and accurate live log (unreleased)
+
+The saved clock transaction now refills the incoming participant's legendary
+pool and emits its visibility-aware refill event in the same transaction as
+budgets and turn identity. It preserves the existing configured total/lair
+adjustment, leaves outgoing and already-full/overfilled pools alone, and exits
+on receipt replay before any refill. Event failure rolls back both the refill
+and the other turn changes. This migrates the existing behavior; it does not
+claim every catalog monster's configured legendary total has been audited.
+
+The legacy live handler's event now reports the actual lair-adjusted refill
+instead of incorrectly reporting only the base total. Two unit cases cover the
+normal and lair paths. The new server path still awaits the durable controller;
+remove the old refill write/event when integrating it to avoid duplicate logs.
+Aura saves/damage, timed mastery markers, movement-gated feature recovery and
+full phase reconciliation remain integration work. No production deployment.
+
+The database tests exposed an additional live bug: the original remaining<=total
+constraint rejected the configured +1 lair refill. The migration replaces it
+with a bounded allowance of one extra use for nonzero pools (a use can remain
+after leaving the lair); zero pools still allow none. A fixture that tried to
+store five uses in a three-use pool was corrected to the valid four-use case.
+
+Verification: the initial full clock run passed124 cases and failed four
+(two affected cases on each viewport). After the constraint correction, all16
+legendary cases pass on desktop/mobile, including both formerly failing cases,
+new pool-bound checks, receipt replay and event-failure rollback. Two additional
+live-handler browser checks pass with the lair fixture: one advance and one
+correct refill event to four uses. The pre-migration normal/lair refill tests
+failed as expected. Final required gate passes (3,396 units,195/195 TypeScript,
+255.2 KB entry); SQL lint/security advisors and changed-file ESLint pass (34
+existing combatEncounter warnings, no errors). Migration20261010070010 is applied
+and recorded locally only; no reset or unrelated history changes.
+
+### Correct live Vex end-of-turn expiry (unreleased)
+
+Vex previously used a second start-of-turn sweep to approximate its deadline,
+leaving Advantage available after the attacker's next turn ended. New markers
+now arm at the next own start and expire at that turn's end. The same lifecycle
+handles hits during the attacker's turn and reactions during another turn.
+Repeated start processing does not expire an armed Vex early. Existing saved
+Vex markers upgrade at their first source start, and already-armed legacy
+markers expire at the source end. Sap/Slow keep their start-boundary expiry.
+The pure boundary rule replaces the old imperative expiry decision logic and
+is wired into the actual live handler's outgoing and incoming phases.
+Source: [2024 Basic Rules, Vex](https://www.dndbeyond.com/sources/dnd/br-2024/equipment/#Vex).
+
+Round-wrap duration processing also read the original roster snapshot, which
+could restore removed markers or undo their newly armed state. It now obtains
+current combatant buffs after the turn effects. Missing/failed reads refuse an
+empty replacement. This fixes the demonstrated stale-snapshot resurrection;
+the remaining legacy read/write sequence is not an atomic concurrency guarantee.
+The saved clock transaction still needs corresponding timed-marker integration
+before replacing the live controller. No migration or deployment in this change.
+
+Verification:15 new rule/repository/live-helper unit cases pass. Six real-browser
+cases pass on desktop/mobile through advanceTurn: own-turn hits, off-turn hits,
+next-end expiry and single-actor round wraps with another timed buff. Advantage
+is present during the valid turn and absent afterwards. Restoring the old roster
+snapshot read makes the single-actor regression fail by undoing the armed expiry
+state; restoring the fix passes all six cases again. Full gate passes (3,411
+units,195/195 TypeScript,255.2 KB entry), changed-file ESLint has no errors and
+diff checks pass. This is a live timing correction, not completion of the durable
+turn controller or a guarantee against all concurrent buff edits.
+
+### Atomic mastery expiry in the saved clock (unreleased)
+
+Migration20261010070011 brings the verified Vex/Sap/Slow boundary rules into
+commit_combat_clock_transition. It expires the outgoing end markers before
+arming/removing incoming start markers, then ticks round durations against
+that resulting list. Combatants are locked and processed once, including
+shared roster links and a one-actor encounter. Unrelated metadata is retained.
+The internal pure SQL helper is not callable by anon/authenticated clients;
+parity cases compare it with rules/masteryExpiry.ts, including legacy markers.
+
+Expiry events, legendary refill, action budgets, durations and turn identity
+commit or roll back together. Hidden targets retain hidden event visibility;
+event sequences remain distinct when a legendary refill precedes expiry.
+Receipt replay exits before effect writes, preserving subsequently added buffs.
+A forced event failure verifies that buffs, budgets, time and the receipt all
+roll back. The migration is applied/recorded only in local Docker, preserving
+the unrelated local migration ledger entry. No reset or production deployment.
+
+The live controller still uses its existing expiry sweeps. This transaction is
+a prerequisite for replacing that controller, not a second live sweep. Remaining
+integration includes movement-gated feature recovery, aura effects, incoming
+recharge/death-save/effect recovery, and reconciling another request's turn
+completion before allowing a further advance.
+
+Verification: full project gate passes (3,411 units,195/195 TypeScript,255.2 KB
+entry), changed-file ESLint and SQL lint/security advisors pass. One existing
+attack-dialog unit test failed in the initial gate, passed in isolation, then
+passed in the repeated complete gate; no attack-dialog code changed.
+All 146 clock regressions pass on desktop/mobile, including ten new expiry cases.
+
+### Saved movement-gated recovery (unreleased)
+
+Migration20261010070012 adds DM-authorized, once-per-participant/turn recovery
+for the existing Feline Agility tracker aliases. It requires a saved outgoing
+turn-effect receipt and rechecks the authoritative outgoing actor and movement.
+It handles an actor killed by its outgoing effect, changes only the two known
+movement keys in the locked current character row, and retains other resources,
+including Psionic Restoration. Character locks precede campaign/encounter locks.
+Malformed counters stop recovery; moved turns record a no-op receipt.
+
+A private receipt and the feature update commit together. Retries return the
+historical result even after combat ends, without erasing later feature uses.
+Current DM ownership is checked before replay. Concurrent calls converge on
+one receipt; a receipt-insert failure rolls back all feature changes. The API
+client validates identity and recovered keys, retries the deterministic turn
+identity, and never copies receipt contents over today's character resources.
+
+Verification:18 local DB cases and two actual browser cases pass across desktop
+and mobile. Browser cases lose both write replies, reload, recover the original
+receipt and preserve a later spent use. Eight new client unit cases and the
+full gate pass (3,419 units,195/195 TypeScript,255.2 KB entry); changed-file ESLint,
+SQL lint and security advisors pass. Migration applied/recorded locally only.
+
+The legacy live helper is still active until the durable turn controller is
+connected; it cannot call this API before saved outgoing effects exist. Replace
+its snapshot update with this phase during that integration. No deployment or
+claim that legacy recovery is already atomic. Next blockers: aura resolution
+and reconciling incoming effects/another request's completed clock transition.
+
+### Live aura damage/death-state correction (unreleased)
+
+Aura damage previously changed only HP/temp HP and ordinary monster death.
+Characters at zero took no death-save failure, stable characters stayed stable,
+and massive aura damage could not kill a character. A shared non-attack damage
+resolver now handles these cases for both aura damage and turn ticks. Temporary
+HP absorbs pool damage first; at zero, taking damage still adds a failure and
+breaks stability. From positive HP, massive damage compares the remaining HP
+overflow with maximum HP. Ordinary creatures die at zero, stopping subsequent
+turn-tick healing/dice/save requests. Neither source can critically hit.
+Source: [2024 Basic Rules, Damage and Healing](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game).
+
+The actual aura handler writes the resulting death state, emits corresponding
+failure/death events, and requires a confirmed HP update before reporting damage
+or rolling concentration. Missing target data fails visibly instead of returning
+success. Living characters still test concentration for damage absorbed by temp
+HP; no concentration roll is attempted for an unconscious zero-HP target.
+
+Verification:four desktop/mobile cases execute resolveAuraSave against local
+Docker and check zero-HP stability/failure and massive-death state plus logs.
+Rule and mocked live-handler tests cover overflow thresholds, temp HP, a third
+failure, dead creatures, invalid amounts, write failure, concentration and
+ordered tick termination. Full gate passes (195/195 TypeScript,255.2 KB entry);
+changed-file lint has no errors (existing aura any-type warnings remain).
+No schema changes or production deployment.
+
+Remaining aura audit: save modifiers/advantage/automatic failures, damage
+resistance/immunity/vulnerability, linked concentration cleanup at zero, and
+atomic save/once-per-turn marker/HP/log recovery. The current live marker is
+still reserved before the other writes and can outlive a failure; this change
+does not claim to solve that transaction gap. The durable controller must not
+be released with that gap hidden.
+Final complete unit suite:3,433 tests pass, including the creature tick regression.
+
+### Live aura save modifiers and preparation failures (unreleased)
+
+Aura saves now read canonical combatant conditions, buffs and exhaustion before
+rolling. The existing condition helpers determine automatic failures and save
+disadvantage; the canonical saving-throw roller retains both physical dice when
+needed. Bless/Bane use the shared signed bonus roller (including legacy named
+presets and de-duplication), other supported buff bonuses add normally, and
+2024 exhaustion subtracts twice its level. Existing equipment/proficiency and
+natural-extremes preferences remain in the target base-bonus reader.
+Source: [2024 Rules Glossary](https://www.dndbeyond.com/sources/dnd/br-2024/rules-glossary/).
+
+Automatic failures roll neither d20s nor bonus dice, log null face/total and an
+explicit automatic-failure flag, and cannot be rescued by natural extremes.
+Restrained Dexterity saves retain the lower face. Logs include effect dice and
+exhaustion so the arithmetic can be reviewed. Missing target/effect/marker data
+and low-confidence base bonuses stop before reserving the once-per-turn marker.
+Preparation reads and dice precede that reservation; its later write sequence
+is still not atomic across clients or failures.
+
+Ten actual browser cases pass on desktop/mobile through the live aura handler:
+existing damage/death handling plus Bless/Bane/exhaustion, Restrained and forced
+failure. Unit cases cover the actual resolver and failed/malformed/mismatched
+state reads, including a failed once-per-turn lookup that must not reroll.
+Generated database types lack the existing marker column/dynamic joined query;
+the readers use explicit boundary types plus runtime checks, not a raised TS
+baseline. No migration, visual layout change or production deployment.
+
+Remaining save work: Psionic Guards and other specialized advantage sources,
+one-use save penalties, Legendary Resistance/reaction choices, and server-side
+snapshot validation with an atomic aura receipt/HP/event/marker transaction.
+Do not connect the new durable turn controller while those gaps can be hidden.
+Final gate:3,449 units pass;195/195 TypeScript;255.2 KB entry;changed-file ESLint has zero errors (15 existing aura warnings).
+
+### Psionic Guards applies to live aura saves (unreleased)
+
+Intelligence aura saves now consult the existing get_psionic_guards_active
+read-only protection API through getPsionicGuardsSaveAdvantage. Active Guards
+rolls two d20s and keeps the higher; the server's existing turn-start identity
+expires protection at the next own start. Other abilities and creature targets
+do not query or acquire Guards. No private discipline ledger is returned, and
+no new grant or copied duration rule was introduced. The canonical save roller
+also preserves normal advantage/disadvantage cancellation.
+Source checked: [UA2025 Psion, p.5](https://media.dndbeyond.com/compendium-images/ua/the-psion/mXCPWlh2yy5tBKqP/UA2025-ThePsion.pdf).
+This remains owner-restricted playtest content, not an SRD catalog addition.
+
+A failed protection read stops before the save dice and once-per-turn marker.
+Two desktop/mobile cases activate the real discipline, simulate a rejected
+protection read, confirm no save/event/marker was consumed, then verify the
+active higher-die save and expiry after a complete round. All twelve live aura
+browser cases pass; four additional unit cases and the full gate pass (3,453
+units,195/195 TypeScript,255.2 KB entry). Changed-file lint has no errors and
+15 existing aura warnings. No migration or production deployment.
+
+This fixes live Guards eligibility at preparation time. Aura settlement still
+needs to recheck save inputs and protection inside its commit transaction;
+one-use save penalties, damage defenses and durable multi-step recovery remain
+unfinished. The broader turn-controller release remains gated on that work.
+
+### Live aura damage defenses (unreleased)
+
+Aura damage now reads the target's stored typed defenses before rolling or
+reserving its use. Character defenses include the canonical species-choice
+resolver; creature defenses come from the matching campaign creature record.
+Missing/qualified creature defense arrays require review instead of silently
+becoming empty. Unknown types, missing targets and failed reads also stop
+before dice or the once-per-turn marker. Character NULL manual arrays retain
+the existing no-manual-entry semantics.
+
+The existing affinity rule is applied after save reduction: save half rounds
+down, resistance rounds down again, then vulnerability doubles. Immunity
+prevents HP writes and concentration checks. Petrified grants blanket resistance
+without stacking another half on a matching typed resistance. Concentration
+receives the final defended damage. Save logs retain original roll, after-save
+amount and final defense modifier so the calculation can be reviewed.
+Source: [2024 Damage and Healing](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game).
+
+Verification:all16 live aura cases pass across desktop/mobile; the added cases
+verify 15→7→3→6 save/resistance/vulnerability and zero damage from immunity in
+real stored HP/logs. Four resolver and ten defense-reader unit cases cover
+Petrified, species choices, conditional/missing creature data and failed reads.
+Full gate passes (3,467 units,195/195 TypeScript,255.2 KB entry); changed-file
+lint has no errors and15 existing aura warnings. No migration or deployment.
+
+This covers supported unconditional typed defenses and Petrified. Conditional
+creature clauses need a review path; arbitrary equipment/spell defenses not
+represented in these fields are not inferred from prose. The same transaction
+must eventually validate all captured defenses/save inputs, apply one-use save
+penalties, commit HP/concentration/events and consume the per-turn marker once.
+The current separate writes remain an explicit release blocker.
+
+### Shared damage-at-zero threshold corrected before aura composition (unreleased)
+
+Reviewing apply_party_damage for reuse in atomic aura settlement found that it
+subtracted temporary HP before testing massive damage even when the character
+was already at zero HP. That contradicted the verified non-attack damage rule:
+at zero, damage taken is compared directly with maximum HP, including damage
+absorbed by temporary HP. From positive HP, only remaining overflow after temp
+HP and current HP is compared with the maximum.
+Source: [2024 Damage and Healing](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game).
+
+Migration20261010070013 corrects that branch only, retaining the existing
+owner/DM authorization, snapshot checks, receipt identity, concentration
+cleanup and transaction boundaries. New regressions reproduced two failures
+before the migration (campaign-sheet and active-combat targets). With maximum
+50 and80 temporary HP at zero,49 damage adds one failure;50 damage is fatal,
+even though30 temporary HP remain. Positive-HP boundary cases remain unchanged.
+
+All72 party-damage transaction cases pass across desktop/mobile, including
+replay and forced-history-failure rollback. Two real character-sheet browser
+cases click Take5damage at0HP/max5/temp8, verify three failures, remaining temp3,
+lost stability, cleared concentration, one receipt and no concentration offer.
+Full gate passes (3,467 units,195/195 TypeScript,255.2 KB entry); changed-file
+ESLint, SQL lint and security advisors pass. Migration applied/recorded only
+locally, preserving unrelated history. No production deployment.
+
+Atomic aura composition remains next: the existing party damage transaction
+can supply character HP/death/concentration within the caller transaction, but
+its snapshot and target identity must match the aura target. Aura save evidence,
+one-use penalties, creature damage, logs and its per-turn receipt/marker still
+need to commit together. This checkpoint fixes a prerequisite, not that whole
+transaction or the broader durable turn controller.
+
+
+### Propel review — settled movement instructions (2026-10-09)
+
+The existing branch labels both Propel cards as Bonus Actions, places Warp
+beside Telekinetic Propel, and offers free movement or an Energy Die roll.
+A review found that its saved-use dialog still instructed map movement before
+save settlement. Movement instructions now require a confirmed failed outcome
+and use the verified receipt distance. Passed/cancelled saves explicitly prohibit
+movement; pending saves wait for confirmation, including resistance decisions.
+Before declaration, the dialog explains conditional Energy Die payment and that
+Warp remains within 30 feet of the caster regardless of the roll.
+
+Nine added component regressions cover both movement types across pending,
+passed, cancelled and failed outcomes, receipt distance and upfront cost text.
+The real desktop/mobile flow verifies pending instructions, reload recovery,
+failed-save movement, one Bonus Action claim and one conditional Energy Die cost.
+Full verify gate and changed-file lint pass (TypeScript 195/195, entry 255.2 KB).
+No production deployment: durable turn/aura recovery integration remains pending.
+
+
+### Aura transaction preparation (2026-10-09)
+
+Migration20261010070014 adds a read-only DM-authorized aura context RPC and a
+private shared context builder for the forthcoming atomic settlement. It reads
+the actual origin buff, validates its identity/configuration, checks encounter,
+turn, source/target links, death, exemptions, trigger and per-turn marker, and
+uses the saved outgoing-actor selector for end-of-turn effects. Enemy-only
+filtering preserves the existing character/non-character grouping; it is not a
+new faction or hostility model.
+
+The snapshot includes authoritative save conditions/buffs/exhaustion/Guards,
+character damage and concentration context, and creature source revisions for
+homebrew, SRD and custom definitions. The latter captures stat changes missed
+by the older shared save helper. No preparation call changes HP, rolls dice,
+reserves an aura save or consumes effects. Geometry is explicitly unverified;
+map range/crossing evidence must be added before committing movement triggers.
+The API is not wired into live aura resolution yet.
+
+Next: one idempotent transaction must lock and re-read this context, verify
+save/damage evidence, consume next-save penalties, apply HP/concentration,
+write events and consume the marker atomically. Receipt uniqueness must cover
+encounter + turn + origin + aura key + target, not merely a request UUID.
+Character locks must precede encounter/participant/combatant locks to compose
+with the existing party damage transaction. Retries must read the historical
+receipt before checking changed current state; they must never roll again.
+Legendary Resistance decisions and durable turn recovery remain required.
+
+Validation: all50 local database cases pass across the two test projects;
+3,476 unit tests and the full project gate pass (TypeScript195/195, entry255.2KB).
+Changed-file ESLint, SQL lint and security advisors pass. The migration is
+applied and recorded only locally; unrelated ledger history is preserved.
+No production deployment or live resolver switch in this checkpoint.
+
+
+### Dice evidence prerequisite for aura settlement (2026-10-09)
+
+Settlement review found that saved bonus arithmetic could be internally correct
+while disagreeing with the recorded expression: seven new regressions reproduced
+wrong die sizes/counts/modifiers, unsupported expressions and reversed signs.
+The canonical dice module now exposes its existing grouped grammar as a pure
+parser and validates saved faces against that same plan without generating dice.
+The roller uses the same parser; unsafe summed arithmetic fails before rolling.
+Saved Bless/Bane and concentration bonus evidence now checks the actual expression,
+not only the sum. A party-damage request regression confirms this protects the
+persisted concentration path too.
+
+The live aura resolver previously used the legacy single-group roller, whose
+unsupported-expression fallback was zero damage. It now validates damage before
+rolling saves or spending the marker, supports mixed groups through the canonical
+roller, clamps damage below zero, and logs each damage face plus its flat modifier.
+Malformed expressions leave HP, history and the per-turn marker unchanged.
+
+This repairs dice preparation/evidence; it does not complete atomic aura settlement.
+Save, next-save penalties, Legendary Resistance, damage, concentration and logs
+still need the transaction/recovery integration described above before release.
+
+Validation:18 live aura browser cases pass across desktop/mobile; full gate
+passes with3,502 units, TypeScript195/195 and255.7KB entry. Changed-file lint
+has zero errors (the aura file retains15 existing any warnings). No production
+deployment; no database migration in this checkpoint.
+
+
+### Authoritative aura save evidence (2026-10-09)
+
+Migration20261010070015 adds three private, immutable transaction components:
+`dice_evidence_total` checks every saved face/count/size/modifier against the
+canonical grouped grammar; `save_bonus_evidence_total` matches current buff
+contributions, including legacy named Bless/Bane, deduplication and negative
+rolls; `aura_save_evidence` computes the original save from authoritative flags,
+stored DC, submitted physical dice, buff evidence, exhaustion and the consumed
+next-save penalty. Callers cannot submit their own passed flag, DC or final total.
+Automatic failures keep null d20/total and no bonus dice. No helper generates
+random dice, mutates state or is callable by anon/authenticated clients.
+
+The SQL evaluator is required for server verification; parity tests use the
+canonical TypeScript parser/save rules and identical evidence, avoiding an
+independent untested rules interpretation. The base save bonus remains an
+explicit input; the future authorized commit must pair it with the rechecked
+snapshot and the client's reviewed/verified bonus, not claim it is derived here.
+
+All24 database cases pass across the two test projects, covering valid and
+invalid expressions, safe arithmetic bounds, signed effects, omitted/extra
+contributions, physical die selection, exhaustion, natural-extremes house rule,
+automatic failure and private permissions. Full gate passes (3,502 units,
+TypeScript195/195,255.7KB entry), as do ESLint, SQL lint and security advisors.
+Migration applied/recorded only locally. No production deployment.
+
+Next remains the actual aura transaction: consume the next-save effect within
+settlement, call these validators against the locked live context, handle the
+DM Legendary Resistance decision, apply typed damage/concentration and write
+one receipt/marker/log batch. These helpers alone do not make live aura damage
+atomic, and the legacy resolver is unchanged in this checkpoint.
+
+
+### Atomic DM-reviewed aura settlement (2026-10-09)
+
+Migration20261010070016 adds `commit_aura_resolution` and a DM-authorized
+historical receipt lookup. One transaction rechecks the locked aura snapshot,
+consumes next-save penalties, verifies the saved physical dice/buff evidence,
+applies the explicit Legendary Resistance decision, calculates save-half then
+resistance/vulnerability, updates HP/concentration, writes combat events and
+consumes the once-per-turn marker. Character damage composes the existing party
+transaction, retaining concentration suppression and one pending save offer;
+creatures die at zero HP. Hidden source/target events remain private.
+
+The private receipt is unique by encounter/turn/origin/target/aura key as well
+as request UUID. Exact retries return the original outcome without overwriting
+later HP, including after combat ends. Competing request IDs cannot apply twice;
+the caller can retrieve the winning receipt by logical aura identity. Failed
+history/events/receipt writes roll back the whole transaction. Authorization is
+checked before both new writes and historical replay.
+
+Preparation now also captures Legendary Resistance charges and active next-save
+effects. A penalty appearing or being consumed after review invalidates the
+proposal before any mutation; it cannot silently turn a previously reviewed
+success into a failure with an outdated resistance decision.
+
+Scope: this is an explicitly DM-reviewed endpoint. Geometry confirmation,
+defense affinity and base save/concentration modifiers are reviewed inputs;
+they are not independently inferred or verified against every game rule here.
+The server validates evidence, arithmetic and unchanged state. The live resolver
+has not switched to this endpoint. Next: persist/recover the client proposal,
+review changed settings without rerolling, reconcile the winning receipt and
+wire the DM turn pipeline. Player-triggered aura orchestration and geometric
+proof still need deliberate integration before deployment.
+
+Validation: all84 local preparation/settlement cases pass across both test
+projects, including concurrent identical/different requests, late receipt failure
+with real Mind Sliver rollback, historical replay after healing/end of combat,
+concentration, immunity, resistance rounding, massive damage and hidden events.
+Full gate passes (3,502 units, TypeScript195/195,255.7KB entry); ESLint, SQL lint
+and security advisors pass. Migration applied/recorded only locally, preserving
+unrelated history. No production deployment or live resolver switch.
+
+
+### Interrupted recharge preparation recovery (2026-10-09)
+
+Reviewing the upcoming aura recovery client exposed a gap in the existing
+recharge client: a storage probe could pass, dice could roll, and the larger
+final request could fail to save. A later retry then generated replacement dice.
+The recharge client now persists a preparation marker before its first random
+result. Failed final storage or interrupted dice generation preserves that
+marker and blocks automatic rerolling. Invalid recharge rules still fail before
+any marker or dice. An authorized server receipt is read first and can recover
+an interrupted local preparation. A changed signed-in scope during commit now
+keeps the saved request rather than returning the result to the old caller.
+
+This is a recovery prerequisite, not completed aura integration. Explicit review
+for interrupted preparations, cross-tab preparation coordination, the aura
+client and durable live turn-pipeline wiring remain outstanding. No production
+deployment in this checkpoint.
+
+Validation: all 17 focused recharge tests pass, changed-file ESLint is clean,
+and the full gate passes (3,507 unit tests; TypeScript 195/195; hooks, RAW,
+coordinates, anchors, production build and bundle budget).
+
+
+### Deterministic aura save recovery evidence (2026-10-09)
+
+The client can now reconstruct an aura save from its original snapshot and
+recorded dice without generating random values. The pure `auraSaveEvidence`
+module shares canonical d20 selection, exhaustion and saving-throw outcome
+rules. Strict receipt comparison checks every save field while allowing JSONB
+object key reordering. Automatic failures retain null face/total and no bonus
+dice. Reviewed base modifiers remain inputs, not independently inferred stats.
+
+Save bonus rolling and recovery now share source normalization. Recovery checks
+original effect names, expressions and ordering in addition to legal dice and
+totals. It rejects omitted penalties, invented effects and reordered evidence,
+while preserving named Bless/Bane deduplication and signed modifiers.
+
+Validation: 47 focused tests pass; all 24 local database evidence cases pass,
+including exact client/server save equality for advantage/disadvantage,
+exhaustion, house-rule extremes, bonus effects and automatic failure. Changed-file
+ESLint is clean. These checks validate only the save subreceipt: full aura
+receipt/damage verification, durable client orchestration and live turn wiring
+remain outstanding. No production deployment in this checkpoint.
+
+Final gate: 3,541 unit tests; TypeScript 195/195; clean hooks, RAW, coordinates,
+anchors; production build and 255.7 KB entry budget pass.
+
+
+### Historical aura damage verification (2026-10-09)
+
+`auraDamageEvidence` reconstructs the original save, reviewed Legendary
+Resistance choice, damage and before/after HP pools without writing live state.
+It validates recorded damage dice against the source expression and reuses the
+canonical save, affinity and temporary-HP rules. Half damage precedes resistance
+rounding and vulnerability; Petrified contributes resistance; immunity prevents
+damage. Invalid pools, unsupported totals and ineligible resistance choices
+require review. Zero-damage receipts must have no damage result.
+
+The atomic aura database suite now checks every committed fixture receipt with
+both client save and damage validators before cleanup, including replay after
+later healing, immunity, death at zero through temporary HP, concentration
+offers and creature resistance. Pool verification does not yet validate the
+concentration fields, consumption receipt or transaction identity; those checks
+and durable recovery orchestration remain necessary before live integration.
+No production deployment in this checkpoint.
+
+Validation: 12 focused unit cases and 34 local database cases pass. Full gate:
+3,553 units, TypeScript 195/195, hooks/RAW/coordinates/anchors, production build
+and 255.7 KB entry budget all pass. Changed-file ESLint and diff checks pass.
+
+
+### Complete aura receipt composition (2026-10-09)
+
+`verifyAuraResolutionReceipt` composes the save and damage verifiers with the
+original request identity, once-per-turn marker, reviewed proposal flags and
+concentration outcome. It checks that next-save effects are each consumed or
+expired once, that overlapping consumed effects apply only the proposed d4,
+and that automatic failure consumes without rolling. The server remains the
+authority for the expiry classification; the client checks receipt consistency.
+Character damage additionally checks concentration automation, the expected
+check identity or broken-concentration result, participant and damage metadata.
+Creature receipts cannot claim a character concentration check. Historical
+receipts are cloned for callers and must never overwrite later live HP.
+
+The full verifier is now exercised on every committed receipt in the local
+atomic aura suite. Durable request persistence, receipt-first recovery, scope
+changes, cross-tab coordination and live turn-pipeline integration remain next.
+This checkpoint is not deployed to production.
+
+Validation: 27 focused unit cases and 34 local database cases pass. Full gate:
+3,580 units, TypeScript 195/195, clean hooks/RAW/coordinates/anchors, production
+build and 255.7 KB entry budget. Changed-file lint and diff checks pass.
+
+
+### Durable aura client recovery (2026-10-10)
+
+`processSavedAuraResolution` checks authorized server history before preparing
+anything, saves a preparation marker before invoking the synchronous dice
+callback, then persists the exact JSON request before commit. Retries retain
+the same identity, snapshot and dice, including across a different trigger in
+the same turn. Lost-response errors check for a verified server winner; malformed
+acknowledgements or interrupted preparations retain recovery data for review.
+Historical results are returned without patching live HP.
+
+Same-tab calls coalesce. Same-origin tabs serialize through browser Web Locks;
+browsers without locking stop before preparation. The database's unique logical
+identity remains the cross-device guard. Scope checks run after awaited reads
+and commits and when a waiting lock opens. Failed final storage leaves the
+preparation marker, preventing silent replacement rolls. A verified historical
+receipt can recover even if local storage reads are unavailable.
+
+The recovery API is not yet wired into live aura controls or the turn pipeline.
+Explicit review of interrupted preparations, reviewed proposal UI and live
+orchestration remain outstanding. No production deployment in this checkpoint.
+
+Validation: 13 recovery units and 36 local database/browser cases pass. Desktop
+and mobile both lose the commit reply, reload, recover without another roll,
+and preserve later healing after combat ends. Full gate: 3,593 unit tests,
+TypeScript 195/195, clean hooks/RAW/coordinates/anchors, production build and
+255.7 KB entry budget. Changed-file lint and diff checks pass.
+
+
+### Live aura defense source correction (2026-10-10)
+
+Integration review found that the live aura defense reader treated every
+creature as campaign homebrew. It now follows the linked combatant definition:
+public catalog creatures use `monsters`; custom creatures use the saved stat
+block; homebrew and legacy NPC definitions use their matched homebrew row.
+Personal unfiled homebrew is accepted only when its owner matches the linked
+combatant. A different campaign, definition ID, unsupported definition type or
+unknown/qualified defense data stops resolution for review. NULL catalog fields
+are not silently treated as known empty defenses.
+
+This fixes live defense preparation and supports future reviewed aura proposals.
+It does not replace the legacy non-atomic aura save/damage path. The durable
+client still needs reviewed controls and live turn orchestration before release.
+All six local desktop/mobile browser checks pass for catalog, custom and
+personal homebrew sources; 24 focused defense unit cases pass. No deployment.
+
+Full gate passes: 3,607 units, TypeScript 195/195, hooks/RAW/coordinates/anchors,
+production build and entry budget. Changed-file lint and diff checks pass.
+
+
+### Persisted aura review decisions (2026-10-10)
+
+Aura recovery can now pause between saved rolls and submission. With a review
+callback, the exact proposal is saved in a `review` phase before opening the
+decision. Postponing or reloading retains the original request and dice; a
+caller without the required reviewer cannot silently apply it. Review receives
+a clone and may return only the Legendary Resistance choice. The choice is
+saved in the `ready` phase before submission. An ambiguously submitted request
+never asks for a replacement decision, which could otherwise disagree with a
+server result whose reply was lost.
+
+Scope changes or storage failure during review leave it unsubmitted. A missing
+or interrupted preparation still requires explicit review rather than rerolling.
+This is the durable decision seam for the upcoming controls, not a completed
+live modal or turn-pipeline integration. No production deployment.
+
+Validation: 18 recovery unit cases pass. Four desktop/mobile browser cases
+cover both lost commit responses and postponing resistance through reload;
+the latter verifies the original save/damage dice, one resistance charge and
+one damage application. Changed-file ESLint and diff checks pass.
+
+Full gate passes: 3,612 unit tests, TypeScript 195/195, clean hooks/RAW/coordinates/
+anchors, production build and 255.7 KB entry budget.
+
+
+### Exact aura penalty review snapshot (2026-10-10)
+
+Migration `20261010070017_aura_penalty_review_snapshot.sql` adds authoritative
+expiry flags to pending next-save effects in aura context. It reuses the same
+caster-owned combat-clock helper as consumption. The existing locked snapshot
+comparison now also catches a changed expiry before settlement. Historical
+receipts from before this field remain verifiable; new receipts must match
+the exact reviewed consumed/expired partition.
+
+The pure `auraReviewPreview` computes the original save and damage with the
+actual applicable penalty, and the optional Legendary Resistance outcome,
+without rolling, spending or writing. Expired effects add no penalty;
+overlapping active effects apply one saved d4; automatic failures use none.
+Unknown expiry requires review instead of guessing. This supplies accurate
+numbers for upcoming controls; the controls and live turn integration remain
+unfinished. No production deployment.
+
+The local migration was applied directly in a transaction because the preserved
+foreign local ledger entry prevents the normal migration-up path. No reset or
+production write. SQL lint and security advisor checks pass.
+
+Validation: all 98 local aura snapshot/transaction/browser cases pass, including
+real caster-turn expiry and mixed active/expired effects. All 3,620 unit tests
+and the full gate pass (TypeScript 195/195; hooks/RAW/coordinates/anchors; build
+and entry budget). Migration 20261010070017 is recorded locally with verified
+SQL contents; the unrelated ledger entry remains unchanged.
+
+
+### Aura review controls (2026-10-10)
+
+`reviewAuraResolution` connects persisted review requests to the existing
+accessible modal. It shows the target, DC, saved d20s and chosen face, complete
+modifier/total, applicable Mind Sliver penalty, damage and temporary/real HP
+changes. Eligible failed saves offer explicit Accept failure / Use resistance
+choices with charges remaining and the alternate damage. Other outcomes require
+Apply result; Review later or dismissal retains the request. No control rolls
+or writes resources itself; the recovery API saves the decision before the
+atomic transaction. Submitted requests cannot reopen as editable choices.
+
+Desktop/mobile browser tests mount the real modal and use real local combat
+RPCs: postpone without spending, reopen with the same roll, then consume exactly
+one resistance charge and apply the expected damage. Both screenshots inspected;
+scoped overflow checks pass. This reusable control is not yet mounted by live
+aura orchestration or the turn pipeline. No production deployment.
+
+Validation: seven focused control tests, both real-browser control cases, clean
+console/overflow checks and the full gate pass: 3,627 unit tests, TypeScript
+195/195, hooks/RAW/coordinates/anchors, production build and entry budget.
+
+
+### Creature save confidence correction (2026-10-10)
+
+Live integration review found that `getTargetSaveBonus` could mark missing or
+malformed creature data as high confidence: missing CR fell back to PB +2,
+missing proficiency lists became empty, and non-finite scores passed a numeric
+type check. The new pure input validator requires a supported creature score,
+an explicit recognized proficiency list, and a known CR when proficiency is
+used. It recognizes abbreviated/full ability names case-insensitively and does
+not partially parse strings such as `5th`. A nonproficient save needs no CR.
+Canonical modifier/PB arithmetic remains shared; unsupported homebrew data
+returns low confidence for manual review rather than inventing a modifier.
+
+Score bounds checked against the official [2024 Playing the Game rules](https://www.dndbeyond.com/sources/dnd/br-2024/playing-the-game).
+This improves the live save reader; catalog/custom save source support and the
+reviewed aura/turn integration remain unfinished. No production deployment.
+
+Validation: 65 focused rules/save-reader cases and two real desktop/mobile
+browser cases pass. Full gate passes: 3,676 units, TypeScript 195/195,
+hooks/RAW/coordinates/anchors, production build and entry budget. New code/tests
+lint clean; pendingAttack retains the same pre-existing one style error and
+27 warnings, confirmed against HEAD.
+
+
+### Creature saving throw sources (2026-10-10, unreleased)
+
+The live save reader now follows the participant's linked combatant definition:
+public catalog, campaign/owner-scoped homebrew, or custom snapshot. It rejects
+missing or mismatched links without trying a same-ID row in another table.
+Catalog `saving_throws` values are final totals, not proficiency flags; explicit
+empty maps permit ability modifiers, while NULL/malformed maps require review.
+Short/full ability aliases are normalized and conflicting aliases are rejected.
+Custom snapshots with catalog save maps use the same validation; existing
+homebrew-shaped snapshots retain verified score/proficiency/CR calculations.
+
+Remaining: catalog-to-homebrew import currently loses listed save totals and
+leaves `ability_scores` unset. Preserve those values explicitly in a subsequent
+change rather than inferring proficiency from arbitrary totals. Live reviewed
+aura/turn orchestration also remains unfinished. No production deployment.
+
+Validation: 64 focused unit tests and six real desktop/mobile browser checks
+pass. Full gate: 3,714 unit tests, TypeScript 195/195, hooks/RAW/coordinates/
+anchors, production build and entry budget. New modules/tests lint clean;
+pendingAttack retains its prior one style error and 27 warnings.
+
+
+### Preserve imported creature saves (2026-10-10, unreleased)
+
+Catalog imports now persist exact `saving_throws` totals and ability scores on
+the homebrew copy. They do not guess proficiency from a total. NULL source
+saves remain unknown, explicit empty maps permit score-based saves, and missing
+scores stay NULL instead of becoming 10. The linked save reader uses the saved
+copy's totals; legacy homebrew with NULL totals keeps its proficiency-based path.
+
+Migration `20261010070018_creature_save_totals.sql` adds one nullable JSONB
+column without backfilling or overwriting edited creatures. Applied and recorded
+on local Docker, repeated successfully. Existing imported copies need explicit
+review/reimport rather than an inferred mass backfill. The older monster action
+panel's manual-save display still derives proficiency independently; consolidate
+that path with the verified save reader next. Aura/turn integration is also
+still unfinished; no production deployment.
+
+Validation: eight local desktop/mobile browser cases pass, including actual
+signed-in catalog import, exact +9 total, unlisted WIS -1, unknown saves and
+missing scores. Full gate: 3,722 unit tests, TypeScript 195/195, hooks/RAW/
+coordinates/anchors, build and entry budget. Changed API/tests lint clean.
+Local SQL lint reports existing function warnings; this additive migration
+introduces no functions or changes to those warned function bodies.
+
+
+### Stop unverified automatic saves (2026-10-10, unreleased)
+
+Reviewing manual save displays exposed a higher-priority automation gap:
+monster single-target/batch attacks, legendary save actions and Topple ignored
+the save reader's low-confidence marker and used its zero placeholder.
+`verifiedTargetSaves` now requires a verified finite integer bonus for every
+target before returning a batch. Monster attacks preflight before recharge
+spending/declaration; legendary actions preflight before declaration, dice,
+damage or point spending. Topple checks before rolling or applying Prone.
+Known zero and negative bonuses remain valid. Read errors are not replaced by zero.
+
+The legendary action dialog keeps a persistent accessible review message inside
+the dialog (the former toast was dimmed behind its overlay). Monster-action
+errors also identify the target/ability for review. Existing manual bonus entry
+remains separate. This does not make entire attack chains atomic or repair the
+older independent manual-save stat displays; those and aura/turn integration
+remain outstanding. No production deployment.
+
+Validation: 14 focused helper/legendary-control/mastery tests; removing the
+confidence guard makes the regression fail, restored version passes. Two real
+local desktop/mobile browser cases confirm unchanged combat state, no pending
+attack, events, penalties or resource writes. Both screenshots inspected,
+console and scoped overflow checks clean. Full gate passes: 3,731 units,
+TypeScript 195/195, hooks/RAW/coordinates/anchors, build and entry budget.
+Changed legacy files retain identical pre-existing lint counts against HEAD;
+new helper/tests lint clean.
+
+
+### Unified creature save summaries (2026-10-10, unreleased)
+
+Monster action and NPC token panels now render the same pure save calculation
+used by `getTargetSaveBonus`. Catalog/imported totals remain totals, verified
+homebrew uses the canonical CR proficiency table, and unknown data displays
+`?` with a review note rather than an invented zero. The canonical CR function
+moved to the pure proficiency module with its gameUtils re-export preserved.
+The combat summary follows the linked definition and ignores stale replies
+when switching actors. The NPC panel was not selecting any ability/save fields;
+its SELECT now includes the source data and speed. Correct speed typing also
+lowers the enforced TypeScript baseline from 195 to 194.
+
+Validation: 55 focused calculation/display/live-reader unit cases; ten local
+browser cases across save-source/import/display coverage, plus the expanded
+actual NPC panel test on both desktop/mobile. Removing saving_throws from the
+NPC query fails specifically at its INT +9 display assertion; restored query
+passes. Four screenshots inspected, scoped summary/panel overflow checks and
+console checks clean. Full gate: 3,760 units, TypeScript 194/194, hooks/RAW/
+coordinates/anchors, build and entry budget. Existing lint debt unchanged
+except four removed NPC warnings; new modules/tests clean.
+
+This unifies base save summaries, not temporary combat-effect previews or the
+remaining durable aura/turn orchestration. No production deployment.
+
+
+### Creature save revision binding (2026-10-10, unreleased)
+
+The shared server save context previously hashed only homebrew ability_scores,
+proficiency flags and CR. Catalog/custom definitions and imported exact totals
+could change without invalidating a prepared save. Migration
+`20261010070019_saving_target_creature_revision.sql` now follows the linked
+source, checks campaign/owner scope, and hashes source identity plus every
+creatureSaveBonus input. It returns only the revision, not source notes or
+private stat blocks. Unrelated descriptive edits are excluded from this hash.
+
+A changed bonus now rejects the old condition-save proposal before condition,
+penalty, event or receipt writes; a fresh reviewed proposal still settles.
+Existing saved dice remain subject to their recovery/review flow. This does
+not independently prove a manually supplied base modifier or complete live
+atomic aura/turn orchestration. Migration applied and exactly recorded only
+in local Docker; no production deployment.
+
+Validation: 56 condition-save cases (including all five creature source kinds,
+private/missing-source rejection and stale proposal rollback), plus 170 shared
+attack-save, Propel-save and aura-context cases pass against local Docker.
+Fixtures use JSON null for a missing snapshot and source=homebrew for a private
+catalog row, respecting the actual schema constraints. Full gate passes:
+3,760 units, TypeScript 194/194, hooks/RAW/coordinates/anchors, build and entry
+budget. Changed spec lint clean, local SQL lint has zero errors, repeated
+migration succeeds, exact ledger SQL verified and CLI reports no unapplied
+repo migrations. The pre-existing foreign local ledger entry is preserved.
+
+
+### Real saved aura proposal preparation (2026-10-10, unreleased)
+
+Added canonical proposal generation inside the persisted aura preparation
+boundary: correct d20 count, automatic-failure handling, Bless/Bane/flat effect
+rolls, next-save d4, damage faces and verified preview. The reviewed API adapter
+requires a review callback, captures inputs before awaiting, and reuses the
+original saved proposal when retry arguments change. Legendary Resistance is
+chosen during saved-result review, without rerolling.
+
+Real browser testing with active Mind Sliver exposed a PostgREST-only failure:
+STABLE aura context RPCs ran in read-only transactions, but expiry evaluation
+acquires FOR SHARE locks. Migration `20261010070020_aura_context_lock_compatibility.sql`
+marks the three lock-taking context functions VOLATILE and reloads the schema
+cache; bodies and authorization are unchanged. This follows the official
+[PostgREST function access-mode rules](https://docs.postgrest.org/en/stable/references/transactions.html#access-mode-on-functions).
+Applied/recorded exactly in local Docker; no production migration or deployment.
+
+Validation: 38 focused preparation/recovery unit cases and four real browser
+cases cover postpone/reload/changed retry inputs, exact settlement/replay, and
+Bless+Bane+exhaustion with overlapping Mind Sliver effects. Six additional aura
+context cases cover authorization, unchanged data and stale turns. Full gate:
+3,780 units, TypeScript 194/194, hooks/RAW/coordinates/anchors, build and entry
+budget. Changed files lint clean; local SQL lint has no errors.
+
+Base/CON bonuses, defenses and geometry remain explicitly reviewed inputs.
+This adapter is tested through the live API; movement and turn orchestration
+still use the legacy resolver and must be migrated before release.
+
+
+### Aura token identity (2026-10-10, unreleased)
+
+Aura origin, movement, outgoing-turn and speed reads now select combatant_id
+and use the existing participantLookup helper. Previously, dropping this
+identity could miss or misidentify tokens sharing a creature definition/name.
+No new targeting fallback or game-rule behavior was introduced.
+
+Validation: five mocked-database regressions cover identical creatures,
+inside/outside positions, origin sweeps and a Large mover's footprint.
+Removing the selected identity makes the regression suite fail; restoring it
+passes. Full verify: 3,785 tests, TypeScript 194/194, hooks/RAW/coordinates/
+anchors, build and 255.7 KB entry budget. New test file lint clean.
+No production changes. Durable aura/turn orchestration remains unfinished.
+
+
+### Live outgoing turn-effect integration (2026-10-10, unreleased)
+
+advanceTurn now uses the atomic saved batch for outgoing buff ticks and stops
+before aura processing, budget resets or clock writes when acknowledgement
+fails. Retrying/reloading recovers the recorded batch without repeating damage.
+The live adapter binds recovery to the signed-in user, releases its auth listener,
+and rejects session changes. Same-origin browser locks serialize preparation;
+an interruption marker precedes the first die so a storage failure cannot reroll.
+
+The live handler now reads the authoritative clock context to identify the
+outgoing actor and refresh the successor after outgoing effects. This preserves
+the original actor when lethal tick damage compresses the living initiative list.
+A remaining legacy-clock limitation is explicitly blocked: if death leaves the
+successor at the same index and round, the old direct clock write would reuse the
+turn UUID. The encounter remains pending in that case. Replace the remaining
+legacy clock/budget/reset sequence with the atomic clock adapter and durable
+incoming-phase recovery next; then remove this temporary guard. This branch
+must not be released while that transition work remains unfinished.
+
+Validation: 56 focused unit cases, full verify (3,793 units; TypeScript 194/194;
+hooks/RAW/coordinates/anchors/build; entry 255.7 KB), no new lint diagnostics.
+All 34 local turn-effect DB cases passed before the final actor-anchor change;
+six final desktop/mobile browser cases verify API recovery and live ordinary/
+lethal lost-reply recovery after that change. No production writes or deployment.
+Concentration/typed defenses for buff ticks and live aura/incoming orchestration
+remain separate unfinished work; this does not claim those paths are complete.
+
+
+### Live atomic clock and incoming recovery (2026-10-10, unreleased)
+
+The normal advanceTurn path now uses the atomic clock transaction and a
+DM-authorized server journal. Clock identity, action budgets, legendary refill,
+mastery expiry, round duration changes and campaign time are no longer separate
+client writes. The journal records unfinished incoming work with the same
+transaction. Reloads and other devices recover that work before beginning a new
+outgoing turn. Completion requires recharge and start-effect receipts plus a
+confirmed death-save phase; turn/lair/skip events and completion commit together.
+
+Incoming death settings are captured at the clock boundary. Automatic and
+prompted checks precede start-of-turn healing; manual settings remain manual.
+The recorded actor stays authoritative after lethal outgoing damage, a lethal
+death save, or a lethal start tick. Recorded death-save offers can be recovered
+after death compresses the living initiative list. This replaces the temporary
+same-index clock guard from the previous entry. Movement-gated recovery now also
+uses its turn receipt. A session guard spans the live operation.
+
+Removed the obsolete processTurnTicks writer and about 400 lines of legacy
+clock/reset/follow-up orchestration. Its damage regressions now live beside the
+canonical pure planner; there are no live callers of the old writer.
+
+Migration 20261010070021_live_turn_transition_journal.sql is applied only to local
+Docker, with exact source/ledger matching and idempotent reapplication. No
+production migration or deployment. Local migration status has zero unapplied
+repository files; the unrelated DB-only 20261008213500 ledger row is preserved.
+
+The regression sweep exposed inert legacy buffs containing only id/duration:
+these now pass through unchanged, while ticking buffs still require valid keys,
+names and tick data. The overlapping-controls test counts the atomic RPC instead
+of the removed direct clock update. Full gate: 3,808 unit cases, TypeScript
+194/194, hooks/RAW/coordinates/anchors, build and 255.7 KB entry budget. Changed
+files add no lint errors; the turn handler's existing warnings fell from 34 to 24.
+SQL lint reports no errors. Database sweep: 266 passing cases plus the two
+corrected desktop/mobile coalescing cases passing on rerun. The final repeat of
+all 24 new live-transition cases passed (desktop and mobile).
+
+Still required before release: wire reviewed atomic aura settlement into live
+movement/outgoing processing; finish typed defenses/concentration for buff ticks;
+verify other actions cannot race unfinished incoming work; review combatant
+identity edits during a pending transition. This entry does not claim all combat
+or Psion automation is finished.
+
+
+### Propel declaration storage guard (2026-10-10, unreleased)
+
+Telekinetic/Warp Propel now save an interruption marker before rolling the
+optional die. A failed marker write prevents RNG and submission; a failed final
+write preserves the marker and blocks replacement rolls. Malformed, mismatched,
+or interrupted saved requests are no longer silently treated as absent. Their
+browser data stays intact and the player sees the recovery error. Free movement
+never calls RNG. Existing saved successful requests still resume exact dice.
+An interrupted marker without a completed roll requires investigation; this
+change deliberately does not invent a result or automatically clear it.
+
+Regression coverage includes storage failure before/after RNG, corrupt JSON,
+wrong request identity, invalid targets, zero-die movement, and player-control
+error handling. All 69 focused cases pass; the full project verification gate
+passes with the existing TypeScript baseline and entry budget unchanged. No new
+lint errors in the four changed code/test files. Existing unfinished aura
+integration remains separate and uncommitted. No production deployment.
+
+
+### Reviewed outgoing aura settlement (2026-10-10, unreleased)
+
+End Turn now supplies the atomic aura resolver from InitiativeStrip, DMScreen,
+and the character turn panel. A DM reviews base save/concentration modifiers,
+damage affinity, targeting and conditional defenses before any dice. Unknown
+modifiers start blank. Invalid or cancelled input creates no preparation marker;
+rolled proposals persist before the result/Legendary Resistance review. Retry
+reopens saved dice instead of requesting replacement inputs. Leaving the owning
+view cancels input review; scope/auth guards stop stale submissions.
+
+Aura evaluation failures now stop outgoing turn completion instead of being
+logged and ignored. Failed participant/map reads and missing relevant tokens
+block with visible errors. Self, exempt, enemies-only group and trigger filters
+run before requiring placement, so unrelated auras do not block a turn. DMScreen
+now shows failures instead of only logging them; it does not promise the clock
+is unchanged when incoming work needs recovery.
+
+Verification: 3,837 unit cases, TypeScript 194/194, all required gates and 255.7 KB
+entry budget; no new lint errors. All 68 atomic-aura local database cases pass.
+The final desktop/mobile End Turn tests also pass: input cancellation leaves the
+clock unchanged, result postponement retains identical rolls, and confirmation
+creates exactly one aura receipt and one completed turn transition. Desktop and
+mobile screenshots inspected; official overflow probe and console/network checks
+pass. No production migrations or deployment.
+
+Release work remains: movement-triggered auras still use the legacy writer.
+Legacy once-per-turn markers without atomic receipts currently stop reviewed
+settlement rather than pretending partial legacy damage completed safely. A
+movement/DM review queue and explicit reconciliation are still needed. Manual
+modifiers/defenses remain reviewed inputs, not independently verified automated
+values. Typed buff-tick defenses/concentration and pending-turn race checks also
+remain outstanding.
+
+
+### Durable movement aura evidence (2026-10-10, unreleased)
+
+Migration 20261010070022_movement_aura_journal.sql captures aura-relevant combat
+movement in the same transaction as the authoritative token update. The private
+journal preserves the source token, before/after positions, turn, grids, mover
+candidates, participants, hidden aura metadata and token frame. A late journal
+failure rolls back the position write. Campaign/encounter locks keep capture
+serialized with clock changes. No-op/cosmetic changes create no extra record;
+removing tokens or aura buffs does not rewrite earlier evidence.
+
+Both map modes are covered directly. Testing found the legacy PC bridge can
+reuse a combatant whose id differs from its scene token, then fail to mirror
+later moves. Capture therefore reads scene_tokens for legacy mode and placements
+for modern mode, using the campaign flag to avoid duplicates. Ambiguous legacy
+creature links remain explicit mover candidates; this does not invent identity
+or prove that a save triggered. Cross-campaign transfers redact the other
+campaign's destination/source and token/grid metadata.
+
+The DM-only paged RPC checks current ownership before returning history, with no
+client table/sequence permissions and no public definer wrapper. Its repository
+reader validates identity, source and cursor ordering, preserving bigint cursors
+as decimal strings. Unknown aura state is retained for investigation. This is
+movement evidence, not an automatic damage or completed-review receipt.
+
+Verified locally: 15 capture/privacy/rollback/legacy/browser-reader cases plus a
+separate concurrent-clock locking case pass. Full gate: 3,850 unit cases,
+TypeScript 194/194, build and 255.7 KB entry budget; reader lint has no errors or
+warnings. SQL lint has no errors. Security advisors report no movement-aura
+findings; existing keep_warm search-path and client_errors INSERT warnings remain.
+Exact migration source matches the local ledger; all repository migrations are
+recorded, preserving DB-only 20261008213500. No production changes.
+
+Next: connect this history to durable per-event DM review decisions and atomic
+aura settlement; remove legacy movement damage writes; gate turn advancement on
+unresolved movement review. Insertions, size-only edits, path/teleport semantics,
+ambiguous legacy identities and historical legacy markers need explicit handling
+before release. The current journal only captures committed token updates; it
+intentionally does not infer a traveled path from two endpoints.
+
+### Durable movement aura review decisions (2026-10-10, unreleased)
+
+Migration 20261010070023 adds current-DM-only pending review, completion and
+history APIs. Frozen movement evidence produces possible aura/target candidates;
+it does not claim endpoints prove an entry or a traveled path. Exemptions,
+trigger types and existing character/non-character enemy grouping filter the
+candidates. Malformed aura definitions and ambiguous identity remain visible
+warnings requiring explicit adjudication.
+
+Every candidate needs a saved matching aura receipt or an explicit DM ruling
+(not triggered / handled manually), plus an overall review note. Completion
+checks the exact encounter, captured turn, origin, target and aura, and enforces
+oldest-first review. Replays retain the original result; completion never rolls
+or changes HP. Current ownership protects historical receipts too.
+
+The client repository validates queue ordering and identities, saves the exact
+request before sending it, serializes same-event submissions and recovers from
+server history. Unknown responses retain the original decision for retry;
+malformed storage and failed reads never become empty or completed reviews.
+
+Verified: full required gate, 3,861 unit cases, TypeScript 194/194, build and
+255.7 KB entry budget. Thirteen local database cases cover eligibility,
+permissions, ordering, exact receipts, wrong-turn rejection and rollback without
+repeating damage. Changed client modules lint cleanly; SQL lint has no errors.
+Security advisors retain only the existing keep_warm and client_errors warnings.
+Exact migration source matches the local ledger; no repository migrations remain
+pending locally, and the existing database-only version is preserved.
+
+Propel recheck: current controls, descriptions and power rules pass their tests.
+The branch already includes adjacent Bonus Action entries, free 5 ft / Energy
+Die choices, conditional die expenditure and caster-relative Warp destinations.
+No production deployment occurred.
+
+Next: connect the movement review screen to these APIs and the existing atomic
+save review, remove the legacy movement damage writer, then activate the pending
+review clock guard. The private guard is deliberately not wired into the clock
+until the DM can complete reviews. This backend milestone does not make the
+movement review queue visible or prevent End Turn yet. Previously documented
+path/teleport, insertion/resize, legacy marker and pending-turn gaps remain.
+
+### Movement review connected to live combat (2026-10-10, unreleased)
+
+All three live End Turn controls now review pending movement before processing
+new outgoing effects. The map initiative strip also offers Review movement,
+which resolves the queue without advancing combat. The DM sees each possible
+aura/target pair and explicitly resolves its saved save or records a reason for
+not triggering / manual handling. No default choice silently completes an
+uncertain effect. Manual rulings do not apply damage.
+
+The input/result review reuses the atomic aura pipeline. Postponement keeps the
+same dice, confirmed receipts satisfy once-per-turn outgoing aura checks, and
+scope changes/unmounts cancel pending UI promises. Committed incoming work still
+recovers before any new outgoing review. An uncommitted saved clock request
+reviews newly pending movement before retrying the boundary.
+
+The legacy logMovement aura damage call and its unused evaluator are removed,
+preventing a second writer
+from applying damage alongside the recorded review. Migration 20261010070024
+adds a private encounter-boundary trigger: a new active turn cannot commit while
+movement reviews remain. Capture/clock locks ensure a concurrent move is seen
+before the boundary can pass; a failed boundary rolls back its clock receipt.
+Historical receipt recovery remains available.
+
+Verification: full required gate passes (3,864 unit cases, TypeScript 194/194,
+build and 255.7 KB entry budget). Sixteen journal cases and sixteen movement
+review cases passed on desktop; the two interactive review cases and the real
+map standalone-review control passed on mobile. The real map control also passed
+on desktop. All 92 combat-clock database regressions passed. Desktop/mobile screenshots inspected, including the mobile scrolled
+footer; official overflow probe, console and network checks pass. Bypassing the
+review deliberately makes its browser regression fail, and restored code passes.
+SQL lint has no errors; advisors retain only the existing keep_warm and
+client_errors warnings. The exact migration source is recorded locally with no
+repository migrations pending; the existing database-only version is preserved.
+
+No production deployment. Release gaps remain: proactive pending indicators and
+avoiding unnecessary review for provably irrelevant moves; historical movement
+preview/path and teleport intent; insertions/size-only changes; legacy partial
+markers; typed buff-tick defenses/concentration and other actions racing pending
+work. A saved clock proposal whose roster changes during movement resolution may
+still require recovery handling. This milestone gates turns, not every combat
+action. The DM should review effects immediately using Review movement.
+
+### Stale live turn proposal recovery (2026-10-10, unreleased)
+
+A saved, uncommitted End Turn proposal could become permanently stale when
+reviewed movement damage changed the next living actor. Recovery now first
+checks for a committed winner, before requesting new movement review. Only after
+that review may the server record a replacement proposal for the same outgoing
+turn. Current DM authorization and campaign/encounter locks protect every phase.
+
+Migration 20261010070025 records immutable original/replacement pairs privately.
+A clock-insert trigger rejects retired request IDs even if an old tab submits
+after the roster returns to its previous arrangement. A repeated replacement
+request returns the same proposal; further roster changes form a recoverable
+chain. Already committed live turns win over every stale proposal and resume
+their captured incoming effects. Legacy clock history without a live workflow
+still requires explicit review.
+
+The client validates both the original binding and the replacement, persists
+the new proposal before submitting it, and preserves its predecessor on unknown
+responses or storage failures. No local guessing or deletion of uncertain turn
+requests is used. Reconciliation itself does not advance combat or alter HP.
+
+Verified: full required gate, 3,870 unit cases, TypeScript 194/194, build and
+255.7 KB entry budget. Thirteen local database/browser cases pass, including
+old-tab replay, repeated roster changes, ownership, concurrent replacement,
+rollback, pending movement, and reload recovery after losing both responses.
+Changed client modules lint cleanly; SQL lint has no errors. Security advisors
+retain only the existing keep_warm and client_errors warnings. Exact migration
+source matches the local ledger; no repository migrations pending; database-only
+history preserved. No production deployment.
+
+This closes the stale saved-clock-proposal gap noted above. Pending-effect
+indicators, irrelevant-move filtering, historical map preview/path/teleport
+intent, insertion/resize capture, legacy partial effects and other actions or
+combat ending while effects remain pending still need release work.
+
+### Actionable movement review badge (2026-10-10, unreleased)
+
+The map Review movement control now highlights pending reviews and shows their
+count (capped visually at 99+). A lightweight DM-only status endpoint returns
+only encounter identity and count, without hidden token/aura evidence. Failed
+checks display an unknown count instead of pretending the queue is empty.
+Visible tabs poll after each completed read; hidden tabs pause. Focus/online
+refresh and completion refresh are serialized, and stale encounter responses
+cannot replace the current view's count. This is advisory UI; the server still
+independently guards turn boundaries.
+
+Migration 20261010070026 uses one relevance rule for pending reads, completion
+ordering and the turn guard. Moves with neither possible movement candidates
+nor uncertainty no longer require a ruling or block later reviews. Their full
+journal evidence remains available. Malformed aura state and ambiguous moves
+still require review. Relevance is stored as a generated column and indexed, so
+polling does not repeatedly parse historical map frames. Future changes to the
+classifier must rebuild/recompute that stored column in a migration.
+
+Verified: full required gate, 3,882 unit cases, TypeScript 194/194, build and
+255.7 KB entry budget. Nineteen local database/browser review cases pass with
+the indexed classifier, including irrelevant moves before a later real effect,
+status privacy and uncertainty blocking. The real map badge updates after review
+and after another move. Desktop/mobile screenshots inspected; the official
+overflow probe and console/network checks pass. Removing the badge deliberately
+fails its browser regression, and the restored implementation passes. Changed
+modules lint cleanly; SQL lint has no errors.
+Security advisors retain only the existing keep_warm and client_errors warnings.
+Exact migration source is recorded locally, with no repository migrations
+pending and the database-only history preserved. No production deployment.
+
+Remaining: recorded map/path preview and teleport intent, insertion/resize
+capture, legacy partial effects and actions or combat ending while effects are
+pending. Counts refresh within the polling interval plus request time; this is
+not a realtime subscription or an automatic geometry decision.
+
+
+### Atomic End Combat (2026-10-10, unreleased)
+
+End Combat now saves character HP, temporary HP, death counters, stability,
+conditions, buffs and immunity snapshots in the same transaction as the ended
+status and combat log. Failure rolls everything back. The former browser loop
+marked combat ended first and swallowed carry-over failures; it is removed.
+Both controls report failures, reject repeated clicks and check encounter scope.
+The character-sheet entry keeps an accessible, wrapping error until retry.
+
+Migration 20261010070027 adds a private completion receipt and checked-DM RPCs.
+Retries recover the receipt before inspecting live turn state, because ending
+combat rotates the turn ID. Recovery never overwrites subsequent healing.
+Authenticated direct status changes cannot bypass completion; completed combat
+cannot be reopened. Pending movement reviews and incomplete incoming-turn work
+block completion. Character identities must match their campaign and combatant.
+Creature templates retain only the existing DM-owned buff/immunity carry-over;
+instance HP never overwrites template HP. Conflicting buffs on multiple instances
+of one template block completion rather than selecting an arbitrary winner.
+
+Verified: 18 distinct local database/browser cases, plus mobile error rendering;
+late character/log/status failures roll back all state; dropped responses recover
+after reload; ownership, stable/dead state and immunity snapshots are covered.
+Desktop/mobile screenshots inspected; official overflow and console/network
+checks passed. Removing the error deliberately failed the UI regression;
+restoring it passed. Required gate: 3,894 units, TS 194/194, 255.7 KB entry.
+The 57 focused Propel/description/rule tests also pass. SQL lint clean; security
+advisors retain the existing keep_warm and client_errors warnings. Exact local
+migration ledger verified; database-only history preserved. Not deployed.
+
+Remaining: creature effects need true per-instance carry-over instead of shared
+homebrew-template storage. Other unfinished actions (including pending Propel,
+attack/reaction declarations and death-save offers) need a completion audit;
+this change does not claim to gate all of them. Continue source-based Psion
+ability checks and map path/teleport intent work before release.
+
+
+### Pending Propel blocks End Combat (2026-10-10, unreleased)
+
+The completion transaction now rejects unfinished Telekinetic/Warp Propel
+requests, including finalized power rolls awaiting a save and recorded failures
+awaiting Legendary Resistance. Closing the encounter previously made the
+resistance decision impossible. The error directs the DM to resolve the saved
+request on the character sheet; pre-save cancellation remains explicit and
+keeps the Bonus Action spent. Completed saves do not spend another Energy Die
+when combat ends.
+
+Migration 20261010070028 adds an indexed private completion-receipt guard.
+It uses the declaration's captured encounter, independent of current character
+membership. A rejection rolls back carry-over, the completion receipt, log and
+status together. Existing declaration SHARE / completion UPDATE encounter locks
+serialize declarations with completion. No new client table or function access.
+
+Verified: 60 local database/browser cases across Propel settlement and encounter
+completion, including eight new pending/completed/cancelled/identity cases. Full
+required gate passes: 3,894 units, TS 194/194, 255.7 KB entry. SQL lint clean;
+security advisors unchanged (keep_warm and client_errors). Exact migration
+recorded locally, no repository versions pending, foreign history preserved.
+No production deployment.
+
+Next: turn advancement can still change the live turn while a Propel request is
+unfinished. Audit the pre-effect check and the authoritative clock boundary
+rather than assuming this completion-only guard covers End Turn. Other pending
+attack/reaction requests, declaration cleanup after participant deletion, and
+per-instance creature carry-over remain open.
+
+
+### Pending Propel protects End Turn (2026-10-10, unreleased)
+
+Migration 20261010070029 checks pending declarations in the shared clock context,
+so normal End Turn stops before outgoing condition saves or damage. The final
+encounter boundary also rejects direct round/index changes while Propel is
+pending. Saved outgoing-effect inserts reject pending Propel and roll back their
+HP writes. Conversely, a fresh Propel declaration after outgoing effects are
+saved is rejected with its attempted Bonus Action claim rolled back.
+
+The shared assertion is VOLATILE so a waiting boundary reads a declaration that
+committed after the UPDATE began. A two-connection integration test holds a real
+Propel declaration open, verifies the boundary is waiting on a database lock,
+then commits and verifies that the boundary rejects it. Historical clock receipt
+replays still succeed when the new actor has a pending Propel request. Direct
+turn-ID spoofing remains ignored by the existing identity trigger (only the
+normal update timestamp changes).
+
+Verified: ten new local boundary/rollback/replay/concurrency cases, twelve live
+turn-reconciliation regressions, and a unit check proving preflight rejection
+skips outgoing condition saves, ticks and live advancement. Required gate passes:
+3,895 units, TS 194/194, 255.7 KB entry. SQL lint clean, existing keep_warm and
+client_errors advisor warnings unchanged. Exact migration recorded locally;
+foreign database history preserved. Not deployed.
+
+Remaining: normal preflight is a snapshot, not a reservation covering the whole
+browser sequence. Legacy condition/aura writers still need a shared closing-turn
+reservation to exclude new declarations throughout all separate outgoing effect
+calls. This change protects the final clock and saved tick boundary, not every
+legacy partial effect. Other pending actions and per-instance creature carry-over
+remain in the release audit.
+
+
+### Durable outgoing-turn reservation (2026-10-10, unreleased)
+
+End Turn now reserves its outgoing actor before any separate condition-save,
+tick or aura calls. The private reservation is keyed by encounter and turn;
+new Propel declarations for that turn are rejected, rolling back their attempted
+Bonus Action claim. It has no timeout that could reopen a partly resolved turn.
+Retrying End Turn, including after reload or a lost reply, resumes the same
+actor. Other actors' later turns are unaffected. Current DM authorization is
+checked again on every reservation/replay.
+
+Migration 20261010070030 serializes reservation creation against declarations
+using the existing encounter locks, and preserves the reserved actor when they
+die before outgoing ticks are recorded. The live effect actor helper keeps its
+existing incoming-death/effect guards, then uses the reservation for first-turn
+outgoing recovery. A dead outgoing actor advances to its living successor
+without an invented round wrap.
+
+Verified: 33 local database/browser cases across turn-boundary and live-turn
+reconciliation suites; both declaration/reservation race orders, lost replies
+plus reload, dead-actor continuation, membership/ownership and private-table
+protection. The full required gate passes: 3,897 units, TS 194/194, 255.7 KB entry.
+Changed clock API modules lint cleanly. SQL lint clean; security advisors remain
+keep_warm and client_errors only. Exact migration recorded locally, foreign
+history preserved. Not deployed.
+
+Remaining: the reservation currently gates Propel declarations. Extend it to
+other ordinary action writers while preserving legitimate reaction windows;
+audit unfinished spell/attack/resource requests before closing combat. Existing
+legacy condition/aura calls still require their own idempotency audit; a
+reservation prevents competing declarations but does not itself make those
+separate calls transactional. Do not claim general multiplayer action sequencing
+or the full release audit complete.
+
+
+### Closing-turn shared action claims (2026-10-10, unreleased)
+
+Migration 20261010070031 rejects new shared Action and Bonus Action claims for a
+reserved outgoing turn, including Haste/Action Surge grants. The rejection is
+inside each feature/casting transaction: paid spells, cantrips and free Misty
+Step cannot consume slots, feature uses or energy on a rejected declaration.
+Historical claim replay remains available and does not spend again. Reaction
+claims remain governed by their existing eligibility checks; an actual accepted
+Counterspell during closing still pays once and supports its original retry.
+The lookup is indexed by captured turn identity and creates no new client access.
+
+Verified ten focused cases and the broader 124-case action/Counterspell/turn
+boundary suite. The broad run passed 121 cases; three old fixtures assumed that
+turns could skip unresolved Propel. Two now cancel before advancing; pending
+history pagination seeds explicit legacy records instead of bypassing live turn
+rules. Those three corrected fixtures passed separately. Full required gate:
+3,897 units, TS 194/194, 255.7 KB entry. SQL lint clean; existing keep_warm and
+client_errors security findings unchanged. Exact local migration ledger verified,
+foreign history preserved. Not deployed.
+
+Remaining: Dash/Disengage in src/lib/movement.ts still read and update legacy
+participant flags separately, and pending attacks have separate declaration and
+settlement paths. Move these to checked transactions before applying a generic
+flag guard: rejecting a late flag write after damage would create partial saves.
+Also audit pending spells/reactions before turn/combat completion, and expose
+closing-turn availability in player controls. This guard covers shared claims,
+not every legacy action writer or already-declared unresolved effect.
+
+
+### Atomic ordinary Dash / Disengage (2026-10-10, unreleased)
+
+Both live controls now send the rendered turn identity to one checked transaction.
+It verifies the current actor, owner/DM authority, combatant link, incapacitation,
+normal Action budget and closing reservation, then saves flags, a shared character
+claim, the log and a private receipt together. Previously these helpers read but
+ignored action_used, and saved the log separately. The old write loops are removed.
+Creatures use the same normal-Action checks and remain DM-controlled; hidden
+creature events remain hidden. Existing movement allowance math is unchanged.
+
+The server deduplicates participant/turn/action, so overlapping clicks cannot
+spend two actions. Exact old-turn replay never reapplies flags in a newer turn.
+A lost reply retries the original displayed turn rather than reading and spending
+a newer one. Reset Movement still explicitly removes movement benefits without
+refunding its Action; retrying that reset action reports the spent state instead
+of falsely claiming to restore it. These are ordinary Action buttons; bonus-action
+class features and extra-grant movement are not added by this change.
+
+Migration 20261010070032 verified with 15 local database/browser cases covering
+both actions, concurrent competing/identical requests, wrong owner/turn, closing,
+incapacitation, hidden creatures, rollback, reset, broken identity and a lost reply
+followed by another turn. Required gate: 3,908 units, TS 194/194, 255.7 KB entry.
+New API tests and focused lint pass. SQL lint clean; existing keep_warm and
+client_errors advisor findings unchanged. Exact local ledger recorded, foreign
+history preserved. Not deployed.
+
+Remaining: legacy direct participant-flag writes and Reset Movement still need
+server-side transaction consolidation; pending attack declaration/payment and
+reaction completion need the same audit. The new endpoint does not revoke all
+older participant UPDATE permissions or claim those paths are now atomic.
+
+
+### 2026-10-10 — atomic movement reset (unreleased)
+
+Reset Movement now saves its flags and log in one transaction, with actor/owner,
+rendered-turn and outgoing-transition checks shared with Dash/Disengage. A server
+revision rejects intervening movement even when the visible values return to the
+same numbers. The browser persists an exact request before mutation and recovers
+its immutable receipt across reloads or turn changes, preserving newer movement.
+Spent actions, attacks, HP and token coordinates remain unchanged. No-op requests
+save a receipt without logging. Legacy direct participant updates remain open;
+this is not a claim that every movement writer is now transactional.
+
+Migration 20261010070033 applied locally; exact SQL ledger verified, no repository
+migrations pending, foreign history preserved. SQL lint clean; existing keep_warm
+and client_errors advisor warnings unchanged. Movement suite: 40 checks passed,
+then six additional desktop/mobile checks passed for reset reload recovery,
+authorization/stale turns and competing reset requests. Full project gate passed;
+new API and wrapper tests cover storage failures, uncertain responses and receipt
+validation. No rendered layout changes. Not deployed.
+
+
+### 2026-10-10 — pending attack completion guard (unreleased)
+
+Encounter completion now rejects unfinished encounter-linked attacks and pending
+Legendary Resistance choices. Declaration holds an encounter SHARE lock against
+completion's UPDATE lock: either the declaration commits first and completion
+rejects, or completion commits first and the declaration rejects. Attack rows
+cannot change campaign/encounter identity to evade the check. Terminal attack
+history remains usable; character carry-over and the completion log roll back
+on rejection. Existing completion UI displays the server failure.
+
+Migration 20261010070034 applied locally and exact ledger verified; no repository
+migrations pending, foreign history retained. Completion suite: 26 checks passed,
+plus two real concurrent-connection race-order checks. Another 49 attack save,
+declaration recovery, Counterspell and Destructive Thoughts checks passed. Required gate passed:
+3,914 units, TS 194/194, entry 255.7 KB. SQL lint clean; keep_warm and client_errors
+security advisor findings unchanged. Not deployed.
+
+Remaining: this covers attacks explicitly linked to an encounter, not standalone
+attacks, pending spell delivery without an attack, or every reaction handler.
+Turn advancement and attack declaration/payment still need consolidation. Legacy
+cancellation can strand a Legendary Resistance decision by marking its attack
+canceled; investigate cancellation and repair controls before claiming release
+readiness for all attack states. Do not silently clear that saved decision.
+
+
+### 2026-10-10 — cancellation preserves saved decisions (unreleased)
+
+The shared cancellation path now verifies the returned attack and propagates
+write failures instead of silently succeeding. A database guard prevents both
+new and older clients from canceling an attack with pending Legendary Resistance
+or relabeling an applied attack as canceled. Cancellation retries are safe while
+the row remains canceled and do not refund resources. Existing malformed legacy
+rows are not silently repaired or discarded; explicit recovery remains needed.
+
+Migration 20261010070035 applied locally with exact SQL ledger verification,
+foreign history retained and no repository migrations pending. SQL lint clean;
+existing keep_warm/client_errors advisor findings unchanged. Full required gate
+passed with 3,919 units, TS 194/194, entry 255.7 KB. One later wrapper-propagation
+test brings the targeted API/wrapper run to nine passing checks. Save suite had
+28 passing cases and one fixture assertion failure (NULL used-charge counter);
+after explicitly initializing that counter, all eight focused desktop/mobile
+cancellation checks passed, including lost HTTP response and retry. No visual
+layout changed. Not deployed.
+
+Next: finish audit of attack/reaction payment and turn boundaries, and provide
+explicit recovery for legacy canceled attacks with unresolved resistance.
+
+
+### 2026-10-10 — wait for final saves before automated riders (unreleased)
+
+Legendary-action save batches no longer apply condition riders while Legendary
+Resistance remains pending. A shared pure save-outcome check rejects missing,
+mismatched, canceled or already-progressed rows before downstream effects.
+Single-target and batch monster actions use the same check. Batch errors are
+reported as unresolved instead of falsely counting them as failed saving throws;
+pending resistance gets its own summary count. Existing action accounting remains
+one spend for the declared batch; transaction consolidation is still pending.
+
+The real legendary-action modal was tested on local desktop/mobile: one pending
+resistance, unchanged HP, no Prone, and one two-point action spend. Screenshots
+inspected, official overflow probe passed, browser console/page errors absent.
+Removing the early return made that test fail on incorrectly applied Prone;
+restoring it passed both sizes again. No new database migration. Full required
+gate passed (TS 194/194; entry 255.7 KB), plus pure outcome regression tests.
+
+Remaining: persist condition-rider intent and resume it after the resistance
+choice; current pending-attack controls do not automatically restore all inferred
+monster/legendary condition riders. Do not claim complete automation or replay-safe
+batch payment until that continuation and accounting are consolidated. Not deployed.
+
+
+### 2026-10-10 — verify save batch identities (unreleased)
+
+Before adding persisted rider continuation, audited the declaration endpoint.
+It accepted caller-supplied actor/target names, types and entity IDs, and campaign
+access alone permitted declaring for someone else's actor. The existing endpoint
+now delegates to a checked private function: authenticated actor ownership or DM
+control, active matching encounter, canonical participant identities, duplicate
+rejection and stable participant locks. Missing/cross-encounter targets reject
+the entire batch. Creature entity slugs no longer get blindly cast to UUID.
+Anonymous EXECUTE revoked. Signature and ordinary callers remain compatible.
+
+Migration 20261010070036 applied locally, exact SQL ledger recorded/verified,
+foreign history retained, no repository migrations pending. Required project
+gate passed; SQL lint clean; existing keep_warm/client_errors security findings
+unchanged. Seven focused cases passed across SQL checks and real legendary-action
+browser flows. An initial ambiguous SQL alias was caught by lint/runtime tests,
+fixed and the checks rerun. Not deployed.
+
+Rider intent/duration still needs durable capture and atomic continuation after
+Legendary Resistance. This prerequisite does not claim to implement that feature,
+fix all immunity sources, or consolidate batch resource payment.
+
+
+### 2026-10-10 — retain save-batch condition intent (unreleased)
+
+Monster and legendary save batches now include their parsed condition metadata
+in each target declaration. Migration 20261010070037 saves immutable private
+intent with the attack, canonical origin/target/combatant, turn, declared round,
+source, duration and repeat-save specification. A malformed recipe rolls back
+both intent and attack. A checked DM-only reader supports later recovery; direct
+client access is denied. Older callers without metadata remain compatible.
+
+Seven focused SQL/browser checks passed after fixing an operator-precedence
+error caught by SQL lint. The real legendary-action path preserves Prone intent
+while leaving the undecided target unharmed. Full gate passed: 3,930 unit tests,
+TS 194/194, 255.7 KB entry. SQL lint clean; existing keep_warm/client_errors
+advisors unchanged. Local migration ledger matches exact SQL, foreign history
+preserved, no repository migrations pending. Not deployed.
+
+This checkpoint captures intent; it does not apply it automatically. Next:
+implement receipt-backed settlement from the final save, recheck live immunity,
+preserve condition provenance/cascades/concentration behavior, and integrate
+continuation without repeating existing effects or spending the batch again.
+Single-target monster actions and legacy declarations still lack this metadata.
+
+
+### 2026-10-10 — resistance resumes captured conditions atomically (unreleased)
+
+Migration 20261010070038 captures backing entity identities and settles captured
+riders through a DM-only operation with immutable receipts. It checks the final
+save, pending resistance, current turn, identity, live source/catalog/custom
+immunity and existing condition provenance. The shared condition operation
+preserves cascades and ends character concentration when required; saved duration
+and repeat-save metadata are attached only to newly applied primary conditions.
+A replay returns its receipt without resurrecting a condition later removed.
+
+Legendary Resistance decisions now settle captured riders in the same transaction:
+accepting records the successful save without applying its failed-save condition;
+declining applies the condition. Failure rolls back the decision, charge and
+condition. Logs retain hidden-target visibility and the encounter association.
+The live desktop/mobile Wing Attack flow confirms Prone resumes after Decline,
+with no second legendary-action spend. Eight direct settlement cases passed;
+the resistance run had 12 passes and one old cancellation fixture invalidated by
+the earlier guard. Corrected fixture plus live continuation passed four desktop/
+mobile checks; a separate injected-failure/hidden-log case passed afterward.
+
+Full project gate passed: 3,936 units, TS 194/194, entry 255.7 KB. SQL lint clean;
+existing keep_warm/client_errors advisor findings unchanged. Exact local ledger
+verified, foreign history retained, no repo migrations pending. Not deployed.
+
+Remaining: Exhaustion needs its own increment/death settlement; missing/legacy
+identity metadata and changed turns require review. Single-target declarations
+still lack captured rider intent. Non-resistance batch condition application and
+batch payment still use legacy paths. Damage remains in the existing attack
+resolution flow; this does not auto-finish all attacks or claim all immunity
+sources/riders are covered. Continue consolidating those paths before release.
+
+
+### 2026-10-10 — shared settlement for immediate save-batch riders (unreleased)
+
+Both monster and legendary batch handlers now settle captured conditions before
+closing their attacks, including batches without a Legendary Resistance pause.
+Removed duplicated browser-side condition writes. The server receipt supplies
+applied/immune outcomes; an absent or mismatched expected rider fails visibly.
+Combined damage/condition batches retain their rider instead of dropping it in
+the damage-only branch. Damage and batch payment remain separate legacy steps.
+
+Four desktop/mobile browser checks passed across immediate and resistance paths;
+the immediate no-damage case verifies Prone, one receipt, a closed attack and one
+legendary-action spend. Screenshots inspected; official overflow probe and browser
+error checks passed. Removing settlement failed the regression test; restoring
+it passed again. Full project verification passed. No schema changes this turn.
+Not deployed. Continue with single-target metadata/settlement and durable batch
+request/payment recovery; replay guarantees here apply to the same saved attack,
+not a fresh declaration from a repeated batch button click.
+
+
+### 2026-10-10 — saved conditions for single-target monster saves (unreleased)
+
+Single-target monster saves now use the same checked declaration and saved
+condition recipe as batches. They retain duration, repeat-save and source
+metadata across a Legendary Resistance pause. Immediate saves settle the condition
+before damage or closing the attack, fixing the dropped rider on damaging saves.
+Removed the separate browser immunity lookup and legacy condition write; current
+server defenses and the settlement receipt determine the outcome. Ordinary
+attack-roll actions and dice animation retain their existing flow.
+
+Real browser tests cover single-target conditions with and without damage;
+condition receipts, final attack state, HP and saved recipe are asserted.
+Desktop/mobile screenshots, official overflow probe and error checks passed.
+Disabling settlement failed the new regression; restoration passed. The existing
+Propel Bonus Action/die/reload test also passed on desktop and mobile.
+Full project verification passed: 3,937 units, TS 194/194, entry 255.7 KB.
+No database migration added. Not deployed.
+
+Remaining: durable declaration/payment recovery, legacy saved-condition review,
+Exhaustion settlement, and release integration. Damage still completes separately
+from condition settlement; this change does not claim an atomic entire attack.
+
+
+### 2026-10-10 — durable server save-batch declaration receipts (unreleased)
+
+Migration 20261010070039 records the exact save-batch request and original target
+attack IDs in a private, RLS-enabled receipt. Repeating a chain ID returns those
+same rows, including after attacks close or combat ends; it never recreates them.
+Changed mechanics/targets are rejected. Current actor authorization is rechecked,
+and receipt recovery additionally requires the original requester or current DM.
+Concurrent requests serialize by chain ID. Attack rows, saved rider intent and
+the declaration receipt commit together. Legacy chains without receipts require
+review rather than guessing whether they can be replayed.
+
+18 focused database checks passed, including concurrent replay, all target IDs
+and order, changed payload rejection, ownership changes, late-failure rollback,
+legacy rejection, and the existing authorization/condition-intent checks.
+Full project verification passed (3,937 units; TS 194/194; entry 255.7 KB).
+SQL lint clean; existing keep_warm and client_errors advisor findings unchanged.
+Local migration SQL exactly matches its ledger entry; no repo migrations pending;
+the foreign local history entry remains intact. Not deployed.
+
+This is the server prerequisite, not finished browser recovery: saveBatch.ts still
+generates a fresh chain per invocation. Next persist the exact browser request,
+resume existing attack states without rerolling, and make action/recharge payment
+recoverable. Do not claim that repeated UI clicks are already deduplicated.
+
+
+### 2026-10-10 — charge legendary save batches before effects (unreleased)
+
+Migration 20261010070040 adds a private payment receipt and a checked DM-only
+paid declaration. Legendary save actions now create their attacks, debit points
+and log the spend in one transaction before rolling saves or applying conditions.
+The modal no longer calls the legacy spend helper after resolving its batch.
+Insufficient points, incapacitation, changed turns and the actor's own turn reject
+before effects. Historical receipt replay preserves later resource refills and
+never charges again. Empty target sets and pre-existing unpaid declarations reject.
+Hidden actor spends retain hidden event visibility.
+
+The client verifies the payment envelope and complete target set; transient lost
+replies retry the exact request/chain. Six focused database checks passed including
+simultaneous retries, ownership, timing, changed cost and late-log rollback.
+Six desktop/mobile browser checks passed across immediate saves, resistance pauses
+and an injected lost payment response (two identical submissions, one debit and
+one attack). Screenshots inspected; overflow and unexpected error checks passed.
+Removing the paid declaration failed the regression; restoration passed again.
+Full verification passed: 3,947 units, TS 194/194, entry 255.7 KB. SQL lint clean;
+existing keep_warm/client_errors advisor findings unchanged. Exact local migration
+ledger verified; foreign local history preserved. Not deployed.
+
+Remaining: persist the exact browser request across reload/exhausted retries and
+resume each recorded attack phase without rerolling. Fresh button invocations
+still generate new IDs. Other legendary-action types, normal monster action/
+recharge payment, and full legendary-action timing limits retain legacy paths.
+This checkpoint guarantees one charge per same paid request, not full encounter
+or browser recovery. The rest of the release audit remains open.
+
+
+### 2026-10-10 — resume saved legendary saves after reload (unreleased)
+
+Legendary save resolution now persists the exact target snapshot, chain and turn
+before declaration. The same signed-in user's browser can resume that request
+after exhausted response retries or reload. A browser lock covers all sibling
+work; completed markers reject stale windows attempting another charge. Fresh
+review of a completed action allows an intentional new use. First definite
+payment rejection retires only a newly created request; ambiguous/history failures
+keep the original identity. Auth changes stop further work.
+
+The resolver reads each attack's recorded phase, skips closed attacks, preserves
+rolled damage and waits for Legendary Resistance. It waits for all sibling promises
+before releasing its lock. The menu exposes Resume even if the initial payment
+left too few points to declare another action. Original targets remain selected
+and frozen while resuming. Finished conditions are not resurrected after removal.
+
+Older generic HP application is not atomic with its attack-state update. A durable
+application-attempt marker prevents automatically repeating that ambiguous step;
+the DM sees a review message until its saved attack is finished. This is a safety
+stop, not completion of the remaining damage-transaction work.
+
+Eight desktop/mobile browser tests cover ordinary success, transient payment
+reply loss, exhausted replies plus reload through the actual legendary menu, and
+lost completion replies with later condition removal. Two resistance-path checks
+also passed. Resume screenshots inspected; official overflow checks run before
+resume and after completion; unexpected browser errors absent. Removing initial
+request persistence failed the reload regression; restored code passed. Units
+cover saved phases, storage failure, ownership scoping, stale windows, completed
+markers, rejection handling and ambiguous HP attempts. Full gate: 3,969 units,
+TS 194/194, entry 255.7 KB. An unrelated damage-adjustment test failed once during
+the parallel unit run, then passed its focused recheck and the full rerun.
+No migration added. Not deployed.
+
+Next: atomic generic damage settlement so ambiguous HP attempts can recover
+without manual review; ordinary monster batch action/recharge recovery; full
+legendary timing and cross-device recovery; release integration and map work.
+Local storage recovery alone does not cover cleared storage or another device.
+
+
+### Atomic saved monster-save damage checkpoint (2026-10-10)
+
+New save-batch declarations now settle HP, temporary HP, death state,
+concentration prompts, combat logs and the applied attack receipt together.
+Retries return the saved result, including after later healing. Existing batches
+retain the legacy review guard because they might contain a partial HP write.
+Legendary-save recovery resumes automatic concentration from the committed
+receipt even when the attack already reads applied. Private actors/targets keep
+these settlement logs hidden.
+
+Migration 20261010070041 applied only to local Docker; ledger text matches.
+Seven isolated database checks cover replay, stale context, authorization,
+legacy exclusion, final-write rollback, Petrified/hidden logs, zero damage and
+concurrent requests. Six desktop/mobile save controls tests passed, including
+lost damage replies followed by reload. Screenshots inspected and official
+overflow checks passed; unexpected browser errors absent. Disabling atomic
+routing failed the new browser regression; restored code passed. Four existing
+Propel desktop/mobile checks reconfirm Bonus Action payment, Energy Die spending
+only on a failed save, reload recovery, and Psi Warper rule details.
+
+Full gate: 3,979 unit tests; TS 194/194; entry 255.7 KB; build, rules, coordinates,
+anchors and hooks pass. Database lint clean; advisors retain only the existing
+keep_warm search-path and client_errors INSERT warnings. Not deployed.
+
+Still pending: typed damage-defense planning beyond the existing final-damage
+contract/Petrified, weapon retaliation and mastery transactions, ordinary
+monster action/recharge recovery, full legendary timing and cross-device
+recovery, release integration and map polish. This checkpoint does not certify
+all ability automation or production behavior.
+
+
+### Psychic preview arithmetic verification (2026-10-10)
+
+The client now independently reconstructs Psychic damage previews before showing
+an applicable result or submitting an application. It checks the saved starting
+amount, explicit DM amount, ordered resistance/vulnerability, immunity and bypass,
+and Sharpened replacement identity, saved activation total, original die, remaining
+turn use and successful-save rounding. Unknown defenses remain unresolved until
+reviewed. It rejects inconsistent positive totals, not just negative numbers.
+Server authorization, paid source provenance and defense discovery remain separate
+requirements; this guard does not establish those facts or fix generic typed damage.
+
+The existing resistance-before-vulnerability rule agrees with SRD 5.2.1 p.17:
+https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+No descriptions or copyrighted feature text were added.
+
+Full gate passed: 3,994 unit tests, TS 194/194, entry 255.7 KB. Ten real desktop/mobile
+checks passed for Destructive Thoughts, Surge, Sharpened replacement, Mind Spike
+save rounding and paid spell reload/lost responses. Two additional desktop/mobile
+checks inject an incorrect positive preview: Apply stays disabled, HP unchanged,
+and a valid refresh restores resolution. Removing the arithmetic guard fails this
+browser regression; restored code passes. No migration. Not deployed.
+
+Audit note: party-panel Untyped is currently an explicit DM bypass, with UI and
+server behavior intentionally matching; do not silently change that semantic while
+fixing generic damage. Equipment damage defenses remain described rather than
+fully structured in the magic-item catalog. Generic mixed/conditional typed damage
+settlement and broader release/map work remain pending.
+
+
+### On-hit damage rider corrections (2026-10-10)
+
+The mixed-damage audit found incorrect upstream bonus triggers. Hunter's Mark,
+Hex, Divine Favor and Absorb Elements no longer ride saving throws or automatic
+damage. Their unused single-use buffs remain available. Hunter's Mark records
+Force instead of the old Piercing template and supports spell attack-roll hits.
+Divine Favor supports both ranged and melee weapons; the old saved onlyMelee
+flag is corrected during calculation. Spell/ability attacks cannot qualify as
+weapons. Custom damage riders retain their existing saved filters.
+
+The sheet now declares synthesized unarmed strikes as abilities, preventing
+weapon-only Divine Favor from applying. Flat unarmed damage uses a plain number
+instead of invalid 1d0 notation. Hunter's Mark's reference text now says attack
+roll and permits moving the mark without the obsolete later-turn restriction.
+Rules source: SRD 5.2.1, Divine Favor p.125, Hex p.140, Hunter's Mark p.141:
+https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+
+Both client and server calculate the same rider eligibility; original buff rows
+are not rewritten. Already recorded damage retains its historical receipt.
+Migration 20261010070042 applied only to local Docker, exact ledger text verified.
+40 database transaction checks passed, including failed/successful saves, retained
+bonuses, old Hunter's Mark types, ranged Divine Favor and rejected stale writes.
+Desktop/mobile real save-action checks retain all four on-hit buffs and record
+only base damage. Removing the client trigger check makes that regression fail;
+restored code passes. Full gate: 4,011 unit tests, TS 194/194, entry 255.7 KB.
+Database lint clean; only the two existing advisor findings remain. Not deployed.
+
+Next: generic mixed/conditional typed damage settlement; broader rider timing,
+level-20 Hunter's Mark scaling, and explicit legacy attack provenance; release
+integration and map functionality/polish. These fixes do not certify all bonus
+spells, equipment effects or old manually declared weapon attacks.
+
+
+### Unarmed Grapple/Shove save requests (2026-10-10, unreleased)
+
+Replaced obsolete attacker Athletics checks in the live WeaponsTracker with
+explicit target Strength-or-Dexterity save requests. The synthesized unarmed
+entry supplies base DC 8 + Strength modifier + proficiency; Athletics expertise
+does not change it. Push 5 feet and knock prone remain separate choices. Controls
+state reach, size and free-hand restrictions and never claim that a save,
+condition or movement has already resolved. Failed logging keeps the dialog open.
+Rules: SRD 5.2.1, Unarmed Strike p.190; Monk Martial Arts p.50.
+https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+
+This is a tabletop request, not automated target resolution or attack-budget
+spending. Eligible Monk Dexterity and other feature overrides remain manual and
+are identified in the dialog. The Damage button's legacy hit/damage sequence is
+unchanged and still needs confirmation-before-damage review. Action logging is
+not a durable, idempotent save declaration.
+
+Verification: nine pure-rule and five additional component regressions; desktop
+and mobile controls pass with clean console and overflow checks. Final screenshots
+inspected. Reintroducing Athletics wording fails the UI regression; restored
+code passes. Full gate passed: 4,025 unit tests, TypeScript 194/194, entry 255.7 KB.
+No database migration or production deployment in this change.
+
+Next: target-save resolution with attack spending and feature-aware DCs; legacy
+unarmed damage hit confirmation; continue Psion and map release integration.
+
+
+### Restoration saved-use preflight (2026-10-10, unreleased)
+
+The server already rejected malformed Restoration trackers, but the sheet could
+still offer meditation for them. The shared rules now block null, string,
+fractional, negative and out-of-range remaining-use values before confirmation,
+and recheck after confirmation. Missing legacy counters remain accepted; positive
+legacy spent counts remain unavailable until Long Rest. No resource value is
+silently repaired. The warning button wraps in narrow desktop columns.
+
+Fourteen added pure cases and two component cases cover both tracker forms and
+updates while the confirmation is open. Desktop/mobile real-sheet checks use
+isolated local Docker accounts, verify the warning, no payment RPC, unchanged
+dice and no ledger entry. Screenshots inspected; overflow checks pass after
+fixing the desktop warning width. Removing the guard fails the new regressions;
+restored code passes. Full gate: 4,041 unit tests, TS 194/194, entry 255.7 KB.
+No migration or production deployment.
+
+Remaining release work includes broader Psion automation, generic damage
+settlement, map improvements and branch integration. This preflight does not
+change or independently recertify server transaction recovery or rest behavior.
+
+
+### Hosted CI isolation repair (2026-10-10, unreleased)
+
+Release review found GitHub CI failing in partyDamage.test.ts despite local
+verification passing. Its concentration receipt parser imported the standalone
+API and initialized the real Supabase client. The test now mocks that database
+boundary while retaining the real receipt validator. A temporary config without
+env files reproduces the original missing-credentials failure; the repaired five
+cases pass in the same environment. Full local gate: 4,041 units, TS 194/194,
+entry 255.7 KB. Hosted verification is required before release.
+
+The branch is 137 commits ahead of main at this review, with 79 added/changed
+migration files. Release requires a reviewable PR, hosted green gate, migration
+chain/integration verification, and successful hosted migration/deployment checks.
+No production migration or deployment was performed by this checkpoint.
+
+
+### Psion release integration checkpoint (2026-10-10, unreleased)
+
+Eight real-sheet Restoration checks pass across Actions/Features, primary and
+secondary Psion, desktop and mobile. They verify persistence, one-use tracking,
+Long Rest recovery and preservation of multiclass resources.
+
+Updated the older paired Psion-powers scenarios to use the actual Propel dialog:
+named target, legality confirmation, free/powered choice, recorded Bonus Action,
+saved result and explicit End Turn before another declaration. All four browser
+cases pass. They verify three distinct action claims, no die spent on a successful
+save, one die spent on a failed powered save, free movement remaining selectable
+with an empty pool, telepathy costs, reload and short/long rest recovery.
+
+These tests use disposable local accounts. They do not validate production
+configuration or certify the older Surge/malformed-pool scenarios in the same
+file, whose old Propel selectors still need updating. PR #214 remains draft;
+Vercel deployment is rate-limited. No production deployment in this checkpoint.
+
+
+### Current Surge and malformed-pool integration (2026-10-10, unreleased)
+
+Updated the remaining old Propel interactions in psionic-restoration.spec.ts.
+The Surge cases now declare a Bonus Action, wait for the saved boosted roll,
+resolve the save, and explicitly close/end the turn before another declaration.
+Cancellation uses the persisted cancellation confirmation and retains paid Hit
+Dice. A delayed telepathy history insert is held across the next independent
+Propel and then verified, preserving that regression's original intent.
+
+Multiclass Surge now selects the real Hit Die choices: two d6 and one d10 are
+spent across the scenario, with the exact allocation verified after reload.
+The original single-class button is still checked. Malformed saved pools are
+exercised through the current dialog and cannot create a Propel declaration or
+action claim; Long Rest restores valid availability.
+
+All six desktop/mobile Surge and malformed-pool cases pass. Full gate passes:
+4,041 units, TS 194/194, entry 255.7 KB. This is test coverage of existing
+behavior, not a new feature or production deployment. The earlier note about
+stale Surge/malformed-pool selectors in this file is resolved.
+
+
+### Map refresh deletion race (2026-10-10, unreleased)
+
+A scene refresh could put a token back after a newer deletion removed it from
+the live store. Refresh reconciliation now drops rows present when the request
+started but removed before its response. Later authoritative refreshes can still
+restore a row, and existing held/pending-position protection is unchanged.
+
+Two new unit cases cover the race and later reconciliation. Eleven focused map
+refresh/reconnect cases pass; full gate passes 4,043 units, TS 194/194 and entry
+255.7 KB. Desktop/mobile actual-canvas tests hold an old response, simulate the
+store update made by a newer deletion event, and verify the token stays absent
+in both state and Pixi. Shared database fixture rows remain untouched. Screenshots
+inspected. Removing the guard resurrects the token and fails the browser test;
+restored code passes. This does not certify all creation/deletion/reconnect races
+or replace actual multiplayer delivery tests. No production deployment.
+
+
+### Map arrow-key ownership (2026-10-10, unreleased)
+
+Token nudging now honors editable elements (including empty/plaintext-only
+contenteditable and role=textbox), dialog ancestors, interactive controls,
+claimed keyboard events and IME composition. A visible modal blocks nudging even
+before focus moves into it, matching the existing camera/space-pan safeguards.
+Canvas nudging remains available; no root-component growth or visual redesign.
+
+Eight added hook cases and desktop/mobile actual-map checks pass. The browser
+positive control reaches the nudge handler with a rejected fixture-preserving
+write; subsequent editor/dialog arrows produce no writes or position changes.
+Restoring the old handler makes six writes instead of one and fails the browser
+regression. Full gate passes 4,051 units, TS 194/194, entry 255.7 KB. No database
+migration or production deployment. Further map polish and release verification
+remain active.
+
+
+### Escape preserves the background map (2026-10-10, unreleased)
+
+Fullscreen and selection previously had separate Escape listeners that could
+both run while a confirmation was dismissed. They now share a small map hook
+that leaves editor, dialog, modal, composition and already-handled keys alone.
+An unobstructed Escape retains the previous exit/clear behavior. The map root
+shrinks and no new behavior is added to its scene or layer wiring.
+
+Seven hook regressions cover current callbacks, cleanup, editing and modal focus.
+Desktop/mobile real bulk-delete confirmations cancel with Escape while keeping
+two selected tokens and fullscreen intact; no deletion is submitted. Screenshots
+inspected. Restoring the old listeners exits fullscreen and fails the browser
+regression; restored code passes. Full gate: 4,058 units, TS 194/194, entry
+255.7 KB. No database migration or deployment. Release PR #214 remains draft.
+
+
+### Selection toolbar placement and contrast (2026-10-10, unreleased)
+
+The narrow-screen selection toolbar now sits 60 px below the map top instead of
+132 px, beside the tool rail. The placement applies through 1000 px width so
+narrow landscape also clears the header. Its surface and border now match the
+navigation dock, improving separation from map graphics. Mobile touch sizes,
+compact defaults and expanded action access are preserved.
+
+Desktop/mobile browser cases also resize to 851x393 landscape and check bounds,
+header separation and the official overflow probe. Screenshots inspected. The
+old offset fails the placement regression; restored layout passes. Full gate:
+4,058 unit tests, TS 194/194, entry 255.7 KB. The expanded panel still covers some
+map area on small screens; this improves placement rather than claiming a
+complete responsive map redesign. No production deployment.
+
+
+### Manual unarmed hit confirmation and flat damage (2026-10-10, unreleased)
+
+Removed the delayed automatic damage call from the manual Unarmed Strike mode.
+The attack total remains visible until the player confirms a hit; natural 1
+closes without damage, and Cancel never rolls damage. Other strike modes stay
+disabled after the attack roll. Reopening begins a new manual strike. Existing
+combat target resolution is unchanged; this tabletop flow does not apply HP or
+spend the server action budget.
+
+Flat unarmed critical damage no longer receives an invented extra point, and the
+manual damage parser floors at zero rather than one. SRD 5.2.1 p.16 permits zero
+damage and doubles damage dice on critical hits, not fixed amounts:
+https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+
+Six added component cases cover normal/critical confirmation, natural 1,
+cancellation, zero and negative flat base amounts. Desktop/mobile screenshots
+inspected and interaction checks pass; restoring the old automatic flow fails
+the confirmation regression, restored code passes. Full gate: 4,064 units,
+TS 194/194, entry 255.7 KB. No migration or deployment. Legacy manual bonus
+riders, logging durability, feature-specific unarmed scaling and action-budget
+integration remain separate unfinished work.
+
+### Psion follow-up — validate Connection uses before enhancement payment
+
+Telepathic Connection now validates its saved use count before confirmation,
+after confirmation, before paid roll enhancements, and before final submission.
+Missing legacy counts remain a free first use; valid positive integer counts
+remain paid extensions. Null, strings, fractions, negative values and counts
+outside the server's integer range are rejected without rewriting resources.
+The pure settlement function also rejects invalid counters. An invalid Connection
+counter does not disable unrelated Telekinetic Propel uses.
+
+Added 12 rule cases and three component regressions, including invalid counters
+arriving while a paid-use confirmation or Surge prompt is open. All 4,079 unit
+tests and the required verification gate pass (TS 194/194; entry 255.7 KB).
+No database migration, layout change, or deployment. This closes a client-side
+preflight gap; it does not certify all Psion automation or eliminate concurrency
+between independent server transactions.
+
+### Psion source audit — Telekinetic Techniques duration (unreleased)
+
+Rechecked the owner's Downloads/UA2025-Psion+Update.pdf, page 9, against the
+live Psykinetic feature imported by classes.ts. Disorient was incorrectly
+shown as ending at the caster's next turn. Corrected it to the target's next
+turn. Boost remains +10 ft Speed until the caster's next turn. A reference
+regression checks these distinct owners through the actual subclass catalog.
+Also reviewed the adjacent revised Metamorph and Telepath descriptions against
+pages 8 and 10; this pass does not certify their automation.
+
+Full verification passes: 4,080 unit tests, TS 194/194, entry 255.7 KB. No
+migration. Hosted CI passed for preceding commit bd954756; its Vercel preview
+was still deploying when checked. Neither this correction nor the broader
+release is merged into main.
+
+Concrete next automation gap: Propel currently offers Psykinetic's free d4,
+but does not apply the additional technique selected after a failed save.
+Wire one optional effect choice to the settled declaration: Boost expires at
+the caster's next start; Disorient expires at the target's next start; Bolt
+uses the saved roll for Force damage. The server must validate Psykinetic level
+3+, settled failure (including Legendary Resistance), the original target and
+one saved choice. Persist/replay the effect and damage receipt atomically;
+reopening, reloading or retrying must not reapply damage or extend a removed
+effect. Use existing turn-boundary handling and typed damage defenses, and
+connect movement allowance and Opportunity Attack eligibility readers rather
+than displaying an inert buff. Verify different caster/target initiative
+positions, passed/cancelled saves, retries, permissions and level/subclass
+changes. Keep the private UA content restrictions intact.
+
+### Telekinetic Techniques automation — effect planning checkpoint
+
+Added the pure effect planner and 21 tests. It requires Psykinetic level 3+
+(primary or secondary Psion), a settled failed push, distinct combat participants,
+and a valid finalized roll. Boost grants +10 ft and expires on the caster's next
+start; Disorient prevents Opportunity Attacks and expires on the target's next
+start. Bolt preserves the saved Force damage total, including valid Energy Die
+enhancements or the substitute d4. A no-die 5-foot use offers the two non-damage
+effects without inventing a Bolt roll. Existing turn-expiry code was exercised
+against both planned durations, including unrelated end/start events.
+
+This is an implementation dependency, not finished player automation: the new
+planner has no production caller yet. The next checkpoint must connect the saved
+choice transaction, player controls and movement/reaction consumers described
+above. Current Propel declarations preserve only the target participant ID and
+name. Capture the original entity/combatant binding for new declarations before
+allowing the new effect write; do not guess the original target for old rows.
+Bolt should enter the existing typed damage pipeline from its saved roll, with
+a durable delivery receipt, rather than applying bare HP subtraction.
+
+Full gate: 4,101 unit tests, TS 194/194, entry 255.7 KB. No database change or
+player-visible effect enabled. Vercel again reports deployment rate limiting;
+production release remains pending.
+
+### Saved Propel participant identity safeguard (unreleased)
+
+New combat declarations now capture the caster and target's roster identity,
+linked combatant ID, and map-piece definition. Renames and ordinary state updates
+do not invalidate the binding. Before finalizing dice or settling an unresolved
+save, a private trigger rechecks those identities under row locks. Repointing
+any saved identity rejects the transaction; Energy Die payment, save receipt
+and action history roll back together. Cancellation still works after roster
+changes. Completed reads/retries preserve their original receipt.
+
+Migration 20261010124329 applied only to the existing local Docker database;
+exact SQL/ledger match verified and foreign local history 20261008213500
+preserved. The CLI rejected that foreign history, so only the new SQL and its
+ledger entry were committed in one local transaction. No pending repo migration
+remains. No public API or table permission was added. Helper functions are
+private, invoker-security, with fixed empty search paths and revoked execution.
+SQL lint reports no errors; security advisors retain the existing keep_warm and
+client_errors warnings only.
+
+Ten isolated DB regressions pass, including coherent entity replacement, map
+reassignment, pre-finalization rejection, payment rollback, cancellation,
+completed replay, names and helper privileges. The 42 existing Propel save
+settlement checks passed in the combined run; two new fixture assertions were
+then corrected for existing earlier guards and the map-piece uniqueness rule,
+and the full ten-case identity file passed. Required project gate passes:
+4,101 unit tests, TS 194/194, entry 255.7 KB.
+
+Legacy declarations are deliberately not backfilled: their original entities
+cannot be reconstructed from the current roster. Existing legacy behavior is
+preserved. The upcoming technique-effect transaction must require a captured
+binding; this migration does not yet expose Boost, Disorient or Bolt controls.
+No production migration or deployment performed. Fresh/main-upgrade rehearsals
+from the previous checkpoint predate this new migration and need updating before
+release.
+
+### Telekinetic Techniques — saved server choice and delivery checkpoint
+
+Migration 20261010125125 adds an optional technique receipt to the original
+Propel declaration and a scoped choose/read function. Only the owning character
+(or authorized DM via existing Psion authorization) can use it. A new choice
+requires the original eligible Psykinetic progression, settled failed push,
+original current turn, no outgoing turn reservation, and unchanged captured
+participants. Legacy/tabletop declarations have no inferred target binding.
+
+Boost and Disorient store distinct timed effects on the target combatant. Each
+uses a declaration-specific key so different casters' expiry times can coexist;
+the upcoming movement reader must take the non-stacking +10 ft benefit, not sum
+these entries. Bolt queues one auto-hit ability with the finalized Force damage
+as a flat expression; it does not reroll or add Intelligence. HP, typed defenses
+and Concentration remain with the existing damage pipeline. The choice stores
+its original roll evidence. Choosing none also closes the optional choice.
+
+Effects/queued attack, history and saved choice commit together. Same-choice
+retries return the receipt; conflicting choices are rejected. Replays cannot
+resurrect removed buffs or deleted attacks. No second Action or Energy Die cost
+is introduced. A free d4 supports Bolt; a no-die 5-foot use cannot invent a Bolt
+roll. History uses the existing buff/attack payload format and preserves hidden
+participant visibility.
+
+18 isolated database checks pass: both durations, duplicate/conflicting choices,
+Bolt delivery, no-die/free-d4 behavior, secondary Psion, eligibility/turn/identity
+changes, ownership, removed effects, deleted attacks and late-history rollback.
+Full gate: 4,101 unit tests, TS 194/194, entry 255.7 KB. SQL lint has no errors;
+security advisors still show only prior keep_warm/client_errors findings. Exact
+local migration ledger verified; foreign local history retained. Local Docker
+only; no production migration or deployment.
+
+Not yet player-ready: connect a validated client API and saved-choice controls,
+include unresolved optional choices in recovery, consume Boost in movement and
+Disorient in Opportunity Attack eligibility/acceptance, and verify real Bolt
+resolution and timed expiry through the UI. No existing UI calls this new RPC.
+The pure technique planner still needs its production caller. Do not present
+this backend checkpoint as finished ability automation.
+
+### Telekinetic Boost — live movement checkpoint
+
+Saved Boost effects now feed the shared movement allowance used by map movement,
+initiative and the creature action rail. The +10 ft applies before halving and
+Dash; immobilization still wins. Multiple saved Boost entries grant one increase
+and retain their independent expiry times. The creature rail now uses the same
+allowance instead of displaying only base speed.
+
+18 additional unit cases cover reductions, Dash, immobilization, malformed buffs,
+independent expiry and the joined movement adapter. Full gate passes: 4,119 unit
+tests, TS 194/194, entry 255.7 KB. Desktop and mobile browser checks verify a saved
+Boost changes 30 to 40 ft, real Dash changes it to 80 ft, both combat displays
+agree, and advancing to the caster's next turn removes the effect. Scoped overflow
+and runtime-error checks pass; screenshots reviewed. Removing the Boost adapter
+connection makes the regression fail; restored checks pass.
+
+This test uses live combat controls without a scene; it does not certify token
+movement visually. Disorient offer/acceptance enforcement, validated client API,
+saved-choice recovery and controls, and real Bolt damage resolution remain open.
+The technique options planner still needs its production caller. No production
+deployment or database changes in this checkpoint.
+
+### Telekinetic Disorient — client eligibility checkpoint
+
+Confirmed the private UA update p9: Disorient prevents Opportunity Attacks until
+start of the target's next turn. Offers now consult the joined combatant effect;
+accepting an already-open prompt rereads it before declaring or rolling. A blocked
+attempt preserves the reaction and offer, explains the restriction and permits
+retry after expiry. Failed reactor reads also block safely and release busy state.
+Other reaction types do not use this Disorient check.
+
+14 new regressions cover saved/malformed effects, exact expiry, joined offer
+filtering, Boost-only eligibility, effects received after prompt opening, retry
+and unavailable state. Full gate passes: 4,133 units, TS 194/194, entry 255.7 KB.
+No database changes or deployment. These are client checks, not atomic server
+validation: acceptance still performs separate attack/reaction/offer writes.
+Before release, replace that sequence with an authorized, replayable server
+transaction that locks current effect/reaction state and binds the original
+reactor/target; verify concurrent acceptance, effect arrival and rollback locally.
+The existing Counterspell transaction provides a shared-reaction-budget pattern.
+Technique-choice UI/recovery and live Bolt verification also remain open.
+
+### Opportunity Attacks — atomic acceptance and Disorient checkpoint
+
+Migration 20261010131356 captures original participants, combatant definitions,
+encounter and triggering turn for new Opportunity Attack offers in a private
+RLS-enabled table. The acceptance RPC authorizes the actual reactor owner/DM,
+locks current reaction and effect state, validates the original binding, and
+creates the attack, spends the reaction, records history and saves acceptance in
+one transaction. Character reactions use the shared action ledger. Creatures
+require the DM. Disorient, incapacitation, spent reactions, expired windows,
+changed turns/participants and outgoing turn reservations reject before spending.
+
+Identical retries return the original attack; conflicting weapon choices reject.
+A deleted attack is not resurrected. Direct offer updates cannot fabricate an
+acceptance or change its identity. Pre-migration offers are not backfilled: they
+must be declined and replaced because their original participants are unknown.
+Private helpers and rows remain inaccessible to clients; the public wrapper is
+invoker-security and authenticated-only, with explicit authorization inside the
+private definer function and fixed search paths.
+
+The actual prompt now calls the validated API instead of separate client writes.
+Only a fresh acceptance auto-rolls; recovered declarations remain available in
+the DM attack queue without rerolling. Fixed the DM filter/type to recognize
+unified creature participants. Weapon numbers remain user-entered, and existing
+OA generation still uses its simplified hostility/5-foot reach model; this does
+not certify every Opportunity Attack eligibility rule.
+
+38 local database/browser checks pass across desktop/mobile, including concurrent
+identical acceptance, shared reaction competition, an in-flight Disorient write,
+permission rejection, effect expiry, stale identities and late-history rollback.
+Real UI checks verify the Disorient message, unspent reaction and subsequent
+single attack roll; screenshots and scoped overflow checks pass. Only the expected
+Disorient RPC rejection occurs; no unexpected runtime/network errors. Removing
+the creature filter makes the UI regression fail. Full gate: 4,144 units,
+TS 194/194, entry 255.7 KB. SQL lint reports no errors; security advisors retain
+only existing keep_warm/client_errors warnings.
+
+Applied locally only. CLI blocked on foreign local history 20261008213500, so the
+new SQL and ledger were applied transactionally without resetting or repairing
+that history. Exact SQL/ledger equality verified (Windows newline normalization
+corrected for this new uncommitted local entry). Release rehearsals now need all
+315 repo migrations. Production unchanged. Remaining Psion work: saved technique
+choice UI/recovery and real Bolt damage verification, then the broader ability
+and map review continues.
+
+### Telekinetic Techniques — validated client receipt checkpoint
+
+Added a dedicated choose/read API for the saved technique transaction. It checks
+Propel's original character, action, roll and payment evidence plus captured
+campaign/encounter/participant/map-piece identities before offering a choice.
+The existing pure technique planner supplies the allowed effects. Receipts must
+match the chosen technique, original dice evidence, exact effect/duration or
+saved Bolt attack and damage. An ambiguous or malformed success remains
+unconfirmed; it never authorizes a fresh roll or applying an effect locally.
+Reads may return no choice yet. Old/tabletop unbound declarations are rejected.
+
+33 focused regressions cover all four choices, mismatched identities and effects,
+expiry owner, no-die/free-d4 modes, secondary Psion, Surge/Enkindled totals and
+input changes during confirmation. Real local saved Boost receipts validate
+through the browser API on desktop/mobile alongside existing movement and expiry
+checks. No new migration or UI controls in this checkpoint. This API is ready
+for the controls but is not yet invoked by the player UI.
+
+Next: list completed failed declarations still awaiting an optional choice,
+persist uncertain choices and expose the recoverable choice controls. Keep
+existing unfinished-roll/save recovery intact. Bolt's live damage/defense
+resolution remains to verify. No production deployment.
+Full gate for this checkpoint: 4,177 unit tests, TS 194/194, entry 255.7 KB.
+
+### Telekinetic Techniques — durable choice recovery checkpoint
+
+Technique choices now have per-character/per-declaration browser recovery,
+separate from original roll/save drafts. Confirmation stores the exact choice
+before any request; storage failures prevent sending. Different choices cannot
+overwrite an uncertain attempt. Corrupt or mismatched entries remain intact and
+surface an error. Cleanup removes only the matching attempt; failed cleanup
+leaves an idempotent retry.
+
+The confirmation/recovery coordinator reads the server before resending. An
+already-saved choice, including a winner from another tab, is shown without
+applying another effect. With no server receipt, recovery resends the exact local
+choice. Read/transport/rule failures retain the attempt until authoritative
+reconciliation; none invent a new roll or resource payment.
+
+25 unit regressions cover every choice, isolation, corrupt data, storage failures,
+cleanup races, uncertainty, read-first recovery and another tab's winning choice.
+Desktop/mobile local browser checks recover saved Boost over a conflicting local
+Disorient attempt, clear that attempt, and retain the existing movement/Dash/
+expiry guarantees. No new migration or production deployment.
+
+The player controls still need to invoke this coordinator. Server discovery of
+failed declarations awaiting optional choice is next; old expired unresolved
+attempts also need an explicit authoritative closure path. Do not silently drop
+those drafts or present technique automation as player-ready yet.
+Full gate: 4,202 unit tests, TS 194/194, entry 255.7 KB.
+
+### Telekinetic Techniques — player controls and discovery checkpoint
+
+Propel's saved-use dialog now renders a separate technique panel after an
+eligible failed save. It offers Boost (+10 ft until caster's next turn), Disorient
+(no Opportunity Attacks until target's next turn), Bolt (saved Force total), or
+no technique. The panel uses validated receipts and durable choice recovery;
+loading/read failures do not expose fresh choices, and uncertain sends expose
+only confirmation of the original attempt. Buttons explain that no extra action
+or Energy Die is spent. Bolt is explicitly queued for damage resolution.
+
+Migration 20261010133905 adds authorized server discovery for failed, bound,
+unselected Psykinetic techniques in the original active turn. It excludes ended
+or transitioning turns, changed progression and completed choices. This is a
+separate endpoint from unfinished-roll recovery. The dialog combines discovered
+rows with local uncertain attempts, which remain readable after leaving the
+current-turn list. The currently selected row is hidden from the review list.
+
+Component checks cover exact wording, one choice, lost replies/remount, another
+tab's saved winner, read failure and an unsettled-to-failed transition in the same
+mounted use. Browser checks exercise discovery after reload with no local draft,
+then deliberately lose both responses to an actually committed Boost. Reload
+finds the local attempt, shows the authoritative saved Boost and clears recovery
+without another effect or Energy Die. Removing the panel makes that regression
+fail. Desktop/mobile screenshots and scoped overflow checks reviewed.
+
+Full gate: 4,209 units, TS 194/194, entry 255.7 KB. Local SQL lint has no errors;
+security advisors retain only existing keep_warm/client_errors warnings. Exact
+local SQL/ledger equality verified; foreign history 20261008213500 preserved.
+The CLI again refused that foreign entry, so only the new SQL and its ledger
+were applied transactionally. Repo now has 316 migrations; release rehearsals
+must be refreshed before merge. No production deployment.
+
+Remaining: authoritative closure of expired unresolved local technique attempts,
+real Bolt damage/defense/concentration verification, and broader Psion/map review.
+The current-turn player menu works; this is not a claim that all Psion automation
+or every recovery edge case is finished.
+Final verification: 46 database/browser checks pass across desktop/mobile,
+including the existing declaration/reload flow. The focused console rerun also
+passes on both viewports; only deliberately aborted reply requests are allowed.
+
+
+### Telepath reactions — source-checked rules foundation
+
+Owner UA Update p.10 verified for Telepathic Distraction (Psion 3) and
+Telepathic Bolstering (Psion 10). Added a pure planner covering subclass and
+multiclass eligibility, Reaction availability, visibility, strongest live
+Connection range, original trigger outcome, final enhanced dice and conditional
+Energy Die expenditure. Reaction is consumed even if the outcome stays unchanged.
+Unknown range/clock evidence requires review. Natural attack extremes and
+explicit automatic results survive numeric modifiers; checks use their total.
+
+This is a foundation, not player-ready automation: no control or database write
+uses this planner yet. Next bind the original attack/check event and its target
+in an idempotent transaction, claim the Reaction, save enhancements and settle
+only one outcome/payment before exposing player controls. Unknown/conditional
+attack results need explicit authoritative resolution rather than guessed AC.
+
+The audit also tightened shared Psion roll validation: an unenhanced total must
+match its recorded original die. This protects existing callers as well as the
+new planner. Tests cover threshold equality, natural extremes, failed bonuses,
+range expiry, malformed resources, subclass levels and Surge/Enkindled totals.
+No new migration; no production deployment. Vercel preview remains rate-limited.
+
+
+### Attack outcome parity for Telepath reactions
+
+Extracted the live attack result calculation into the domain layer and reused it
+in Telepath reaction planning. Numeric modifiers can turn a condition-based
+critical hit into a miss; natural 20s remain critical, total cover prevents a hit,
+and the captured natural-1 house rule controls whether a 1 can be bolstered.
+The planner now returns the resulting hit/miss/critical classification alongside
+the conditional cost. Invalid evidence stops before consuming mastery markers.
+
+Verification: full gate, 4,286 units across 345 files, TS 194/194 and entry within
+budget. A local authenticated browser regression invokes the real attack engine
+and verifies six saved outcomes for natural extremes, house rules and cover.
+
+Integration findings: pending_attacks keeps the effective AC and selected d20,
+but does not yet persist the natural-1 setting or why a hit was critical. Those
+must be captured with the original event before reaction settlement; do not
+infer an automatic hit from hit_result=crit. Existing roll_requests keep a total
+and DC but no comparable immutable reaction window. Graze currently applies on
+the initial miss before reactions; Bolstering must resolve before that damage.
+These event-window and ordering changes remain required before Telepath controls
+can safely ship. No new database migration or production deployment.
+
+
+### Original attack evidence — saved and immutable
+
+Migration 20261010153840 adds attack_roll_snapshot to pending_attacks. The live
+attack engine saves original dice/total/effective AC, natural-1 setting,
+critical-on-hit condition, total-cover outcome and original participant bindings
+in the same update as the first roll. A database trigger verifies the snapshot
+against the saved outcome and prevents erasure or rewriting. Later AC/result
+changes preserve the original evidence. Legacy attacks remain null and cannot
+receive guessed snapshots after rolling. No permission grants were added.
+
+Recording now checks the original row timestamp and declared state, and reports
+failed writes before logging a successful attack. A lost response keeps the
+committed original roll; refresh reads that result without rolling again.
+This is captured client evidence, not a new server-authoritative derivation of
+conditions/visibility. Shared mastery-marker spending and reaction-offer creation
+still need transactional integration with the attack window; this checkpoint
+must not be presented as the complete Telepath transaction.
+
+Full gate passes: 4,298 units, TS 194/194, entry 255.7 KB. Three local browser/DB
+checks cover six attack outcomes, rejected mismatched/rewritten evidence, legacy
+rows and lost-response recovery. SQL lint has no errors or new trigger warnings;
+security advisors retain only existing keep_warm/client_errors warnings.
+
+Applied locally only, with exact file/ledger equality verified. CLI again refused
+foreign local history 20261008213500; preserved it and applied only the new SQL
+and ledger together. Repo has 321 migrations; release rehearsals need refreshing.
+No production deployment. Next: authoritative reaction window, linked payment,
+and delaying Graze until the final attack outcome.
+
+
+### Telepath attack preparation — scoped server context
+
+Migration 20261010155210 adds get_telepath_attack_context for Distraction and
+Bolstering. It checks character/DM ownership and campaign membership, Telepath
+subclass level, original attack participant IDs, active encounter, current
+result consistency and Energy pool validity. It returns current shared Reaction
+availability, the captured attack evidence and row revision, and the strongest
+finished, unexpired Connection range. Unfinished/unknown Connection clocks make
+range explicitly unverified. Off-turn Reactions remain available normally.
+
+This endpoint does not claim an action, roll dice, pay, modify the attack, open
+a reaction window or authorize acceptance. spatialReviewRequired is always true.
+The next transaction must recheck this context, bind the original turn and
+participant/combatant identities, verify distance/visibility, and serialize the
+reaction before damage/Graze. Existing attack snapshots capture participant IDs
+but do not prove an unchanged combatant/entity behind a reused roster ID.
+Ability-check Bolstering also still requires its own saved event window.
+
+Local authenticated regression checks cover access, levels, hit/miss triggers,
+spent Reaction, incapacitation, mismatched participants/results, malformed pools,
+Connection finalization/expiry, off-turn use and inactive encounters. Anonymous
+execution is denied on both entry points. SQL lint has no errors or new-function
+warnings; security advisors retain only existing keep_warm/client_errors warnings.
+
+Applied locally with exact SQL/ledger equality; preserved foreign local version
+20261008213500 when CLI refused that history. Repo now has 322 migrations; the
+321-migration release rehearsals need this new file before release. Production
+unchanged. No player-facing Telepath control is enabled by this checkpoint.
+
+
+### Strict targeting keeps the selected map
+
+While preparing Telepath spatial checks, found that loadActiveBattleMap could
+silently fall back to another scene when an explicitly selected scene was
+missing, even in strict mode. Strict callers now reject that lookup before
+loading another map's tokens/walls. The existing attack/spell picker loading
+contract blocks selection and offers retry. Non-strict legacy fallback and
+successful no-map/default-scene lookup remain unchanged.
+
+Unit regression asserts no second scene query. An authenticated local browser
+check loads the selected map, deletes that disposable fixture scene, verifies
+the strict read rejects, and verifies an explicit default-scene read still
+finds the other map. No player scene or production data was modified.
+
+Telepath distance/visibility acceptance remains next: use exact instance binding
+and the current scene, and never treat absent map evidence as proof of range or
+sight. Existing center-ray wall checks alone do not establish visibility through
+darkness/invisibility; that still needs supported vision evidence or DM review.
+
+
+### Telepath client context and spatial preparation
+
+Added a client adapter for the scoped attack context. It validates original
+snapshot identity, current hit/miss calculation, participant binding, level,
+energy, shared action flags, range-review state and feature trigger before
+returning data to future controls. Shared action-budget validation is reused.
+No dice or payment is initiated by this adapter.
+
+Spatial preparation requires an explicit scene and strict map reads. It uses a
+unique character token and the subject's exact combatant instance, rejecting
+ambiguous/missing instances instead of a same-name/species fallback. Canonical
+footprint distance handles larger tokens. Returned positions are a preview,
+not authorization: a future acceptance must recheck the actor's combatant
+binding, both placements, saved turn and visibility. Visibility review remains
+explicit even when range was measured; center-ray walls are not proof of sight.
+
+Unit checks cover malformed responses, inconsistent spending/outcomes, unknown
+range, exact-instance selection, large footprints and failed/missing maps. An
+authenticated local browser check reads the real endpoint and measures the two
+actual placements at 30 ft. Existing Reaction and Energy ledgers remain untouched.
+No new migration or player control; production unchanged. Saved acceptance,
+linked enhancements/payment, visibility review and Graze ordering remain open.

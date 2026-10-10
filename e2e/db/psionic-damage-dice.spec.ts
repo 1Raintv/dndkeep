@@ -7,7 +7,7 @@ const sql=(q:string)=>execFileSync('docker',['exec','-i','supabase_db_dndkeep','
 test.use({serviceWorkers:'block'});
 test.describe('Preserved Destructive Thoughts dice',()=>{
  gateDbSuite();
- for(const {surge,sharpened} of [{surge:false,sharpened:false},{surge:true,sharpened:false},{surge:false,sharpened:true}])test(sharpened?'Sharpened replaces a saved die and bypasses resistance atomically':surge?'Surge-adjusted Psion dice survive the combat queue':'natural Psion dice survive the combat queue',async({page},info)=>{
+ for(const {surge,sharpened,corrupt=false} of [{surge:false,sharpened:false},{surge:true,sharpened:false},{surge:false,sharpened:true},{surge:false,sharpened:false,corrupt:true}])test(corrupt?'incorrect Psychic preview blocks HP application until refreshed':sharpened?'Sharpened replaces a saved die and bypasses resistance atomically':surge?'Surge-adjusted Psion dice survive the combat queue':'natural Psion dice survive the combat queue',async({page},info)=>{
  const activation=randomUUID();
  const [user,campaign,char,cb,enc,cp,attack]=Array.from({length:7},()=>randomUUID()),email='typed-'+user+'@dndkeep.local';
  try{
@@ -45,8 +45,21 @@ test.describe('Preserved Destructive Thoughts dice',()=>{
   expect(JSON.parse(sql(`select psionic_damage_dice from pending_attacks where id='${attack}'`))).toEqual(dice);
   // Auto-hit discipline damage neither consumes nor adds unrelated attack riders.
   expect(JSON.parse(sql(`select active_buffs from combatants where id='${cb}'`))).toHaveLength(1);
+  if(corrupt)await page.route('**/rest/v1/rpc/preview_psionic_damage',async route=>{
+   const response=await route.fetch();expect(response.ok()).toBe(true);const body=await response.json();
+   await route.fulfill({response,json:{...body,damageAfter:body.damageAfter+1}});
+  });
   await page.goto('/campaigns/'+campaign);const panel=page.getByRole('region',{name:'Resolve attack'});
   await expect(panel).toContainText('3d8+4');await expect(panel.getByRole('spinbutton')).toHaveValue(String(total));
+  if(corrupt){
+   await expect(panel.getByRole('alert')).toContainText('could not be verified');
+   await expect(panel.getByRole('button',{name:/Apply Damage/})).toBeDisabled();
+   expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe('20');
+   expect(sql(`select state from pending_attacks where id='${attack}'`)).toBe('damage_rolled');
+   await page.unroute('**/rest/v1/rpc/preview_psionic_damage');
+   await panel.getByRole('button',{name:'Refresh damage'}).click();
+   await expect(panel).toContainText('Final Psychic damage: 13');
+  }
   if(sharpened){await panel.getByRole('combobox',{name:'Sharpened Mind replacement'}).selectOption(activation);await expect(panel).toContainText('Final Psychic damage: 20');await expect(panel).toContainText('Die 1: 1 → 8');}
   await panel.getByRole('button',{name:/Apply Damage/}).click({trial:true});await panel.screenshot({path:info.outputPath('psionic-damage-dice.png')});
   if(surge)await expect(panel).toContainText('Surge adjusted low dice to 4.');

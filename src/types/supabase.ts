@@ -413,6 +413,7 @@ export type Database = {
           inventory: Json;
           currency: Json;
           active_conditions: string[];
+          is_stable: boolean;
           death_saves_successes: number;
           death_saves_failures: number;
           notes: string;
@@ -504,6 +505,7 @@ export type Database = {
           inventory?: Json;
           currency?: Json;
           active_conditions?: string[];
+          is_stable?: boolean;
           death_saves_successes?: number;
           death_saves_failures?: number;
           notes?: string;
@@ -595,6 +597,7 @@ export type Database = {
           inventory?: Json;
           currency?: Json;
           active_conditions?: string[];
+          is_stable?: boolean;
           death_saves_successes?: number;
           death_saves_failures?: number;
           notes?: string;
@@ -660,6 +663,7 @@ export type Database = {
           status: string;
           round_number: number;
           current_turn_index: number;
+          psionic_turn_id: string;
           initiative_mode: string;
           hidden_monster_reveal_mode: string;
           started_at: string | null;
@@ -677,6 +681,7 @@ export type Database = {
           status?: string;
           round_number?: number;
           current_turn_index?: number;
+          psionic_turn_id?: string;
           initiative_mode?: string;
           hidden_monster_reveal_mode?: string;
           started_at?: string | null;
@@ -694,6 +699,7 @@ export type Database = {
           status?: string;
           round_number?: number;
           current_turn_index?: number;
+          psionic_turn_id?: string;
           initiative_mode?: string;
           hidden_monster_reveal_mode?: string;
           started_at?: string | null;
@@ -1215,6 +1221,7 @@ export type Database = {
           max_hp: number | null;
           initiative: number | null;
           conditions: Json | null;
+          saving_throws: Json | null;
           save_proficiencies: Json | null;
           ability_scores: Json | null;
           visible_to_players: boolean;
@@ -1267,6 +1274,7 @@ export type Database = {
           max_hp?: number | null;
           initiative?: number | null;
           conditions?: Json | null;
+          saving_throws?: Json | null;
           save_proficiencies?: Json | null;
           ability_scores?: Json | null;
           visible_to_players?: boolean;
@@ -1319,6 +1327,7 @@ export type Database = {
           max_hp?: number | null;
           initiative?: number | null;
           conditions?: Json | null;
+          saving_throws?: Json | null;
           save_proficiencies?: Json | null;
           ability_scores?: Json | null;
           visible_to_players?: boolean;
@@ -1578,6 +1587,9 @@ export type Database = {
           target_ac: number | null;
           attack_d20: number | null;
           attack_total: number | null;
+          attack_roll_snapshot: Json | null;
+          attack_ability_modifier: number | null;
+          graze_resolution_version: number | null;
           hit_result: string | null;
           save_dc: number | null;
           save_ability: string | null;
@@ -1623,6 +1635,9 @@ export type Database = {
           target_ac?: number | null;
           attack_d20?: number | null;
           attack_total?: number | null;
+          attack_roll_snapshot?: Json | null;
+          attack_ability_modifier?: number | null;
+          graze_resolution_version?: number | null;
           hit_result?: string | null;
           save_dc?: number | null;
           save_ability?: string | null;
@@ -1668,6 +1683,9 @@ export type Database = {
           target_ac?: number | null;
           attack_d20?: number | null;
           attack_total?: number | null;
+          attack_roll_snapshot?: Json | null;
+          attack_ability_modifier?: number | null;
+          graze_resolution_version?: number | null;
           hit_result?: string | null;
           save_dc?: number | null;
           save_ability?: string | null;
@@ -1778,6 +1796,9 @@ export type Database = {
           encounter_id: string | null;
           participant_id: string;
           character_id: string;
+          resolution_mode: string;
+          turn_id: string | null;
+          life_revision: number | null;
           state: string;
           d20: number | null;
           result: string | null;
@@ -1792,6 +1813,9 @@ export type Database = {
           encounter_id?: string | null;
           participant_id: string;
           character_id: string;
+          resolution_mode?: string;
+          turn_id?: string | null;
+          life_revision?: number | null;
           state?: string;
           d20?: number | null;
           result?: string | null;
@@ -1806,6 +1830,9 @@ export type Database = {
           encounter_id?: string | null;
           participant_id?: string;
           character_id?: string;
+          resolution_mode?: string;
+          turn_id?: string | null;
+          life_revision?: number | null;
           state?: string;
           d20?: number | null;
           result?: string | null;

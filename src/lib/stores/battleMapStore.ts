@@ -123,6 +123,7 @@ interface BattleMapStore {
    *  (informational, never targeted) — different visual treatment
    *  (orange/red danger zone, not yellow AOE). */
   reachPreview: {
+    sceneId: string;
     centerWorldX: number;     // footprint geometric center
     centerWorldY: number;
     footprintCells: number;   // 1 (Tiny–Medium), 2 (Large), 3 (Huge), 4 (Gargantuan)
@@ -266,6 +267,7 @@ interface BattleMapStore {
   /** v2.459.0 — Reach visualization setter. Pass null to clear. */
   setReachPreview: (
     p: {
+      sceneId: string;
       centerWorldX: number;
       centerWorldY: number;
       footprintCells: number;

@@ -2,14 +2,15 @@
 import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,it,vi} from 'vitest';
 import type {CombatParticipant,PendingAttack} from '../../types';
-const api=vi.hoisted(()=>({declareAttack:vi.fn(),rollAttackRoll:vi.fn()}));
+const api=vi.hoisted(()=>({declareAttack:vi.fn(),rollAttackRoll:vi.fn(),form:vi.fn(),picker:vi.fn()}));
 vi.mock('../../lib/pendingAttack',()=>api);
+vi.mock('../../lib/api/mutableForm',()=>({readActiveMutableForm:api.form}));
 const target={id:'target',name:'Goblin',participant_type:'creature',ac:13} as CombatParticipant;
 vi.mock('../../context/CombatContext',()=>({useCombatSelector:(select:(s:unknown)=>unknown)=>select({encounter:{id:'enc',campaign_id:'camp',status:'active'},participants:[{id:'self',entity_id:'char',participant_type:'character',name:'Psion'}]})}));
-vi.mock('./TargetPickerModal',()=>({default:({onPick}:{onPick:(p:CombatParticipant)=>void})=><button onClick={()=>onPick(target)}>Choose goblin</button>}));
+vi.mock('./TargetPickerModal',()=>({default:(props:{onPick:(p:CombatParticipant)=>void;selectionDisabled?:boolean;onCancel:()=>void})=>{api.picker(props);return <><button disabled={props.selectionDisabled} onClick={()=>props.onPick(target)}>Choose goblin</button><button onClick={props.onCancel}>Cancel picker</button></>;}}));
 import PlayerAttackButton from './PlayerAttackButton';
 const receipt={id:'attack',state:'declared'} as PendingAttack;
-beforeEach(()=>{vi.clearAllMocks();api.declareAttack.mockResolvedValue(receipt);api.rollAttackRoll.mockResolvedValue({...receipt,state:'attack_rolled'});});
+beforeEach(()=>{vi.clearAllMocks();api.form.mockReset().mockResolvedValue(null);api.declareAttack.mockResolvedValue(receipt);api.rollAttackRoll.mockResolvedValue({...receipt,state:'attack_rolled'});});
 afterEach(cleanup);
 function start(onDeclared:()=>void=vi.fn(),attackKind:'attack_roll'|'save'|'auto_hit'='attack_roll'){
  render(<PlayerAttackButton characterId="char" source="spell" damageDice="2d6" damageType="psychic" attackName="Psion spell" attackKind={attackKind} onDeclared={onDeclared}/>);
@@ -41,4 +42,53 @@ it('does not roll or retry the payment callback after a confirmed declaration ca
  const paid=vi.fn(()=>{throw new Error('sheet save unavailable');});start(paid);await screen.findByRole('alert');
  expect(paid).toHaveBeenCalledTimes(1);expect(api.rollAttackRoll).not.toHaveBeenCalled();expect(screen.queryByRole('button',{name:'Retry declaration'})).toBeNull();
  expect(screen.getByRole('alert').textContent).toContain('resources');
+});
+
+it('retains the original ability modifier across a failed declaration and sheet rerender',async()=>{
+ api.declareAttack.mockRejectedValueOnce(new Error('response lost'));
+ const props={characterId:'char',attackName:'Greatsword',damageDice:'2d6+6',damageType:'slashing',attackBonus:9,attackAbilityModifier:4};
+ const view=render(<PlayerAttackButton {...props}/>);
+ fireEvent.click(screen.getByRole('button',{name:/Attack/}));fireEvent.click(screen.getByRole('button',{name:'Choose goblin'}));
+ await screen.findByRole('alert');view.rerender(<PlayerAttackButton {...props} attackAbilityModifier={7} attackBonus={12}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Retry declaration'}));await waitFor(()=>expect(api.rollAttackRoll).toHaveBeenCalled());
+ expect(api.declareAttack.mock.calls[1][0]).toMatchObject({attackBonus:9,attackAbilityModifier:4});
+ expect(api.declareAttack.mock.calls[1][0]).toEqual(api.declareAttack.mock.calls[0][0]);
+});
+
+const form={durationSeconds:60,fleshWeaver:false,improvement:null};
+const meleeProps={characterId:'char',attackName:'Spear',damageDice:'1d6',damageType:'piercing',attackMode:'melee' as const,maxRangeFt:5};
+it.each([5,10])('opens with verified extended reach from base %s',async maxRangeFt=>{
+ api.form.mockResolvedValue(form);render(<PlayerAttackButton {...meleeProps} maxRangeFt={maxRangeFt}/>);
+ fireEvent.click(screen.getByRole('button',{name:/Attack/}));await screen.findByRole('button',{name:'Choose goblin'});
+ expect(api.picker).toHaveBeenLastCalledWith(expect.objectContaining({maxRangeFt:maxRangeFt+5}));
+ fireEvent.click(screen.getByRole('button',{name:'Choose goblin'}));await waitFor(()=>expect(api.declareAttack).toHaveBeenCalledTimes(1));
+ expect(api.form).toHaveBeenCalledTimes(2);
+});
+it('blocks expiry between opening and selecting, then reopens at base reach',async()=>{
+ api.form.mockResolvedValueOnce(form).mockResolvedValue(null);const paid=vi.fn();render(<PlayerAttackButton {...meleeProps} onDeclared={paid}/>);
+ fireEvent.click(screen.getByRole('button',{name:/Attack/}));fireEvent.click(await screen.findByRole('button',{name:'Choose goblin'}));
+ expect((await screen.findByRole('alert')).textContent).toContain('Reach changed');
+ expect(api.declareAttack).not.toHaveBeenCalled();expect(paid).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:/Attack/}));await screen.findByRole('button',{name:'Choose goblin'});
+ expect(api.picker).toHaveBeenLastCalledWith(expect.objectContaining({maxRangeFt:5}));
+});
+it.each(['open','pick'])('does not declare when the %s reach read fails',async stage=>{
+ if(stage==='pick')api.form.mockResolvedValueOnce(form).mockRejectedValueOnce(new Error('offline'));
+ else api.form.mockRejectedValueOnce(new Error('offline'));
+ render(<PlayerAttackButton {...meleeProps}/>);fireEvent.click(screen.getByRole('button',{name:/Attack/}));
+ if(stage==='pick')fireEvent.click(await screen.findByRole('button',{name:'Choose goblin'}));
+ expect((await screen.findByRole('alert')).textContent).toContain('Reach could not be verified');expect(api.declareAttack).not.toHaveBeenCalled();
+});
+it.each([{source:'weapon' as const,attackMode:'ranged' as const},{source:'spell' as const,attackMode:'melee' as const}])('does not extend ranged weapons or spell ranges: %j',async props=>{
+ render(<PlayerAttackButton {...meleeProps} {...props} maxRangeFt={60}/>);fireEvent.click(screen.getByRole('button',{name:/Attack/}));
+ await screen.findByRole('button',{name:'Choose goblin'});expect(api.form).not.toHaveBeenCalled();
+ expect(api.picker).toHaveBeenLastCalledWith(expect.objectContaining({maxRangeFt:60}));
+});
+
+it('cancelling during the final read never declares the abandoned selection',async()=>{
+ let resolve!:(v:unknown)=>void;api.form.mockResolvedValueOnce(form).mockImplementationOnce(()=>new Promise(r=>{resolve=r;}));
+ render(<PlayerAttackButton {...meleeProps}/>);fireEvent.click(screen.getByRole('button',{name:/Attack/}));
+ fireEvent.click(await screen.findByRole('button',{name:'Choose goblin'}));fireEvent.click(screen.getByRole('button',{name:'Cancel picker'}));
+ await act(async()=>resolve(form));expect(api.declareAttack).not.toHaveBeenCalled();
+ expect(screen.queryByRole('button',{name:'Choose goblin'})).toBeNull();
 });

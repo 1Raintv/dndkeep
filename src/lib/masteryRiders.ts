@@ -1,3 +1,6 @@
+import {weaponAbilityModifier} from '../rules/weaponAbility';
+import {advanceMasteryExpiry,MASTERY_VEX_KEY} from '../rules/masteryExpiry';
+export {MASTERY_VEX_KEY} from '../rules/masteryExpiry';
 import {characterProficiencyBonus} from '../rules/proficiency';
 import { savingThrowPassed } from '../rules/savingThrows';
 // v2.630.0 — Weapon Mastery riders, Ship B part 1 (SRD 5.2.1).
@@ -12,8 +15,7 @@ import { savingThrowPassed } from '../rules/savingThrows';
 //   Vex    — hit + damage: attacker has Advantage on their next attack
 //            roll against THAT target (marker on the attacker, scoped
 //            via onlyVsTargetParticipantId, consumed on use, expires
-//            end of attacker's next turn — swept at start of the turn
-//            after via the same expiry hook)
+//            end of attacker's next turn)
 //   Topple — hit: target makes a CON save (DC 8 + attack ability mod
 //            + PB); fail → Prone via the existing condition system
 //   Push   — hit: DM-facing event "may push target up to 10 ft
@@ -33,7 +35,6 @@ import { savingThrowPassed } from '../rules/savingThrows';
 // Dynamic imports below avoid a require cycle with pendingAttack.
 import { abilityModifier } from '../rules/abilities';
 import { rollDie } from '../rules/dice';
-import { applyDamageToPools } from '../rules/hp';
 import { supabase } from './supabase';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { masteryForWeapon, MASTERY_WEAPONS, type MasteryName } from '../data/weaponMastery';
@@ -41,7 +42,6 @@ import type { ActiveBuff } from './buffs';
 import type { PendingAttack } from '../types';
 
 export const MASTERY_SAP_KEY = 'mastery_sapped';
-export const MASTERY_VEX_KEY = 'mastery_vexed';
 export const MASTERY_SLOW_KEY = 'mastery_slowed';
 
 export interface MasteryContext {
@@ -82,11 +82,8 @@ export async function getMasteryContext(atk: PendingAttack): Promise<MasteryCont
   if (!weaponEntry || !chosen.includes(weaponEntry.name)) return null;
 
   const isRanged = weaponEntry.group === 'simple_ranged' || weaponEntry.group === 'martial_ranged';
-  const abilityMod = isRanged
-    ? mod(ch.dexterity)
-    : weaponEntry.finesse
-      ? Math.max(mod(ch.strength), mod(ch.dexterity))
-      : mod(ch.strength);
+  // v2.869: retain the declared ability even if buffs or equipment change later.
+  const abilityMod=atk.attack_ability_modifier??weaponAbilityModifier(mod(ch.strength),mod(ch.dexterity),{ranged:isRanged,finesse:weaponEntry.finesse});
   const profBonus = characterProficiencyBonus(ch);
   return { mastery: weaponEntry.mastery, abilityMod, profBonus };
 }
@@ -117,24 +114,6 @@ export function surveyMasteryMarkers(
     }
   }
   return { adv, dis, consumeKeys };
-}
-
-/** Remove consumed markers from the attacker after their roll. */
-export async function consumeMasteryMarkers(
-  atk: PendingAttack,
-  consumeKeys: string[],
-): Promise<void> {
-  if (consumeKeys.length === 0 || !atk.attacker_participant_id) return;
-  const { removeBuff } = await import('./buffs');
-  for (const key of consumeKeys) {
-    await removeBuff({
-      participantId: atk.attacker_participant_id,
-      key,
-      reason: 'mastery_marker_consumed',
-      campaignId: atk.campaign_id,
-      encounterId: atk.encounter_id,
-    });
-  }
 }
 
 /** Fire the on-hit mastery rider for this attack. Call from
@@ -198,11 +177,10 @@ export async function applyOnHitMasteryRiders(input: {
           name: 'Vexed',
           source: `mastery:${atk.attack_name}`,
           onlyVsTargetParticipantId: atk.target_participant_id,
-          // RAW: before the end of your next turn — swept at the start
-          // of the turn AFTER the attacker's next (nearest hook that
-          // never expires it early).
-          expiresAtStartOfTurnOf: atk.attacker_participant_id,
-          expiresSkipFirst: true,
+          // v2.869: arm at the next own turn's start, expire at its end.
+          // An off-turn hit uses that same next start, with no extra round.
+          expiresAtEndOfTurnOf: atk.attacker_participant_id,
+          expiresAfterNextTurnStarts: true,
         } as ActiveBuff,
       });
       return;
@@ -210,8 +188,9 @@ export async function applyOnHitMasteryRiders(input: {
     case 'Topple': {
       if (targetIsDead) return;
       const dc = 8 + ctx.abilityMod + ctx.profBonus;
-      const { getTargetSaveBonus } = await import('./pendingAttack');
-      const { bonus, breakdown, naturalExtremes } = await getTargetSaveBonus(atk.target_participant_id, 'CON');
+      const {verifiedTargetSaves}=await import('./verifiedTargetSaves');
+      const bonuses=await verifiedTargetSaves([{id:atk.target_participant_id,name:atk.target_name}],'CON');
+      const {bonus,breakdown,naturalExtremes}=bonuses.get(atk.target_participant_id)!;
       const d20 = rollDie(20);
       const total = d20 + bonus;
       const failed = !savingThrowPassed(d20, total, dc, { naturalExtremes });
@@ -284,114 +263,24 @@ export async function applyOnHitMasteryRiders(input: {
   }
 }
 
-/** v2.631.0 — Graze: on a miss with a mastered Graze weapon, the
- *  target takes damage equal to the ability modifier used for the
- *  attack roll (same damage type as the weapon; unmodifiable except
- *  by the modifier itself, so resistances still apply — kept simple:
- *  flat application through temp HP first). Characters dropped to 0
- *  by Graze enter the normal death-save flow at their turn start;
- *  monsters at 0 die. Known gap: concentration-at-0 auto-drop lives
- *  in applyDamage and is not duplicated here (DM handles the rare
- *  mod-damage finishing blow on a concentrating PC). */
-export async function grazeOnMiss(atk: PendingAttack): Promise<void> {
-  if (!atk.target_participant_id) return;
-  const ctx = await getMasteryContext(atk);
-  if (!ctx || ctx.mastery !== 'Graze') return;
-  const dmg = ctx.abilityMod;
-  if (dmg <= 0) return;   // negative/zero modifier deals nothing
-
-  const { normalizeParticipantRow, JOINED_COMBATANT_FIELDS } = await import('./combatParticipantNormalize');
-  const { data: tgtRaw } = await (supabase as any)
-    .from('combat_participants')
-    .select('id, combatant_id, participant_type, ' + JOINED_COMBATANT_FIELDS)
-    .eq('id', atk.target_participant_id)
-    .maybeSingle();
-  if (!tgtRaw) return;
-  const tgt = normalizeParticipantRow(tgtRaw);
-  if (tgt.is_dead) return;
-
-  const tempBefore = (tgt.temp_hp as number | null) ?? 0;
-  const hpBefore = (tgt.current_hp as number | null) ?? 0;
-  // v2.636 — pool math consolidated into rules/hp.ts
-  const { tempAfter, hpAfter, droppedTo0 } = applyDamageToPools(hpBefore, tempBefore, dmg);
-  const monsterDied = droppedTo0 && tgt.participant_type !== 'character';
-
-  const combatantId = (tgt as any).combatant_id as string | null;
-  if (!combatantId) return;
-  await (supabase as any)
-    .from('combatants')
-    .update({
-      current_hp: hpAfter,
-      temp_hp: tempAfter,
-      ...(monsterDied ? { is_dead: true } : {}),
-    })
-    .eq('id', combatantId);
-
-  await emitCombatEvent({
-    campaignId: atk.campaign_id,
-    encounterId: atk.encounter_id,
-    chainId: atk.chain_id ?? newChainId(),
-    sequence: 7,
-    actorType: 'system',
-    actorName: 'System',
-    targetType: atk.target_type,
-    targetName: atk.target_name,
-    eventType: 'damage_applied',
-    payload: {
-      kind: 'mastery_graze',
-      damage: dmg,
-      label: `Graze (${atk.attack_name}): the miss still deals ${dmg} damage`,
-    },
-  });
-  if (droppedTo0) {
-    await emitCombatEvent({
-      campaignId: atk.campaign_id,
-      encounterId: atk.encounter_id,
-      chainId: atk.chain_id ?? newChainId(),
-      sequence: 8,
-      actorType: 'system',
-      actorName: 'System',
-      targetType: atk.target_type,
-      targetName: atk.target_name,
-      eventType: monsterDied ? 'died' : 'dropped_to_0_hp',
-      payload: { via: 'mastery_graze', damage: dmg },
-    });
+type MasteryRows=Array<{id?:string;encounter_id?:string|null;campaign_id?:string;active_buffs?:unknown}>;
+async function sweepMasteryBoundary(actor:string,rows:MasteryRows,timing:'turn_start'|'turn_end'):Promise<void>{
+ const {removeBuff,applyBuff}=await import('./buffs');
+ for(const row of rows){
+  const buffs=(row.active_buffs??[]) as ActiveBuff[];
+  const plan=advanceMasteryExpiry(buffs,actor,timing);
+  for(const b of plan.removed)await removeBuff({participantId:row.id as string,key:b.key,reason:'mastery_marker_expired',campaignId:row.campaign_id,encounterId:row.encounter_id??null});
+  for(const b of plan.next){
+   if(buffs.includes(b))continue;
+   await applyBuff({participantId:row.id as string,campaignId:row.campaign_id,encounterId:row.encounter_id??null,emitEvent:false,buff:b});
   }
+ }
 }
-
-/** Start-of-turn expiry sweep. Call from advanceTurn with the full
- *  participant list: removes mastery marker buffs whose
- *  expiresAtStartOfTurnOf matches the participant whose turn is
- *  starting. Vex sets expiresSkipFirst so it survives through the end
- *  of the attacker's next turn (flag cleared on first sweep, removed
- *  on the second). */
-export async function sweepExpiredMasteryMarkers(
-  incomingParticipantId: string,
-  rows: Array<{ id?: string; encounter_id?: string | null; campaign_id?: string; active_buffs?: unknown }>,
-): Promise<void> {
-  const { removeBuff, applyBuff } = await import('./buffs');
-  for (const row of rows) {
-    const buffs = ((row.active_buffs ?? []) as ActiveBuff[]).filter(
-      b => (b as any).expiresAtStartOfTurnOf === incomingParticipantId,
-    );
-    for (const b of buffs) {
-      if ((b as any).expiresSkipFirst) {
-        await applyBuff({
-          participantId: row.id as string,
-          campaignId: row.campaign_id as string | undefined,
-          encounterId: row.encounter_id ?? null,
-          emitEvent: false,
-          buff: { ...(b as any), expiresSkipFirst: undefined } as ActiveBuff,
-        });
-        continue;
-      }
-      await removeBuff({
-        participantId: row.id as string,
-        key: b.key,
-        reason: 'mastery_marker_expired',
-        campaignId: row.campaign_id as string | undefined,
-        encounterId: row.encounter_id ?? null,
-      });
-    }
-  }
+/** Sap/Slow expire now; Vex becomes due at this turn's end. */
+export function sweepExpiredMasteryMarkers(incomingParticipantId:string,rows:MasteryRows):Promise<void>{
+ return sweepMasteryBoundary(incomingParticipantId,rows,'turn_start');
+}
+/** v2.869: Vex cannot leak into reactions after the attacker's next turn. */
+export function sweepEndedMasteryMarkers(outgoingParticipantId:string,rows:MasteryRows):Promise<void>{
+ return sweepMasteryBoundary(outgoingParticipantId,rows,'turn_end');
 }

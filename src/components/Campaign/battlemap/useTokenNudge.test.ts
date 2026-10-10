@@ -49,3 +49,23 @@ it('does not record a failed position save',async()=>{
   expect(record).not.toHaveBeenCalled();
   expect(useBattleMapStore.getState().tokens.a.x).toBe(35);
 });
+
+it.each(['<div contenteditable><span></span></div>','<div contenteditable="plaintext-only"><span></span></div>','<div role="textbox"><span></span></div>','<div role="dialog"><span></span></div>','<button><span></span></button>'])('leaves editing and dialog arrows alone: %s',async html=>{
+ setup();const host=document.createElement('div');host.innerHTML=html;document.body.append(host);
+ try{
+  const event=new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true,cancelable:true});
+  await act(async()=>{host.querySelector('span')!.dispatchEvent(event);});
+  expect(event.defaultPrevented).toBe(false);expect(api.updateTokenPos).not.toHaveBeenCalled();
+ }finally{host.remove();}
+});
+it.each(['claimed','composing'])('ignores %s arrow events',async kind=>{
+ setup();const event=new KeyboardEvent('keydown',{key:'ArrowRight',cancelable:true,isComposing:kind==='composing'});
+ if(kind==='claimed')event.preventDefault();
+ await act(async()=>{window.dispatchEvent(event);});expect(api.updateTokenPos).not.toHaveBeenCalled();
+});
+it('does not move behind a visible modal while focus is still outside',async()=>{
+ setup();const modal=document.createElement('div');modal.setAttribute('aria-modal','true');
+ vi.spyOn(modal,'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);document.body.append(modal);
+ try{await act(async()=>{window.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight'}));});expect(api.updateTokenPos).not.toHaveBeenCalled();}
+ finally{modal.remove();}
+});

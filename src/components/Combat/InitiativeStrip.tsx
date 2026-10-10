@@ -1,3 +1,5 @@
+import MovementReviewButton from './MovementReviewButton';
+import {useAuraTurnReview} from './useAuraTurnReview';
 // v2.96.0 — Phase D of the Combat Backbone
 //
 // Fixed-position bottom strip showing initiative order during an active
@@ -8,6 +10,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import './InitiativeStrip.css';
+import ConditionSaveRecovery from './ConditionSaveRecovery';
 import {useBottomOverlayInset} from '../../lib/hooks/useBottomOverlayInset';
 import { useCombat } from '../../context/CombatContext';
 // v2.620.0 — B3b: owned-minion sub-entries. Direct combatants fetch
@@ -49,6 +52,7 @@ import type { CombatParticipant } from '../../types';
 
 interface Props {
   isDM: boolean;
+  characterId?: string;
 }
 
 const ACTOR_COLORS: Record<CombatParticipant['participant_type'], string> = {
@@ -61,8 +65,9 @@ const ACTOR_COLORS: Record<CombatParticipant['participant_type'], string> = {
   npc: '#60a5fa',
 };
 
-export default function InitiativeStrip({ isDM }: Props) {
+export default function InitiativeStrip({ isDM, characterId }: Props) {
   const { encounter, participants, currentActor } = useCombat();
+  const auraReview=useAuraTurnReview(encounter?.id);
   const stripRef=useRef<HTMLDivElement>(null);
   useBottomOverlayInset(stripRef,encounter?.status==='active');
   // v2.457.0 — Concentration map for the active campaign. Empty until
@@ -74,6 +79,11 @@ export default function InitiativeStrip({ isDM }: Props) {
   // every handler did `await fn(...)` and discarded the result, so an
   // RLS rejection / network error / stale state was completely silent.
   const { showToast } = useToast();
+  const [endingTurn,setEndingTurn]=useState(false),[reviewingMovement,setReviewingMovement]=useState(false);
+  const turnClick=useRef(false),mounted=useRef(false),latestEncounter=useRef(encounter?.id);
+  latestEncounter.current=encounter?.id;
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
+
   // v2.486.0 — In-app confirm hook (replaces v2.485 ConfirmDialog).
   const { confirm: confirmModal } = useModal();
   // v2.416.0 — Shared preference, also read/written from
@@ -178,11 +188,29 @@ export default function InitiativeStrip({ isDM }: Props) {
   // legendary creatures while the encounter is flagged in_lair.
   const inLair = (encounter as { in_lair?: boolean }).in_lair === true;
 
+  async function onReviewMovement() {
+    if(!encounter||turnClick.current)return;
+    const started=encounter.id;turnClick.current=true;setEndingTurn(true);setReviewingMovement(true);
+    try{
+      const {withCurrentTurnUser}=await import('../../lib/api/liveTurnTransitions');
+      await withCurrentTurnUser((user,guard)=>auraReview.reviewMovement(started,user,guard));
+      if(mounted.current&&latestEncounter.current===started)showToast('Movement effects reviewed.','success');
+    }catch(error){if(mounted.current&&latestEncounter.current===started)showToast(error instanceof Error?error.message:'Movement review needs attention.','error');}
+    finally{turnClick.current=false;if(mounted.current){setEndingTurn(false);setReviewingMovement(false);}}
+  }
   async function onEndTurn() {
-    if (!encounter) return;
-    const result = await advanceTurn(encounter.id);
-    if (!result.ok) {
-      showToast(`Couldn't end turn: ${result.reason}`, 'error');
+    if (!encounter || turnClick.current) return;
+    const started=encounter.id;
+    turnClick.current=true;setEndingTurn(true);
+    try {
+      const result = await advanceTurn(started,auraReview.resolve,auraReview.reviewMovement);
+      if (mounted.current&&latestEncounter.current===started&&!result.ok) {
+        // v2.869: a delayed/failed advance may have partially applied effects.
+        // Keep the explanation until dismissed instead of inviting rapid retries.
+        showToast(`Couldn't end turn: ${result.reason}. Check combat before trying again.`, 'error', {duration:0});
+      }
+    } finally {
+      turnClick.current=false;if(mounted.current)setEndingTurn(false);
     }
   }
 
@@ -204,19 +232,20 @@ export default function InitiativeStrip({ isDM }: Props) {
   }
 
   async function onEndCombat() {
-    if (!encounter) return;
-    // v2.486.0 — In-app confirm via useModal.
-    const ok = await confirmModal({
-      title: 'End combat?',
-      message: 'Ends the current encounter. Conditions, buffs, and cross-encounter immunities will carry over to character sheets.',
-      confirmLabel: 'End Combat',
-      danger: true,
-    });
-    if (!ok) return;
-    const result = await endEncounter(encounter.id);
-    if (!result.ok) {
-      showToast(`Couldn't end combat: ${result.reason}`, 'error');
-    }
+    if (!encounter || turnClick.current) return;
+    const started=encounter.id;turnClick.current=true;
+    try {
+      const ok = await confirmModal({
+        title: 'End combat?',
+        message: 'Ends the current encounter. Conditions, buffs, and cross-encounter immunities will carry over to character sheets.',
+        confirmLabel: 'End Combat', danger: true,
+      });
+      if (!ok || !mounted.current || latestEncounter.current!==started) return;
+      const result = await endEncounter(started);
+      if (mounted.current && latestEncounter.current===started && !result.ok) {
+        showToast(`Couldn't end combat: ${result.reason}`, 'error', {duration:0});
+      }
+    } finally {turnClick.current=false;}
   }
 
   // v2.108.0 — Phase G: Dash + Disengage action buttons. Apply to the current
@@ -225,6 +254,7 @@ export default function InitiativeStrip({ isDM }: Props) {
     if (!encounter || !currentActor) return;
     if (currentActor.dash_used_this_turn) return;
     const result = await takeDash({
+      turnId: encounter.psionic_turn_id,
       campaignId: encounter.campaign_id,
       encounterId: encounter.id,
       participantId: currentActor.id,
@@ -240,6 +270,7 @@ export default function InitiativeStrip({ isDM }: Props) {
     if (!encounter || !currentActor) return;
     if (currentActor.disengaged_this_turn) return;
     const result = await takeDisengage({
+      turnId: encounter.psionic_turn_id,
       campaignId: encounter.campaign_id,
       encounterId: encounter.id,
       participantId: currentActor.id,
@@ -274,6 +305,8 @@ export default function InitiativeStrip({ isDM }: Props) {
         boxShadow: '0 -4px 16px rgba(0,0,0,0.4)',
       }}
     >
+      {auraReview.dialog}
+      {currentActor && encounter.psionic_turn_id && (isDM || (currentActor.participant_type === 'character' && currentActor.entity_id === characterId)) && <ConditionSaveRecovery key={`${currentActor.id}:${encounter.psionic_turn_id}`} participant={currentActor} turnId={encounter.psionic_turn_id} />}
       <div className="initiative-summary" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {/* v2.285.0 — Round badge is clickable for the DM. Click
             opens a per-participant action-status popover anchored
@@ -962,19 +995,22 @@ export default function InitiativeStrip({ isDM }: Props) {
               end-to-end via MonsterActionPanel, and PC attacks go
               through PlayerAttackButton on the character sheet).
               Removing the orphaned button + its modal mount + state. */}
+          <MovementReviewButton encounterId={encounter.id} busy={endingTurn} onReview={onReviewMovement}/>
           <button
             onClick={onEndTurn}
+            disabled={endingTurn}
+            aria-busy={endingTurn}
             style={{
               fontFamily: 'var(--ff-body)', fontSize: 11, fontWeight: 800,
               padding: '6px 14px', borderRadius: 6,
               border: '1px solid var(--c-gold-bdr)',
               background: 'var(--c-gold-bg)',
               color: 'var(--c-gold-l)',
-              cursor: 'pointer', minHeight: 0,
+              cursor: endingTurn ? 'wait' : 'pointer', opacity: endingTurn ? 0.65 : 1, minHeight: 0,
               letterSpacing: '0.06em', textTransform: 'uppercase',
             }}
           >
-            End Turn
+            {endingTurn ? (reviewingMovement?'Reviewing…':'Ending…') : 'End Turn'}
           </button>
           <button
             onClick={onEndCombat}

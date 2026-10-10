@@ -2,10 +2,11 @@ import {useState} from 'react';
 import type {Character,CombatParticipant,SpellData} from '../../types';
 import type {ConcentrationCastSource} from '../../rules/concentrationCasting';
 import {useCombatSelector} from '../../context/CombatContext';
-import {createSpellDeclarationRequest,isSpellDeclarationRequest,type SpellCombatIntent} from '../../lib/spellDeclarationRequest';
+import {createSpellDeclarationRequest,createTeleporterCantripRequest,isSpellDeclarationRequest,type SpellCombatIntent} from '../../lib/spellDeclarationRequest';
 import {saveSpellDeclaration} from '../../lib/api/declaredSpells';
 import TargetPickerModal from './TargetPickerModal';
 interface Props {
+ teleporterCombatParent?:string;onSaved?:()=>void;
  character:Character;spell:SpellData;userId:string;slotLevel:number;
  casting:ConcentrationCastSource&{saveDC:number};maxRangeFt:number|null;
  attackMode?:'melee'|'ranged'|null;attackKind:'attack_roll'|'save';attackBonus?:number;damageDice:string;damageType:string;
@@ -26,10 +27,10 @@ export default function SpellAttackCastButton(props:Props){
     attackBonus:props.attackKind==='attack_roll'?props.attackBonus??0:null,targetAC:props.attackKind==='attack_roll'?target.ac:null,
     saveAbility:props.attackKind==='save'?props.saveAbility??null:null,saveSuccessEffect:props.attackKind==='save'?props.saveSuccessEffect??'half':null,
     actorCombatantId:actor.combatant_id??null,target:{participantId:target.id,entityId:target.entity_id,type:target.participant_type as 'character'|'creature',combatantId:target.combatant_id??null}};
-   const request=createSpellDeclarationRequest(props.character,props.spell,actor.id,props.userId,props.slotLevel,props.casting,target.name);
+   const request=props.teleporterCombatParent?createTeleporterCantripRequest(props.character,props.spell,actor.id,props.userId,props.casting,target.name,props.teleporterCombatParent):createSpellDeclarationRequest(props.character,props.spell,actor.id,props.userId,props.slotLevel,props.casting,target.name);
    request.context.combat=combat;
    if(!isSpellDeclarationRequest(request))throw new Error('Review the spell damage and selected target before casting.');
-   saveSpellDeclaration(request);setPicking(false);setError('');
+   saveSpellDeclaration(request);setPicking(false);setError('');props.onSaved?.();
   }catch(e){setError(e instanceof Error?e.message:'Could not save this casting.');}
  }
  return <>

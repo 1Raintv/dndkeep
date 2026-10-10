@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { removeConditions } from '../../rules/conditionRemoval';
+import { resolveDeathSave } from '../../rules/deathSaves';
 import type { Character } from '../../types';
 import { useDiceRoll } from '../../context/DiceRollContext';
 import { logHistoryEvent } from '../../lib/characterHistory';
@@ -21,45 +22,37 @@ interface DeathSavesProps {
 export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
   const { triggerRoll } = useDiceRoll();
 
-  // v2.463.0 fix — Hoisted ahead of the `if (character.current_hp > 0)
-  // return null` early return at line ~30 so the hook count stays
-  // consistent across renders. (rules-of-hooks lint violation; latent
-  // bug — DeathSaves does mount/unmount cleanly when HP toggles between
-  // 0 and >0, but if a downed PC's HP is restored mid-frame while the
-  // panel is still in render, hook order would diverge.) Body is a
-  // no-op marker comment retained from the original location.
-  const successesForEffect = Math.min(3, Math.max(0, character.death_saves_successes ?? 0));
-  useEffect(() => {
-    if (successesForEffect >= 3) {
-      // Auto-stabilize at 3 successes (manual-click path safety;
-      // rollDeathSave resolves its own state above). Currently a marker
-      // for future use — no action taken (don't change HP, just keep
-      // the success counter so the panel renders the "Stable" branch).
-    }
-  }, [successesForEffect]);
-
   if (character.current_hp > 0) return null;
 
   const successes = Math.min(3, Math.max(0, character.death_saves_successes ?? 0));
   const failures  = Math.min(3, Math.max(0, character.death_saves_failures  ?? 0));
 
-  const isStabilized = successes >= 3;
+  const isStabilized = character.is_stable === true || successes >= 3;
   const isDead       = failures  >= 3;
 
   function setSuccesses(n: number) {
-    onUpdate({ death_saves_successes: Math.min(3, Math.max(0, n)) });
+    onUpdate(n >= 3 ? { is_stable: true, death_saves_successes: 0, death_saves_failures: 0 }
+      : { is_stable: false, death_saves_successes: Math.max(0, n) });
   }
 
   function setFailures(n: number) {
-    onUpdate({ death_saves_failures: Math.min(3, Math.max(0, n)) });
+    onUpdate({ is_stable: false, death_saves_failures: Math.min(3, Math.max(0, n)) });
+  }
+
+  // v2.869: waking must clear derived incapacity but preserve Prone and any
+  // independent condition. Use the same cascade rules as map condition changes.
+  function wakingConditions(): Partial<Character> {
+    if(!character.active_conditions?.includes('Unconscious'))return {};
+    const next=removeConditions(character.active_conditions,character.condition_sources??{},['Unconscious']);
+    return {active_conditions:next.conditions as Character['active_conditions'],condition_sources:next.sources as Character['condition_sources']};
   }
 
   function stabilize() {
-    onUpdate({ current_hp: 1, death_saves_successes: 0, death_saves_failures: 0 });
+    onUpdate({ ...wakingConditions(), is_stable: false, current_hp: 1, death_saves_successes: 0, death_saves_failures: 0 });
   }
 
   function reset() {
-    onUpdate({ death_saves_successes: 0, death_saves_failures: 0 });
+    onUpdate({ is_stable: false, death_saves_successes: 0, death_saves_failures: 0 });
   }
 
   // v2.162.0 — Phase Q.0 pt 3: roll a death save.
@@ -82,27 +75,12 @@ export default function DeathSaves({ character, onUpdate }: DeathSavesProps) {
       label: `${character.name} — Death Save`,
       onResult: (_allDice, total) => {
         const d20 = total;
-        let outcome: string;
-        if (d20 === 20) {
-          onUpdate({
-            current_hp: 1,
-            death_saves_successes: 0,
-            death_saves_failures: 0,
-          });
-          outcome = 'NAT 20 — REVIVED at 1 HP';
-        } else if (d20 === 1) {
-          const newFailures = Math.min(3, failures + 2);
-          onUpdate({ death_saves_failures: newFailures });
-          outcome = `NAT 1 — 2 FAILURES (now ${newFailures}/3)`;
-        } else if (d20 >= 10) {
-          const newSuccesses = Math.min(3, successes + 1);
-          onUpdate({ death_saves_successes: newSuccesses });
-          outcome = `SUCCESS (${newSuccesses}/3${newSuccesses === 3 ? ' — STABILIZED' : ''})`;
-        } else {
-          const newFailures = Math.min(3, failures + 1);
-          onUpdate({ death_saves_failures: newFailures });
-          outcome = `FAILURE (${newFailures}/3${newFailures === 3 ? ' — DEAD' : ''})`;
-        }
+        const save = resolveDeathSave(d20, total, successes, failures);
+        onUpdate({ ...(save.currentHp>0?wakingConditions():{}), current_hp: save.currentHp, is_stable: save.isStable,
+          death_saves_successes: save.successes, death_saves_failures: save.failures });
+        const outcome = save.result === 'crit_success' ? 'NAT 20 — REVIVED at 1 HP'
+          : save.isStable ? 'SUCCESS — STABILIZED'
+          : `${save.result === 'crit_failure' ? 'NAT 1 — 2 FAILURES' : save.result.toUpperCase()} (${save.successes} successes, ${save.failures} failures${save.isDead ? ' — DEAD' : ''})`;
         // Fire-and-forget history write. Non-blocking; a failed log
         // must not interrupt the death save resolution.
         if (character.user_id) {

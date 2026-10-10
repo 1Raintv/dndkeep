@@ -1,3 +1,4 @@
+import {psionProgression} from './psionProgression';
 import {isSpellSources} from './spellSources';
 
 interface Caster {
@@ -21,8 +22,10 @@ export function cantripDamage(character:Caster,spell:Cantrip,baseDice:string|nul
  // Only unambiguous dice expressions enter the automated damage pipeline.
  const dice=scaled&&/^\d+d\d+(?:[+-]\d+)?$/i.test(scaled)?scaled:baseDice;
  if(!dice)return unchanged;
- const telepath=(character.class_name==='Psion'&&character.subclass==='Telepath'&&primary>=6)
-  ||(character.secondary_class==='Psion'&&character.secondary_subclass==='Telepath'&&secondary>=6);
+ // v2.869: use the shared progression guard. Invalid totals or duplicated
+ // classes cannot grant Potent Thoughts when other Psion features reject them.
+ const progression=psionProgression(character);
+ const telepath=progression?.subclass==='Telepath'&&progression.level>=6;
  if(!telepath)return {...unchanged,dice};
  const sources=character.spell_sources;
  if(!isSpellSources(sources)||!sources[spell.id]?.length)return {dice,bonus:0,needsSourceReview:true};

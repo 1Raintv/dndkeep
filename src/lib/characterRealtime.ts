@@ -3,7 +3,7 @@ import type {Character} from '../types';
 // Keep the healing ceiling current when another sheet changes maximum HP.
 const fields = [
  'spell_preparation_sources','spell_sources','known_spells','prepared_spells','combat_hp_sync_id','current_hp','max_hp','temp_hp','hit_point_revision','active_conditions','concentration_spell','concentration_rounds_remaining',
- 'exhaustion_level','concentration_revision','concentration_casting_context','concentration_slot_level','spell_slots','death_saves_successes','death_saves_failures','inspiration',
+ 'exhaustion_level','concentration_revision','concentration_casting_context','concentration_slot_level','spell_slots','is_stable','death_saves_successes','death_saves_failures','inspiration',
  'hit_dice_spent','hit_dice_spent_by_type','psionic_hit_dice_revision','psionic_energy_revision','class_resources','feature_uses','currency','inventory','experience_points',
 ] as const;
 

@@ -1,3 +1,4 @@
+import {teleporterCantripEligible} from '../rules/teleporterCombat';
 import {spellActionKind,type SpellActionKind} from '../rules/spellActionCost';
 import type {Character,SpellData} from '../types';
 import type {ConcentrationCastSource} from '../rules/concentrationCasting';
@@ -11,7 +12,7 @@ export interface SpellDeclarationRequest {
  castId:string;characterId:string;userId:string;participantId:string;campaignId:string;
  spellId:string;spellName:string;slotLevel:number;
  expectedSlot:{total:number;used:number}|null;
- context:{actionKind?:SpellActionKind;combat?:SpellCombatIntent;saveDC?:number;spellLevel:number;source:ConcentrationCastSource['source'];ability:ConcentrationCastSource['ability'];target:string;isBonusAction:boolean;range:string;duration:string};
+ context:{teleporterCombatParent?:string;actionKind?:SpellActionKind;combat?:SpellCombatIntent;saveDC?:number;spellLevel:number;source:ConcentrationCastSource['source'];ability:ConcentrationCastSource['ability'];target:string;isBonusAction:boolean;range:string;duration:string};
 }
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const text=(value:unknown,max:number):value is string=>typeof value==='string'&&value.length<=max;
@@ -29,6 +30,7 @@ export function isSpellDeclarationRequest(value:unknown):value is SpellDeclarati
   ||!['intelligence','wisdom','charisma'].includes(c.ability)||!text(c.target,300)||typeof c.isBonusAction!=='boolean'
   ||!text(c.range,500)||!text(c.duration,500))return false;
  if(c.actionKind!==undefined&&(!['action','bonusAction','reaction'].includes(c.actionKind)||(c.actionKind==='bonusAction')!==c.isBonusAction))return false;
+ if(c.teleporterCombatParent!==undefined&&(!uuid(c.teleporterCombatParent)||c.teleporterCombatParent===r.castId||c.spellLevel!==0||c.actionKind!=='bonusAction'||!['class:Psion','grant:class:Psion'].includes(c.source)))return false;
  if(c.combat!==undefined&&!isSpellCombatIntent(c.combat))return false;
  if(c.combat?.kind==='save'&&c.saveDC===undefined)return false;
  if(c.spellLevel===0)return r.slotLevel===0&&r.expectedSlot===null;
@@ -60,4 +62,14 @@ export function isSpellCombatIntent(value:unknown):value is SpellCombatIntent {
   &&['character','creature'].includes(t.type)&&(t.combatantId===null||uuid(t.combatantId))
   &&(v.kind==='attack_roll'?bounded(v.attackBonus,-100,100)&&bounded(v.targetAC,0,100):v.attackBonus===null&&v.targetAC===null)
   &&(v.kind==='save'?['STR','DEX','CON','INT','WIS','CHA'].includes(v.saveAbility??'')&&['half','none','other'].includes(v.saveSuccessEffect??''):v.saveAbility===null&&v.saveSuccessEffect===null);
+}
+
+/** Build the persisted follow-up intent without altering ordinary cantrip costs.
+ * The server verifies the parent and consumes its sole child atomically. */
+export function createTeleporterCantripRequest(character:Character,spell:SpellData,participantId:string,userId:string,source:ConcentrationCastSource & {saveDC?:number},target:string,parentId:string,castId=crypto.randomUUID()):SpellDeclarationRequest {
+ if(!teleporterCantripEligible(character,spell,source.source)||!character.spell_sources?.[spell.id]?.includes(source.source))throw new Error('Choose one of your Psion cantrips with a one-Action casting time.');
+ const request=createSpellDeclarationRequest(character,spell,participantId,userId,0,source,target,castId);
+ request.context={...request.context,teleporterCombatParent:parentId,actionKind:'bonusAction',isBonusAction:true};
+ if(!isSpellDeclarationRequest(request))throw new Error('The Misty Step follow-up could not be identified.');
+ return request;
 }

@@ -1,3 +1,6 @@
+vi.mock('./api/endCombat',()=>({completeCombat:vi.fn()}));
+import {completeCombat} from './api/endCombat';
+vi.mock('./api/movementAuraReviews',()=>({pendingMovementAuraReviews:vi.fn(async()=>[])}));
 // Unit tests for the v2.746 identity changes in combatEncounter.ts:
 //   - seedToRow is the ONE seed → combat_participants row builder and
 //     writes combatant_id explicitly (per-instance participants);
@@ -15,8 +18,10 @@ type Resp = { data?: unknown; error?: unknown; count?: number | null };
 
 const h = vi.hoisted(() => {
   const state = {
+    endTicks: vi.fn<(...args: unknown[])=>Promise<void>>(async () => {}),
+    clock:vi.fn(),recoverLive:vi.fn(),advanceLive:vi.fn(),
     calls: [] as Call[],
-    respond: ((_c: Call) => ({ data: [], error: null })) as (c: Call) => Resp,
+    respond: ((_c: Call) => ({ data: [], error: null })) as (c: Call) => Resp | Promise<Resp>,
   };
   function builder(call: Call): unknown {
     const b: unknown = new Proxy({}, {
@@ -39,17 +44,25 @@ const h = vi.hoisted(() => {
   };
 });
 
-vi.mock('./supabase', () => ({ supabase: h.supabase }));
+vi.mock('./supabase', () => ({ supabase: h.supabase,getCurrentUserId:async()=> 'dm' }));
+vi.mock('./api/liveTurnTransitions',()=>({withCurrentTurnUser:(work:(user:string,guard:()=>void)=>Promise<unknown>)=>work('dm',()=>{}),recoverLiveTurnTransition:h.state.recoverLive,advanceLiveTurnTransition:h.state.advanceLive}));
+vi.mock('./api/combatClock',()=>({prepareCombatTurnEnd:h.state.clock}));
 vi.mock('./combatEvents', () => ({
   emitCombatEvent: vi.fn(async () => null),
   emitCombatEventChain: vi.fn(async () => null),
   newChainId: () => 'chain',
 }));
+vi.mock('./endOfTurnConditions',()=>({processEndOfTurnConditions:vi.fn(async()=>{})}));
+vi.mock('./api/turnEffects',()=>({processSavedTurnEffects:h.state.endTicks}));
+vi.mock('./auras',()=>({evaluateAurasOnTurnEnd:vi.fn(async()=>{})}));
+vi.mock('./movementGatedFeatures',()=>({resetMovementGatedFeatures:vi.fn(async()=>{})}));
+vi.mock('./masteryRiders',()=>({sweepExpiredMasteryMarkers:vi.fn(async()=>{}),sweepEndedMasteryMarkers:vi.fn(async()=>{})}));
 vi.mock('./api/checked', () => ({ checkedWrite: vi.fn(async () => ({ error: null })) }));
 
+import { emitCombatEvent } from './combatEvents';
 import { recoverInitiativeResources } from './initiativeResources';
 vi.mock('./initiativeResources',()=>({recoverInitiativeResources:vi.fn(async()=>{})}));
-import { characterToSeed, seedToRow, firstPerDefinition, startEncounter, endEncounter, addParticipantToEncounter, rollInitiativeForParticipant, type SeedSource } from './combatEncounter';
+import { advanceTurn, characterToSeed, seedToRow, firstPerDefinition, startEncounter, endEncounter, addParticipantToEncounter, rollInitiativeForParticipant, type SeedSource } from './combatEncounter';
 
 const seed = (over: Partial<SeedSource>): SeedSource => ({
   type: 'creature', entityId: 'goblin-def', name: 'Goblin Scout',
@@ -60,6 +73,10 @@ const opOf = (c: Call, name: string) => c.ops.find(o => o.op === name);
 
 beforeEach(() => {
   vi.mocked(recoverInitiativeResources).mockClear();
+  h.state.recoverLive.mockReset().mockResolvedValue(false);h.state.advanceLive.mockReset().mockResolvedValue(undefined);
+  h.state.clock.mockReset().mockResolvedValue({outgoingId:'p0',incomingId:'p1',nextIndex:1,nextRound:1,roundWrapped:false});
+  h.state.endTicks.mockReset().mockResolvedValue();
+  vi.mocked(emitCombatEvent).mockClear();
   h.state.calls.length = 0;
   h.state.respond = () => ({ data: [], error: null });
 });
@@ -146,35 +163,17 @@ describe('startEncounter 23505 fallback', () => {
   });
 });
 
-describe('endEncounter character carry-over', () => {
-  it('writes death_saves_successes / death_saves_failures (the characters columns), never the singular', async () => {
-    h.state.respond = c => {
-      if (c.table === 'combat_encounters' && opOf(c, 'select')) {
-        return { data: { campaign_id: 'camp', started_at: null, round_number: 3 }, error: null };
-      }
-      if (c.table === 'combat_participants') {
-        return { data: [{ combatant_id: 'cb1', participant_type: 'character', entity_id: 'char1' }], error: null };
-      }
-      if (c.table === 'combatants') {
-        return { data: [{ id: 'cb1', current_hp: 4, temp_hp: null, death_save_successes: 1, death_save_failures: 2, is_stable: false, is_dead: false, active_conditions: ['Prone'], active_buffs: [] }], error: null };
-      }
-      return { data: [], error: null };
-    };
-    const res = await endEncounter('enc');
-    expect(res).toEqual({ ok: true });
-    const charUpdate = h.state.calls.find(c => c.table === 'characters' && opOf(c, 'update'));
-    expect(charUpdate).toBeTruthy();
-    const payload = opOf(charUpdate!, 'update')!.args[0] as Record<string, unknown>;
-    expect(payload.death_saves_successes).toBe(1);
-    expect(payload.death_saves_failures).toBe(2);
-    // v2.746 — characters has no is_stable / is_dead column; sending either 400s the whole row.
-    expect(payload).not.toHaveProperty('is_stable');
-    expect(payload).not.toHaveProperty('is_dead');
-    expect(payload).not.toHaveProperty('death_save_successes');
-    expect(payload).not.toHaveProperty('death_save_failures');
-    expect(payload.current_hp).toBe(4);
-    expect(payload.active_conditions).toEqual(['Prone']);
-  });
+describe('atomic encounter completion',()=>{
+ it('delegates carry-over without browser writes',async()=>{
+  vi.mocked(completeCombat).mockResolvedValueOnce({} as never);
+  expect(await endEncounter('enc')).toEqual({ok:true});
+  expect(completeCombat).toHaveBeenCalledWith('enc');expect(h.state.calls).toEqual([]);
+  expect(emitCombatEvent).not.toHaveBeenCalled();
+ });
+ it('reports a failed save instead of claiming combat ended',async()=>{
+  vi.mocked(completeCombat).mockRejectedValueOnce(new Error('Review pending movement'));
+  expect(await endEncounter('enc')).toEqual({ok:false,reason:'Review pending movement'});
+ });
 });
 
 describe('initiative resource recovery entry points',()=>{
@@ -215,4 +214,63 @@ it.each([
   const row = seedToRow(characterToSeed(character), ctx);
   expect(row.attacks_per_action).toBe(count);
   expect(row.attacks_remaining).toBe(count);
+});
+
+describe('shared live turn advancement',()=>{
+ const encounter={id:'guard-enc',campaign_id:'camp',status:'active',current_turn_index:0,round_number:1,psionic_turn_id:'turn'};
+ const actors=[0,1].map(n=>({id:`p${n}`,combatant_id:`cb${n}`,campaign_id:'camp',name:`Actor ${n}`,participant_type:'creature',turn_order:n,current_hp:10,max_hp:10,is_dead:false}));
+ function successful(c:Call):Resp{return {data:c.table==='combat_encounters'?encounter:actors,error:null};}
+ it('overlapping controls share one atomic transition and one set of outgoing effects',async()=>{
+  let release!:(value:Resp)=>void;const held=new Promise<Resp>(resolve=>{release=resolve;});
+  h.state.respond=c=>c.table==='combat_encounters'?held:successful(c);
+  const first=advanceTurn('guard-enc'),second=advanceTurn('guard-enc');expect(second).toBe(first);release({data:encounter,error:null});
+  expect(await first).toEqual({ok:true});expect(h.state.advanceLive).toHaveBeenCalledTimes(1);
+  expect(h.state.advanceLive).toHaveBeenCalledWith('dm','guard-enc','turn',expect.any(Function));
+  expect(h.state.endTicks).toHaveBeenCalledOnce();expect(h.state.calls.some(c=>opOf(c,'update'))).toBe(false);
+ });
+ it('pending Propel preflight stops before outgoing condition saves or damage',async()=>{
+  const {processEndOfTurnConditions}=await import('./endOfTurnConditions');vi.mocked(processEndOfTurnConditions).mockClear();
+  h.state.respond=successful;h.state.clock.mockRejectedValueOnce(new Error('Resolve pending Propel'));
+  expect(await advanceTurn('guard-enc')).toEqual({ok:false,reason:'Resolve pending Propel'});
+  expect(processEndOfTurnConditions).not.toHaveBeenCalled();expect(h.state.endTicks).not.toHaveBeenCalled();expect(h.state.advanceLive).not.toHaveBeenCalled();
+ });
+ it('recovers unfinished incoming work before reading or processing a fresh outgoing turn',async()=>{
+  h.state.recoverLive.mockResolvedValue(true);expect(await advanceTurn('guard-enc')).toEqual({ok:true});
+  expect(h.state.calls).toEqual([]);expect(h.state.endTicks).not.toHaveBeenCalled();expect(h.state.advanceLive).not.toHaveBeenCalled();
+ });
+ it('postponed movement review stops all new outgoing effects',async()=>{
+  const review=vi.fn(async()=>{throw new Error('Movement postponed');});
+  expect(await advanceTurn('guard-enc',undefined,review)).toEqual({ok:false,reason:'Movement postponed'});
+  expect(review).toHaveBeenCalledOnce();expect(h.state.calls).toEqual([]);expect(h.state.endTicks).not.toHaveBeenCalled();expect(h.state.advanceLive).not.toHaveBeenCalled();
+ });
+ it('committed incoming recovery does not start movement review for the new turn',async()=>{
+  const review=vi.fn();h.state.recoverLive.mockResolvedValue(true);
+  expect(await advanceTurn('guard-enc',undefined,review)).toEqual({ok:true});expect(review).not.toHaveBeenCalled();
+ });
+ it('uses the recorded outgoing actor after lethal tick damage compresses the roster',async()=>{
+  h.state.respond=c=>c.table==='combat_encounters'?successful(c):{data:actors.map((a,n)=>({...a,is_dead:n===0})),error:null};
+  h.state.clock.mockResolvedValue({outgoingId:'p0',incomingId:'p1',nextIndex:0,nextRound:1,roundWrapped:false});
+  expect(await advanceTurn('guard-enc')).toEqual({ok:true});expect(h.state.endTicks).toHaveBeenCalledWith('dm',expect.objectContaining({participantId:'p0',turnId:'turn'}),expect.any(Function));expect(h.state.advanceLive).toHaveBeenCalledOnce();
+ });
+ it('unconfirmed outgoing ticks stop before the clock transaction and retry the same identity',async()=>{
+  h.state.respond=successful;h.state.endTicks.mockRejectedValueOnce(new Error('Reply lost'));
+  expect(await advanceTurn('guard-enc')).toEqual({ok:false,reason:'Reply lost'});expect(h.state.advanceLive).not.toHaveBeenCalled();
+  expect(await advanceTurn('guard-enc')).toEqual({ok:true});expect(h.state.endTicks.mock.calls[0][1]).toEqual(h.state.endTicks.mock.calls[1][1]);
+ });
+ it('a recovery failure cannot begin a new outgoing phase',async()=>{
+  h.state.recoverLive.mockRejectedValue(new Error('Incoming save needs review'));
+  expect(await advanceTurn('guard-enc')).toEqual({ok:false,reason:'Incoming save needs review'});expect(h.state.calls).toEqual([]);expect(h.state.endTicks).not.toHaveBeenCalled();
+ });
+ it('a later deliberate call can advance after the first finishes',async()=>{
+  h.state.respond=successful;const first=advanceTurn('guard-enc');expect(await first).toEqual({ok:true});
+  const later=advanceTurn('guard-enc');expect(later).not.toBe(first);expect(await later).toEqual({ok:true});expect(h.state.advanceLive).toHaveBeenCalledTimes(2);
+ });
+ it('a failed read shares its result and releases the guard for retry',async()=>{
+  h.state.respond=()=>({data:null,error:null});const first=advanceTurn('guard-enc'),second=advanceTurn('guard-enc');
+  expect(second).toBe(first);expect(await first).toEqual({ok:false,reason:'Encounter not found'});h.state.respond=successful;expect(await advanceTurn('guard-enc')).toEqual({ok:true});
+ });
+ it('unexpected exceptions become a failure result without stranding subsequent calls',async()=>{
+  h.state.respond=()=>{throw new Error('Connection interrupted');};expect(await advanceTurn('guard-enc')).toEqual({ok:false,reason:'Connection interrupted'});
+  h.state.respond=successful;expect(await advanceTurn('guard-enc')).toEqual({ok:true});
+ });
 });

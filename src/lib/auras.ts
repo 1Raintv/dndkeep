@@ -1,4 +1,9 @@
-import { savingThrowPassed } from '../rules/savingThrows';
+import {rollSavingThrow,exhaustionPenalty} from '../rules/savingThrows';
+import {parseDiceGroups,rollDiceGroups} from '../rules/dice';
+import {rollSaveBonuses} from '../rules/saveBonuses';
+import {readAuraSaveState} from './api/auraSaveState';
+import {readAuraDamageDefenses} from './api/auraDamageDefenses';
+import {applyDamageAffinities} from '../rules/damageAffinities';
 // v2.634.0 — Aura / proximity engine (2024 Emanation rules).
 //
 // RAW basis, verified against the 2024 rules glossary and the 2024
@@ -23,7 +28,7 @@ import { savingThrowPassed } from '../rules/savingThrows';
 // spirit-guardians — the engine implements 2024; the spell text needs
 // its own SRD 5.2.1 pass (logged for chat 22).
 //
-// Three trigger points, all funnelling into resolveAuraSave():
+// Trigger identities shared with the atomic aura review pipeline:
 //   'creature_entered'  — a creature moved from outside to inside
 //   'emanation_entered' — the ORIGIN moved, sweeping the area over a
 //                         creature that was previously outside
@@ -43,8 +48,7 @@ import { savingThrowPassed } from '../rules/savingThrows';
 // payload, so it inherits buff removal, the caster-died sweep, and
 // concentration cleanup for free rather than needing its own table.
 
-import { rollDie } from '../rules/dice';
-import { applyDamageToPools } from '../rules/hp';
+import { resolveNonAttackDamage } from '../rules/deathSaves';
 import { supabase } from './supabase';
 import { checkedWrite } from './api/checked';
 import { emitCombatEvent, newChainId } from './combatEvents';
@@ -187,6 +191,8 @@ export function auraFromBuff(buff: ActiveBuff): AuraSpec | null {
 }
 
 /**
+ * v2.869 — retain combatant identity in every aura lookup: creatures can
+ * share both a definition and a name, but occupy different map positions.
  * Every aura currently active in the encounter, with its origin's map
  * position resolved. Auras whose origin has no token are skipped —
  * an Emanation without a position can't be evaluated geometrically.
@@ -194,33 +200,39 @@ export function auraFromBuff(buff: ActiveBuff): AuraSpec | null {
 export async function listActiveAuras(
   campaignId: string,
   encounterId: string,
+  strict=false,
+  target?:{id:string;type:string;trigger:AuraTrigger},
 ): Promise<ActiveAura[]> {
-  const { data: rowsRaw } = await (supabase as any)
+  const { data: rowsRaw,error } = await (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, entity_id, ' + JOINED_COMBATANT_FIELDS)
+    .select('id, name, participant_type, entity_id, combatant_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('encounter_id', encounterId);
+  if(strict&&(error||!rowsRaw))throw new Error('Active auras could not be checked. Retry before ending the turn.');
   const rows = ((rowsRaw ?? []) as any[]).map(normalizeParticipantRow);
 
+  const relevant=(spec:AuraSpec|null,origin:Record<string,unknown>)=>!!spec&&(!target||(spec.triggers.includes(target.trigger)
+    &&origin.id!==target.id&&!spec.exemptParticipantIds.includes(target.id)
+    &&(spec.affects!=='enemies'||((origin.participant_type==='character')!==(target.type==='character')))));
   const withAuras = rows.filter((r: any) =>
-    ((r.active_buffs ?? []) as ActiveBuff[]).some(b => auraFromBuff(b) !== null),
+    !r.is_dead&&((r.active_buffs ?? []) as ActiveBuff[]).some(b => relevant(auraFromBuff(b),r)),
   );
   if (withAuras.length === 0) return [];
 
-  const { loadActiveBattleMap, findTokenForParticipant } = await import('./battleMapGeometry');
-  const bmap = await loadActiveBattleMap(campaignId);
-  if (!bmap) return [];
+  const { loadActiveBattleMap, findTokenForParticipant, participantLookup } = await import('./battleMapGeometry');
+  const bmap = await loadActiveBattleMap(campaignId,{throwOnError:strict});
+  if (!bmap){if(strict)throw new Error('Place the active aura and target on a map before ending the turn.');return [];}
 
   const out: ActiveAura[] = [];
   for (const r of withAuras) {
     if (r.is_dead) continue;
     const tok = findTokenForParticipant(
-      { id: r.id, name: r.name, participant_type: r.participant_type, entity_id: r.entity_id },
+      participantLookup(r),
       bmap.tokens,
     );
-    if (!tok) continue;
+    if (!tok){if(strict)throw new Error('An active aura has no mapped origin. Review its placement before ending the turn.');continue;}
     for (const b of ((r.active_buffs ?? []) as ActiveBuff[])) {
       const spec = auraFromBuff(b);
-      if (!spec) continue;
+      if (!spec||!relevant(spec,r)) continue;
       out.push({
         originParticipantId: r.id as string,
         originName: r.name as string,
@@ -237,12 +249,11 @@ export async function listActiveAuras(
 // ─── Save + damage resolution ────────────────────────────────────
 
 async function alreadySavedThisTurn(participantId: string, marker: string): Promise<boolean> {
-  const { data } = await (supabase as any)
-    .from('combat_participants')
-    .select('once_per_turn_used')
-    .eq('id', participantId)
-    .maybeSingle();
-  return (((data?.once_per_turn_used ?? []) as string[])).includes(marker);
+  const {data,error}=await supabase.from('combat_participants').select('once_per_turn_used').eq('id',participantId).maybeSingle();
+  if(error||!data)throw new Error('The aura’s previous use could not be checked. Retry before resolving.');
+  const used=(data as unknown as {once_per_turn_used?:unknown}).once_per_turn_used??[];
+  if(!Array.isArray(used)||!used.every(k=>typeof k==='string'))throw new Error('Review the aura’s turn markers.');
+  return used.includes(marker);
 }
 
 /**
@@ -250,7 +261,7 @@ async function alreadySavedThisTurn(participantId: string, marker: string): Prom
  * turn gate, rolls the save, applies damage (half on success when the
  * aura says so), and logs. Returns true when a save was actually made.
  */
-export async function resolveAuraSave(input: {
+export interface AuraSaveInput {
   campaignId: string;
   encounterId: string;
   aura: ActiveAura;
@@ -258,28 +269,45 @@ export async function resolveAuraSave(input: {
   targetName: string;
   targetType: string;
   trigger: AuraTrigger;
-}): Promise<boolean> {
+}
+export type AuraTurnResolver=(input:AuraSaveInput,scope:{userId:string;turnId:string;guard:()=>void})=>Promise<boolean>;
+export async function resolveAuraSave(input:AuraSaveInput): Promise<boolean> {
   const { aura } = input;
   const marker = auraSaveMarkerKey(aura.originParticipantId, aura.spec.key);
   if (await alreadySavedThisTurn(input.targetParticipantId, marker)) return false;
 
-  const { markUsedThisTurn } = await import('./cleave');
-  await markUsedThisTurn(input.targetParticipantId, marker);
+  if(aura.spec.damageDice!==null&&!parseDiceGroups(aura.spec.damageDice))throw new Error('Review the aura damage expression before resolving.');
+  const state=await readAuraSaveState(input.campaignId,input.encounterId,input.targetParticipantId,aura.spec.saveAbility);
+  const {conditionsAutoFailSave,conditionsDisadvantageSave,conditionsResistAll}=await import('./conditions');
+  const defenses=aura.spec.damageDice?await readAuraDamageDefenses(input.campaignId,input.encounterId,input.targetParticipantId,aura.spec.damageType):{immune:false,resistant:false,vulnerable:false};
+  defenses.resistant ||= conditionsResistAll(state.conditions);
+  const automaticFailure=conditionsAutoFailSave(state.conditions,aura.spec.saveAbility);
+  const disadvantage=conditionsDisadvantageSave(state.conditions,aura.spec.saveAbility);
+  const {getTargetSaveBonus}=await import('./pendingAttack');
+  const base=automaticFailure?{bonus:0,breakdown:'Automatic failure from condition',naturalExtremes:false,confidence:'high'}:
+    await getTargetSaveBonus(input.targetParticipantId,aura.spec.saveAbility);
+  if(base.confidence!=='high')throw new Error('Review the aura target’s saving throw bonus before resolving.');
+  const effects=automaticFailure?{bonus:0,rolls:[]}:rollSaveBonuses(state.buffs,0);
+  const penalty=automaticFailure?0:exhaustionPenalty(state.exhaustion);
+  const bonus=base.bonus+effects.bonus-penalty;
+  const breakdown=[base.breakdown,...effects.rolls.map(r=>`${r.name} ${r.total>=0?'+':''}${r.total}`),...(penalty?[`Exhaustion -${penalty}`]:[])].join('; ');
+  const save=rollSavingThrow(bonus,aura.spec.saveDC,{advantage:state.advantage,disadvantage,naturalExtremes:base.naturalExtremes,forceFailure:automaticFailure});
+  const {d20,total,passed}=save;
 
-  const { getTargetSaveBonus, rollDiceExpr } = await import('./pendingAttack');
-  const { bonus, breakdown, naturalExtremes } = await getTargetSaveBonus(
-    input.targetParticipantId,
-    aura.spec.saveAbility,
-  );
-  const d20 = rollDie(20);
-  const total = d20 + bonus;
-  const passed = savingThrowPassed(d20, total, aura.spec.saveDC, { naturalExtremes });
-
-  let damage = 0;
-  if (aura.spec.damageDice) {
-    const rolled = rollDiceExpr(aura.spec.damageDice).total;
-    damage = passed ? (aura.spec.halfOnSave ? Math.floor(rolled / 2) : 0) : rolled;
+  let damage=0,damageRolled=0,damageAfterSave=0,damageModifier='none';
+  let damageRoll:ReturnType<typeof rollDiceGroups>=null;
+  if(aura.spec.damageDice){
+    damageRoll=rollDiceGroups(aura.spec.damageDice);
+    if(!damageRoll)throw new Error('Review the aura damage expression before resolving.');
+    damageRolled=damageRoll.total;
+    damageAfterSave=Math.max(0,passed?(aura.spec.halfOnSave?Math.floor(damageRolled/2):0):damageRolled);
+    const applied=applyDamageAffinities(damageAfterSave,defenses);damage=applied.final;damageModifier=applied.modifier;
   }
+
+  // Prepare all reads/dice before reserving the marker. A read failure must not
+  // spend the aura use. Cross-client reservation/HP atomicity is still pending.
+  const {markUsedThisTurn}=await import('./cleave');
+  await markUsedThisTurn(input.targetParticipantId,marker);
 
   const chainId = newChainId();
   const triggerLabel =
@@ -305,13 +333,14 @@ export async function resolveAuraSave(input: {
       trigger: input.trigger,
       ability: aura.spec.saveAbility,
       dc: aura.spec.saveDC,
-      d20,
+      d20: automaticFailure ? null : d20,
+      rolls:save.rolls,advantage:state.advantage??false,disadvantage,automatic_failure:automaticFailure,effect_rolls:effects.rolls,exhaustion:state.exhaustion,
       bonus,
       breakdown,
-      total,
+      total: automaticFailure ? null : total,
       success: passed,
-      damage,
-      label: `${aura.spec.name} (${aura.originName}): ${input.targetName} ${triggerLabel} — ${aura.spec.saveAbility} save ${total} vs DC ${aura.spec.saveDC}, ${passed ? 'passed' : 'failed'}${damage > 0 ? `, ${damage} ${aura.spec.damageType ?? ''} damage`.trimEnd() : ''}`,
+      damage,damage_rolls:damageRoll?.dice??[],damage_flat_modifier:damageRoll?.modifier??0,damage_rolled:damageRolled,damage_after_save:damageAfterSave,damage_modifier:damageModifier,
+      label: `${aura.spec.name} (${aura.originName}): ${input.targetName} ${triggerLabel} — ${aura.spec.saveAbility} ${automaticFailure?'save automatically failed':`save ${total} vs DC ${aura.spec.saveDC}, ${passed?'passed':'failed'}`}${damage > 0 ? `, ${damage} ${aura.spec.damageType ?? ''} damage`.trimEnd() : ''}`,
     },
   });
 
@@ -348,32 +377,29 @@ async function applyAuraDamage(input: {
   auraName: string;
   chainId: string;
 }): Promise<void> {
-  const { data: tgtRaw } = await (supabase as any)
+  const { data: tgtRaw, error: readError } = await (supabase as any)
     .from('combat_participants')
     .select('id, combatant_id, participant_type, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .maybeSingle();
-  if (!tgtRaw) return;
+  if (readError || !tgtRaw) throw new Error('Aura damage target could not be read.');
   const tgt = normalizeParticipantRow(tgtRaw);
   if (tgt.is_dead) return;
 
-  const tempBefore = (tgt.temp_hp as number | null) ?? 0;
-  const hpBefore = (tgt.current_hp as number | null) ?? 0;
-  // v2.636 — pool math consolidated into rules/hp.ts
-  const { tempAfter, hpAfter, droppedTo0 } = applyDamageToPools(hpBefore, tempBefore, input.damage);
   const isCharacter = tgt.participant_type === 'character';
-  const monsterDied = droppedTo0 && !isCharacter;
-
-  const combatantId = (tgt as any).combatant_id as string | null;
-  if (!combatantId) return;
-  await checkedWrite('combatants.update aura-damage', { combatantId }, (supabase as any)
-    .from('combatants')
-    .update({
-      current_hp: hpAfter,
-      temp_hp: tempAfter,
-      ...(monsterDied ? { is_dead: true } : {}),
-    })
-    .eq('id', combatantId));
+  const resolved = resolveNonAttackDamage({current_hp:tgt.current_hp,max_hp:tgt.max_hp,temp_hp:tgt.temp_hp??0,
+    death_save_failures:tgt.death_save_failures??0,death_save_successes:tgt.death_save_successes??0,
+    is_stable:tgt.is_stable??false,is_dead:tgt.is_dead??false},isCharacter,input.damage);
+  const {droppedTo0,damageAtZero,massiveDamage,updates}=resolved;
+  const combatantId=tgt.combatant_id as string|null;
+  if(!combatantId)throw new Error('Aura damage target is not linked to combat.');
+  // v2.869: confirm the write before reporting damage or rolling concentration.
+  // The aura-wide save/marker/damage transaction remains separate follow-up work.
+  const write=await checkedWrite('combatants.update aura-damage',{combatantId},(supabase as any)
+    .from('combatants').update({current_hp:updates.current_hp,temp_hp:updates.temp_hp,
+      death_save_failures:updates.death_save_failures,is_stable:updates.is_stable,is_dead:updates.is_dead})
+    .eq('id',combatantId).select('id').single());
+  if(write.error)throw new Error('Aura damage could not be confirmed: '+write.error.message);
 
   await emitCombatEvent({
     campaignId: input.campaignId,
@@ -393,20 +419,26 @@ async function applyAuraDamage(input: {
     },
   });
 
-  if (droppedTo0) {
+  if(damageAtZero){
+    await emitCombatEvent({campaignId:input.campaignId,encounterId:input.encounterId,chainId:input.chainId,sequence:2,
+      actorType:'system',actorName:'System',targetType:input.targetType as any,targetName:input.targetName,
+      eventType:'damage_at_0_hp_failure_added',payload:{via:'aura',aura_name:input.auraName,damage:input.damage,
+        failures:updates.death_save_failures,became_dead:updates.is_dead,massive_damage_death:massiveDamage}});
+  }
+  if (droppedTo0 || updates.is_dead) {
     await emitCombatEvent({
       campaignId: input.campaignId,
       encounterId: input.encounterId,
       chainId: input.chainId,
-      sequence: 2,
+      sequence: damageAtZero ? 3 : 2,
       actorType: 'system',
       actorName: 'System',
       targetType: input.targetType as any,
       targetName: input.targetName,
-      eventType: monsterDied ? 'died' : 'dropped_to_0_hp',
-      payload: { via: 'aura', aura_name: input.auraName, damage: input.damage },
+      eventType: updates.is_dead ? 'died' : 'dropped_to_0_hp',
+      payload: { via: 'aura', aura_name: input.auraName, damage: input.damage, massive_damage_death:massiveDamage },
     });
-  } else if (isCharacter) {
+  } else if (isCharacter && updates.current_hp > 0) {
     // RAW: damage from any source can break concentration.
     const { runConcentrationSave } = await import('./pendingAttack');
     await runConcentrationSave({
@@ -420,113 +452,8 @@ async function applyAuraDamage(input: {
   }
 }
 
-// ─── Trigger: movement ───────────────────────────────────────────
-
-/**
- * Called after a token move is logged. Handles both movement triggers:
- *
- *   A) the mover walked into someone else's Emanation
- *      ("a creature enters the Emanation")
- *   B) the mover IS an origin, so its Emanation swept over creatures
- *      that were previously outside it
- *      ("the Emanation enters a creature's space")
- *
- * Both compare BEFORE vs AFTER: a creature already inside that merely
- * shuffles within the area does not save again, per RAW.
- */
-export async function evaluateAurasOnMovement(input: {
-  campaignId: string;
-  encounterId: string;
-  moverParticipantId: string;
-  fromRow: number;
-  fromCol: number;
-  toRow: number;
-  toCol: number;
-}): Promise<void> {
-  const auras = await listActiveAuras(input.campaignId, input.encounterId);
-  if (auras.length === 0) return;
-
-  const { data: rowsRaw } = await (supabase as any)
-    .from('combat_participants')
-    .select('id, name, participant_type, entity_id, ' + JOINED_COMBATANT_FIELDS)
-    .eq('encounter_id', input.encounterId);
-  const rows = ((rowsRaw ?? []) as any[]).map(normalizeParticipantRow);
-  const byId = new Map<string, any>(rows.map((r: any) => [r.id, r]));
-
-  const { loadActiveBattleMap, findTokenForParticipant } = await import('./battleMapGeometry');
-  const bmap = await loadActiveBattleMap(input.campaignId);
-  if (!bmap) return;
-
-  const mover = byId.get(input.moverParticipantId);
-  if (!mover || mover.is_dead) return;
-  const moverToken = findTokenForParticipant(
-    { id: mover.id, name: mover.name, participant_type: mover.participant_type, entity_id: mover.entity_id },
-    bmap.tokens,
-  );
-  const moverSize = Math.max(1, (moverToken?.size as number) ?? 1);
-  const moverBefore = footprintAt(input.fromRow, input.fromCol, moverSize);
-  const moverAfter = footprintAt(input.toRow, input.toCol, moverSize);
-
-  for (const aura of auras) {
-    const eligible = (participantId: string) =>
-      participantId !== aura.originParticipantId &&
-      !aura.spec.exemptParticipantIds.includes(participantId);
-
-    // ── Case B: the origin itself moved; the area swept.
-    if (aura.originParticipantId === input.moverParticipantId) {
-      if (!aura.spec.triggers.includes('emanation_entered')) continue;
-      const originBefore = footprintAt(input.fromRow, input.fromCol, aura.originSize);
-      const originAfter = footprintAt(input.toRow, input.toCol, aura.originSize);
-      for (const r of rows) {
-        if (!eligible(r.id) || r.is_dead) continue;
-        if (aura.spec.affects === 'enemies' &&
-            (mover.participant_type === 'character') === (r.participant_type === 'character')) continue;
-        const tok = findTokenForParticipant(
-          { id: r.id, name: r.name, participant_type: r.participant_type, entity_id: r.entity_id },
-          bmap.tokens,
-        );
-        if (!tok) continue;
-        const rect = footprintAt(tok.row, tok.col, Math.max(1, (tok.size as number) ?? 1));
-        const was = isInsideEmanation(originBefore, rect, aura.spec.radiusFt);
-        const now = isInsideEmanation(originAfter, rect, aura.spec.radiusFt);
-        if (!was && now) {
-          await resolveAuraSave({
-            campaignId: input.campaignId,
-            encounterId: input.encounterId,
-            aura,
-            targetParticipantId: r.id as string,
-            targetName: r.name as string,
-            targetType: r.participant_type as string,
-            trigger: 'emanation_entered',
-          });
-        }
-      }
-      continue;
-    }
-
-    // ── Case A: someone walked into a stationary origin's area.
-    if (!aura.spec.triggers.includes('creature_entered')) continue;
-    if (!eligible(input.moverParticipantId)) continue;
-    if (aura.spec.affects === 'enemies') {
-      const origin = byId.get(aura.originParticipantId);
-      if (origin && (origin.participant_type === 'character') === (mover.participant_type === 'character')) continue;
-    }
-    const originRect = footprintAt(aura.originRow, aura.originCol, aura.originSize);
-    const was = isInsideEmanation(originRect, moverBefore, aura.spec.radiusFt);
-    const now = isInsideEmanation(originRect, moverAfter, aura.spec.radiusFt);
-    if (!was && now) {
-      await resolveAuraSave({
-        campaignId: input.campaignId,
-        encounterId: input.encounterId,
-        aura,
-        targetParticipantId: mover.id as string,
-        targetName: mover.name as string,
-        targetType: mover.participant_type as string,
-        trigger: 'creature_entered',
-      });
-    }
-  }
-}
+// v2.869: movement entries are journaled with the token transaction and
+// adjudicated through MovementAuraReview. Do not restore a second damage path.
 
 // ─── Trigger: end of turn ────────────────────────────────────────
 
@@ -538,27 +465,27 @@ export async function evaluateAurasOnTurnEnd(input: {
   campaignId: string;
   encounterId: string;
   participantId: string;
+  resolve?: (save:AuraSaveInput)=>Promise<boolean>;
 }): Promise<void> {
-  const auras = await listActiveAuras(input.campaignId, input.encounterId);
-  if (auras.length === 0) return;
-
-  const { data: rowRaw } = await (supabase as any)
+  const { data: rowRaw,error } = await (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, entity_id, ' + JOINED_COMBATANT_FIELDS)
+    .select('id, name, participant_type, entity_id, combatant_id, ' + JOINED_COMBATANT_FIELDS)
     .eq('id', input.participantId)
     .maybeSingle();
-  if (!rowRaw) return;
+  if(error||!rowRaw){if(input.resolve)throw new Error('The outgoing aura target could not be checked. Retry before advancing.');return;}
   const row = normalizeParticipantRow(rowRaw);
   if (row.is_dead) return;
+  const auras = await listActiveAuras(input.campaignId,input.encounterId,!!input.resolve,{id:row.id as string,type:row.participant_type as string,trigger:'turn_end'});
+  if(auras.length===0)return;
 
-  const { loadActiveBattleMap, findTokenForParticipant } = await import('./battleMapGeometry');
-  const bmap = await loadActiveBattleMap(input.campaignId);
-  if (!bmap) return;
+  const { loadActiveBattleMap, findTokenForParticipant, participantLookup } = await import('./battleMapGeometry');
+  const bmap = await loadActiveBattleMap(input.campaignId,{throwOnError:!!input.resolve});
+  if (!bmap){if(input.resolve)throw new Error('The aura map is unavailable. Review placement before advancing.');return;}
   const tok = findTokenForParticipant(
-    { id: row.id, name: row.name, participant_type: row.participant_type, entity_id: row.entity_id },
+    participantLookup(row),
     bmap.tokens,
   );
-  if (!tok) return;
+  if (!tok){if(input.resolve)throw new Error('Place the outgoing target on the map before resolving its auras.');return;}
   const rect = footprintAt(tok.row, tok.col, Math.max(1, (tok.size as number) ?? 1));
 
   for (const aura of auras) {
@@ -567,7 +494,7 @@ export async function evaluateAurasOnTurnEnd(input: {
     if (aura.spec.exemptParticipantIds.includes(row.id as string)) continue;
     const originRect = footprintAt(aura.originRow, aura.originCol, aura.originSize);
     if (!isInsideEmanation(originRect, rect, aura.spec.radiusFt)) continue;
-    await resolveAuraSave({
+    await (input.resolve??resolveAuraSave)({
       campaignId: input.campaignId,
       encounterId: input.encounterId,
       aura,
@@ -596,17 +523,17 @@ export async function auraSpeedMultiplier(input: {
   const halving = auras.filter(a => a.spec.speedInside === 'half');
   if (halving.length === 0) return 1;
 
-  const { loadActiveBattleMap, findTokenForParticipant } = await import('./battleMapGeometry');
+  const { loadActiveBattleMap, findTokenForParticipant, participantLookup } = await import('./battleMapGeometry');
   const bmap = await loadActiveBattleMap(input.campaignId);
   if (!bmap) return 1;
 
   const { data: rowRaw } = await (supabase as any)
     .from('combat_participants')
-    .select('id, name, participant_type, entity_id')
+    .select('id, name, participant_type, entity_id, combatant_id')
     .eq('id', input.participantId)
     .maybeSingle();
   if (!rowRaw) return 1;
-  const tok = findTokenForParticipant(rowRaw, bmap.tokens);
+  const tok = findTokenForParticipant(participantLookup(rowRaw), bmap.tokens);
   if (!tok) return 1;
   const rect = footprintAt(tok.row, tok.col, Math.max(1, (tok.size as number) ?? 1));
 

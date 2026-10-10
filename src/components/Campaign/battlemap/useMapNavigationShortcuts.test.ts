@@ -111,3 +111,27 @@ it('does not zoom during pointer gestures and recovers after release or cancella
   window.dispatchEvent(new PointerEvent('pointercancel'));key('+');expect(actions.zoom).toHaveBeenCalledOnce();
   hover();key('+');expect(actions.zoom).toHaveBeenCalledTimes(2);
 });
+
+it.each(['pointerup','pointercancel'])('keeps remaining touches locked after one %s',ending=>{
+ const {hover,key,actions,hook}=setup();const previous=vi.fn();hook.rerender({handlers:{...actions,previous}});hover();
+ for(const pointerId of [11,12])window.dispatchEvent(new PointerEvent('pointerdown',{pointerId,pointerType:'touch',buttons:1}));
+ window.dispatchEvent(new PointerEvent(ending,{pointerId:11,pointerType:'touch',buttons:0}));
+ hover(); // A separate mouse pointer must not release touch 12.
+ for(const value of ['+','-','0','f','r'])expect(key(value).defaultPrevented).toBe(false);
+ expect(actions.zoom).not.toHaveBeenCalled();expect(actions.fit).not.toHaveBeenCalled();expect(actions.focus).not.toHaveBeenCalled();expect(previous).not.toHaveBeenCalled();
+ window.dispatchEvent(new PointerEvent('pointerup',{pointerId:12,pointerType:'touch',buttons:0}));key('+');expect(actions.zoom).toHaveBeenCalledOnce();
+});
+it('does not let a hovering mouse release a held pen or touch',()=>{
+ const {hover,key,actions}=setup();hover();
+ window.dispatchEvent(new PointerEvent('pointerdown',{pointerId:4,pointerType:'pen',buttons:1}));
+ hover();key('0');expect(actions.fit).not.toHaveBeenCalled();
+ window.dispatchEvent(new PointerEvent('pointerup',{pointerId:77,buttons:0}));key('0');expect(actions.fit).not.toHaveBeenCalled();
+ window.dispatchEvent(new PointerEvent('pointerup',{pointerId:4,buttons:0}));key('0');expect(actions.fit).toHaveBeenCalledOnce();
+});
+it('clears stale hover and held pointers when hidden, requiring fresh hover on return',()=>{
+ const {hover,key,actions}=setup();hover();
+ window.dispatchEvent(new PointerEvent('pointerdown',{pointerId:4,buttons:1}));
+ const visibility=vi.spyOn(document,'visibilityState','get').mockReturnValue('hidden');
+ document.dispatchEvent(new Event('visibilitychange'));visibility.mockReturnValue('visible');
+ key('+');expect(actions.zoom).not.toHaveBeenCalled();hover();key('+');expect(actions.zoom).toHaveBeenCalledOnce();
+});

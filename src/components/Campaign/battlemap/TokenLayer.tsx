@@ -2255,7 +2255,9 @@ export function TokenLayer(props: {
       // show a neutral white line so the distance label still helps.
       // (drag was captured at the top of this function.)
       const ati = activeTokenInfoRef.current;
-      const inCombatForThisToken = !!(ati && drag && ati.tokenId === drag.id && ati.max > 0);
+      // v2.869: zero Speed is a tracked, exhausted budget (e.g. Paralyzed),
+      // not permission to show a neutral out-of-combat movement preview.
+      const inCombatForThisToken = !!(ati && drag && ati.tokenId === drag.id);
       let lineColor = 0xffffff;
       let labelColor = 0xffffff;
       let costLabel = `${distanceFt} ft`;
@@ -2908,6 +2910,8 @@ export function TokenLayer(props: {
       setDragging(null);
     }
     const onBlur = () => cancelDrag();
+    // v2.869: backgrounding need not emit blur; match group drag and pan.
+    const onHidden = () => { if (document.visibilityState === 'hidden') cancelDrag(); };
     const onEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || !dragRef.current) return;
       // Cancel the gesture before Escape closes fullscreen or other map UI.
@@ -2915,6 +2919,7 @@ export function TokenLayer(props: {
     };
     window.addEventListener('pointercancel', cancelDrag);
     window.addEventListener('blur', onBlur);
+    document.addEventListener('visibilitychange', onHidden);
     window.addEventListener('keydown', onEscape, true);
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
@@ -2922,6 +2927,7 @@ export function TokenLayer(props: {
     return () => {
       window.removeEventListener('pointercancel', cancelDrag);
       window.removeEventListener('blur', onBlur);
+      document.removeEventListener('visibilitychange', onHidden);
       window.removeEventListener('keydown', onEscape, true);
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);

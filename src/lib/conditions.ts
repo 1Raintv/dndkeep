@@ -1,3 +1,5 @@
+import {attackAdvantage,type AttackAdvantageSources,type AdvantageState} from '../rules/attackAdvantage';
+export type {AdvantageState} from '../rules/attackAdvantage';
 // v2.110.0 — Phase H of the Combat Backbone
 //
 // Condition application + removal with automatic cascades, plus the
@@ -491,46 +493,14 @@ export async function clearConditionsFromConcentration(
 // the physical distance (for attackAdvantageReceived-within-5ft cases like
 // Prone) and returns the net state.
 
-export type AdvantageState = 'advantage' | 'disadvantage' | 'normal';
-
 export function getAdvantageState(
   attackerConditions: string[],
   targetConditions: string[],
   distanceCells: number,
+  additional: AttackAdvantageSources = {},
 ): AdvantageState {
-  let adv = false;
-  let dis = false;
-
-  // From the ATTACKER's conditions
-  for (const c of attackerConditions) {
-    const m = CONDITION_MAP[c];
-    if (!m) continue;
-    if (m.attackDisadvantage) dis = true;
-  }
-  // Invisible attacker: 2024 RAW grants advantage on attacks (not in CONDITION_MAP flag explicitly)
-  if (attackerConditions.includes('Invisible')) adv = true;
-
-  // From the TARGET's conditions
-  for (const c of targetConditions) {
-    const m = CONDITION_MAP[c];
-    if (!m) continue;
-    // Prone grants advantage to attackers within 5ft, disadvantage beyond 5ft
-    // (the Prone entry sets attackAdvantageReceived=true — but RAW is
-    // distance-conditional for Prone only)
-    if (c === 'Prone') {
-      if (distanceCells <= 1) adv = true;
-      else dis = true;
-      continue;
-    }
-    if (m.attackAdvantageReceived) adv = true;
-  }
-  // Invisible target: 2024 RAW grants disadvantage to attackers
-  if (targetConditions.includes('Invisible')) dis = true;
-
-  if (adv && dis) return 'normal';
-  if (adv) return 'advantage';
-  if (dis) return 'disadvantage';
-  return 'normal';
+  const mechanics=(name:string)=>CONDITION_MAP[name]??{name};
+  return attackAdvantage(attackerConditions.map(mechanics),targetConditions.map(mechanics),distanceCells,additional);
 }
 
 /**

@@ -29,3 +29,12 @@ it.each(['melee','ranged'] as const)('preserves %s spell delivery independently 
  fireEvent.click(screen.getByRole('button',{name:'Cast'}));fireEvent.click(screen.getByRole('button',{name:'Choose goblin'}));
  expect(saved.mock.calls[0][0].context).toMatchObject({source:'class:Psion',combat:{kind:'attack_roll',attackMode}});
 });
+
+it('retains a Teleporter parent and target together without a slot or normal Action charge',()=>{
+ const onSaved=vi.fn(),parent='33333333-3333-4333-8333-333333333333';
+ const c={...character,class_name:'Psion',level:6,subclass:'Psi Warper',spell_sources:{'mind-sliver':['class:Psion']}} as Character;
+ render(<SpellAttackCastButton character={c} spell={{...spell,id:'mind-sliver',name:'Mind Sliver',level:0}} userId={id} casting={{source:'class:Psion',ability:'intelligence',saveDC:15}} slotLevel={0} attackKind="save" saveAbility="INT" saveSuccessEffect="none" damageDice="2d6" damageType="Psychic" maxRangeFt={60} teleporterCombatParent={parent} onSaved={onSaved}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Cast'}));fireEvent.click(screen.getByRole('button',{name:'Choose goblin'}));
+ expect(saved.mock.calls[0][0]).toMatchObject({slotLevel:0,expectedSlot:null,context:{teleporterCombatParent:parent,actionKind:'bonusAction',combat:{saveAbility:'INT',damageDice:'2d6',target:{participantId:targetId}}}});
+ expect(onSaved).toHaveBeenCalledOnce();
+});

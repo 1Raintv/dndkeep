@@ -1,6 +1,6 @@
 import {useEffect,useRef,useState} from 'react';
 import type {Character} from '../../types';
-import {computeStats} from '../gameUtils';
+import {computeStats,computeActiveBonuses} from '../gameUtils';
 import {createStandaloneDamage,savedStandaloneDamage,submitStandaloneDamage,cancelStandaloneDamage,STANDALONE_DAMAGE_CHANGED,type StandaloneDamageRequest} from '../api/standaloneDamage';
 import {loadStandaloneSaves,rollStandaloneSave,confirmStandaloneRoll,retireStandaloneSave,queueStandaloneSave,cancelStandaloneCreation,savedStandaloneCreations,savedStandaloneRolls,STANDALONE_SAVE_CHANGED,type StandaloneSaveOffer,type StandaloneSaveReceipt,type StandaloneSaveRequest,type StandaloneRollRequest} from '../api/standaloneConcentration';
 interface Queue {flush:()=>Promise<void>;getSnapshot:()=>{pending:boolean;error:string|null}}
@@ -64,7 +64,12 @@ export function useStandaloneConcentration(userId:string,characterRef:{current:C
   applyDamage:(amount:number)=>{
    if(running.current||live.current.frozen||!owner||characterRef.current.campaign_id)return false;
    try{if(savedStandaloneDamage(userId,c.id))throw new Error('Confirm the previous damage request first.');
-    const r=createStandaloneDamage(characterRef.current,userId,amount,computeStats(characterRef.current).modifiers.constitution);void submitDamage(r);return true;
+    // v2.869 audit: proficiency is added by the server. Include only effective
+    // Constitution and eligible flat equipment here; no duplicated effect dice.
+    const equipment=computeActiveBonuses([],characterRef.current.inventory).saveBonus;
+    if(!Number.isSafeInteger(equipment))throw new Error('Review equipment saving throw bonuses.');
+    const modifier=computeStats(characterRef.current).modifiers.constitution+equipment;
+    const r=createStandaloneDamage(characterRef.current,userId,amount,modifier);void submitDamage(r);return true;
    }catch(e){setError(e instanceof Error?e.message:'Could not save the damage request.');return false;}
   },retryDamage:()=>run(async s=>{const r=savedStandaloneDamage(live.current.userId,live.current.id);if(r){const receipt=await submitStandaloneDamage(r);if(current(s)){live.current.accept(receipt.character);setNotice('Earlier damage confirmed.');}}}),
   cancelDamage:()=>run(async s=>{const r=savedStandaloneDamage(live.current.userId,live.current.id);if(!r)return;if(await cancelStandaloneDamage(r)){if(current(s))setNotice('Unconfirmed damage canceled.');}else{const receipt=await submitStandaloneDamage(r);if(current(s)){live.current.accept(receipt.character);setNotice('Earlier damage confirmed.');}}}),

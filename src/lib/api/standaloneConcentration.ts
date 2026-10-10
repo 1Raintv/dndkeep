@@ -1,13 +1,14 @@
+import {rollSaveBonuses,validSaveBonusRolls,type SaveBonusRoll} from '../../rules/saveBonuses';
 import {supabase} from '../supabase';
 import type {Character} from '../../types';
 import {characterProficiencyBonus} from '../../rules/proficiency';
-import {savingThrowPassed} from '../../rules/savingThrows';
+import {savingThrowPassed,exhaustionPenalty} from '../../rules/savingThrows';
 import {isConcentrationCastingContext} from '../../rules/concentrationCasting';
 import {concentrationDC} from '../../rules/hp';
 import {hasWarCaster,rollConcentrationCheck} from '../../rules/concentrationSave';
-const fields=['concentration_spell','concentration_revision','constitution','inventory','level','secondary_class','secondary_level','saving_throw_proficiencies','gained_feats','nat_1_20_saves'] as const;
+const fields=['concentration_spell','concentration_revision','constitution','inventory','level','secondary_class','secondary_level','saving_throw_proficiencies','gained_feats','nat_1_20_saves','exhaustion_level','active_buffs'] as const;
 export type Snapshot=Pick<Character,typeof fields[number]>;
-export interface StandaloneSaveRequest {userId:string;characterId:string;requestId:string;damage:number;modifier:number;expected:Snapshot}
+export interface StandaloneSaveRequest {userId:string;characterId:string;requestId:string;damage:number;modifier:number;baseModifier?:number;effectRolls?:SaveBonusRoll[];expected:Snapshot}
 export interface StandaloneSaveOffer {request_id:string;character_id:string;spell_name:string;casting_revision:number;damage:number;dc:number;save_bonus:number;has_advantage:boolean;natural_extremes:boolean;created_at:string;outcome:unknown;automation_mode?:'off'|'prompt'|'auto'}
 export interface StandaloneRollRequest {userId:string;characterId:string;requestId:string;offer:StandaloneSaveOffer;rolls:number[]}
 export type ConcentrationState=Pick<Character,'id'|'concentration_spell'|'concentration_revision'|'concentration_slot_level'|'concentration_rounds_remaining'|'concentration_casting_context'>;
@@ -24,7 +25,8 @@ const message=(error:unknown)=>error&&typeof error==='object'&&'message' in erro
 function validRequest(v:unknown):v is StandaloneSaveRequest {
  const r=v as StandaloneSaveRequest|null,c=r?.expected;
  return !!r&&uuid(r.userId)&&uuid(r.characterId)&&uuid(r.requestId)&&Number.isInteger(r.damage)&&r.damage>0&&r.damage<=2147483647
-  &&Number.isInteger(r.modifier)&&r.modifier>=-5&&r.modifier<=20&&!!c&&typeof c.concentration_spell==='string'&&!!c.concentration_spell
+  &&Number.isInteger(r.modifier)&&r.modifier>=-105&&r.modifier<=120&&(r.effectRolls===undefined&&r.baseModifier===undefined||validSaveBonusRolls(r.effectRolls)&&Number.isSafeInteger(r.baseModifier)&&r.modifier===r.baseModifier!+r.effectRolls.reduce((sum,x)=>sum+x.total,0))&&!!c&&typeof c.concentration_spell==='string'&&!!c.concentration_spell
+  &&(c.exhaustion_level===undefined||Number.isInteger(c.exhaustion_level)&&c.exhaustion_level>=0&&c.exhaustion_level<=6)
   &&count(c.concentration_revision)&&Number.isInteger(c.level)&&c.level>=1&&c.level<=20&&Number.isInteger(c.constitution)
   &&(c.inventory===null||Array.isArray(c.inventory))&&(c.saving_throw_proficiencies===null||Array.isArray(c.saving_throw_proficiencies)&&c.saving_throw_proficiencies.every(p=>typeof p==='string'))
   &&(c.gained_feats===null||Array.isArray(c.gained_feats)&&c.gained_feats.every(p=>typeof p==='string'));
@@ -32,7 +34,7 @@ function validRequest(v:unknown):v is StandaloneSaveRequest {
 function offer(value:unknown,characterId:string):StandaloneSaveOffer {
  const r=value as StandaloneSaveOffer|null;
  if(!r||!uuid(r.request_id)||r.character_id!==characterId||typeof r.spell_name!=='string'||!r.spell_name||!count(r.casting_revision)
-  ||!Number.isInteger(r.damage)||r.damage<1||r.damage>2147483647||r.dc!==concentrationDC(r.damage)||!Number.isInteger(r.save_bonus)||r.save_bonus< -5||r.save_bonus>26
+  ||!Number.isInteger(r.damage)||r.damage<1||r.damage>2147483647||r.dc!==concentrationDC(r.damage)||!Number.isInteger(r.save_bonus)||r.save_bonus< -117||r.save_bonus>126
   ||typeof r.has_advantage!=='boolean'||typeof r.natural_extremes!=='boolean'||!Number.isFinite(Date.parse(r.created_at)))throw new Error('The concentration check could not be verified.');
  return r;
 }
@@ -65,7 +67,10 @@ function forget(kind:'create'|'roll',r:StandaloneSaveRequest|StandaloneRollReque
 }
 export function createStandaloneSaveRequest(character:Character,userId:string,damage:number,modifier:number,requestId=crypto.randomUUID()):StandaloneSaveRequest {
  const expected=standaloneConcentrationSnapshot(character);
- const r=structuredClone({userId,characterId:character.id,requestId,damage,modifier,expected});
+ const previous=savedStandaloneCreations(userId,character.id).find(r=>r.requestId===requestId);
+ if(previous){if(previous.damage!==damage||(previous.baseModifier??previous.modifier)!==modifier||JSON.stringify(previous.expected)!==JSON.stringify(expected))throw new Error('Confirm the original concentration request first.');return previous;}
+ const effects=rollSaveBonuses(expected.active_buffs??[],0);
+ const r=structuredClone({userId,characterId:character.id,requestId,damage,modifier:modifier+effects.bonus,baseModifier:modifier,effectRolls:effects.rolls,expected});
  if(!validRequest(r))throw new Error('Reload the character to verify concentration before applying damage.');
  persist('create',r);return r;
 }
@@ -91,9 +96,11 @@ export function queueStandaloneSave(input:StandaloneSaveRequest):Promise<Standal
  if(!validRequest(input))throw new Error('Invalid concentration request.');const r=structuredClone(input),{k,text}=persist('create',r);
  return coalesce(k,text,async()=>{
   const data=await rpc('queue_standalone_concentration_save',args(r)),v=offer(data,r.characterId),c=r.expected;
+  // v2.869 — the server snapshots temporary class effects with the save.
+  // Feats alone cannot reconstruct this damage-time advantage after expiry.
   const proficient=c.saving_throw_proficiencies?.some(p=>['con','constitution'].includes(p.toLowerCase()));
   if(v.request_id!==r.requestId||v.damage!==r.damage||v.spell_name!==c.concentration_spell||v.casting_revision!==c.concentration_revision
-   ||v.save_bonus!==r.modifier+(proficient?characterProficiencyBonus(c):0)||v.has_advantage!==hasWarCaster(c.gained_feats)
+   ||v.save_bonus!==r.modifier+(proficient?characterProficiencyBonus(c):0)-exhaustionPenalty(c.exhaustion_level??0)||(hasWarCaster(c.gained_feats)&&!v.has_advantage)
    ||v.natural_extremes!==(c.nat_1_20_saves!==false)||typeof (data as {replayed?:unknown}).replayed!=='boolean')throw new Error('The saved concentration check does not match the request.');
   forget('create',r);return v;
  });
@@ -145,7 +152,7 @@ export async function cancelStandaloneCreation(input:StandaloneSaveRequest):Prom
 }
 
 export function standaloneConcentrationSnapshot(character:Character):Snapshot{
- return structuredClone(Object.fromEntries(fields.map(field=>[field,character[field]??null]))) as unknown as Snapshot;
+ return structuredClone(Object.fromEntries(fields.map(field=>[field,character[field]??(field==='exhaustion_level'?0:field==='active_buffs'?[]:null)]))) as unknown as Snapshot;
 }
 export {rpc as standaloneConcentrationRpc,offer as verifyStandaloneOffer,receipt as verifyStandaloneSaveReceipt,character as verifyConcentrationState};
 

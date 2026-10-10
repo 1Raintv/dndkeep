@@ -1,0 +1,20 @@
+// @vitest-environment happy-dom
+import {beforeEach,expect,it,vi} from 'vitest';
+import type {Character} from '../../../types';
+import {rememberPsionicPayment} from '../../../lib/psionicPaymentRecovery';
+const m=vi.hoisted(()=>({read:vi.fn(),context:vi.fn(),extras:vi.fn(),finalize:vi.fn(),offer:vi.fn()}));
+vi.mock('../../../lib/api/psionicPropel',()=>({readPropel:m.read,getPropelContext:m.context,getPropelEnhancements:m.extras,finalizePropel:m.finalize}));
+vi.mock('./offerPsionicRollEnhancements',()=>({offerPsionicRollEnhancements:m.offer}));
+import {continuePropel} from './continuePropel';
+const id='00000000-0000-4000-8000-000000000009';
+const row={request_id:id,character_id:'hero',request:{turnId:'turn'},mode:'powered',base_roll:2,psion_level:20,source_feature:'Warp Propel',roll_result:null,outcome:null};
+const options=()=>({current:()=>({id:'hero'} as Character),active:()=>true,eligible:()=>true,roll:12,sides:12,feature:'Telekinetic Propel',accept:vi.fn(),prompt:vi.fn(),confirm:vi.fn(),warn:vi.fn()});
+beforeEach(()=>{localStorage.clear();vi.resetAllMocks();m.read.mockResolvedValue(row);m.context.mockResolvedValue({turnId:'turn'});m.extras.mockResolvedValue({extraRolls:[3],usedSurge:false});m.offer.mockResolvedValue({unconfirmed:false});m.finalize.mockResolvedValue({...row,roll_result:{total:5}});});
+it('keeps the saved base and extras, skipping paid choices',async()=>{expect(await continuePropel(id,options())).toMatchObject({roll_result:{total:5}});expect(m.offer).toHaveBeenCalledWith(expect.objectContaining({propelId:id,roll:2,rolls:[2,3],feature:'Warp Propel',skipEnkindled:true,skipSurge:false}));expect(m.finalize).toHaveBeenCalledWith('hero',id);});
+it('does not offer either enhancement after Surge was paid',async()=>{m.extras.mockResolvedValue({extraRolls:[],usedSurge:true});await continuePropel(id,options());expect(m.offer).toHaveBeenCalledWith(expect.objectContaining({skipEnkindled:true,skipSurge:true}));});
+it('finalizes old-turn dice without offering another payment',async()=>{m.context.mockResolvedValue({turnId:'later'});await continuePropel(id,options());expect(m.offer).not.toHaveBeenCalled();expect(m.finalize).toHaveBeenCalled();});
+it.each(['free','technique'])('does not enhance a %s roll',async mode=>{m.read.mockResolvedValue({...row,mode});await continuePropel(id,options());expect(m.context).not.toHaveBeenCalled();expect(m.offer).not.toHaveBeenCalled();expect(m.finalize).toHaveBeenCalled();});
+it.each([{outcome:'passed'},{roll_result:{total:5}}])('does not reopen settled/finalized choices: %j',async patch=>{m.read.mockResolvedValue({...row,...patch});await continuePropel(id,options());expect(m.context).not.toHaveBeenCalled();expect(m.finalize).not.toHaveBeenCalled();});
+it('blocks unknown saved payments before any finalization',async()=>{rememberPsionicPayment('hero',{kind:'surge',request:{requestId:'pending',propelId:id,sourceFeature:'Warp Propel',rolls:[2],hitDie:6}});await expect(continuePropel(id,options())).rejects.toThrow(/Confirm the saved/);expect(m.read).not.toHaveBeenCalled();});
+it('leaves an uncertain enhancement recoverable',async()=>{m.offer.mockResolvedValue({unconfirmed:true});expect(await continuePropel(id,options())).toBeNull();expect(m.finalize).not.toHaveBeenCalled();});
+it('does not finalize for a different sheet',async()=>{const o=options();let active=true;o.active=()=>active;m.offer.mockImplementation(async()=>{active=false;return null;});expect(await continuePropel(id,o)).toBeNull();expect(m.finalize).not.toHaveBeenCalled();});

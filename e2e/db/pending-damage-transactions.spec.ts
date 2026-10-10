@@ -1,7 +1,7 @@
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {test,expect} from '@playwright/test';
-import {gateDbSuite} from './helpers';
+import {gateDbSuite,finishEmptyFixtureReactionWindow} from './helpers';
 const args=['exec','-i','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1'];
 const sql=(q:string)=>execFileSync('docker',args,{input:q,encoding:'utf8',stdio:['pipe','pipe','pipe']}).trim();
 const auth=(u:string,q:string)=>`begin;set local role authenticated;set local request.jwt.claims='{"sub":"${u}","role":"authenticated"}';${q};commit;`;
@@ -21,6 +21,7 @@ test.describe('Atomic pending damage recording',()=>{
    insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${enc}','${campaign}','active',1,0);
    insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order,combatant_id) values('${cp}','${enc}','${campaign}','character','${char}','Actor',0,'${cb}');
    update combatants set active_buffs=${json(bonus)} where id='${cb}';${insert(attack)};commit;`);
+  finishEmptyFixtureReactionWindow(sql,dm,attack,'post_attack_roll');
  });
  test.afterEach(()=>sql(`delete from campaigns where id='${campaign}';delete from characters where id='${char}';delete from auth.users where id in('${dm}','${player}','${other}')`));
  const insert=(id:string)=>`insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,attacker_name,attacker_type,target_name,attack_name,attack_kind,attack_source,hit_result,state,damage_dice,damage_type,chain_id) values('${id}','${campaign}','${enc}','${cp}','Actor','character','Target','Hit','attack_roll','melee','hit','attack_rolled','1d6+2','psychic','${randomUUID()}')`;
@@ -29,6 +30,35 @@ test.describe('Atomic pending damage recording',()=>{
  const run=(q=call(),u=dm)=>JSON.parse(sql(auth(u,q)));
  const buffs=()=>JSON.parse(sql(`select active_buffs from combatants where id='${cb}'`));
  const state=()=>sql(`select state from pending_attacks where id='${attack}'`);
+ for(const key of ['hunters_mark','hex','divine_favor','absorb_elements_rider'])for(const saved of ['failed','passed'])test(`${key} does not fire or get consumed on a ${saved} save`,()=>{
+  const gated=[{...bonus[0],key},bonus[1]];
+  sql(`update pending_attacks set attack_kind='save',save_result='${saved}',save_success_effect='half' where id='${attack}';update combatants set active_buffs=${json(gated)} where id='${cb}'`);
+  const packet=components();packet.components.pop();
+  expect(run(call(attack,packet,saved==='passed'?2:5,gated)).attack.damage_components.components).toHaveLength(1);expect(buffs()).toEqual(gated);
+ });
+ test('legacy Hunter’s Mark records Force on a spell attack and preserves the stored entry',()=>{
+  const gated=[{...bonus[0],key:'hunters_mark',singleUse:false,damageRider:{dice:'1d4+1',damageType:'piercing'}},bonus[1]];
+  sql(`update pending_attacks set attack_source='spell' where id='${attack}';update combatants set active_buffs=${json(gated)} where id='${cb}'`);
+  const packet=components();packet.components[1].key='rider:0:hunters_mark';packet.components[1].damageType='force';
+  expect(run(call(attack,packet,8,gated)).attack.damage_components.components[1].damageType).toBe('force');expect(buffs()).toEqual(gated);
+ });
+ test('old Hunter’s Mark Piercing totals are rejected without spending a bonus',()=>{
+  const gated=[{...bonus[0],key:'hunters_mark',damageRider:{dice:'1d4+1',damageType:'piercing'}},bonus[1]];
+  sql(`update combatants set active_buffs=${json(gated)} where id='${cb}'`);
+  const packet=components();packet.components[1].key='rider:0:hunters_mark';packet.components[1].damageType='piercing';
+  expect(()=>run(call(attack,packet,8,gated))).toThrow(/Damage bonus type changed/);expect(buffs()).toEqual(gated);
+ });
+ test('legacy melee-only Divine Favor adds damage to a ranged weapon hit',()=>{
+  const gated=[{...bonus[0],key:'divine_favor',onlyMelee:true},bonus[1]];
+  sql(`update pending_attacks set attack_source='weapon',attack_mode='ranged' where id='${attack}';update combatants set active_buffs=${json(gated)} where id='${cb}'`);
+  const packet=components();packet.components[1].key='rider:0:divine_favor';
+  expect(run(call(attack,packet,8,gated)).attack.damage_final).toBe(8);
+ });
+ test('Divine Favor cannot apply to a melee spell attack',()=>{
+  const gated=[{...bonus[0],key:'divine_favor'},bonus[1]];
+  sql(`update pending_attacks set attack_source='spell',attack_mode='melee' where id='${attack}';update combatants set active_buffs=${json(gated)} where id='${cb}'`);
+  const packet=components();packet.components.pop();expect(run(call(attack,packet,5,gated)).attack.damage_final).toBe(5);expect(buffs()).toEqual(gated);
+ });
  test('ranged spell excludes a melee-only rider and preserves it for later',()=>{
   const gated=[{...bonus[0],onlyMelee:true},bonus[1]];
   sql(`update pending_attacks set attack_source='spell',attack_mode='ranged' where id='${attack}';update combatants set active_buffs=${json(gated)} where id='${cb}'`);
@@ -48,7 +78,7 @@ test.describe('Atomic pending damage recording',()=>{
  test('owner records dice and consumes only the eligible one-use bonus together',()=>{const r=run(call(),player);expect(r.replayed).toBe(false);expect(r.attack.damage_final).toBe(8);expect(r.attack.damage_components).toEqual(components());expect(buffs()).toEqual([bonus[1]]);});
  test('exact replay cannot consume a reapplied bonus',()=>{const q=call(),first=run(q);sql(`update combatants set active_buffs=${json(bonus)} where id='${cb}'`);expect(run(q)).toEqual({...first,replayed:true});expect(buffs()).toEqual(bonus);});
  test('two simultaneous calls for one attack return one saved roll',async()=>{const q=call();const r=await Promise.all([parallel(auth(dm,q)),parallel(auth(player,q))]);expect(r.every(v=>v.code===0),JSON.stringify(r)).toBe(true);expect(r.map(v=>JSON.parse(v.out).replayed).sort()).toEqual([false,true]);expect(buffs()).toEqual([bonus[1]]);});
- test('two different attacks cannot spend the same one-use bonus',async()=>{const second=randomUUID();sql(insert(second));const r=await Promise.all([parallel(auth(dm,call())),parallel(auth(dm,call(second)))]);expect(r.filter(v=>v.code===0)).toHaveLength(1);expect(r.find(v=>v.code!==0)?.error).toContain('bonuses changed');expect(sql(`select count(*) from dndkeep_private.damage_roll_records where attack_id in('${attack}','${second}')`)).toBe('1');});
+ test('two different attacks cannot spend the same one-use bonus',async()=>{const second=randomUUID();sql(insert(second));finishEmptyFixtureReactionWindow(sql,dm,second,'post_attack_roll');const r=await Promise.all([parallel(auth(dm,call())),parallel(auth(dm,call(second)))]);expect(r.filter(v=>v.code===0)).toHaveLength(1);expect(r.find(v=>v.code!==0)?.error).toContain('bonuses changed');expect(sql(`select count(*) from dndkeep_private.damage_roll_records where attack_id in('${attack}','${second}')`)).toBe('1');});
  test('failed final-total validation rolls back the bonus and record',()=>{expect(()=>run(call(attack,components(),99))).toThrow(/Final damage/);expect(buffs()).toEqual(bonus);expect(state()).toBe('attack_rolled');expect(sql(`select count(*) from dndkeep_private.damage_roll_records where attack_id='${attack}'`)).toBe('0');});
  test('failed ledger insert rolls back a preceding bonus consumption and attack update',()=>{sql(`insert into dndkeep_private.damage_roll_records(attack_id,request) values('${attack}','{}')`);expect(()=>run()).toThrow(/duplicate key/);expect(buffs()).toEqual(bonus);expect(state()).toBe('attack_rolled');});
  test('stale attack or bonus snapshots cannot record damage',()=>{const q=call();sql(`update pending_attacks set damage_type='fire' where id='${attack}'`);expect(()=>run(q)).toThrow(/Attack changed/);expect(buffs()).toEqual(bonus);expect(()=>run(call(attack,components(),8,[]))).toThrow(/bonuses changed/);});

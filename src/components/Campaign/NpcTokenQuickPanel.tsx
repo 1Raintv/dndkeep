@@ -1,10 +1,11 @@
+import type {CreatureSaveStats} from '../../rules/creatureSaveBonus';
 import {MapConditionChip} from './battlemap/MapConditionChip';
 import {ALL_CONDITIONS} from './battlemap/shared';
 import {createPortal} from 'react-dom';
 import {useMapConditions} from './battlemap/useMapConditions';
 import {MapConditionFeedback} from './battlemap/MapConditionFeedback';
 import {useMapMenuPosition} from './battlemap/useMapMenuPosition';
-import { abilityModifier } from '../../rules/abilities';
+import {CreatureSaveSummary} from '../Combat/CreatureSaveSummary';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { asJsonb } from '../../lib/jsonbCast';
@@ -91,7 +92,8 @@ import { findParticipantForToken } from '../../lib/participantForToken';
  * source-aware removal and a saved request that survives lost responses.
  */
 
-interface NpcRow {
+interface NpcRow extends CreatureSaveStats {
+  speed: number | null;
   id: string;
   campaign_id: string | null;
   name: string;
@@ -223,7 +225,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
       const [tplRes, combRes] = await Promise.all([
         supabase
           .from('homebrew_monsters')
-          .select('id, campaign_id, name, race, hp, max_hp, ac, conditions, visible_to_players, in_combat, active_immunities, active_buffs')
+          .select('id, campaign_id, name, race, hp, max_hp, ac, speed, str, dex, con, int, wis, cha, cr, ability_scores, save_proficiencies, saving_throws, conditions, visible_to_players, in_combat, active_immunities, active_buffs')
           .eq('id', npcId)
           .single(),
         supabase
@@ -919,80 +921,7 @@ export default function NpcTokenQuickPanel({ npcId, tokenId, anchorX, anchorY, i
           );
         })()}
 
-        {/* v2.408.0 — Saving throws. Standard 5e calculation:
-            ability mod + proficiency bonus (if proficient).
-            Proficiency bonus derived from CR using the standard
-            table (PHB / DMG): CR 0-4 = +2, 5-8 = +3, 9-12 = +4,
-            13-16 = +5, 17-20 = +6, 21-24 = +7, 25-28 = +8,
-            29-30 = +9. Reads ability scores from homebrew_monsters
-            (str/dex/con/int/wis/cha columns) and proficient saves
-            from save_proficiencies. Useful when the DM needs to
-            ask for an out-of-band save (poison cloud, trap, etc.)
-            outside the normal spell/attack flow. */}
-        {(() => {
-          const abilities: Array<['STR'|'DEX'|'CON'|'INT'|'WIS'|'CHA', string]> = [
-            ['STR', 'str'], ['DEX', 'dex'], ['CON', 'con'],
-            ['INT', 'int'], ['WIS', 'wis'], ['CHA', 'cha'],
-          ];
-          const score = (col: string): number => {
-            const v = (npc as any)[col];
-            if (typeof v === 'number') return v;
-            const fromAS = ((npc as any).ability_scores ?? {})[col.toLowerCase()];
-            return typeof fromAS === 'number' ? fromAS : 10;
-          };
-          const mod = (s: number) => abilityModifier(s);
-          // Parse CR. Accepts numeric or strings like "1/4", "1/2", "15".
-          const parseCR = (raw: unknown): number => {
-            if (typeof raw === 'number') return raw;
-            if (typeof raw !== 'string') return 0;
-            const s = raw.trim();
-            if (s.includes('/')) {
-              const [n, d] = s.split('/').map(Number);
-              return d ? n / d : 0;
-            }
-            const n = Number(s);
-            return Number.isFinite(n) ? n : 0;
-          };
-          const cr = parseCR((npc as any).cr);
-          const pb = cr >= 29 ? 9 : cr >= 25 ? 8 : cr >= 21 ? 7 : cr >= 17 ? 6
-                   : cr >= 13 ? 5 : cr >= 9 ? 4 : cr >= 5 ? 3 : 2;
-          const profSaves: string[] = (npc as any).save_proficiencies ?? [];
-          const isProf = (a: string) => profSaves.includes(a) || profSaves.includes(a.toLowerCase());
-          const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
-          return (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 9, color: 'var(--t-3)', letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 4 }}>
-                Saving Throws
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 3 }}>
-                {abilities.map(([label, col]) => {
-                  const m = mod(score(col));
-                  const prof = isProf(label);
-                  const total = prof ? m + pb : m;
-                  return (
-                    <div key={label} style={{
-                      padding: '3px 2px',
-                      background: prof ? 'rgba(212,160,23,0.14)' : 'var(--c-raised)',
-                      border: `1px solid ${prof ? 'rgba(212,160,23,0.45)' : 'var(--c-border)'}`,
-                      borderRadius: 3,
-                      textAlign: 'center' as const,
-                    }}>
-                      <div style={{ fontSize: 8, color: 'var(--t-3)', fontWeight: 700, letterSpacing: '0.04em' }}>{label}</div>
-                      <div style={{
-                        fontSize: 12, fontWeight: 700,
-                        color: prof ? 'var(--c-gold-l)' : 'var(--t-1)',
-                        fontFamily: 'var(--ff-stat)',
-                      }}>{fmt(total)}</div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div style={{ fontSize: 9, color: 'var(--t-3)', marginTop: 3, textAlign: 'center' as const }}>
-                PB +{pb} · gold = proficient
-              </div>
-            </div>
-          );
-        })()}
+        <div style={{marginBottom:12}}><CreatureSaveSummary definition={npc}/></div>
 
         {/* v2.293.0 — Initiative section. Reads from useCombat() to
             find this NPC's combat_participant entry (matched by

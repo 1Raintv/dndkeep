@@ -1,5 +1,7 @@
+import {unarmedSaveRequest,type UnarmedSaveMode} from '../../rules/unarmedStrike';
 import {explicitAttackMode} from '../../rules/attackMode';
-import { useState } from 'react';
+import { useId, useState } from 'react';
+import {parseWeaponAbilityModifier} from '../../rules/weaponAbility';
 import { v4 as uuidv4 } from 'uuid';
 import type { WeaponItem } from '../../types';
 import { rollDie, computeActiveBonuses } from '../../lib/gameUtils';
@@ -43,7 +45,7 @@ function parseDamage(damageDice: string, damageBonus: number): number {
  } else if (damageDice === 'flat') {
  dmg = damageBonus;
  }
- return Math.max(1, dmg);
+ return Math.max(0, dmg);
 }
 
 function modStr(n: number) { return (n >= 0 ? '+' : '') + n; }
@@ -63,6 +65,9 @@ export default function WeaponsTracker({
  weapons, onUpdate, characterId, characterName, historyCharacterId, userId, campaignId,
  activeConditions = [], activeBufss = [], attacksPerAction,
 }: WeaponsTrackerProps) {
+ const formId=useId();
+ const [abilityInput,setAbilityInput]=useState('');
+ const parsedAbility=parseWeaponAbilityModifier(abilityInput);
  const [showAdd, setShowAdd] = useState(false);
  const [editId, setEditId] = useState<string | null>(null);
  const [lastRoll, setLastRoll] = useState<RollResult | null>(null);
@@ -76,6 +81,10 @@ export default function WeaponsTracker({
  // reference so the 4 mode buttons (Damage / Grapple / Shove Push / Shove
  // Prone) have everything they need.
  const [unarmedModal, setUnarmedModal] = useState<WeaponItem | null>(null);
+ const [unarmedAttackRolled,setUnarmedAttackRolled]=useState(false);
+ const [unarmedError,setUnarmedError]=useState('');
+ const [unarmedBusy,setUnarmedBusy]=useState(false);
+ const [unarmedNotice,setUnarmedNotice]=useState('');
  // v2.326.0 — T4: weapon row expansion. Magic weapons (Lucky Blade,
  // staves, etc.) often have a description in `notes` that doesn't fit on
  // the row. Click anywhere outside the Hit/Damage/edit buttons to expand
@@ -86,76 +95,41 @@ export default function WeaponsTracker({
  damageType: 'slashing', range: 'Melee', properties: '', notes: '',
  });
 
- // v2.87.0: Grapple and Shove are 2024 PHB Unarmed Strike modes. Both are
- // contested Athletics checks — the target picks Athletics or Acrobatics.
- // We broadcast the attacker's roll + context; DM adjudicates the target
- // side (they have the monster/NPC stat block and condition state). Each
- // handler: triggerRoll (3D dice + history), logAction (action_log
- // broadcast), then close modal. Closing the modal before the 3D roller
- // settles is fine — triggerRoll's physics are independent of this UI.
- async function handleGrapple(weapon: WeaponItem) {
- const bonus = weapon.athleticsBonus ?? 0;
- const nat = rollDie(20);
- const total = nat + bonus;
- triggerRoll({
- result: nat, dieType: 20, modifier: bonus, total,
- label: `Grapple — Athletics check${bonus >= 0 ? '+' : ''}${bonus}`,
- logHistory,
- });
- if (historyCharacterId) {
- await logAction({
- campaignId: campaignId ?? null,
- characterId: historyCharacterId,
- characterName: characterName ?? '',
- actionType: 'attack',
- actionName: `Grapple (Unarmed Strike) — Athletics`,
- diceExpression: `1d20${bonus >= 0 ? '+' : ''}${bonus}`,
- individualResults: [nat],
- total,
- notes: 'Contested: target rolls STR (Athletics) or DEX (Acrobatics). On success target gains Grappled condition.',
- });
- }
- setUnarmedModal(null);
+ // v2.869: tabletop declaration only. The target rolls its own chosen save;
+ // this control must never fabricate an attacker Athletics roll or success.
+ async function requestUnarmedSave(weapon:WeaponItem,mode:UnarmedSaveMode){
+  if(unarmedBusy)return;setUnarmedBusy(true);setUnarmedError('');
+  try{
+   const request=unarmedSaveRequest(mode,weapon.unarmedSaveDC??NaN);
+   if(historyCharacterId){
+    const result=await logAction({campaignId:campaignId??null,characterId:historyCharacterId,
+     characterName:characterName??'',actionType:'standard-action',actionName:`${request.name} (Unarmed Strike) — save requested`,notes:request.notes});
+    if(result?.error)throw new Error('The save request could not be logged. Check the action log before trying again.');
+   }
+   setUnarmedNotice(request.notes);setUnarmedModal(null);
+  }catch(error){setUnarmedError(error instanceof Error?error.message:'The save request could not be recorded.');}
+  finally{setUnarmedBusy(false);}
  }
 
- async function handleShove(weapon: WeaponItem, variant: 'push' | 'prone') {
- const bonus = weapon.athleticsBonus ?? 0;
- const nat = rollDie(20);
- const total = nat + bonus;
- const variantLabel = variant === 'push' ? 'Push 5 ft' : 'Knock Prone';
- triggerRoll({
- result: nat, dieType: 20, modifier: bonus, total,
- label: `Shove (${variantLabel}) — Athletics check${bonus >= 0 ? '+' : ''}${bonus}`,
- logHistory,
- });
- if (historyCharacterId) {
- await logAction({
- campaignId: campaignId ?? null,
- characterId: historyCharacterId,
- characterName: characterName ?? '',
- actionType: 'attack',
- actionName: `Shove — ${variantLabel} (Unarmed Strike)`,
- diceExpression: `1d20${bonus >= 0 ? '+' : ''}${bonus}`,
- individualResults: [nat],
- total,
- notes: `Contested: target rolls STR (Athletics) or DEX (Acrobatics). On success: ${variant === 'push' ? 'target is pushed 5 ft.' : 'target has the Prone condition.'}`,
- });
- }
- setUnarmedModal(null);
+ function openAdd() {
+ setForm({name:'',attackBonus:0,damageDice:'1d8',damageBonus:0,damageType:'slashing',range:'Melee',properties:'',notes:''});
+ setAbilityInput('');setEditId(null);setShowAdd(true);
  }
 
  function openEdit(w: WeaponItem) {
  setForm({ ...w });
+ setAbilityInput(w.attackAbilityModifier==null?'':String(w.attackAbilityModifier));
  setEditId(w.id);
  setShowAdd(true);
  }
 
  function saveWeapon() {
- if (!form.name?.trim()) return;
+ if (!form.name?.trim()||!parsedAbility.valid) return;
  const weapon: WeaponItem = {
  id: editId ?? uuidv4(),
  name: form.name!.trim(),
  attackBonus: form.attackBonus ?? 0,
+ ...(parsedAbility.value===undefined?{}:{attackAbilityModifier:parsedAbility.value}),
  damageDice: form.damageDice ?? '1d8',
  damageBonus: form.damageBonus ?? 0,
  damageType: form.damageType ?? 'slashing',
@@ -164,16 +138,16 @@ export default function WeaponsTracker({
  notes: form.notes ?? '',
  };
  if (editId) {
- onUpdate(weapons.filter(w => !String(w.id).startsWith('inv_')).map(w => w.id === editId ? weapon : w));
+ onUpdate(customWeapons.map(w => w.id === editId ? weapon : w));
  } else {
- onUpdate([...weapons.filter(w => !String(w.id).startsWith('inv_')), weapon]);
+ onUpdate([...customWeapons, weapon]);
  }
  setShowAdd(false);
  setEditId(null);
  }
 
  function removeWeapon(id: string) {
- onUpdate(weapons.filter(w => w.id !== id));
+ onUpdate(customWeapons.filter(w => w.id !== id));
  }
 
  async function handleHit(weapon: WeaponItem) {
@@ -191,7 +165,7 @@ export default function WeaponsTracker({
  setLastRoll(prev => ({
  weaponName: weapon.name,
  hit, nat,
- damage: prev?.weaponName === weapon.name ? prev.damage : 0,
+ damage: !weapon.unarmedModes && prev?.weaponName === weapon.name ? prev.damage : 0,
  damageType: weapon.damageType,
  crit: nat === 20,
  miss: nat === 1,
@@ -235,7 +209,8 @@ export default function WeaponsTracker({
 
  const baseDmg = parseDamage(weapon.damageDice, weapon.damageBonus);
  const isCrit = lastRoll?.weaponName === weapon.name && lastRoll.crit;
- const critExtra = isCrit ? parseDamage(weapon.damageDice, 0) : 0;
+ // v2.869 — critical hits add dice, never an invented point to flat damage.
+ const critExtra = isCrit && weapon.damageDice !== 'flat' ? parseDamage(weapon.damageDice, 0) : 0;
  const damage = baseDmg + bonusDmg + critExtra;
 
  setLastRoll(prev => prev ? { ...prev, damage, weaponName: weapon.name } : {
@@ -273,12 +248,9 @@ export default function WeaponsTracker({
  }
  }
 
- // v2.266.0 — was splitting weapons into customWeapons and an
- // unused inventoryWeapons branch; the unused branch was kept "for
- // symmetry" but TS rejects it. Drop entirely; we filter only
- // customWeapons here. If a future ranged-from-inventory section
- // wants its own branch, recreate it then.
- const customWeapons = weapons.filter(w => !String(w.id).startsWith('inv_'));
+ // v2.869: generated inventory, species and unarmed rows are rebuilt from
+ // their source. Never copy them into the manually saved weapon list.
+ const customWeapons = weapons.filter(w => !String(w.id).startsWith('inv_')&&!String(w.id).startsWith('nat_')&&w.id!=='unarmed');
 
  return (
  <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
@@ -437,7 +409,7 @@ export default function WeaponsTracker({
  {w.unarmedModes ? (
  <button
  className="srow-hit"
- onClick={() => setUnarmedModal(w)}
+ onClick={() => {setUnarmedError('');setUnarmedNotice('');setUnarmedAttackRolled(false);setUnarmedModal(w);}}
  title="Unarmed Strike — pick Damage, Grapple, or Shove"
  style={{
  fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 13,
@@ -508,17 +480,18 @@ export default function WeaponsTracker({
  maxRangeFt={weaponMaxRangeFt(w.range, w.properties)}
  normalRangeFt={weaponNormalRangeFt(w.range, w.properties)}
  attackBonus={w.attackBonus ?? 0}
- damageDice={w.damageDice === 'flat' ? `1d0+${w.damageBonus ?? 0}` : `${w.damageDice}${w.damageBonus ? (w.damageBonus > 0 ? `+${w.damageBonus}` : String(w.damageBonus)) : ''}`}
+ attackAbilityModifier={w.attackAbilityModifier}
+ damageDice={w.damageDice === 'flat' ? String(w.damageBonus ?? 0) : `${w.damageDice}${w.damageBonus ? (w.damageBonus > 0 ? `+${w.damageBonus}` : String(w.damageBonus)) : ''}`}
  damageType={w.damageType || 'slashing'}
  attackName={w.name}
- source="weapon" attackMode={explicitAttackMode(w.range)}
+ source={w.id==='unarmed'?'ability':'weapon'} attackMode={explicitAttackMode(w.range)}
  compact
  />
  )}
- {!isInv && w.id !== 'unarmed' && (
+ {!isInv && !String(w.id).startsWith('nat_') && w.id !== 'unarmed' && (
  <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
- <button className="btn-ghost btn-sm" onClick={() => openEdit(w)} style={{ padding: '2px 6px', fontSize: 10 }}></button>
- <button className="btn-ghost btn-sm" onClick={() => removeWeapon(w.id)} style={{ padding: '2px 6px', fontSize: 10 }}></button>
+ <button className="btn-ghost btn-sm" aria-label={`Edit ${w.name}`} onClick={() => openEdit(w)} style={{ padding: '2px 6px', fontSize: 10 }}>Edit</button>
+ <button className="btn-ghost btn-sm" aria-label={`Remove ${w.name}`} onClick={() => removeWeapon(w.id)} style={{ padding: '2px 6px', fontSize: 10 }}>×</button>
  </div>
  )}
  </div>
@@ -560,55 +533,63 @@ export default function WeaponsTracker({
 
 
 
+ <button className="btn-secondary" onClick={openAdd} style={{alignSelf:'flex-start'}}>Add Custom Attack</button>
+
  {/* Add/Edit form modal */}
  {showAdd && (
  <ModalPortal>
  <div className="modal-overlay" onClick={() => setShowAdd(false)}>
- <div className="modal" style={{ maxWidth: 460 }} onClick={e => e.stopPropagation()}>
- <h3 style={{ marginBottom: 'var(--sp-4)' }}>{editId ? 'Edit Attack' : 'Add Custom Attack'}</h3>
- <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+ <div className="modal" role="dialog" aria-modal="true" aria-labelledby={`${formId}-title`} style={{ maxWidth: 460, padding:16 }} onClick={e => e.stopPropagation()}>
+ <h3 id={`${formId}-title`} style={{ margin: '0 0 12px' }}>{editId ? 'Edit Attack' : 'Add Custom Attack'}</h3>
+ <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
  <div>
- <label>Name *</label>
- <input value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Longsword, Firebolt, Shove…" autoFocus />
+ <label htmlFor={`${formId}-name`}>Name *</label>
+ <input id={`${formId}-name`} value={form.name ?? ''} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Longsword, Firebolt, Shove…" autoFocus />
  </div>
- <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
+ <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
  <div>
- <label>Attack Bonus (d20 +)</label>
- <input type="number" value={form.attackBonus ?? 0} onChange={e => setForm(f => ({ ...f, attackBonus: parseInt(e.target.value) || 0 }))} />
+ <label htmlFor={`${formId}-attackBonus`}>Attack Bonus (d20 +)</label>
+ <input id={`${formId}-attackBonus`} type="number" value={form.attackBonus ?? 0} onChange={e => setForm(f => ({ ...f, attackBonus: parseInt(e.target.value) || 0 }))} />
  </div>
  <div>
- <label>Damage Dice</label>
- <select value={form.damageDice ?? '1d8'} onChange={e => setForm(f => ({ ...f, damageDice: e.target.value }))}>
+ <label htmlFor={`${formId}-damageDice`}>Damage Dice</label>
+ <select id={`${formId}-damageDice`} value={form.damageDice ?? '1d8'} onChange={e => setForm(f => ({ ...f, damageDice: e.target.value }))}>
  {DICE_OPTIONS.map(d => <option key={d} value={d}>{d === 'flat' ? 'Flat (no dice)' : d}</option>)}
  </select>
  </div>
  <div>
- <label>Damage Bonus</label>
- <input type="number" value={form.damageBonus ?? 0} onChange={e => setForm(f => ({ ...f, damageBonus: parseInt(e.target.value) || 0 }))} />
+ <label htmlFor={`${formId}-damageBonus`}>Damage Bonus</label>
+ <input id={`${formId}-damageBonus`} type="number" value={form.damageBonus ?? 0} onChange={e => setForm(f => ({ ...f, damageBonus: parseInt(e.target.value) || 0 }))} />
  </div>
  <div>
- <label>Damage Type</label>
- <select value={form.damageType ?? 'slashing'} onChange={e => setForm(f => ({ ...f, damageType: e.target.value }))}>
+ <label htmlFor={`${formId}-damageType`}>Damage Type</label>
+ <select id={`${formId}-damageType`} value={form.damageType ?? 'slashing'} onChange={e => setForm(f => ({ ...f, damageType: e.target.value }))}>
  {DAMAGE_TYPES.map(t => <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
  </select>
  </div>
  </div>
  <div>
- <label>Range</label>
- <input value={form.range ?? 'Melee'} onChange={e => setForm(f => ({ ...f, range: e.target.value }))} placeholder="Melee or Ranged (80/320 ft.)" />
+ <label htmlFor={`${formId}-ability`}>Attack ability modifier (optional)</label>
+ <input id={`${formId}-ability`} type="number" step="1" value={abilityInput} onChange={e=>setAbilityInput(e.target.value)} placeholder="e.g. 4" aria-describedby={`${formId}-ability-help`} aria-invalid={!parsedAbility.valid}/>
+ <div id={`${formId}-ability-help`} style={{fontSize:11,color:'var(--t-2)',marginTop:4}}>For Graze and mastery effects. Enter only the chosen ability modifier, excluding proficiency and magic bonuses. Leave blank if unsure.</div>
+ {!parsedAbility.valid&&<div role="alert">Enter a whole-number modifier or leave it blank.</div>}
  </div>
  <div>
- <label>Properties (optional)</label>
- <input value={form.properties ?? ''} onChange={e => setForm(f => ({ ...f, properties: e.target.value }))} placeholder="Versatile, Finesse, Light…" />
+ <label htmlFor={`${formId}-range`}>Range</label>
+ <input id={`${formId}-range`} value={form.range ?? 'Melee'} onChange={e => setForm(f => ({ ...f, range: e.target.value }))} placeholder="Melee or Ranged (80/320 ft.)" />
  </div>
  <div>
- <label>Notes (optional) — start with "save:DC14 CON" to mark as spell save</label>
- <input value={form.notes ?? ''} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="+1 magic, or save:DC14 CON" />
+ <label htmlFor={`${formId}-properties`}>Properties (optional)</label>
+ <input id={`${formId}-properties`} value={form.properties ?? ''} onChange={e => setForm(f => ({ ...f, properties: e.target.value }))} placeholder="Versatile, Finesse, Light…" />
+ </div>
+ <div>
+ <label htmlFor={`${formId}-notes`}>Notes (optional) — start with "save:DC14 CON" to mark as spell save</label>
+ <input id={`${formId}-notes`} value={form.notes ?? ''} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="+1 magic, or save:DC14 CON" />
  </div>
  </div>
- <div style={{ display: 'flex', gap: 'var(--sp-3)', marginTop: 'var(--sp-5)', justifyContent: 'flex-end' }}>
+ <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-end' }}>
  <button className="btn-secondary" onClick={() => setShowAdd(false)}>Cancel</button>
- <button className="btn-gold" onClick={saveWeapon} disabled={!form.name?.trim()}>
+ <button className="btn-gold" onClick={saveWeapon} disabled={!form.name?.trim()||!parsedAbility.valid}>
  {editId ? 'Save Changes' : 'Add Attack'}
  </button>
  </div>
@@ -624,19 +605,20 @@ export default function WeaponsTracker({
      the existing handleHit + handleDamage chain so it stays consistent with
      other melee attacks. Grapple and Shove use dedicated handlers that roll
      Athletics and broadcast contested-check context for DM adjudication. */}
+ {unarmedNotice&&<p role="status" style={{fontSize:12,whiteSpace:'normal'}}>{unarmedNotice}</p>}
  {unarmedModal && (
  <ModalPortal>
  <div className="modal-overlay" onClick={() => setUnarmedModal(null)}>
  <div
- className="modal"
+ className="modal" role="dialog" aria-modal="true" aria-label="Unarmed Strike"
  onClick={e => e.stopPropagation()}
  style={{
  // v2.174.0 — bumped 480→560 for comfortable line length now
  // that descriptions wrap (previously they overflowed in a
  // single nowrap line, so width didn't matter as much).
  maxWidth: 560, width: 'calc(100vw - 16px)',
- maxHeight: 'calc(100dvh - 32px)',
- display: 'flex', flexDirection: 'column' as const,
+ maxHeight: 'calc(100dvh - 32px)', overflowY:'auto',
+ display: 'block',
  padding: 20,
  }}
  >
@@ -644,11 +626,15 @@ export default function WeaponsTracker({
  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.18em', textTransform: 'uppercase' as const, color: 'var(--c-gold-l)', marginBottom: 4 }}>
  Unarmed Strike
  </div>
+ {unarmedError&&<p role="alert">{unarmedError}</p>}
  <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--t-1)', lineHeight: 1.2 }}>
  Choose a mode
  </h3>
- <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5 }}>
- 2024 PHB: you can use one Unarmed Strike per attack action for Damage, Grapple, or Shove.
+ <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--t-2)', lineHeight: 1.5 }}>
+ Each Unarmed Strike can deal damage, grapple, or shove. Targets must be within 5 ft and at most one size larger for grapple/shove.
+ </p>
+ <p style={{margin:'6px 0 0',fontSize:11,color:'var(--t-2)',lineHeight:1.5}}>
+ Grapple/shove buttons request a save only. Resolve the target’s save, attack spending and effects with your DM. The base DC uses Strength; apply feature changes, such as eligible Monk Dexterity, at the table.
  </p>
  </div>
 
@@ -665,10 +651,13 @@ export default function WeaponsTracker({
  {/* Damage — the existing attack flow */}
  <button
  onClick={() => {
- handleHit(unarmedModal);
- // Slight delay so the two rolls don't visually collide on screen
- window.setTimeout(() => handleDamage(unarmedModal), 150);
- setUnarmedModal(null);
+ if(!unarmedAttackRolled){
+   setUnarmedAttackRolled(true);
+   void handleHit(unarmedModal).catch(()=>setUnarmedError('The attack roll could not be logged. Keep the displayed roll; check history before continuing.'));
+ }else{
+   if(lastRoll?.nat!==1)void handleDamage(unarmedModal);
+   setUnarmedModal(null);
+ }
  }}
  style={{
  width: '100%', padding: '12px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
@@ -682,16 +671,16 @@ export default function WeaponsTracker({
  }}
  >
  <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 4, whiteSpace: 'normal' as const }}>
- Damage
+ {unarmedAttackRolled?(lastRoll?.nat===1?'Miss — close':'Confirm hit — show damage'):'Damage'}
  </div>
- <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
- Roll to hit ({modStr(unarmedModal.attackBonus)}), then {modStr(unarmedModal.damageBonus)} bludgeoning on hit.
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-2)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
+ {unarmedAttackRolled?`Attack total: ${lastRoll?.hit}. ${lastRoll?.nat===1?'Natural 1: no damage.':lastRoll?.nat===20?'Natural 20: critical hit. Confirm to show damage.':'Confirm the hit with your DM before showing damage.'} No HP is changed here.`:`Roll to hit (${modStr(unarmedModal.attackBonus)}), then confirm the hit before showing bludgeoning damage.`}
  </div>
  </button>
 
- {/* Grapple — contested Athletics */}
+ {/* Grapple — target chooses Strength or Dexterity save */}
  <button
- onClick={() => handleGrapple(unarmedModal)}
+ disabled={unarmedBusy||unarmedAttackRolled||unarmedModal.unarmedSaveDC==null} onClick={() => void requestUnarmedSave(unarmedModal,'grapple')}
  style={{
  width: '100%', padding: '12px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
@@ -706,14 +695,14 @@ export default function WeaponsTracker({
  <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 4, whiteSpace: 'normal' as const }}>
  Grapple
  </div>
- <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
- Athletics check ({modStr(unarmedModal.athleticsBonus ?? 0)}) vs target's Athletics or Acrobatics. On success: target is Grappled.
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-2)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
+ Target chooses STR or DEX save, base DC {unarmedModal.unarmedSaveDC??'—'}. Failure: Grappled. Requires a free hand.
  </div>
  </button>
 
  {/* Shove — Push 5 ft */}
  <button
- onClick={() => handleShove(unarmedModal, 'push')}
+ disabled={unarmedBusy||unarmedAttackRolled||unarmedModal.unarmedSaveDC==null} onClick={() => void requestUnarmedSave(unarmedModal,'push')}
  style={{
  width: '100%', padding: '12px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
@@ -728,14 +717,14 @@ export default function WeaponsTracker({
  <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 4, whiteSpace: 'normal' as const }}>
  Shove — Push 5 ft
  </div>
- <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
- Athletics check ({modStr(unarmedModal.athleticsBonus ?? 0)}) vs target's Athletics or Acrobatics. On success: push target 5 feet.
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-2)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
+ Target chooses STR or DEX save, base DC {unarmedModal.unarmedSaveDC??'—'}. Failure: push it 5 feet away from you.
  </div>
  </button>
 
  {/* Shove — Knock Prone */}
  <button
- onClick={() => handleShove(unarmedModal, 'prone')}
+ disabled={unarmedBusy||unarmedAttackRolled||unarmedModal.unarmedSaveDC==null} onClick={() => void requestUnarmedSave(unarmedModal,'prone')}
  style={{
  width: '100%', padding: '12px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
@@ -750,8 +739,8 @@ export default function WeaponsTracker({
  <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 4, whiteSpace: 'normal' as const }}>
  Shove — Knock Prone
  </div>
- <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
- Athletics check ({modStr(unarmedModal.athleticsBonus ?? 0)}) vs target's Athletics or Acrobatics. On success: target has the Prone condition.
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-2)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
+ Target chooses STR or DEX save, base DC {unarmedModal.unarmedSaveDC??'—'}. Failure: Prone.
  </div>
  </button>
  </div>

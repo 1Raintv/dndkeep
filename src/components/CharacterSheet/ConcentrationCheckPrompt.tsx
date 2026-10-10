@@ -10,7 +10,7 @@ export function ConcentrationCheckPrompt({spellName,damage,dc,bonus,advantage,on
    <div style={{fontWeight:800,fontSize:11,color:'#a78bfa',letterSpacing:'.1em',textTransform:'uppercase',marginBottom:5}}>Concentration Check Required</div>
    <div style={{fontSize:13,color:'var(--t-1)',fontWeight:600}}>{spellName} — took {damage} damage → CON save DC {dc}</div>
    <div style={{fontSize:12,color:'var(--t-2)',marginTop:5,lineHeight:1.5}}>DC = {reason} · need a {dc-bonus} or higher on the d20</div>
-   {advantage&&<div style={{fontSize:12,color:'#c4b5fd',marginTop:5}}>War Caster: roll two d20s, keep the higher</div>}
+   {advantage&&<div style={{fontSize:12,color:'#c4b5fd',marginTop:5}}>Advantage: roll two d20s, keep the higher</div>}
   </div>
   <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
    <button onClick={onRoll} style={{fontWeight:800,fontSize:12,padding:'8px 14px',minHeight:44,borderRadius:'var(--r-md)',cursor:'pointer',

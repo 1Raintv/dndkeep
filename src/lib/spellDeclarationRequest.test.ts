@@ -1,6 +1,6 @@
 import {expect,it} from 'vitest';
 import type {Character,SpellData} from '../types';
-import {createSpellDeclarationRequest,isSpellDeclarationRequest} from './spellDeclarationRequest';
+import {createSpellDeclarationRequest,createTeleporterCantripRequest,isSpellDeclarationRequest} from './spellDeclarationRequest';
 const uuid='11111111-1111-4111-8111-111111111111';
 const character={id:uuid,campaign_id:uuid,spell_slots:{3:{total:2,used:0}}} as unknown as Character;
 const spell={id:'fly',name:'Fly',level:3,casting_time:'1 Action',range:'Touch',duration:'10 minutes'} as SpellData;
@@ -48,4 +48,16 @@ it('requires real attack values and no saving throw on attack-roll intents',()=>
 it.each([['1 Action','action'],['1 Bonus Action','bonusAction'],['Reaction','reaction'],['Reaction, when a creature uses a Bonus Action','reaction']] as const)('saves the action kind for %s',(time,kind)=>{
  const r=createSpellDeclarationRequest(character,{...spell,casting_time:time},uuid,uuid,3,source,'',uuid);expect(r.context.actionKind).toBe(kind);
  expect(isSpellDeclarationRequest(r)).toBe(true);expect(isSpellDeclarationRequest({...r,context:{...r.context,isBonusAction:!r.context.isBonusAction}})).toBe(false);
+});
+
+it('persists a Teleporter child as part of the parent Bonus Action, preserving source and target',()=>{
+ const c={...character,class_name:'Psion',level:6,subclass:'Psi Warper',spell_sources:{light:['class:Psion']}} as Character;
+ const cantrip:SpellData={...spell,id:'light',level:0};const parent='22222222-2222-4222-8222-222222222222';
+ const request=createTeleporterCantripRequest(c,cantrip,uuid,uuid,source,'Ally',parent,uuid);
+ expect(request.context).toMatchObject({teleporterCombatParent:parent,actionKind:'bonusAction',isBonusAction:true,target:'Ally',source:'class:Psion'});
+ expect(request.expectedSlot).toBeNull();expect(isSpellDeclarationRequest(JSON.parse(JSON.stringify(request)))).toBe(true);
+ for(const invalid of [null,'bad',uuid])expect(()=>createTeleporterCantripRequest(c,cantrip,uuid,uuid,source,'',invalid as string,uuid)).toThrow();
+ expect(()=>createTeleporterCantripRequest({...c,spell_sources:{}},cantrip,uuid,uuid,source,'',parent,uuid)).toThrow();
+ expect(()=>createTeleporterCantripRequest(c,{...cantrip,casting_time:'1 minute'},uuid,uuid,source,'',parent,uuid)).toThrow();
+ expect(isSpellDeclarationRequest({...request,context:{...request.context,actionKind:'action',isBonusAction:false}})).toBe(false);
 });
