@@ -1,5 +1,24 @@
 # DNDKeep — Two-Track Roadmap
 
+### Release rehearsal refresh — 318 migrations (not released)
+
+Both retained isolated databases (fresh-chain origin and main-upgrade origin)
+applied the technique-closure migration successfully. Their ledger version
+sets now exactly match all 318 repository migrations. SQL lint reports no
+errors. Public/private schemas match across 1,139 columns, 364 function
+signatures/bodies/ACLs, 128 policies and 244 indexes, with normalized function
+line endings. Anonymous users cannot execute the new closure RPC;
+authenticated users can invoke its existing ownership-checked implementation.
+Both rehearsal stacks were stopped with their volumes preserved.
+
+A read-only production ledger check on 2026-10-10 found 233 applied migrations,
+latest 20261008211300: the branch has not been released there. These retained
+local rehearsals do not prove compatibility with populated production data;
+that remains release work. Two targeted read-only checks found zero characters
+needing the stable-state backfill and zero pending legacy death saves that the
+migration would expire, at the time of inspection. These counts do not cover
+all pending migrations. No production writes were performed.
+
 ### Free Propel validation audit (local; not released)
 
 Rechecked the owner-provided UA update's Energy Dice table (all 20 levels),
