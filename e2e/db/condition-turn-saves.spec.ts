@@ -19,7 +19,7 @@ test.describe('Atomic condition turn saves',()=>{
   turn=sql(`select psionic_turn_id from combat_encounters where id='${encounter}'`);
   update(`active_conditions=array['Poisoned'],condition_sources='{"Poisoned":{"source":"monster:fixture","save_to_end":{"ability":"INT","dc":12}}}'`);
  });
- test.afterEach(()=>sql(`delete from campaigns where id='${campaign}';delete from characters where id='${char}';delete from auth.users where id in('${owner}','${dm}','${other}');`));
+ test.afterEach(()=>sql(`delete from campaigns where id='${campaign}';delete from homebrew_monsters where id='${char}';delete from monsters where id='${char}';delete from characters where id='${char}';delete from auth.users where id in('${owner}','${dm}','${other}');`));
  const update=(set:string)=>sql(`update combatants set ${set} where id=(select combatant_id from combat_participants where id='${part}')`);
  const ctx=()=>JSON.parse(sql(auth(owner,`select get_condition_turn_save_context('${part}','${turn}','Poisoned')`)));
  const command=(dice=[12],c=ctx(),bonus=0,request=randomUUID(),penalty:number|null=3)=>`select settle_condition_turn_save('${request}','${part}','${turn}','Poisoned','${JSON.stringify(c)}',array[${dice}]::integer[],${bonus},${penalty===null?'null':penalty})`;
@@ -103,6 +103,36 @@ test.describe('Atomic condition turn saves',()=>{
   sql(`update characters set inventory='[{"name":"Private ring","magical":true,"equipped":true,"attuned":true,"saveBonus":1}]' where id='${char}'`);
   expect(ctx().state.bonusRevision).not.toBe(c.state.bonusRevision);expect(JSON.stringify(ctx())).not.toContain('Private ring');
   expect(()=>settle([12],c)).toThrow();expect(sql(`select count(*) from dndkeep_private.condition_turn_saves where participant_id='${part}'`)).toBe('0');
+ });
+
+ for(const kind of ['homebrew_monster','narrative_npc','roster_npc','srd_monster','custom'])test(`changed ${kind} save totals invalidate prepared condition saves`,()=>{
+  if(kind==='srd_monster')sql(`insert into monsters(id,name,type,cr,xp,size,hp,hp_formula,ac,speed,str,dex,con,int,wis,cha,saving_throws) values('${char}','Revision fixture','Beast','9',5000,'Medium',20,'3d8',10,30,10,10,10,18,10,10,'{"int":9}')`);
+  else if(kind!=='custom')sql(`insert into homebrew_monsters(id,user_id,owner_id,campaign_id,name,int,saving_throws,notes) values('${char}','${dm}','${dm}','${campaign}','Revision fixture',18,'{"int":9}','Private creature note')`);
+  update(`definition_type='${kind}',stat_block_snapshot='{"int":18,"saving_throws":{"int":9},"notes":"Private creature note"}'`);
+  sql(`update combat_participants set participant_type='creature' where id='${part}'`);
+  const read=()=>JSON.parse(sql(auth(dm,`select get_condition_turn_save_context('${part}','${turn}','Poisoned')`))),before=read();
+  expect(before.state.bonusRevision).toMatch(/^[a-f0-9]{32}$/);expect(JSON.stringify(before)).not.toContain('Private creature note');expect(before.state).not.toHaveProperty('saving_throws');
+  if(kind==='custom')update(`stat_block_snapshot='{"int":18,"saving_throws":{"int":10},"notes":"Private creature note"}'`);
+  else sql(`update ${kind==='srd_monster'?'monsters':'homebrew_monsters'} set saving_throws='{"int":10}' where id='${char}'`);
+  expect(read().state.bonusRevision).not.toBe(before.state.bonusRevision);
+  expect(()=>sql(auth(dm,command([12],before,9)))).toThrow();
+  expect(read().state.conditions).toContain('Poisoned');expect(sql(`select count(*) from dndkeep_private.condition_turn_saves where participant_id='${part}'`)).toBe('0');expect(sql(`select count(*) from combat_events where encounter_id='${encounter}'`)).toBe('0');
+  // A fresh reviewed proposal still resolves through the existing transaction.
+  expect(JSON.parse(sql(auth(dm,command([12],read(),10))))).toMatchObject({passed:true});
+ });
+ test('custom descriptive edits do not invalidate a save, but ability edits do',()=>{
+  update(`definition_type='custom',stat_block_snapshot='{"int":18,"saving_throws":{},"notes":"Private"}'`);sql(`update combat_participants set participant_type='creature' where id='${part}'`);
+  const read=()=>JSON.parse(sql(auth(dm,`select get_condition_turn_save_context('${part}','${turn}','Poisoned')`))),before=read();
+  update(`stat_block_snapshot='{"int":18,"saving_throws":{},"notes":"Changed private"}'`);expect(read().state.bonusRevision).toBe(before.state.bonusRevision);
+  update(`stat_block_snapshot='{"int":20,"saving_throws":{},"notes":"Changed private"}'`);expect(read().state.bonusRevision).not.toBe(before.state.bonusRevision);
+ });
+
+ for(const kind of ['homebrew_monster','srd_monster','custom'])test(`unavailable ${kind} definition cannot produce a verified save context`,()=>{
+  if(kind==='homebrew_monster')sql(`insert into homebrew_monsters(id,user_id,owner_id,name,ability_scores,save_proficiencies,cr) values('${char}','${other}','${other}','Private creature','{"int":18}','["int"]','9')`);
+  if(kind==='srd_monster')sql(`insert into monsters(id,owner_id,source,name,type,cr,xp,size,hp,hp_formula,ac,speed,str,dex,con,int,wis,cha) values('${char}','${other}','homebrew','Private creature','Beast','9',5000,'Medium',20,'3d8',10,30,10,10,10,18,10,10)`);
+  update(`definition_type='${kind}',stat_block_snapshot='null'::jsonb`);sql(`update combat_participants set participant_type='creature' where id='${part}'`);
+  expect(()=>sql(auth(dm,`select get_condition_turn_save_context('${part}','${turn}','Poisoned')`))).toThrow(/Saving creature is unavailable|Saving catalog creature is unavailable|Review custom saving throw data/);
+  expect(sql(`select count(*) from dndkeep_private.condition_turn_saves where participant_id='${part}'`)).toBe('0');
  });
 
 });

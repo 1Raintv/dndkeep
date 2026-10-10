@@ -7666,3 +7666,31 @@ except four removed NPC warnings; new modules/tests clean.
 
 This unifies base save summaries, not temporary combat-effect previews or the
 remaining durable aura/turn orchestration. No production deployment.
+
+
+### Creature save revision binding (2026-10-10, unreleased)
+
+The shared server save context previously hashed only homebrew ability_scores,
+proficiency flags and CR. Catalog/custom definitions and imported exact totals
+could change without invalidating a prepared save. Migration
+`20261010070019_saving_target_creature_revision.sql` now follows the linked
+source, checks campaign/owner scope, and hashes source identity plus every
+creatureSaveBonus input. It returns only the revision, not source notes or
+private stat blocks. Unrelated descriptive edits are excluded from this hash.
+
+A changed bonus now rejects the old condition-save proposal before condition,
+penalty, event or receipt writes; a fresh reviewed proposal still settles.
+Existing saved dice remain subject to their recovery/review flow. This does
+not independently prove a manually supplied base modifier or complete live
+atomic aura/turn orchestration. Migration applied and exactly recorded only
+in local Docker; no production deployment.
+
+Validation: 56 condition-save cases (including all five creature source kinds,
+private/missing-source rejection and stale proposal rollback), plus 170 shared
+attack-save, Propel-save and aura-context cases pass against local Docker.
+Fixtures use JSON null for a missing snapshot and source=homebrew for a private
+catalog row, respecting the actual schema constraints. Full gate passes:
+3,760 units, TypeScript 194/194, hooks/RAW/coordinates/anchors, build and entry
+budget. Changed spec lint clean, local SQL lint has zero errors, repeated
+migration succeeds, exact ledger SQL verified and CLI reports no unapplied
+repo migrations. The pre-existing foreign local ledger entry is preserved.
