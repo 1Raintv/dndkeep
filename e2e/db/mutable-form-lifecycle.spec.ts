@@ -98,6 +98,61 @@ test.describe('Mutable Form saved private lifecycle',()=>{
   begin();expect(()=>invoke(`dndkeep_private.read_mutable_form('${character}','${id}')`,other)).toThrow();
   expect(sql(`select has_function_privilege('anon','dndkeep_private.begin_mutable_form(uuid,uuid,text,integer,boolean,jsonb)','execute'),has_function_privilege('authenticated','dndkeep_private.begin_mutable_form(uuid,uuid,text,integer,boolean,jsonb)','execute'),has_table_privilege('authenticated','dndkeep_private.mutable_form_declarations','select')`)).toBe('f|f|f');
  });
+ test('applies HP once and replays current HP without restoring damage or duplicating history',()=>{
+  begin();invoke(`dndkeep_private.finalize_mutable_form_roll('${character}','${id}')`);
+  const q=`dndkeep_private.apply_mutable_form_hp('${character}','${id}',false)`;
+  expect(invoke(q)).toMatchObject({granted:5,intelligenceModifier:3,afterTempHP:5,replayed:false});
+  sql(`update characters set temp_hp=1 where id='${character}'`);
+  expect(invoke(q)).toMatchObject({afterTempHP:5,character:{temp_hp:1},replayed:true});
+  expect(()=>invoke(`dndkeep_private.apply_mutable_form_hp('${character}','${id}',true)`)).toThrow();
+  expect(sql(`select count(*) from character_history where character_id='${character}' and description like 'Mutable Form:%'`)).toBe('1');
+  expect(sql(`select count(*) from action_logs where character_id='${character}' and action_name='Mutable Form'`)).toBe('1');
+ });
+ for(const keep of [true,false])test(`explicitly ${keep?'keeps':'replaces'} a higher temporary HP pool without stacking`,()=>{
+  sql(`update characters set temp_hp=20 where id='${character}'`);begin();invoke(`dndkeep_private.finalize_mutable_form_roll('${character}','${id}')`);
+  expect(invoke(`dndkeep_private.apply_mutable_form_hp('${character}','${id}',${keep})`)).toMatchObject({granted:5,beforeTempHP:20,afterTempHP:keep?20:5,keptExisting:keep});
+ });
+ for(const equipment of [{equipped:true,attuned:true,expected:4},{equipped:false,attuned:true,expected:3},{equipped:true,attuned:false,expected:3}])test(`captures Headband eligibility ${JSON.stringify(equipment)}`,()=>{
+  sql(`update characters set inventory='${JSON.stringify([{id:'headband',name:'Headband',magic_item_id:'headband-of-intellect',equipped:equipment.equipped,attuned:equipment.attuned}])}' where id='${character}'`);
+  expect(begin().intelligence_modifier).toBe(equipment.expected);
+  sql(`update characters set intelligence=30,inventory='[]' where id='${character}'`);
+  invoke(`dndkeep_private.finalize_mutable_form_roll('${character}','${id}')`);
+  expect(invoke(`dndkeep_private.apply_mutable_form_hp('${character}','${id}',false)`).granted).toBe(2+equipment.expected);
+ });
+ test('never lowers higher natural Intelligence and ignores a renamed homebrew item',()=>{
+  sql(`update characters set intelligence=22,inventory='[{"name":"Headband of Intellect","magic_item_id":"homebrew-headband","equipped":true,"attuned":true,"abilityOverride":{"ability":"intelligence","value":30}},{"name":"Headband","magic_item_id":"headband-of-intellect","equipped":true,"attuned":true}]' where id='${character}'`);
+  expect(begin().intelligence_modifier).toBe(6);
+ });
+ test('uses the enhanced total and minimum one HP, never adds the Flesh Weaver cost as a roll',()=>{
+  sql(`update characters set intelligence=1 where id='${character}'`);begin(true);
+  invoke(`dndkeep_private.enhance_mutable_form('${character}','${id}','${randomUUID()}','surge',null,6)`);
+  invoke(`dndkeep_private.finalize_mutable_form_roll('${character}','${id}')`);
+  expect(invoke(`dndkeep_private.apply_mutable_form_hp('${character}','${id}',false)`)).toMatchObject({granted:1,intelligenceModifier:-5});
+ });
+ test('rejects unfinalized/expired grants and another owner; no HP or history is written',()=>{
+  begin();const q=`dndkeep_private.apply_mutable_form_hp('${character}','${id}',false)`;
+  expect(()=>invoke(q)).toThrow();invoke(`dndkeep_private.finalize_mutable_form_roll('${character}','${id}')`);expect(()=>invoke(q,other)).toThrow();
+  sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+60 where character_id='${character}'`);expect(()=>invoke(q)).toThrow();
+  expect(sql(`select temp_hp from characters where id='${character}'`)).toBe('0');
+  expect(sql(`select count(*) from action_logs where character_id='${character}' and action_name='Mutable Form'`)).toBe('0');
+  expect(sql(`select has_function_privilege('authenticated','dndkeep_private.apply_mutable_form_hp(uuid,uuid,boolean)','execute')`)).toBe('f');
+ });
+ test('ending the form does not subtract previously granted temporary HP',()=>{
+  begin();invoke(`dndkeep_private.finalize_mutable_form_roll('${character}','${id}')`);invoke(`dndkeep_private.apply_mutable_form_hp('${character}','${id}',false)`);
+  sql(`update dndkeep_private.psionic_duration_clocks set elapsed_seconds=elapsed_seconds+60 where character_id='${character}'`);expect(read().remainingSeconds).toBe(0);
+  expect(sql(`select temp_hp from characters where id='${character}'`)).toBe('5');
+ });
+ test('checks map pool consistency and updates the matching pool atomically',()=>{
+  const campaign=randomUUID(),cb=randomUUID();
+  try {
+   sql(`insert into campaigns(id,owner_id,name) values('${campaign}','${owner}','Mutable HP');update characters set campaign_id='${campaign}',temp_hp=2 where id='${character}';insert into combatants(id,campaign_id,owner_id,name,definition_type,definition_id,temp_hp) values('${cb}','${campaign}','${owner}','PC','character','${character}',3)`);
+   turn=invoke(`dndkeep_private.action_turn_context('${character}')`).turnId;
+   begin();invoke(`dndkeep_private.finalize_mutable_form_roll('${character}','${id}')`);const q=`dndkeep_private.apply_mutable_form_hp('${character}','${id}',false)`;
+   expect(()=>invoke(q)).toThrow();expect(read().applied_result).toBeNull();expect(sql(`select temp_hp from characters where id='${character}'`)).toBe('2');
+   sql(`update combatants set temp_hp=2 where id='${cb}'`);invoke(q);
+   expect(sql(`select temp_hp from combatants where id='${cb}'`)).toBe('5');
+  } finally {sql(`update characters set campaign_id=null where id='${character}';delete from campaigns where id='${campaign}'`);}
+ });
  test('concurrent identical requests commit one payment and one Bonus Action',async()=>{
   const query=asUser(owner,expression());
   const results=await Promise.all([1,2].map(()=>promisify(execFile)('docker',[...args,'-c',query],{encoding:'utf8'})));

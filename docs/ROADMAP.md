@@ -1,5 +1,33 @@
 # DNDKeep — Two-Track Roadmap
 
+### Mutable Form temporary-HP application (private; UI still pending)
+
+Migration `20261010223000_mutable_form_temporary_hp.sql` captures effective INT
+at declaration. It supports the canonical equipped/attuned Headband of Intellect
+without lowering higher natural INT or trusting homebrew names/override fields.
+Changing equipment or INT after declaration cannot change the saved modifier.
+Legacy declarations without captured INT remain review-only rather than guessing.
+
+The private application combines the finalized/enhanced roll and saved modifier,
+minimum 1, with an explicit keep-existing/replace choice. Character and matching
+map pools update together; disagreement blocks application. Replay returns current
+character HP without restoring a consumed grant, rejects a changed choice, and
+never duplicates history. Expired/replaced/rest-ended forms cannot grant HP late;
+expiration does not subtract already-granted temporary HP. Application history and
+action log are written in the same transaction as HP and its receipt.
+
+Validation: 27 local database checks pass; the strengthened high-natural-INT test
+also passes with both canonical and spoofed Headbands equipped. Full `npm run
+verify` passes (4,730 tests, TS 193/193, 256.1 KB entry). Local lint/advisors have
+no Mutable Form findings; migration reapplication succeeds in a rollback.
+Evidence: `.tmp/mutable-form-hp-{db,high-int,gate,lint,advisors,idempotence}.log`.
+All 345 repository migrations are applied locally; foreign 20261008213500 remains
+preserved. Production and the 343-migration rehearsal databases are unchanged.
+
+Remaining: active timed combat modifiers, activation/enhancement history, typed
+API and receipt validation, public dispatcher, UI choices and durable recovery.
+The private HP transaction does not yet make the feature usable by players.
+
 ### Mutable Form saved backend (private; not yet player-accessible)
 
 Migration `20261010220000_saved_mutable_form.sql` adds an owner-checked private
