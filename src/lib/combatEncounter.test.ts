@@ -228,6 +228,12 @@ describe('shared live turn advancement',()=>{
   expect(h.state.advanceLive).toHaveBeenCalledWith('dm','guard-enc','turn',expect.any(Function));
   expect(h.state.endTicks).toHaveBeenCalledOnce();expect(h.state.calls.some(c=>opOf(c,'update'))).toBe(false);
  });
+ it('pending Propel preflight stops before outgoing condition saves or damage',async()=>{
+  const {processEndOfTurnConditions}=await import('./endOfTurnConditions');vi.mocked(processEndOfTurnConditions).mockClear();
+  h.state.respond=successful;h.state.clock.mockRejectedValueOnce(new Error('Resolve pending Propel'));
+  expect(await advanceTurn('guard-enc')).toEqual({ok:false,reason:'Resolve pending Propel'});
+  expect(processEndOfTurnConditions).not.toHaveBeenCalled();expect(h.state.endTicks).not.toHaveBeenCalled();expect(h.state.advanceLive).not.toHaveBeenCalled();
+ });
  it('recovers unfinished incoming work before reading or processing a fresh outgoing turn',async()=>{
   h.state.recoverLive.mockResolvedValue(true);expect(await advanceTurn('guard-enc')).toEqual({ok:true});
   expect(h.state.calls).toEqual([]);expect(h.state.endTicks).not.toHaveBeenCalled();expect(h.state.advanceLive).not.toHaveBeenCalled();

@@ -8122,3 +8122,35 @@ unfinished. Audit the pre-effect check and the authoritative clock boundary
 rather than assuming this completion-only guard covers End Turn. Other pending
 attack/reaction requests, declaration cleanup after participant deletion, and
 per-instance creature carry-over remain open.
+
+
+### Pending Propel protects End Turn (2026-10-10, unreleased)
+
+Migration 20261010070029 checks pending declarations in the shared clock context,
+so normal End Turn stops before outgoing condition saves or damage. The final
+encounter boundary also rejects direct round/index changes while Propel is
+pending. Saved outgoing-effect inserts reject pending Propel and roll back their
+HP writes. Conversely, a fresh Propel declaration after outgoing effects are
+saved is rejected with its attempted Bonus Action claim rolled back.
+
+The shared assertion is VOLATILE so a waiting boundary reads a declaration that
+committed after the UPDATE began. A two-connection integration test holds a real
+Propel declaration open, verifies the boundary is waiting on a database lock,
+then commits and verifies that the boundary rejects it. Historical clock receipt
+replays still succeed when the new actor has a pending Propel request. Direct
+turn-ID spoofing remains ignored by the existing identity trigger (only the
+normal update timestamp changes).
+
+Verified: ten new local boundary/rollback/replay/concurrency cases, twelve live
+turn-reconciliation regressions, and a unit check proving preflight rejection
+skips outgoing condition saves, ticks and live advancement. Required gate passes:
+3,895 units, TS 194/194, 255.7 KB entry. SQL lint clean, existing keep_warm and
+client_errors advisor warnings unchanged. Exact migration recorded locally;
+foreign database history preserved. Not deployed.
+
+Remaining: normal preflight is a snapshot, not a reservation covering the whole
+browser sequence. Legacy condition/aura writers still need a shared closing-turn
+reservation to exclude new declarations throughout all separate outgoing effect
+calls. This change protects the final clock and saved tick boundary, not every
+legacy partial effect. Other pending actions and per-instance creature carry-over
+remain in the release audit.
