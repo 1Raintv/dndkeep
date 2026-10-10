@@ -101,3 +101,16 @@ describe('ordered turn-effect proposals', () => {
     expect(result.events).toEqual([]);
   });
 });
+
+// Migrated from the removed legacy writer: these rules feed the atomic batch.
+it.each([
+ {hp:0,temp:6,damage:5,failures:0,stable:true,afterTemp:1,afterFailures:1,dead:false,massive:false},
+ {hp:0,temp:0,damage:20,failures:0,stable:false,afterTemp:0,afterFailures:3,dead:true,massive:true},
+ {hp:0,temp:30,damage:20,failures:0,stable:false,afterTemp:10,afterFailures:3,dead:true,massive:true},
+ {hp:0,temp:6,damage:5,failures:2,stable:false,afterTemp:1,afterFailures:3,dead:true,massive:false},
+ {hp:5,temp:2,damage:27,failures:0,stable:false,afterTemp:0,afterFailures:3,dead:true,massive:true},
+])('preserves zero-HP and massive damage handling ($hp HP, $temp temporary HP, $damage damage)',r=>{
+ const result=planTurnTicks(state({current_hp:r.hp,temp_hp:r.temp,death_save_failures:r.failures,is_stable:r.stable,active_buffs:[buff('acid',{flat:r.damage,oneShot:true})]}),true,'turn_end');
+ expect(result.updates).toMatchObject({current_hp:0,temp_hp:r.afterTemp,death_save_failures:r.afterFailures,is_stable:false,is_dead:r.dead,active_buffs:[]});
+ expect(result.events[0].payload.massive_damage_death).toBe(r.massive);
+});

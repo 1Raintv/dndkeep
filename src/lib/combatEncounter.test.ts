@@ -15,9 +15,8 @@ type Resp = { data?: unknown; error?: unknown; count?: number | null };
 
 const h = vi.hoisted(() => {
   const state = {
-    ticks: vi.fn(async () => {}),
-    endTicks: vi.fn(async () => {}),
-    clock:vi.fn(),
+    endTicks: vi.fn<(...args: unknown[])=>Promise<void>>(async () => {}),
+    clock:vi.fn(),recoverLive:vi.fn(),advanceLive:vi.fn(),
     calls: [] as Call[],
     respond: ((_c: Call) => ({ data: [], error: null })) as (c: Call) => Resp | Promise<Resp>,
   };
@@ -43,6 +42,7 @@ const h = vi.hoisted(() => {
 });
 
 vi.mock('./supabase', () => ({ supabase: h.supabase,getCurrentUserId:async()=> 'dm' }));
+vi.mock('./api/liveTurnTransitions',()=>({withCurrentTurnUser:(work:(user:string,guard:()=>void)=>Promise<unknown>)=>work('dm',()=>{}),recoverLiveTurnTransition:h.state.recoverLive,advanceLiveTurnTransition:h.state.advanceLive}));
 vi.mock('./api/combatClock',()=>({getCombatClockContext:h.state.clock}));
 vi.mock('./combatEvents', () => ({
   emitCombatEvent: vi.fn(async () => null),
@@ -50,8 +50,7 @@ vi.mock('./combatEvents', () => ({
   newChainId: () => 'chain',
 }));
 vi.mock('./endOfTurnConditions',()=>({processEndOfTurnConditions:vi.fn(async()=>{})}));
-vi.mock('./api/turnEffects',()=>({processCurrentUserTurnEffects:h.state.endTicks}));
-vi.mock('./buffs',()=>({processTurnTicks:h.state.ticks}));
+vi.mock('./api/turnEffects',()=>({processSavedTurnEffects:h.state.endTicks}));
 vi.mock('./auras',()=>({evaluateAurasOnTurnEnd:vi.fn(async()=>{})}));
 vi.mock('./movementGatedFeatures',()=>({resetMovementGatedFeatures:vi.fn(async()=>{})}));
 vi.mock('./masteryRiders',()=>({sweepExpiredMasteryMarkers:vi.fn(async()=>{}),sweepEndedMasteryMarkers:vi.fn(async()=>{})}));
@@ -71,8 +70,9 @@ const opOf = (c: Call, name: string) => c.ops.find(o => o.op === name);
 
 beforeEach(() => {
   vi.mocked(recoverInitiativeResources).mockClear();
+  h.state.recoverLive.mockReset().mockResolvedValue(false);h.state.advanceLive.mockReset().mockResolvedValue(undefined);
   h.state.clock.mockReset().mockResolvedValue({outgoingId:'p0',incomingId:'p1',nextIndex:1,nextRound:1,roundWrapped:false});
-  h.state.ticks.mockClear();h.state.endTicks.mockReset().mockResolvedValue();
+  h.state.endTicks.mockReset().mockResolvedValue();
   vi.mocked(emitCombatEvent).mockClear();
   h.state.calls.length = 0;
   h.state.respond = () => ({ data: [], error: null });
@@ -234,66 +234,43 @@ it.each([
 describe('shared live turn advancement',()=>{
  const encounter={id:'guard-enc',campaign_id:'camp',status:'active',current_turn_index:0,round_number:1,psionic_turn_id:'turn'};
  const actors=[0,1].map(n=>({id:`p${n}`,combatant_id:`cb${n}`,campaign_id:'camp',name:`Actor ${n}`,participant_type:'creature',turn_order:n,current_hp:10,max_hp:10,is_dead:false}));
- const encounterWrites=()=>h.state.calls.filter(c=>c.table==='combat_encounters'&&opOf(c,'update')&&opOf(c,'eq')?.args[1]==='guard-enc');
- function successful(c:Call):Resp {
-  if(c.table==='combat_encounters')return {data:opOf(c,'update')?{psionic_turn_id:'next'}:encounter,error:null};
-  return {data:actors,error:null};
- }
- it('overlapping controls share one successful advance and one set of turn effects',async()=>{
-  let release!:(value:Resp)=>void;
-  const held=new Promise<Resp>(resolve=>{release=resolve;});
-  h.state.respond=c=>c.table==='combat_encounters'&&!opOf(c,'update')?held:successful(c);
-  const first=advanceTurn('guard-enc'),second=advanceTurn('guard-enc');expect(second).toBe(first);
-  release({data:encounter,error:null});
-  expect(await first).toEqual({ok:true});expect(await second).toEqual({ok:true});
-  expect(encounterWrites()).toHaveLength(1);
-  expect(h.state.ticks.mock.calls).toHaveLength(1);
-  expect(h.state.endTicks).toHaveBeenCalledTimes(1);expect(h.state.endTicks).toHaveBeenCalledWith({participantId:'p0',encounterId:'guard-enc',turnId:'turn',timing:'turn_end'});
-  expect(h.state.ticks).toHaveBeenNthCalledWith(1,{participantId:'p1',encounterId:'guard-enc',timing:'turn_start'});
+ function successful(c:Call):Resp{return {data:c.table==='combat_encounters'?encounter:actors,error:null};}
+ it('overlapping controls share one atomic transition and one set of outgoing effects',async()=>{
+  let release!:(value:Resp)=>void;const held=new Promise<Resp>(resolve=>{release=resolve;});
+  h.state.respond=c=>c.table==='combat_encounters'?held:successful(c);
+  const first=advanceTurn('guard-enc'),second=advanceTurn('guard-enc');expect(second).toBe(first);release({data:encounter,error:null});
+  expect(await first).toEqual({ok:true});expect(h.state.advanceLive).toHaveBeenCalledTimes(1);
+  expect(h.state.advanceLive).toHaveBeenCalledWith('dm','guard-enc','turn',expect.any(Function));
+  expect(h.state.endTicks).toHaveBeenCalledOnce();expect(h.state.calls.some(c=>opOf(c,'update'))).toBe(false);
+ });
+ it('recovers unfinished incoming work before reading or processing a fresh outgoing turn',async()=>{
+  h.state.recoverLive.mockResolvedValue(true);expect(await advanceTurn('guard-enc')).toEqual({ok:true});
+  expect(h.state.calls).toEqual([]);expect(h.state.endTicks).not.toHaveBeenCalled();expect(h.state.advanceLive).not.toHaveBeenCalled();
  });
  it('uses the recorded outgoing actor after lethal tick damage compresses the roster',async()=>{
   h.state.respond=c=>c.table==='combat_encounters'?successful(c):{data:actors.map((a,n)=>({...a,is_dead:n===0})),error:null};
   h.state.clock.mockResolvedValue({outgoingId:'p0',incomingId:'p1',nextIndex:0,nextRound:1,roundWrapped:false});
-  expect(await advanceTurn('guard-enc')).toMatchObject({ok:false,reason:expect.stringContaining('clock recovery')});
-  expect(encounterWrites()).toHaveLength(0);
-  expect(h.state.endTicks).toHaveBeenCalledWith(expect.objectContaining({participantId:'p0',turnId:'turn'}));
-  expect(vi.mocked(emitCombatEvent)).not.toHaveBeenCalledWith(expect.objectContaining({eventType:'damage_applied'}));
+  expect(await advanceTurn('guard-enc')).toEqual({ok:true});expect(h.state.endTicks).toHaveBeenCalledWith('dm',expect.objectContaining({participantId:'p0',turnId:'turn'}),expect.any(Function));expect(h.state.advanceLive).toHaveBeenCalledOnce();
  });
- it('an unconfirmed outgoing tick stops every budget and clock write, then retries the same identity',async()=>{
+ it('unconfirmed outgoing ticks stop before the clock transaction and retry the same identity',async()=>{
   h.state.respond=successful;h.state.endTicks.mockRejectedValueOnce(new Error('Reply lost'));
-  expect(await advanceTurn('guard-enc')).toEqual({ok:false,reason:'Reply lost'});
-  expect(h.state.calls.some(c=>opOf(c,'update'))).toBe(false);expect(h.state.ticks).not.toHaveBeenCalled();
-  expect(await advanceTurn('guard-enc')).toEqual({ok:true});expect(h.state.endTicks.mock.calls[0]).toEqual(h.state.endTicks.mock.calls[1]);expect(encounterWrites()).toHaveLength(1);
+  expect(await advanceTurn('guard-enc')).toEqual({ok:false,reason:'Reply lost'});expect(h.state.advanceLive).not.toHaveBeenCalled();
+  expect(await advanceTurn('guard-enc')).toEqual({ok:true});expect(h.state.endTicks.mock.calls[0][1]).toEqual(h.state.endTicks.mock.calls[1][1]);
  });
- it.each([false,true])('logs the actual legendary refill including the lair adjustment (%s)',async inLair=>{
-  h.state.respond=c=>{
-   if(c.table==='combat_encounters')return {data:opOf(c,'update')?{psionic_turn_id:'next'}:{...encounter,in_lair:inLair},error:null};
-   return {data:actors.map((a,n)=>({...a,legendary_actions_total:n===1?3:0,legendary_actions_remaining:n===1?1:0})),error:null};
-  };
-  expect(await advanceTurn('guard-enc')).toEqual({ok:true});
-  expect(emitCombatEvent).toHaveBeenCalledWith(expect.objectContaining({eventType:'legendary_actions_refilled',payload:{refilled_from:1,refilled_to:inLair?4:3}}));
-  const write=h.state.calls.find(c=>c.table==='combat_participants'&&opOf(c,'update')&&opOf(c,'eq')?.args[1]==='p1');
-  expect(opOf(write!,'update')!.args[0]).toMatchObject({legendary_actions_remaining:inLair?4:3});
+ it('a recovery failure cannot begin a new outgoing phase',async()=>{
+  h.state.recoverLive.mockRejectedValue(new Error('Incoming save needs review'));
+  expect(await advanceTurn('guard-enc')).toEqual({ok:false,reason:'Incoming save needs review'});expect(h.state.calls).toEqual([]);expect(h.state.endTicks).not.toHaveBeenCalled();
  });
  it('a later deliberate call can advance after the first finishes',async()=>{
   h.state.respond=successful;const first=advanceTurn('guard-enc');expect(await first).toEqual({ok:true});
-  const later=advanceTurn('guard-enc');expect(later).not.toBe(first);expect(await later).toEqual({ok:true});expect(encounterWrites()).toHaveLength(2);
+  const later=advanceTurn('guard-enc');expect(later).not.toBe(first);expect(await later).toEqual({ok:true});expect(h.state.advanceLive).toHaveBeenCalledTimes(2);
  });
  it('a failed read shares its result and releases the guard for retry',async()=>{
   h.state.respond=()=>({data:null,error:null});const first=advanceTurn('guard-enc'),second=advanceTurn('guard-enc');
-  expect(second).toBe(first);expect(await first).toEqual({ok:false,reason:'Encounter not found'});
-  h.state.respond=successful;expect(await advanceTurn('guard-enc')).toEqual({ok:true});
+  expect(second).toBe(first);expect(await first).toEqual({ok:false,reason:'Encounter not found'});h.state.respond=successful;expect(await advanceTurn('guard-enc')).toEqual({ok:true});
  });
- it('unexpected exceptions become a visible failure result and do not strand subsequent calls',async()=>{
-  h.state.respond=()=>{throw new Error('Connection interrupted');};
-  const first=advanceTurn('guard-enc'),second=advanceTurn('guard-enc');expect(second).toBe(first);
-  expect(await first).toEqual({ok:false,reason:'Connection interrupted'});
+ it('unexpected exceptions become a failure result without stranding subsequent calls',async()=>{
+  h.state.respond=()=>{throw new Error('Connection interrupted');};expect(await advanceTurn('guard-enc')).toEqual({ok:false,reason:'Connection interrupted'});
   h.state.respond=successful;expect(await advanceTurn('guard-enc')).toEqual({ok:true});
- });
- it('does not block a different encounter behind an in-flight read',async()=>{
-  let release!:(value:Resp)=>void;const held=new Promise<Resp>(resolve=>{release=resolve;});
-  h.state.respond=c=>opOf(c,'eq')?.args[1]==='guard-enc'?held:{data:null,error:null};
-  const first=advanceTurn('guard-enc');expect(await advanceTurn('other')).toEqual({ok:false,reason:'Encounter not found'});
-  release({data:null,error:null});expect(await first).toEqual({ok:false,reason:'Encounter not found'});
  });
 });

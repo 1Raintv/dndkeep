@@ -149,3 +149,12 @@ it('a scope change while a saved batch submits keeps its recovery request',async
  m.rpc.mockImplementation(async(name,args)=>{if(name==='commit_turn_effect_batch')current=false;return original(name,args);});
  await expect(processSavedTurnEffects(user,i,()=>{if(!current)throw new Error('Scope changed');})).rejects.toThrow('Scope changed');expect(savedTurnEffect(user,i)).not.toBeNull();
 });
+
+it('preserves inert legacy buff metadata while resolving a real tick',async()=>{
+ const c=freshContext(),legacy={id:'timed',duration:3};preparedRpc({...c,state:{...c.state,active_buffs:[legacy,...c.state.active_buffs]}});
+ const r=await processSavedTurnEffects(user,i,()=>{});expect(r.state.active_buffs).toEqual([legacy]);expect(m.roll).toHaveBeenCalledTimes(1);
+});
+it('missing identity on a ticking buff still fails before rolling',async()=>{
+ const c=freshContext();preparedRpc({...c,state:{...c.state,active_buffs:[{turnTick:{kind:'damage',timing:'turn_end',dice:'1d6'}}]}});
+ await expect(processSavedTurnEffects(user,i,()=>{})).rejects.toThrow('could not be verified');expect(m.roll).not.toHaveBeenCalled();
+});

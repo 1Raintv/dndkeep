@@ -132,6 +132,7 @@ test.describe('Atomic combat clock transitions',()=>{
    }
    await route.continue();
   });
+  await page.route('**/rest/v1/rpc/begin_live_turn_transition',async route=>{writes++;await route.continue();});
   const pending=page.evaluate(async encounter=>{
    const api=await import('/src/lib/combatEncounter.ts');
    const first=api.advanceTurn(encounter),second=api.advanceTurn(encounter);

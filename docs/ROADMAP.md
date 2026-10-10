@@ -7766,3 +7766,47 @@ six final desktop/mobile browser cases verify API recovery and live ordinary/
 lethal lost-reply recovery after that change. No production writes or deployment.
 Concentration/typed defenses for buff ticks and live aura/incoming orchestration
 remain separate unfinished work; this does not claim those paths are complete.
+
+
+### Live atomic clock and incoming recovery (2026-10-10, unreleased)
+
+The normal advanceTurn path now uses the atomic clock transaction and a
+DM-authorized server journal. Clock identity, action budgets, legendary refill,
+mastery expiry, round duration changes and campaign time are no longer separate
+client writes. The journal records unfinished incoming work with the same
+transaction. Reloads and other devices recover that work before beginning a new
+outgoing turn. Completion requires recharge and start-effect receipts plus a
+confirmed death-save phase; turn/lair/skip events and completion commit together.
+
+Incoming death settings are captured at the clock boundary. Automatic and
+prompted checks precede start-of-turn healing; manual settings remain manual.
+The recorded actor stays authoritative after lethal outgoing damage, a lethal
+death save, or a lethal start tick. Recorded death-save offers can be recovered
+after death compresses the living initiative list. This replaces the temporary
+same-index clock guard from the previous entry. Movement-gated recovery now also
+uses its turn receipt. A session guard spans the live operation.
+
+Removed the obsolete processTurnTicks writer and about 400 lines of legacy
+clock/reset/follow-up orchestration. Its damage regressions now live beside the
+canonical pure planner; there are no live callers of the old writer.
+
+Migration 20261010070021_live_turn_transition_journal.sql is applied only to local
+Docker, with exact source/ledger matching and idempotent reapplication. No
+production migration or deployment. Local migration status has zero unapplied
+repository files; the unrelated DB-only 20261008213500 ledger row is preserved.
+
+The regression sweep exposed inert legacy buffs containing only id/duration:
+these now pass through unchanged, while ticking buffs still require valid keys,
+names and tick data. The overlapping-controls test counts the atomic RPC instead
+of the removed direct clock update. Full gate: 3,808 unit cases, TypeScript
+194/194, hooks/RAW/coordinates/anchors, build and 255.7 KB entry budget. Changed
+files add no lint errors; the turn handler's existing warnings fell from 34 to 24.
+SQL lint reports no errors. Database sweep: 266 passing cases plus the two
+corrected desktop/mobile coalescing cases passing on rerun. The final repeat of
+all 24 new live-transition cases passed (desktop and mobile).
+
+Still required before release: wire reviewed atomic aura settlement into live
+movement/outgoing processing; finish typed defenses/concentration for buff ticks;
+verify other actions cannot race unfinished incoming work; review combatant
+identity edits during a pending transition. This entry does not claim all combat
+or Psion automation is finished.

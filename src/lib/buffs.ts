@@ -19,7 +19,7 @@ import { checkedWrite } from './api/checked';
 import { asJsonb } from './jsonbCast';
 import { emitCombatEvent, newChainId } from './combatEvents';
 import { rollDiceExpr } from '../rules/dice';
-import { planTurnTicks, type TurnTick } from '../rules/turnTicks';
+import type { TurnTick } from '../rules/turnTicks';
 // v2.315: active_buffs reads come from combatants via JOIN.
 import {
   JOINED_COMBATANT_FIELDS,
@@ -42,7 +42,7 @@ export interface ActiveBuff {
   singleUse?: boolean;
   /** v2.602.0 — automation arc ship 4b: recurring per-turn tick
    *  (Acid Arrow, Heroism, Regenerate, Searing Smite). Processed by
-   *  processTurnTicks from advanceTurn. */
+   *  the saved turn-effect transaction from advanceTurn. */
   turnTick?: TurnTick;
   /** v2.607.0 — ship 4c: temp HP granted when the buff is applied
    *  (Armor of Agathys 5×slot). RAW: temp HP never stack — applyBuff
@@ -465,7 +465,7 @@ export const BUFF_SPELL_REGISTRY: Record<string, BuffSpellEntry> = {
       name: 'Searing Smite',
       // SRD 5.2.1: at the start of each of its turns the target takes
       // 1d6 Fire damage and THEN makes a CON save; success ends the
-      // spell. Damage-then-save order is preserved by processTurnTicks.
+      // spell. Damage-then-save order is preserved by planTurnTicks.
       turnTick: { kind: 'damage', timing: 'turn_start', dice: '1d6', damageType: 'fire', saveEnds: { ability: 'CON', dc: stats?.saveDC ?? 13 } },
     }),
   },
@@ -558,75 +558,3 @@ export async function applyBuffFromSpell(input: {
 
   return applied;
 }
-
-// ─── Per-turn tick engine ────────────────────────────────────────
-// v2.602.0 — automation arc ship 4b. Called from advanceTurn for the
-// OUTGOING participant with timing 'turn_end' and the INCOMING one
-// with 'turn_start'. Reads active_buffs, fires every matching
-// turnTick, writes HP/temp-HP/death-save deltas to combatants in one
-// update, removes oneShot buffs, and emits log events using existing
-// event types so the combat log renders them with no new UI. Never
-// throws — a tick failure must not block turn advance.
-export async function processTurnTicks(opts: {
-  participantId: string;
-  encounterId: string;
-  timing: 'turn_start' | 'turn_end';
-}): Promise<void> {
-  try {
-    const { data: raw } = await (supabase as any)
-      .from('combat_participants')
-      .select(
-        'id, combatant_id, name, participant_type, campaign_id, hidden_from_players, ' +
-          JOINED_COMBATANT_FIELDS
-      )
-      .eq('id', opts.participantId)
-      .maybeSingle();
-    if (!raw) return;
-    const part = normalizeParticipantRow(raw);
-    if (part.is_dead) return;
-
-    const buffs = ((part.active_buffs ?? []) as ActiveBuff[]);
-    const ticking = buffs.filter(b => b.turnTick?.timing === opts.timing);
-    if (!ticking.length) return;
-
-    const combatantId = part.combatant_id as string | null;
-    if (!combatantId) {
-      console.warn('[processTurnTicks] participant missing combatant_id; skipping', opts.participantId);
-      return;
-    }
-
-    const isCharacter = part.participant_type === 'character';
-    const targetType = isCharacter ? 'player' : 'monster';
-    const visibility = part.hidden_from_players ? 'hidden_from_players' : 'public';
-    const base = {
-      campaignId: part.campaign_id as string,
-      encounterId: opts.encounterId,
-      actorType: 'system' as const,
-      actorName: 'System',
-      targetType: targetType as any,
-      targetName: part.name as string,
-      visibility: visibility as any,
-    };
-
-    const { updates, events } = planTurnTicks({
-      current_hp: part.current_hp ?? 0, max_hp: part.max_hp ?? 0,
-      temp_hp: part.temp_hp ?? 0, death_save_failures: part.death_save_failures ?? 0,
-      death_save_successes: part.death_save_successes ?? 0,
-      is_stable: !!part.is_stable, is_dead: !!part.is_dead, active_buffs: buffs,
-    }, isCharacter, opts.timing);
-    // Preserve the legacy patch shape until the atomic adapter replaces it:
-    // unchanged buff/death fields must not overwrite a concurrent update.
-    const { active_buffs, is_dead, ...pools } = updates;
-    const patch = {
-      ...pools,
-      ...(is_dead ? { is_dead: true } : {}),
-      ...(active_buffs.length !== buffs.length ? { active_buffs: asJsonb(active_buffs) } : {}),
-    };
-    await checkedWrite('combatants.update turn-ticks', { combatantId }, (supabase as any).from('combatants').update(patch).eq('id', combatantId));
-
-    for (const evt of events) await emitCombatEvent({ ...base, ...evt, chainId: newChainId(), sequence: 0 });
-  } catch (e) {
-    console.error('[processTurnTicks] failed (turn advance unaffected):', e);
-  }
-}
-

@@ -15,8 +15,6 @@ import { rollDie } from '../rules/dice';
 import { supabase } from './supabase';
 import { checkedWrite } from './api/checked';
 import { emitCombatEvent, emitCombatEventChain, newChainId } from './combatEvents';
-// v2.494.0 — Per-round buff duration tick. See src/lib/buffDuration.ts.
-import { decrementBuffDurations } from './buffDuration';
 import type {
   CombatEncounter,
   CombatParticipant,
@@ -703,7 +701,10 @@ const pendingTurnAdvances = new Map<string, Promise<CombatActionResult>>();
 export function advanceTurn(encounterId: string): Promise<CombatActionResult> {
   const pending = pendingTurnAdvances.get(encounterId);
   if (pending) return pending;
-  const work = Promise.resolve().then(() => advanceTurnOnce(encounterId))
+  const work = Promise.resolve().then(async () => {
+    const {withCurrentTurnUser}=await import('./api/liveTurnTransitions');
+    return withCurrentTurnUser((user,guard)=>advanceTurnOnce(encounterId,user,guard));
+  })
     .catch((error: unknown): CombatActionResult => ({
       ok: false,
       reason: error instanceof Error ? error.message : 'Turn advancement could not be confirmed. Check combat before trying again.',
@@ -715,7 +716,10 @@ export function advanceTurn(encounterId: string): Promise<CombatActionResult> {
   return work;
 }
 
-async function advanceTurnOnce(encounterId: string): Promise<CombatActionResult> {
+async function advanceTurnOnce(encounterId: string,userId:string,guard:()=>void): Promise<CombatActionResult> {
+  const {recoverLiveTurnTransition,advanceLiveTurnTransition}=await import('./api/liveTurnTransitions');
+  if(await recoverLiveTurnTransition(userId,encounterId,guard))return {ok:true};
+  guard();
   const { data: enc, error: encErr } = await supabase
     .from('combat_encounters')
     .select('*')
@@ -754,13 +758,9 @@ async function advanceTurnOnce(encounterId: string): Promise<CombatActionResult>
 
   // v2.869: an end-effect receipt anchors the outgoing actor even if its
   // damage killed them. The compressed living roster cannot identify that turn.
-  const {getCurrentUserId}=await import('./supabase');
-  const userId=await getCurrentUserId();
-  if(!userId)return {ok:false,reason:'Sign in before advancing combat.'};
   const {getCombatClockContext}=await import('./api/combatClock');
   const initialClock=await getCombatClockContext(userId,encounterId,enc.psionic_turn_id);
-  let nextIdx=initialClock.nextIndex,nextRound=initialClock.nextRound;
-  let roundIncremented=initialClock.roundWrapped;
+  guard();
 
   // v2.445.0 — End-of-turn condition processing for the OUTGOING
   // participant. Re-rolls saves for any condition with a save_to_end
@@ -773,17 +773,20 @@ async function advanceTurnOnce(encounterId: string): Promise<CombatActionResult>
   if(!outgoingForConditions)return {ok:false,reason:'The outgoing actor changed. Refresh combat before advancing.'};
   if (outgoingForConditions) {
     try {
-      const { processEndOfTurnConditions } = await import('./endOfTurnConditions');
-      await processEndOfTurnConditions({
-        participantId: outgoingForConditions.id,
-        turnId: enc.psionic_turn_id,
-        campaignId: outgoingForConditions.campaign_id as string,
-        encounterId,
-        currentRound: encounter.round_number,
-        participantName: outgoingForConditions.name as string,
-        participantType: outgoingForConditions.participant_type as 'character' | 'creature' | 'monster' | 'npc',
-        hiddenFromPlayers: !!outgoingForConditions.hidden_from_players,
-      });
+      if(!outgoingForConditions.is_dead){
+        const { processEndOfTurnConditions } = await import('./endOfTurnConditions');
+        await processEndOfTurnConditions({
+          participantId: outgoingForConditions.id,
+          turnId: enc.psionic_turn_id,
+          campaignId: outgoingForConditions.campaign_id as string,
+          encounterId,
+          currentRound: encounter.round_number,
+          participantName: outgoingForConditions.name as string,
+          participantType: outgoingForConditions.participant_type as 'character' | 'creature' | 'monster' | 'npc',
+          hiddenFromPlayers: !!outgoingForConditions.hidden_from_players,
+        });
+        guard();
+      }
     } catch (err) {
       // Keep the outgoing turn active until its saved condition outcomes are
       // confirmed. Retrying uses their receipts instead of rolling again.
@@ -793,13 +796,13 @@ async function advanceTurnOnce(encounterId: string): Promise<CombatActionResult>
     // v2.869: persist end-of-turn ticks before allowing the clock to move.
     // A lost reply is recovered by the same turn identity, never a second roll.
     try {
-      const { processCurrentUserTurnEffects } = await import('./api/turnEffects');
-      await processCurrentUserTurnEffects({
+      const { processSavedTurnEffects } = await import('./api/turnEffects');
+      await processSavedTurnEffects(userId,{
         participantId: outgoingForConditions.id,
         encounterId,
         turnId: enc.psionic_turn_id,
         timing: 'turn_end',
-      });
+      },guard);
     } catch (err) {
       return {ok:false,reason:err instanceof Error?err.message:'End-of-turn effects could not be confirmed. Retry before advancing.'};
     }
@@ -820,411 +823,15 @@ async function advanceTurnOnce(encounterId: string): Promise<CombatActionResult>
     }
   }
 
-  // v2.506.0 — Movement-gated feature auto-reset for the OUTGOING actor.
-  // Feline Agility (2024 Tabaxi) recharges when the character ends a
-  // turn having moved 0 ft. We read the outgoing participant's
-  // movement_used_ft (still intact — the turn-budget reset below only
-  // zeroes the INCOMING actor) and, if it's a character who moved 0 ft,
-  // clear their movement-gated feature_uses. Defensive: never blocks
-  // turn advance. See src/lib/movementGatedFeatures.ts.
-  if (outgoingForConditions) {
-    try {
-      const { resetMovementGatedFeatures } = await import('./movementGatedFeatures');
-      await resetMovementGatedFeatures({
-        participantId: outgoingForConditions.id,
-        participantType: outgoingForConditions.participant_type as 'character' | 'creature' | 'monster' | 'npc',
-        entityId: (outgoingForConditions as { entity_id?: string | null }).entity_id ?? null,
-        movementUsedFt: (outgoingForConditions as { movement_used_ft?: number | null }).movement_used_ft ?? 0,
-      });
-    } catch (err) {
-      console.error('[advanceTurn] movement-gated feature reset failed', err);
-    }
+  // v2.869: movement recovery is turn-keyed; a retry cannot replenish later uses.
+  if(outgoingForConditions.participant_type==='character'){
+    const {recoverTurnMovementFeatures}=await import('./api/turnMovementRecovery');
+    guard();await recoverTurnMovementFeatures({participantId:outgoingForConditions.id,encounterId,turnId:enc.psionic_turn_id});guard();
   }
-
-  // v2.869: expire end-boundary mastery before the incoming start sweep.
-  if(outgoingForConditions){
-    const {sweepEndedMasteryMarkers}=await import('./masteryRiders');
-    await sweepEndedMasteryMarkers(outgoingForConditions.id,rows);
-  }
-
-  // Reset per-turn budgets for the incoming actor
-  const refreshedClock=await getCombatClockContext(userId,encounterId,enc.psionic_turn_id);
-  nextIdx=refreshedClock.nextIndex;nextRound=refreshedClock.nextRound;roundIncremented=refreshedClock.roundWrapped;
-  const incomingParticipant=rows.find((r:{id:string})=>r.id===refreshedClock.incomingId);
-  if(!incomingParticipant)return {ok:false,reason:'The next actor changed. Refresh combat before advancing.'};
-  // v2.869: the legacy clock write below cannot rotate the turn UUID when a
-  // dead actor's successor occupies the same index/round. Keep this pending
-  // until the atomic clock adapter takes over; never reuse the old turn's dice.
-  if(nextIdx===encounter.current_turn_index&&nextRound===encounter.round_number)
-    return {ok:false,reason:'The outgoing actor died and the next turn needs clock recovery. Keep this encounter open; do not repeat its effects.'};
-
-  // v2.126.0 — Phase J: refill legendary action pool on the creature's own
-  // turn. RAW 2024: LA pool refills at the START of the legendary creature's
-  // own turn (not at top of round). Only updates if the creature actually
-  // has LAs configured.
-  const laTotal = (incomingParticipant.legendary_actions_total as number | null) ?? 0;
-  const laRemaining = (incomingParticipant.legendary_actions_remaining as number | null) ?? 0;
-  // v2.625.0 — 2024 in-lair benefit ("Legendary Action Uses: 3 (4 in
-  // Lair)"): while the encounter is flagged in_lair, the pool refills
-  // to total+1. Read-time only; stored total never changes.
-  const laCap = laTotal > 0 && (encounter as { in_lair?: boolean }).in_lair === true ? laTotal + 1 : laTotal;
-  const needsLaRefill = laTotal > 0 && laRemaining < laCap;
-
-  // v2.628.0 — Recharge auto-roll (RAW "Recharge 5–6"): at the start
-  // of the creature's turn, roll a d6 for each expended recharge
-  // action; on a 5–6 it comes back. Rolls surface to the DM via
-  // generic_roll events below.
-  const expendedRecharge = ((incomingParticipant as any).expended_recharge as string[] | null) ?? [];
-  const stillExpended: string[] = [];
-  const rechargeRolls: { name: string; roll: number; recharged: boolean }[] = [];
-  for (const name of expendedRecharge) {
-    const roll = rollDie(6);
-    const recharged = roll >= 5;
-    if (!recharged) stillExpended.push(name);
-    rechargeRolls.push({ name, roll, recharged });
-  }
-
-  // v2.630.0 — sweep Weapon Mastery marker buffs that expire at the
-  // start of this participant's turn (Sap/Slow immediately; Vex on
-  // its second sweep via expiresSkipFirst).
-  {
-    const { sweepExpiredMasteryMarkers } = await import('./masteryRiders');
-    await sweepExpiredMasteryMarkers(incomingParticipant.id as string, rows as any[]);
-  }
-
-  // v2.628.0 — (supabase as any): generated types predate the
-  // expended_recharge column (accepted cast pattern, ~70 sites).
-  const { error: partUpdErr } = await (supabase as any)
-    .from('combat_participants')
-    .update({
-      action_used: false,
-      bonus_used: false,
-      reaction_used: false,
-      movement_used_ft: 0,
-      leveled_spell_cast: false,
-      dash_used_this_turn: false,
-      disengaged_this_turn: false,
-      // v2.399 — Reset per-turn attack counter to the participant's
-      // multiattack count. Reads back attacks_per_action because
-      // that's the source of truth (set at insert + DM-editable later).
-      attacks_remaining: (incomingParticipant as any).attacks_per_action ?? 1,
-      // v2.633.0 — Clear the generic once-per-turn marker array
-      // (Cleave today; Sneak Attack / Nick share it later).
-      // v2.634.0 — see the encounter-wide sweep below: this entry is
-      // kept so the incoming actor is always clean even if the sweep
-      // fails, but the sweep is what makes the semantics correct.
-      once_per_turn_used: [],
-      ...(needsLaRefill ? { legendary_actions_remaining: laCap } : {}),
-      ...(expendedRecharge.length > 0 ? { expended_recharge: stillExpended } : {}),
-    })
-    .eq('id', incomingParticipant.id);
-  if (partUpdErr) {
-    console.error('[advanceTurn] participant turn-reset failed:', partUpdErr);
-    return { ok: false, reason: partUpdErr.message ?? 'Failed to reset turn budgets' };
-  }
-
-  // v2.634.0 — RAW correction to v2.633. "Once per turn" means the
-  // turn currently in progress, whosever it is — not "once on your own
-  // turn". So the marker array clears for EVERY participant at each
-  // turn boundary, not just the incoming one. This matters for aura
-  // saves (a creature can be forced to save on the cleric's turn and
-  // again when it ends its own) and it was quietly wrong for Cleave
-  // too, which can fire on an opportunity attack during someone
-  // else's turn. Defensive: never blocks turn advance.
-  try {
-    await checkedWrite('combat_participants.update reset-once-per-turn', { encounterId }, (supabase as any)
-      .from('combat_participants')
-      .update({ once_per_turn_used: [] })
-      .eq('encounter_id', encounterId)
-      .neq('once_per_turn_used', '{}'));
-  } catch (err) {
-    console.error('[advanceTurn] once-per-turn sweep failed', err);
-  }
-
-  // v2.127.0 — Phase J: on round increment, reset lair_action_used_this_round
-  // so the DM can fire another one. Only included in the UPDATE when the round
-  // actually ticked over.
-  const lairUpdates = roundIncremented ? { lair_action_used_this_round: false } : {};
-
-  const { data: advancedTurn, error: encUpdErr } = await supabase
-    .from('combat_encounters')
-    .update({
-      current_turn_index: nextIdx,
-      round_number: nextRound,
-      ...lairUpdates,
-    })
-    .eq('id', encounterId).select('psionic_turn_id').single();
-  if (encUpdErr) {
-    console.error('[advanceTurn] encounter turn-advance failed:', encUpdErr);
-    return { ok: false, reason: encUpdErr.message ?? 'Failed to advance turn' };
-  }
-
-  // v2.474.0 — Bump the campaign-wide in-game clock on round wrap.
-  // RAW: 1 round = 6 seconds, 10 rounds = 1 minute, 14400 rounds =
-  // 24 hours. Cross-encounter immunity (Frightful Presence et al.)
-  // reads this counter to compute expiry. Done as a separate UPDATE
-  // (not a Postgres trigger on combat_encounters.round_number)
-  // because the canonical write site is here in advanceTurn — a
-  // trigger would also fire on manual round-number edits / migrations
-  // / admin paths where the clock-bump semantics don't apply.
-  //
-  // Concurrency: combat is single-DM by design (only the DM advances
-  // turns), so SELECT-then-UPDATE is collision-free in practice.
-  // If we ever support player-driven turn advance the right fix is a
-  // Postgres function with `combat_rounds_elapsed = combat_rounds_elapsed + 1`
-  // for atomicity; deferred.
-  //
-  // Fire-and-forget: a failure here shouldn't block turn advance.
-  // The worst case is a mistimed immunity expiry, recoverable via DM
-  // override (Ship 4 immunity-management UI).
-  if (roundIncremented) {
-    const { data: campRow, error: selErr } = await supabase
-      .from('campaigns')
-      .select('combat_rounds_elapsed')
-      .eq('id', incomingParticipant.campaign_id as string)
-      .single();
-    if (selErr) {
-      console.error('[advanceTurn] campaign clock read failed', selErr);
-    } else {
-      const current = (campRow as { combat_rounds_elapsed?: number } | null)?.combat_rounds_elapsed ?? 0;
-      const { error: bumpErr } = await (supabase as any)
-        .from('campaigns')
-        .update({ combat_rounds_elapsed: current + 1 })
-        .eq('id', incomingParticipant.campaign_id);
-      if (bumpErr) {
-        console.error('[advanceTurn] campaign clock bump failed', bumpErr);
-      }
-    }
-  }
-
-  // v2.494.0 — Per-round buff duration tick.
-  //
-  // When a combat round wraps, every combatant's active_buffs[] gets
-  // a 1-round decrement. Mechanical riders (no `duration` field) and
-  // indefinite buffs (duration < 0) pass through; the rest tick down
-  // and drop at ≤ 0.
-  //
-  // v2.869: read current buffs after mastery/tick changes. Reusing the
-  // original roster snapshot resurrected expired effects on round wrap.
-  // Write only when a duration changed.
-  //
-  // Fire-and-forget: a write failure here shouldn't strand the DM in
-  // an unfinishable advanceTurn call. Out-of-combat catch-up via
-  // Advance Time still works as a fallback. See PartyDashboard.
-  if (roundIncremented) {
-    try {
-      for (const row of rows as Array<{
-        combatant_id?: string;
-        active_buffs?: unknown;
-      }>) {
-        if (!row.combatant_id) continue;
-        const {readCombatantBuffs}=await import('./api/buffs');
-        const current = (await readCombatantBuffs(row.combatant_id)) as
-          | Array<{ duration?: number }>
-          | null;
-        const { changed, next } = decrementBuffDurations(
-          current as Parameters<typeof decrementBuffDurations>[0],
-          1,
-        );
-        if (!changed) continue;
-        const { error: buffErr } = await supabase
-          .from('combatants')
-          .update({ active_buffs: asJsonb(next) })
-          .eq('id', row.combatant_id);
-        if (buffErr) {
-          console.error(
-            '[advanceTurn] buff decrement write failed for combatant',
-            row.combatant_id,
-            buffErr,
-          );
-        }
-      }
-    } catch (e) {
-      console.error('[advanceTurn] buff decrement pass crashed', e);
-    }
-  }
-
-  // v2.127.0 — Phase J: lair action window opens at top of each round (RAW
-  // 2024: initiative 20). Only emit when the encounter is flagged in_lair
-  // AND has at least one configured action — otherwise the DM has no UI
-  // surface to fire from and the event would be noise.
-  if (roundIncremented) {
-    const inLair = (encounter as any).in_lair === true;
-    const lairActions = ((encounter as any).lair_actions_config ?? []) as unknown[];
-    if (inLair && lairActions.length > 0) {
-      await emitCombatEvent({
-        campaignId: incomingParticipant.campaign_id,
-        encounterId,
-        chainId: newChainId(),
-        sequence: 0,
-        actorType: 'system',
-        actorName: 'Lair',
-        targetType: 'self',
-        targetName: 'Encounter',
-        eventType: 'lair_action_window_opened',
-        payload: {
-          round: nextRound,
-          actions_available: lairActions.length,
-        },
-      });
-    }
-  }
-
-  // v2.628.0 — Recharge roll results for the DM's event log.
-  for (const r of rechargeRolls) {
-    await emitCombatEvent({
-      campaignId: incomingParticipant.campaign_id,
-      encounterId,
-      chainId: newChainId(),
-      sequence: 0,
-      actorType: 'system',
-      actorName: 'System',
-      targetType: incomingParticipant.participant_type === 'character' ? 'character' : 'monster',
-      targetName: incomingParticipant.name,
-      eventType: 'generic_roll',
-      payload: {
-        kind: 'recharge',
-        action: r.name,
-        roll: r.roll,
-        recharged: r.recharged,
-        label: `Recharge (${r.name}): rolled ${r.roll} — ${r.recharged ? 'recharged!' : 'still expended'}`,
-      },
-      visibility: incomingParticipant.hidden_from_players ? 'hidden_from_players' : 'public',
-    });
-  }
-
-  // v2.126.0 — Phase J: log refill for the DM
-  if (needsLaRefill) {
-    await emitCombatEvent({
-      campaignId: incomingParticipant.campaign_id,
-      encounterId,
-      chainId: newChainId(),
-      sequence: 0,
-      actorType: 'system',
-      actorName: 'System',
-      targetType: incomingParticipant.participant_type === 'character' ? 'character' : 'monster',
-      targetName: incomingParticipant.name,
-      eventType: 'legendary_actions_refilled',
-      payload: {
-        refilled_from: laRemaining,
-        refilled_to: laCap,
-      },
-      visibility: incomingParticipant.hidden_from_players ? 'hidden_from_players' : 'public',
-    });
-  }
-
-  // v2.120.0 — Phase I: death save at turn start.
-  // Character at 0 HP, not stable, not dead → resolve automation:
-  //   'off'    : no save this turn (DM will manage manually)
-  //   'auto'   : roll now, update success/failure counters, emit events,
-  //              flip stable/dead at thresholds
-  //   'prompt' : v2.144.0 — Phase N pt 2: create a pending_death_saves
-  //              row so the player's DeathSavePromptModal picks it up
-  //              and they can roll via a single-click button.
-  if (
-    incomingParticipant.participant_type === 'character'
-    && !incomingParticipant.is_dead
-    && !incomingParticipant.is_stable
-    && (incomingParticipant.current_hp ?? 1) === 0
-  ) {
-    const { data: campRow } = await supabase
-      .from('campaigns')
-      .select('automation_defaults')
-      .eq('id', incomingParticipant.campaign_id)
-      .maybeSingle();
-    let charRow: any = null;
-    if (incomingParticipant.entity_id) {
-      const { data } = await supabase
-        .from('characters')
-        .select('automation_overrides, advanced_automations_unlocked')
-        .eq('id', incomingParticipant.entity_id as string)
-        .maybeSingle();
-      charRow = data;
-    }
-    const { resolveAutomation } = await import('./automations');
-    const dsSetting = resolveAutomation('death_save_on_turn_start', charRow, campRow as any);
-
-    if (dsSetting === 'prompt') {
-      // v2.144.0 — Phase N pt 2: create pending row, modal takes it from here.
-      if (incomingParticipant.entity_id) {
-        const { createPendingDeathSave } = await import('./deathSaves');
-        await createPendingDeathSave({
-          campaignId: incomingParticipant.campaign_id,
-          turnId: advancedTurn!.psionic_turn_id,
-          encounterId,
-          participantId: incomingParticipant.id,
-          characterId: incomingParticipant.entity_id as string,
-        });
-      }
-    } else if (dsSetting !== 'off' && incomingParticipant.entity_id) {
-      // One immutable offer per turn; retries resolve the same saved dice/result.
-      const {resolveAutomaticDeathSave}=await import('./deathSaves');
-      await resolveAutomaticDeathSave({campaignId:incomingParticipant.campaign_id,encounterId,
-        participantId:incomingParticipant.id,characterId:incomingParticipant.entity_id as string,
-        turnId:advancedTurn!.psionic_turn_id});
-    } else {
-      // 'off' — log that we skipped so DMs can see the automation chose silence
-      await emitCombatEvent({
-        campaignId: incomingParticipant.campaign_id,
-        encounterId,
-        chainId: newChainId(),
-        sequence: 0,
-        actorType: 'system',
-        actorName: 'System',
-        targetType: 'self',
-        targetName: incomingParticipant.name,
-        eventType: 'automation_skipped',
-        payload: {
-          automation: 'death_save_on_turn_start',
-          reason: 'resolver_returned_off',
-        },
-        visibility: incomingParticipant.hidden_from_players ? 'hidden_from_players' : 'public',
-      });
-    }
-  }
-
-  // v2.602.0 — automation arc ship 4b: START-OF-TURN buff ticks for
-  // the incoming participant (Heroism temp HP, Regenerate 1 HP,
-  // Searing Smite 1d6 + save-ends notice). Runs after the death-save
-  // automation (which reads pre-tick HP) and before the turn events
-  // so tick log entries sit under turn_started's predecessor. Never
-  // blocks turn advance.
-  try {
-    const { processTurnTicks } = await import('./buffs');
-    await processTurnTicks({
-      participantId: incomingParticipant.id,
-      encounterId,
-      timing: 'turn_start',
-    });
-  } catch (err) {
-    console.error('[advanceTurn] start-of-turn buff ticks failed', err);
-  }
-
-  // Emit turn_ended (for outgoing) + turn_started (for incoming)
-  const outgoing = outgoingForConditions;
-  const chain: Parameters<typeof emitCombatEventChain>[0] = [];
-  if (outgoing) {
-    chain.push({
-      campaignId: outgoing.campaign_id,
-      encounterId,
-      actorType: outgoing.participant_type === 'character' ? 'player' : 'monster',
-      actorName: outgoing.name,
-      eventType: 'turn_ended',
-      payload: { round: encounter.round_number },
-      visibility: outgoing.hidden_from_players ? 'hidden_from_players' : 'public',
-    });
-  }
-  chain.push({
-    campaignId: incomingParticipant.campaign_id,
-    encounterId,
-    actorType: incomingParticipant.participant_type === 'character' ? 'player' : 'monster',
-    actorName: incomingParticipant.name,
-    eventType: 'turn_started',
-    payload: { round: nextRound, turn_index: nextIdx },
-    visibility: incomingParticipant.hidden_from_players ? 'hidden_from_players' : 'public',
-  });
-  await emitCombatEventChain(chain);
-  return { ok: true };
+  // Clock, budgets, legendary refill and mastery expiry are one transaction.
+  // Its durable journal owns recharge, death checks, incoming ticks and logs.
+  await advanceLiveTurnTransition(userId,encounterId,enc.psionic_turn_id,guard);
+  return {ok:true};
 }
 
 // ─── endEncounter ────────────────────────────────────────────────

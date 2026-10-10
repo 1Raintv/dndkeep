@@ -108,8 +108,10 @@ interface TurnEffectContext extends TurnEffectIdentity {
  userId:string;combatantId:string;isCharacter:boolean;state:TurnEffectState;
 }
 function tickingBuff(value:Record<string,unknown>):value is Record<string,unknown>&TickingBuff {
- if(typeof value.key!=='string'||typeof value.name!=='string')return false;
+ // Legacy non-ticking buffs may contain only id/duration metadata. Preserve
+ // them verbatim; only a buff that actually runs needs a tick key and name.
  if(value.turnTick===undefined)return true;
+ if(typeof value.key!=='string'||typeof value.name!=='string')return false;
  const t=value.turnTick as TurnTick;
  return object(t)&&['damage','heal','temp_hp'].includes(t.kind)&&['turn_start','turn_end'].includes(t.timing)
   &&(t.dice===undefined||typeof t.dice==='string'&&t.dice.trim().length>0)

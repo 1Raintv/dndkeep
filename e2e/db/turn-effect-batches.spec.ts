@@ -141,14 +141,96 @@ test.describe('Atomic turn effect batches',()=>{
   expect(sql(`select jsonb_build_object('turn',psionic_turn_id,'round',round_number,'index',current_turn_index) from combat_encounters where id='${encounter}'`)).toBe(before);
   expect(sql(`select count(*) from combat_events where encounter_id='${encounter}' and event_type in('turn_ended','turn_started')`)).toBe('0');
   await page.unroute('**/rest/v1/rpc/commit_turn_effect_batch');await page.reload();
-  let preparation=0;await page.route('**/rest/v1/rpc/get_turn_effect_context',async route=>{preparation++;await route.abort('failed');});
+  let preparation=0;await page.route('**/rest/v1/rpc/get_turn_effect_context',async route=>{if(route.request().postDataJSON().p_timing==='turn_end'){preparation++;await route.abort('failed');}else await route.continue();});
   const resumed=await advance();
-  if(lethal)expect(resumed).toMatchObject({ok:false,reason:expect.stringContaining('clock recovery')});else expect(resumed).toEqual({ok:true});
+  expect(resumed).toEqual({ok:true});
   expect(preparation).toBe(0);expect(context().current_hp).toBe(lethal?0:36);
   expect(sql(`select round_number from combat_encounters where id='${encounter}'`)).toBe(lethal?'1':'2');
-  if(lethal){expect(context().is_dead).toBe(true);expect(sql(`select count(*) from combat_events where encounter_id='${encounter}' and event_type in('turn_ended','turn_started')`)).toBe('0');}
-  expect(sql(`select count(*) from dndkeep_private.turn_effect_batches where participant_id='${participant}'`)).toBe('1');
+  if(lethal){expect(context().is_dead).toBe(true);expect(sql(`select count(*) from combat_events where encounter_id='${encounter}' and event_type in('turn_ended','turn_started')`)).toBe('2');}
+  expect(sql(`select psionic_turn_id from combat_encounters where id='${encounter}'`)).not.toBe(turn);
+  expect(sql(`select count(*) from dndkeep_private.turn_effect_batches where participant_id='${participant}'`)).toBe(lethal?'1':'2');
   expect(sql(`select count(*) from combat_events where encounter_id='${encounter}' and event_type in('damage_applied','spell_effect_removed')`)).toBe('2');
+ });
+
+ test('live journal authorizes the DM and rejects incomplete incoming work and another advance',()=>{
+  const next=JSON.parse(sql(auth(dm,`select get_combat_clock_context('${encounter}','${turn}')`)));
+  const begin=`select begin_live_turn_transition('${encounter}','${request}','${turn}','${next.incomingId}',${next.nextIndex},${next.nextRound})`;
+  expect(()=>sql(auth(dm,begin))).toThrow(/Finish outgoing/);
+  sql(auth(dm,call()));
+  expect(()=>sql(auth(owner,begin))).toThrow(/only to its DM/);
+  expect(()=>sql('set role anon;'+begin)).toThrow(/permission denied/);
+  // Clock and effect request IDs are separate ledger namespaces.
+  const started=JSON.parse(sql(auth(dm,begin)));expect(started.complete).toBe(false);
+  expect(()=>sql(auth(dm,`select finish_live_turn_transition('${encounter}','${request}')`))).toThrow(/have not finished/);
+  const current=started.clock.turnId;
+  expect(()=>sql(auth(dm,`select begin_live_turn_transition('${encounter}','${randomUUID()}','${current}','${participant}',0,3)`))).toThrow(/Finish incoming/);
+  expect(()=>sql(auth(owner,`select read_live_turn_transition('${encounter}',null)`))).toThrow(/only to its DM/);
+  sql(`update campaigns set owner_id='${owner}' where id='${campaign}'`);
+  expect(()=>sql(auth(dm,`select read_live_turn_transition('${encounter}',null)`))).toThrow(/only to its DM/);
+  expect(JSON.parse(sql(auth(owner,`select read_live_turn_transition('${encounter}',null)`))).requestId).toBe(request);
+ });
+ for(const stage of ['begin_live_turn_transition','mark_live_turn_death_complete','commit_turn_effect_batch','finish_live_turn_transition'])test(`live incoming work recovers a lost ${stage} reply`,async({page})=>{
+  sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}','{"sub":"${dm}","email":"${dm}@tick.local"}','email',now(),now(),now());
+   update combatants set active_buffs=active_buffs||'[{"key":"regen","name":"Regeneration","turnTick":{"kind":"heal","timing":"turn_start","flat":3}}]'::jsonb where id='${combatant}';`);
+  await signInAsSeedDm(page,`${dm}@tick.local`);
+  let dropped=0;await page.route(`**/rest/v1/rpc/${stage}`,async route=>{
+   if(stage==='commit_turn_effect_batch'&&route.request().postDataJSON().p_timing!=='turn_start'){await route.continue();return;}
+   await route.fetch();dropped++;await route.abort('failed');
+  });
+  const advance=()=>page.evaluate(async id=>{const api=await import('/src/lib/combatEncounter.ts');return api.advanceTurn(id);},encounter);
+  expect((await advance()).ok).toBe(false);expect(dropped).toBe(2);
+  const clock=sql(`select psionic_turn_id from combat_encounters where id='${encounter}'`);expect(clock).not.toBe(turn);
+  await page.unroute(`**/rest/v1/rpc/${stage}`);await page.reload();expect(await advance()).toEqual({ok:true});
+  expect(sql(`select psionic_turn_id from combat_encounters where id='${encounter}'`)).toBe(clock);expect(context().current_hp).toBe(39);
+  expect(sql(`select count(*) from dndkeep_private.turn_effect_batches where participant_id='${participant}'`)).toBe('2');
+  expect(sql(`select count(*) from dndkeep_private.turn_recharge_batches where participant_id='${participant}'`)).toBe('1');
+  expect(sql(`select count(*) from dndkeep_private.live_turn_transitions where encounter_id='${encounter}' and complete`)).toBe('1');
+  expect(sql(`select count(*) from combat_events where encounter_id='${encounter}' and event_type in('turn_ended','turn_started')`)).toBe('2');
+  expect(sql(`select count(*) from combat_events where encounter_id='${encounter}' and event_type='healing_applied'`)).toBe('1');
+ });
+
+ for(const mode of ['auto','prompt','off','lethal-auto'])test(`live incoming ${mode} death saves precede healing and recover safely`,async({page})=>{
+  const downed=randomUUID(),downedParticipant=randomUUID();const lethal=mode==='lethal-auto';
+  sql(`insert into characters(id,user_id,campaign_id,name,species,class_name,background,level,current_hp,max_hp) values('${downed}','${owner}','${campaign}','Downed','Human','Fighter','Sage',5,0,30);
+   insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values('${downedParticipant}','${encounter}','${campaign}','character','${downed}','Downed',1);
+   update campaigns set automation_defaults=jsonb_build_object('death_save_on_turn_start','${lethal?'auto':mode}') where id='${campaign}';
+   update combatants set current_hp=0,death_save_failures=${lethal?1:0},active_buffs='[{"key":"regen","name":"Regeneration","turnTick":{"kind":"heal","timing":"turn_start","flat":3}}]' where id=(select combatant_id from combat_participants where id='${downedParticipant}');
+   update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}','{"sub":"${dm}","email":"${dm}@tick.local"}','email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${dm}@tick.local`);
+  if(lethal)await page.route('**/rest/v1/rpc/settle_pending_death_save',async route=>{await route.fetch();await route.abort('failed');});
+  const advance=()=>page.evaluate(async id=>{const original=Math.random;Math.random=()=>0;try{const {advanceTurn}=await import('/src/lib/combatEncounter.ts');return await advanceTurn(id);}finally{Math.random=original;}},encounter);
+  const first=await advance();
+  if(lethal){expect(first.ok).toBe(false);await page.unroute('**/rest/v1/rpc/settle_pending_death_save');await page.reload();expect(await advance()).toEqual({ok:true});}else expect(first).toEqual({ok:true});
+  const offers=JSON.parse(sql(`select coalesce(jsonb_agg(jsonb_build_object('d20',d20,'state',state)),'[]') from pending_death_saves where participant_id='${downedParticipant}'`));
+  expect(offers).toHaveLength(mode==='off'?0:1);
+  if(mode==='auto'||lethal)expect(offers[0]).toMatchObject({d20:1,state:'rolled'});
+  const hp=()=>JSON.parse(sql(`select jsonb_build_object('hp',current_hp,'dead',is_dead) from combatants where id=(select combatant_id from combat_participants where id='${downedParticipant}')`));
+  expect(hp()).toEqual({hp:lethal?0:3,dead:lethal});
+  if(lethal){expect(await advance()).toEqual({ok:true});expect(hp()).toEqual({hp:0,dead:true});expect(sql(`select round_number from combat_encounters where id='${encounter}'`)).toBe('2');}
+ });
+
+ test('live completion rolls back its earlier logs on a late event failure',()=>{
+  sql(auth(dm,call()));const transition=randomUUID();
+  const next=JSON.parse(sql(auth(dm,`select get_combat_clock_context('${encounter}','${turn}')`)));
+  const started=JSON.parse(sql(auth(dm,`select begin_live_turn_transition('${encounter}','${transition}','${turn}','${participant}',${next.nextIndex},${next.nextRound})`)));
+  const newTurn=started.clock.turnId;
+  expect(()=>sql(auth(dm,`select get_turn_effect_context('${participant}','${encounter}','${newTurn}','turn_start')`))).toThrow(/Death saves must/);
+  sql(auth(dm,`select mark_live_turn_death_complete('${encounter}','${transition}')`));
+  const fresh=context(),patch={...fresh};delete patch.max_hp;
+  sql(auth(dm,`select commit_turn_effect_batch('${participant}','${newTurn}','turn_start','${randomUUID()}',${json(fresh)},${json(patch)},'[]')`));
+  const recharge=JSON.parse(sql(auth(dm,`select get_turn_recharge_context('${participant}','${encounter}','${newTurn}')`)));
+  sql(auth(dm,`select commit_turn_recharge_batch('${participant}','${newTurn}','${randomUUID()}',${json(recharge.expected)},'[]')`));
+  const fn='reject_live_'+transition.replaceAll('-',''),finish=`select finish_live_turn_transition('${encounter}','${transition}')`;
+  sql(`create function public.${fn}() returns trigger language plpgsql as $$ begin if new.chain_id='${transition}' and new.event_type='turn_started' then raise exception 'fixture completion failure';end if;return new;end $$;create trigger ${fn} before insert on combat_events for each row execute function public.${fn}()`);
+  try{
+   expect(()=>sql(auth(dm,finish))).toThrow(/fixture completion failure/);
+   expect(sql(`select count(*) from combat_events where chain_id='${transition}' and event_type in('turn_ended','turn_started')`)).toBe('0');
+   expect(JSON.parse(sql(auth(dm,`select read_live_turn_transition('${encounter}','${transition}')`))).complete).toBe(false);
+  }finally{sql(`drop trigger ${fn} on combat_events;drop function public.${fn}()`);}
+  expect(JSON.parse(sql(auth(dm,finish))).complete).toBe(true);expect(JSON.parse(sql(auth(dm,finish))).complete).toBe(true);
+  expect(sql(`select count(*) from combat_events where chain_id='${transition}' and event_type in('turn_ended','turn_started')`)).toBe('2');
  });
 
 });
