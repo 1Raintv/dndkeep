@@ -1,5 +1,16 @@
 # DNDKeep — Two-Track Roadmap
 
+### Telekinetic Bolt damage checkpoint (local; not released)
+
+New Bolt declarations use a private, idempotent settlement receipt. The saved
+Force total respects resistance, immunity, vulnerability, Petrified, and typed
+wards; HP, temporary HP, life state, concentration bookkeeping and history share
+one transaction. The original caster/target bindings and saved die total are
+verified before application. Old declarations, altered damage and unknown or
+conditional defenses stop for review rather than guessing. A dedicated DM
+resolution choice for conditional defenses remains needed; this checkpoint does
+not claim those targets are fully automated. Production migration is pending.
+
 ### Propel player-view regression checkpoint (not released)
 
 Desktop/mobile checks now cover adjacent Telekinetic Propel / Warp Propel rows,

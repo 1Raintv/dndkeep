@@ -48,6 +48,51 @@ test.describe('Telekinetic Technique choices',()=>{
   expect(sql(`select current_hp from combatants where id=(select combatant_id from combat_participants where id='${target}')`)).toBe(before);
   sql(`delete from pending_attacks where id='${id}'`);expect(choose('bolt').replayed).toBe(true);expect(sql(`select count(*) from pending_attacks where id='${id}'`)).toBe('0');
  });
+ for(const [defense,expected] of [['normal',3],['resistant',1],['immune',0],['vulnerable',6],['resistant-vulnerable',2],['petrified',1],['ward',1]] as const)
+ test(`Bolt settles ${defense} Force damage once through the live pipeline`,async({page})=>{
+  settle();choose('bolt');
+  const snapshot={damage_resistances:defense.includes('resistant')?['force']:[],damage_immunities:defense==='immune'?['force']:[],damage_vulnerabilities:defense.includes('vulnerable')?['force']:[]};
+  sql(`update combatants set current_hp=20,max_hp=20,temp_hp=1,stat_block_snapshot='${JSON.stringify(snapshot)}',active_conditions='${defense==='petrified'?'{Petrified}':'{}'}',active_buffs='${defense==='ward'?'[{"key":"ward","name":"Force ward","resistances":["force"]}]':'[]'}' where id=(select combatant_id from combat_participants where id='${target}');
+   update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
+   insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}',jsonb_build_object('sub','${dm}','email','${dm}@propelsave.local'),'email',now(),now(),now());`);
+  await signInAsSeedDm(page,`${dm}@propelsave.local`);
+  const rolled=await page.evaluate(async id=>{const path='/src/lib/pendingAttack.ts';return(await import(/* @vite-ignore */ path)).rollDamage(id);},id);
+  expect(rolled).toMatchObject({damage_raw:3,damage_final:3,damage_rolls:[]});
+  const apply=()=>page.evaluate(async id=>{const path='/src/lib/pendingAttack.ts';return(await import(/* @vite-ignore */ path)).applyDamage(id);},id);
+  if(defense==='normal'){
+   const ctx=sql(auth(dm,`select get_pending_damage_context('${id}')`));
+   expect(()=>sql(auth(outsider,`select apply_propel_bolt_damage('${id}')`))).toThrow(/current DM/);
+   sql(`update dndkeep_private.propel_declarations set atomic_bolt_damage=false where request_id='${id}'`);
+   expect(()=>sql(auth(dm,`select apply_propel_bolt_damage('${id}','${ctx}',0)`))).toThrow(/legacy or changed/);
+   sql(`update dndkeep_private.propel_declarations set atomic_bolt_damage=true where request_id='${id}';update pending_attacks set damage_final=9 where id='${id}'`);
+   expect(()=>sql(auth(dm,`select apply_propel_bolt_damage('${id}','${ctx}',0)`))).toThrow(/legacy or changed/);
+   sql(`update pending_attacks set damage_final=3 where id='${id}';update combatants set stat_block_snapshot='{}' where id=(select combatant_id from combat_participants where id='${target}')`);
+   const unknown=sql(auth(dm,`select get_pending_damage_context('${id}')`));
+   expect(()=>sql(auth(dm,`select apply_propel_bolt_damage('${id}','${unknown}',0)`))).toThrow(/defenses require review/);
+   sql(`update combatants set stat_block_snapshot='${JSON.stringify(snapshot)}' where id=(select combatant_id from combat_participants where id='${target}')`);
+   expect(sql(`select current_hp from combatants where id=(select combatant_id from combat_participants where id='${target}')`)).toBe('20');
+   expect(sql(`select count(*) from dndkeep_private.propel_bolt_damage_applications where attack_id='${id}'`)).toBe('0');
+   const guard='bolt_rollback_'+id.replaceAll('-','');
+   try{
+    sql(`create function dndkeep_private.${guard}() returns trigger language plpgsql as $$ begin if new.event_type='damage_applied' and new.payload->>'attack_id'='${id}' then raise exception 'Bolt history failure fixture';end if;return new;end;$$;
+     create trigger ${guard} before insert on combat_events for each row execute function dndkeep_private.${guard}();`);
+    const fresh=sql(auth(dm,`select get_pending_damage_context('${id}')`));
+    expect(()=>sql(auth(dm,`select apply_propel_bolt_damage('${id}','${fresh}',0)`))).toThrow(/Bolt history failure/);
+    expect(sql(`select current_hp from combatants where id=(select combatant_id from combat_participants where id='${target}')`)).toBe('20');
+    expect(sql(`select state from pending_attacks where id='${id}'`)).toBe('damage_rolled');
+    expect(sql(`select count(*) from dndkeep_private.pending_damage_pool_records where attack_id='${id}'`)).toBe('0');
+   }finally{sql(`drop trigger if exists ${guard} on combat_events;drop function if exists dndkeep_private.${guard}();`);}
+
+  }
+  // Competing calls must share the same committed HP/history result.
+  const results=await Promise.all([apply(),apply()]);
+  for(const result of results)expect(result).toMatchObject({state:'applied',damage_final:expected});
+  expect(await apply()).toMatchObject({state:'applied',damage_final:expected});
+  expect(JSON.parse(sql(`select jsonb_build_object('hp',current_hp,'temp',temp_hp) from combatants where id=(select combatant_id from combat_participants where id='${target}')`))).toEqual({hp:20-Math.max(0,expected-1),temp:expected?0:1});
+  expect(sql(`select count(*) from combat_events where payload->>'attack_id'='${id}' and event_type='damage_applied'`)).toBe('1');
+  expect(sql(`select count(*) from dndkeep_private.propel_bolt_damage_applications where attack_id='${id}'`)).toBe('1');
+  expect(sql(`select class_resources->>'psionic-energy-dice' from characters where id='${character}'`)).toBe('1');
+ });
  test('skip is a saved choice with no effect and cannot become Bolt later',()=>{
   settle();expect(choose('none')).toMatchObject({choice:'none',attackId:null,buff:null,damage:null});
   expect(()=>choose('bolt')).toThrow(/already saved/);expect(buffs()).toEqual([]);

@@ -925,6 +925,12 @@ export async function applyDamage(attackId: string, beforeLegacyApply?:()=>void)
   if (!row) return null;
   const atk = row as PendingAttack;
 
+  // Bolt's saved die is Force damage, so it must not use the legacy HP writes.
+  if(atk.attack_kind==='auto_hit'&&atk.attack_name==='Telekinetic Bolt'){
+    const {applyPropelBoltDamage}=await import('./api/propelBoltDamage');
+    return applyPropelBoltDamage(atk);
+  }
+
   // v2.867: supported psychic saves and automatic-hit Psion damage have no weapon mastery/retaliation.
   // Its HP, death state, concentration, log and applied state settle together.
   if(psychicDamageRoll(atk)){
