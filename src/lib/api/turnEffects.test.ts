@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import {beforeEach,afterEach,expect,it,vi} from 'vitest';
-const m=vi.hoisted(()=>({rpc:vi.fn()}));
+const m=vi.hoisted(()=>({rpc:vi.fn(),roll:vi.fn()}));
 vi.mock('./psionicTurns',()=>({psionicRpc:m.rpc}));
-import {runTurnEffects,savedTurnEffect,savedTurnEffects,readTurnEffect,type TurnEffectPlan} from './turnEffects';
+vi.mock('../../rules/dice',()=>({rollDiceExpr:m.roll}));
+import {processSavedTurnEffects,runTurnEffects,savedTurnEffect,savedTurnEffects,readTurnEffect,type TurnEffectPlan} from './turnEffects';
 const id=(n:number)=>`${n}${'0'.repeat(7)}-0000-4000-8000-000000000000`;
 const user=id(1),i={participantId:id(2),encounterId:id(3),turnId:id(4),timing:'turn_end' as const};
 const expected={current_hp:40,max_hp:50,temp_hp:6,death_save_failures:0,death_save_successes:0,is_stable:false,is_dead:false,active_buffs:[{key:'acid',turnTick:{kind:'damage',timing:'turn_end',flat:10}}]};
@@ -66,4 +67,53 @@ it('JSONB key order does not invalidate the acknowledgement',async()=>{
  const withBuff={...plan,updates:{...plan.updates,active_buffs:[{name:'Kept',key:'keep'}]}};
  m.rpc.mockImplementation(async(name,args)=>name==='read_turn_effect_batch'?null:{...receipt(args.p_request),state:{...withBuff.updates,max_hp:50,active_buffs:[{key:'keep',name:'Kept'}]}});
  expect((await runTurnEffects(user,i,async()=>withBuff)).state.active_buffs).toEqual([{key:'keep',name:'Kept'}]);
+});
+
+const freshContext=()=>({...i,userId:user,combatantId:plan.combatantId,isCharacter:true,state:{...expected,
+ active_buffs:[{key:'acid',name:'Acid',source:'spell',turnTick:{kind:'damage',timing:'turn_end',dice:'1d6',flat:2,oneShot:true}}]}});
+function preparedRpc(context:unknown=freshContext()){
+ m.roll.mockReturnValue({total:4,rolls:[4],modifier:0});
+ m.rpc.mockImplementation(async(name,args)=>{
+  if(name==='read_turn_effect_batch')return null;
+  if(name==='get_turn_effect_context')return context;
+  return {...receipt(args.p_request),state:{...args.p_updates,max_hp:50},eventCount:args.p_events.length};
+ });
+}
+it('prepares canonical dice from authorized context and persists the complete computed proposal',async()=>{
+ preparedRpc();const guard=vi.fn();const r=await processSavedTurnEffects(user,i,guard);
+ expect(m.rpc.mock.calls.map(([name])=>name)).toEqual(['read_turn_effect_batch','get_turn_effect_context','commit_turn_effect_batch']);
+ expect(m.roll.mock.calls).toEqual([['1d6']]);expect(guard).toHaveBeenCalledTimes(3);
+ expect(r.state).toMatchObject({current_hp:40,temp_hp:0,active_buffs:[]});expect(r.eventCount).toBe(2);
+ expect(m.rpc.mock.calls[2][1].p_expected).toEqual(freshContext().state);
+});
+it('does not load context or roll when an authoritative receipt already exists',async()=>{
+ m.rpc.mockResolvedValue({...receipt(),replayed:true});await processSavedTurnEffects(user,i,()=>{});
+ expect(m.rpc).toHaveBeenCalledTimes(1);expect(m.roll).not.toHaveBeenCalled();
+});
+it('failed commits retain computed dice and reuse them without another context read',async()=>{
+ preparedRpc();const implementation=m.rpc.getMockImplementation()!;let failures=1;
+ m.rpc.mockImplementation(async(name,args)=>{if(name==='commit_turn_effect_batch'&&failures-->0)throw new Error('offline');return implementation(name,args);});
+ await expect(processSavedTurnEffects(user,i,()=>{})).rejects.toThrow('offline');
+ const saved=savedTurnEffect(user,i);expect(saved?.events[0].payload.amount).toBe(6);
+ await processSavedTurnEffects(user,i,()=>{});expect(m.roll).toHaveBeenCalledTimes(1);
+ expect(m.rpc.mock.calls.filter(([name])=>name==='get_turn_effect_context')).toHaveLength(1);
+});
+it('a scope change while context loads prevents all effect dice and submissions',async()=>{
+ preparedRpc();let current=true;const impl=m.rpc.getMockImplementation()!;
+ m.rpc.mockImplementation(async(name,args)=>{if(name==='get_turn_effect_context')current=false;return impl(name,args);});
+ await expect(processSavedTurnEffects(user,i,()=>{if(!current)throw new Error('Sheet changed');})).rejects.toThrow('Sheet changed');
+ expect(m.roll).not.toHaveBeenCalled();expect(savedTurnEffect(user,i)).toBeNull();
+});
+it.each(['userId','participantId','encounterId','turnId','combatantId'])('rejects mismatched or malformed %s before rolling',async field=>{
+ preparedRpc({...freshContext(),[field]:field==='combatantId'?'bad':id(9)});
+ await expect(processSavedTurnEffects(user,i,()=>{})).rejects.toThrow('could not be verified');expect(m.roll).not.toHaveBeenCalled();
+ expect(m.rpc).toHaveBeenCalledTimes(2);
+});
+it('validates all effect shapes before rolling the first one',async()=>{
+ const c=freshContext();preparedRpc({...c,state:{...c.state,active_buffs:[...c.state.active_buffs,{key:'bad',name:'Bad',turnTick:{kind:'wrong',timing:'turn_end'}}]}});
+ await expect(processSavedTurnEffects(user,i,()=>{})).rejects.toThrow('could not be verified');expect(m.roll).not.toHaveBeenCalled();
+});
+it('context errors stop preparation without saving a new request',async()=>{
+ m.rpc.mockImplementation(async name=>{if(name==='read_turn_effect_batch')return null;throw new Error('Turn changed');});
+ await expect(processSavedTurnEffects(user,i,()=>{})).rejects.toThrow('Turn changed');expect(m.roll).not.toHaveBeenCalled();expect(savedTurnEffect(user,i)).toBeNull();
 });

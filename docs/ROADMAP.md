@@ -6611,3 +6611,36 @@ incoming-turn recovery phase before changing clock writes. A failure after the
 clock moved must resume effects without advancing again; a changed/dead actor
 must not be interpreted against a shifted filtered roster. Stale saved proposals
 need an explicit review path rather than silent rerolls or indefinite blocking.
+
+### Authorized turn-effect preparation (unreleased; turn button pending)
+
+Migration20261010070004 adds get_turn_effect_context, a public invoker wrapper
+around a private DM-authorized reader. It returns one actor/turn/combatant snapshot
+and rejects stale turns, mismatched or ended encounters, missing combatants and
+an actor no longer occupying the active slot. It does not hold locks after the
+read; commit_turn_effect_batch still validates the turn and exact state before
+writing. Player and former-DM access is rejected; anonymous execution is revoked.
+
+processSavedTurnEffects in src/lib/api/turnEffects.ts now connects this snapshot
+to the canonical turnTicks planner and saved-request client. Receipt/proposal
+recovery precedes fresh preparation. User/identity/state/buff shape checks and
+the caller's UI scope guard run before effect dice. Failed commits keep the
+original computed proposal. Returned receipt HP remains historical and must not
+replace refreshed live state. This adapter has no live advanceTurn caller yet:
+incoming recovery and dead-actor roster handling must be coordinated first.
+
+Verification:11 additional client cases (24 in that module),32 local database /
+browser cases across desktop and mobile, and the full gate pass (3,318 units,
+196/196 TypeScript,entry255.2KB). The actual browser recovery test now uses the
+snapshot+planner adapter, loses both commit replies, reloads, and verifies no
+new preparation, duplicate effects or overwrite of subsequent healing. Database
+SQL lint and security advisors are clean; changed-file ESLint and diff checks
+pass. Only the reviewed local migration was applied and recorded; unrelated
+local ledger version20261008213500 was preserved. No production deployment.
+
+Next: the live turn controller must journal its incoming phase before it can
+fail, resume it before any new advance, and retain the outgoing actor identity
+when death changes the filtered roster. Add explicit stale-proposal review and
+complete clock/other turn-effect coordination before switching the live caller.
+The existing rules gaps (typed defenses, concentration, save-ends automation,
+temp-HP replacement choice) remain open.

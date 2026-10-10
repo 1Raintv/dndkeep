@@ -1,3 +1,4 @@
+import {planTurnTicks,type TickingBuff,type TurnTick} from '../../rules/turnTicks';
 import {psionicRpc} from './psionicTurns';
 export interface TurnEffectIdentity {participantId:string;encounterId:string;turnId:string;timing:'turn_start'|'turn_end'}
 export interface TurnEffectState {current_hp:number;max_hp:number;temp_hp:number;death_save_failures:number;death_save_successes:number;is_stable:boolean;is_dead:boolean;active_buffs:Record<string,unknown>[]|null}
@@ -89,4 +90,37 @@ export function runTurnEffects(user:string,input:TurnEffectIdentity,prepare:()=>
   }
   return submit(request);
  })();active.set(k,work);void work.finally(()=>{if(active.get(k)===work)active.delete(k);}).catch(()=>{});return work;
+}
+
+interface TurnEffectContext extends TurnEffectIdentity {
+ userId:string;combatantId:string;isCharacter:boolean;state:TurnEffectState;
+}
+function tickingBuff(value:Record<string,unknown>):value is Record<string,unknown>&TickingBuff {
+ if(typeof value.key!=='string'||typeof value.name!=='string')return false;
+ if(value.turnTick===undefined)return true;
+ const t=value.turnTick as TurnTick;
+ return object(t)&&['damage','heal','temp_hp'].includes(t.kind)&&['turn_start','turn_end'].includes(t.timing)
+  &&(t.dice===undefined||typeof t.dice==='string'&&t.dice.trim().length>0)
+  &&(t.flat===undefined||Number.isSafeInteger(t.flat))
+  &&(t.oneShot===undefined||typeof t.oneShot==='boolean')
+  &&(t.damageType===undefined||typeof t.damageType==='string')
+  &&(t.saveEnds===undefined||object(t.saveEnds)&&typeof t.saveEnds.ability==='string'&&count(t.saveEnds.dc));
+}
+/** v2.869: prepare from one authorized server snapshot, only after recovery has
+ * found no saved result/proposal. The scope guard checks the signed-in UI owner;
+ * do not require an old turn to remain current when recovering its receipt.
+ * Returned HP is historical: refresh live state instead of patching it back. */
+export function processSavedTurnEffects(user:string,input:TurnEffectIdentity,assertCurrentScope:()=>void):Promise<TurnEffectReceipt>{
+ const i=structuredClone(input);
+ assertCurrentScope();
+ return runTurnEffects(user,i,async()=>{
+  assertCurrentScope();
+  const value=await psionicRpc('get_turn_effect_context',{...args(i),p_encounter:i.encounterId},true);
+  assertCurrentScope();
+  const c=value as TurnEffectContext|null;
+  if(!c||!same(c,i)||c.userId!==user||!uuid(c.combatantId)||typeof c.isCharacter!=='boolean'||!state(c.state)
+   ||c.state.active_buffs?.some(b=>!tickingBuff(b)))throw invalid();
+  const {updates,events}=planTurnTicks({...c.state,active_buffs:c.state.active_buffs as (Record<string,unknown>&TickingBuff)[]|null},c.isCharacter,i.timing);
+  return {combatantId:c.combatantId,expected:c.state,updates,events};
+ });
 }

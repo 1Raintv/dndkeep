@@ -27,6 +27,29 @@ test.describe('Atomic turn effect batches',()=>{
  const call=(ctx=context(),patch:unknown=updates(),id=request,ev:unknown=events)=>`select commit_turn_effect_batch('${participant}','${turn}','turn_end','${id}',${json(ctx)},${json(patch)},${json(ev)})`;
  const read=()=>`select read_turn_effect_batch('${participant}','${turn}','turn_end')`;
  const count=()=>sql(`select count(*) from combat_events where encounter_id='${encounter}' and chain_id='${request}'`);
+ const prepare=()=>`select get_turn_effect_context('${participant}','${encounter}','${turn}','turn_end')`;
+ test('preparation returns the current DM snapshot and no mutation',()=>{
+  expect(JSON.parse(sql(auth(dm,prepare())))).toEqual({userId:dm,participantId:participant,encounterId:encounter,turnId:turn,timing:'turn_end',combatantId:combatant,isCharacter:true,state:context()});
+  expect(count()).toBe('0');expect(context().current_hp).toBe(40);
+ });
+ test('preparation rejects players, anonymous callers and a former DM',()=>{
+  expect(()=>sql(auth(owner,prepare()))).toThrow(/current DM/);
+  expect(()=>sql('set role anon;'+prepare())).toThrow(/permission denied/);
+  sql(`update campaigns set owner_id='${owner}' where id='${campaign}'`);
+  expect(()=>sql(auth(dm,prepare()))).toThrow(/current DM/);
+  expect(JSON.parse(sql(auth(owner,prepare()))).userId).toBe(owner);
+ });
+ test('preparation rejects a stale turn, mismatched encounter and invalid timing',()=>{
+  expect(()=>sql(auth(dm,prepare().replace(turn,randomUUID())))).toThrow(/Turn changed/);
+  expect(()=>sql(auth(dm,prepare().replace(encounter,randomUUID())))).toThrow(/Turn changed/);
+  expect(()=>sql(auth(dm,prepare().replace('turn_end','invalid')))).toThrow(/Invalid turn effect/);
+  sql(`update combat_encounters set status='ended' where id='${encounter}'`);
+  expect(()=>sql(auth(dm,prepare()))).toThrow(/Turn changed/);
+ });
+ test('preparation refuses a dead actor after the active initiative roster shifts',()=>{
+  sql(`update combatants set is_dead=true where id='${combatant}'`);
+  expect(()=>sql(auth(dm,prepare()))).toThrow(/Turn changed/);
+ });
  test('HP, one-shot removal and ordered events commit together',()=>{
   const r=JSON.parse(sql(auth(dm,call())));expect(r).toMatchObject({requestId:request,participantId:participant,turnId:turn,eventCount:2,replayed:false,state:updates()});expect(count()).toBe('2');
   expect(sql(`select string_agg(sequence::text,',' order by sequence) from combat_events where chain_id='${request}'`)).toBe('0,1');
@@ -83,20 +106,21 @@ test.describe('Atomic turn effect batches',()=>{
   const identity={participantId:participant,encounterId:encounter,turnId:turn,timing:'turn_end' as const};
   const plan={combatantId:combatant,expected:context(),updates:updates(),events};let commits=0;
   await page.route('**/rest/v1/rpc/commit_turn_effect_batch',async route=>{await route.fetch();commits++;await route.abort('failed');});
-  const first=await page.evaluate(async({user,identity,plan})=>{
+  const first=await page.evaluate(async({user,identity})=>{
    const api=await import('/src/lib/api/turnEffects.ts');
-   try{await api.runTurnEffects(user,identity,async()=>plan);return {failed:false,saved:null};}
+   try{await api.processSavedTurnEffects(user,identity,()=>{});return {failed:false,saved:null};}
    catch{return {failed:true,saved:api.savedTurnEffect(user,identity)};}
-  },{user:dm,identity,plan});
+  },{user:dm,identity});
   expect(first.failed).toBe(true);expect(first.saved).toMatchObject({expected:plan.expected,updates:plan.updates});expect(commits).toBe(2);expect(context().current_hp).toBe(36);
   sql(`update combatants set current_hp=49 where id='${combatant}'`);
   await page.unroute('**/rest/v1/rpc/commit_turn_effect_batch');await page.reload();
+  let repeatedPreparation=0;await page.route('**/rest/v1/rpc/get_turn_effect_context',async route=>{repeatedPreparation++;await route.abort('failed');});
   const recovered=await page.evaluate(async({user,identity})=>{
    const api=await import('/src/lib/api/turnEffects.ts');
-   const receipt=await api.runTurnEffects(user,identity,async()=>{throw new Error('Do not roll again');});
+   const receipt=await api.processSavedTurnEffects(user,identity,()=>{});
    return {receipt,saved:api.savedTurnEffect(user,identity)};
   },{user:dm,identity});
-  expect(recovered.receipt).toMatchObject({requestId:first.saved!.requestId,replayed:true,state:{current_hp:36}});expect(recovered.saved).toBeNull();expect(context().current_hp).toBe(49);
+  expect(recovered.receipt).toMatchObject({requestId:first.saved!.requestId,replayed:true,state:{current_hp:36}});expect(recovered.saved).toBeNull();expect(context().current_hp).toBe(49);expect(repeatedPreparation).toBe(0);
   expect(sql(`select count(*) from combat_events where encounter_id='${encounter}' and event_type in('damage_applied','spell_effect_removed')`)).toBe('2');
  });
 
