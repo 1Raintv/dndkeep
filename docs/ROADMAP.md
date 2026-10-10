@@ -1,6 +1,33 @@
 # DNDKeep — Two-Track Roadmap
 
 
+### Post-save Propel movement — private saved decision (not released)
+
+Migration 20261010165336 adds opt-in deferred movement declarations and a
+separate one-time push/Warp receipt. The original declaration, dice, save,
+Energy payment and Bonus Action receipt stay unchanged. A new choice requires
+the settled failed save, original Psion progression, original turn and combat
+participant bindings; Warp additionally requires Psi Warper level three.
+Exact retries recover the winner without charging or reopening the choice.
+Legacy declarations cannot be converted: their movement may already be applied.
+
+Both entry points remain private and denied to authenticated/anonymous clients.
+This is backend preparation, not a player-facing fix. Remaining integration:
+scoped dispatcher and strict client receipt validation; recoverable post-save
+selection and interrupted/expired choices; turn-boundary handling; durable
+history; map destination review. The client must display the new movement receipt
+instead of the legacy result.feet once opted into this flow. Do not enable the
+new declaration through the existing UI without completing those dependencies.
+
+Validation: 15 local database cases cover costs, retries, ownership, class and
+turn changes, legacy rejection, combat identity changes and concurrent saves.
+Full gate passed (4,389 unit tests; entry 255.7 KB); SQL lint reports no errors
+or new-function warnings. Security findings remain keep_warm/client_errors.
+Exact local ledger verified. Repo chain: 328; retained rehearsals: 321.
+Logs: `.tmp/propel-movement-{gate,db,lint,advisors}.*`.
+
+
+
 ### Propel number audit — all class levels (unreleased)
 
 Rechecked the existing Bonus Action controls, optional Energy Die and adjacent
