@@ -1,6 +1,6 @@
 import {execFileSync,spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {test,expect} from '@playwright/test';
+import {test,expect,type Page} from '@playwright/test';
 import {verifyAuraResolutionReceipt} from '../../src/lib/auraResolutionReceipt';
 import {validAuraDamagePools} from '../../src/rules/auraDamageEvidence';
 import {validAuraSaveEvidence} from '../../src/rules/auraSaveEvidence';
@@ -134,10 +134,13 @@ test.describe('Atomic aura resolution',()=>{
   expect(sql(`select consumed_by is null from dndkeep_private.mind_sliver_effects where cast_id='${effect}'`)).toBe('t');expect(counts()).toEqual({receipt:0,penalty:0,events:0,marker:0});
  });
 
- test('browser reload recovers a committed aura after lost responses without changing later HP',async({page})=>{
+ async function signInFixtureDm(page:Page){
   sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
    insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}','{"sub":"${dm}","email":"${dm}@aura.local"}','email',now(),now(),now());`);
   await signInAsSeedDm(page,`${dm}@aura.local`);
+ }
+ test('browser reload recovers a committed aura after lost responses without changing later HP',async({page})=>{
+  await signInFixtureDm(page);
   let committed=false;
   await page.route('**/rest/v1/rpc/commit_aura_resolution',async route=>{
    const response=await route.fetch();expect(response.status()).toBe(200);committed=true;await route.abort();
@@ -160,6 +163,19 @@ test.describe('Atomic aura resolution',()=>{
   },{user:dm,identity});
   expect(recovered).toMatchObject({result:{damage:15,replayed:true},saved:null});
   expect(sql(`select current_hp from combatants where id='${cb}'`)).toBe('18');expect(counts()).toEqual({receipt:1,penalty:1,events:2,marker:1});
+ });
+
+ for(const kind of ['srd_monster','custom','homebrew_monster'])test(`live aura defenses follow the linked ${kind} source`,async({page})=>{
+  const defenses={damage_resistances:['radiant'],damage_immunities:[],damage_vulnerabilities:['fire']};
+  if(kind==='srd_monster')sql(`insert into monsters(id,name,type,cr,xp,size,hp,hp_formula,ac,speed,str,dex,con,int,wis,cha,damage_resistances,damage_immunities,damage_vulnerabilities) values('${b}','Fixture creature','Beast','1',200,'Medium',20,'3d8',10,30,10,10,10,10,10,10,array['radiant'],array[]::text[],array['fire'])`);
+  if(kind==='homebrew_monster')sql(`insert into homebrew_monsters(id,owner_id,user_id,name,damage_resistances,damage_immunities,damage_vulnerabilities) values('${b}','${dm}','${dm}','Personal creature',array['radiant'],array[]::text[],array['fire'])`);
+  sql(`update combatants set definition_type='${kind}',stat_block_snapshot=${literal(defenses)} where id='${cb}';update combat_participants set participant_type='monster' where id='${pb}'`);
+  await signInFixtureDm(page);
+  const result=await page.evaluate(async({campaign,enc,target})=>{
+   const path='/src/lib/api/auraDamageDefenses.ts',api=await import(/* @vite-ignore */ path);
+   return {radiant:await api.readAuraDamageDefenses(campaign,enc,target,'radiant'),fire:await api.readAuraDamageDefenses(campaign,enc,target,'fire')};
+  },{campaign,enc,target:pb});
+  expect(result).toEqual({radiant:{resistant:true,immune:false,vulnerable:false},fire:{resistant:false,immune:false,vulnerable:true}});
  });
 
 });

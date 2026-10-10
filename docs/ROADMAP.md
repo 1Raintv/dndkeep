@@ -7448,3 +7448,24 @@ and mobile both lose the commit reply, reload, recover without another roll,
 and preserve later healing after combat ends. Full gate: 3,593 unit tests,
 TypeScript 195/195, clean hooks/RAW/coordinates/anchors, production build and
 255.7 KB entry budget. Changed-file lint and diff checks pass.
+
+
+### Live aura defense source correction (2026-10-10)
+
+Integration review found that the live aura defense reader treated every
+creature as campaign homebrew. It now follows the linked combatant definition:
+public catalog creatures use `monsters`; custom creatures use the saved stat
+block; homebrew and legacy NPC definitions use their matched homebrew row.
+Personal unfiled homebrew is accepted only when its owner matches the linked
+combatant. A different campaign, definition ID, unsupported definition type or
+unknown/qualified defense data stops resolution for review. NULL catalog fields
+are not silently treated as known empty defenses.
+
+This fixes live defense preparation and supports future reviewed aura proposals.
+It does not replace the legacy non-atomic aura save/damage path. The durable
+client still needs reviewed controls and live turn orchestration before release.
+All six local desktop/mobile browser checks pass for catalog, custom and
+personal homebrew sources; 24 focused defense unit cases pass. No deployment.
+
+Full gate passes: 3,607 units, TypeScript 195/195, hooks/RAW/coordinates/anchors,
+production build and entry budget. Changed-file lint and diff checks pass.
