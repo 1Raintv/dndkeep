@@ -12,7 +12,10 @@ const invalid=()=>new Error('Movement aura history could not be verified. Keep t
 export async function readMovementAuraEvents(encounterId:string,before:string|null=null,limit=50):Promise<MovementAuraEvent[]> {
  if(!uuid(encounterId)||(before!==null&&!sequence(before))||!Number.isInteger(limit)||limit<1||limit>100)throw invalid();
  const rows:unknown=await psionicRpc('read_movement_aura_events',{p_encounter:encounterId,p_before:before,p_limit:limit},true);
- if(!Array.isArray(rows)||rows.length>limit)throw invalid();
+ return verifyMovementAuraEvents(rows,encounterId,before,limit);
+}
+export function verifyMovementAuraEvents(rows:unknown,encounterId:string,before:string|null=null,limit=50,ascending=false):MovementAuraEvent[]{
+ if(!uuid(encounterId)||(before!==null&&!sequence(before))||!Number.isInteger(limit)||limit<1||limit>100||!Array.isArray(rows)||rows.length>limit)throw invalid();
  const ids=new Set<string>();let previous=before,campaign:string|undefined;
  for(const r of rows){
   if(!object(r)||!uuid(r.id)||ids.has(r.id)||!sequence(r.sequence)||r.encounterId!==encounterId||!uuid(r.campaignId)
@@ -24,7 +27,7 @@ export async function readMovementAuraEvents(encounterId:string,before:string|nu
    ||new Set(r.context.moverParticipantIds).size!==r.context.moverParticipantIds.length
    ||!('from' in r.context)||!('to' in r.context)||![r.context.from,r.context.to].every(v=>v===null||object(v))
    ||(r.context.from===null&&r.context.to===null)||!Array.isArray(r.context.scenes)||!Array.isArray(r.context.participants)
-   ||(previous!==null&&BigInt(r.sequence)>=BigInt(previous)))throw invalid();
+   ||(previous!==null&&(ascending?BigInt(r.sequence)<=BigInt(previous):BigInt(r.sequence)>=BigInt(previous))))throw invalid();
   ids.add(r.id);previous=r.sequence;campaign=r.campaignId;
  }
  return structuredClone(rows) as MovementAuraEvent[];

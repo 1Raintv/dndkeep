@@ -7903,3 +7903,43 @@ unresolved movement review. Insertions, size-only edits, path/teleport semantics
 ambiguous legacy identities and historical legacy markers need explicit handling
 before release. The current journal only captures committed token updates; it
 intentionally does not infer a traveled path from two endpoints.
+
+### Durable movement aura review decisions (2026-10-10, unreleased)
+
+Migration 20261010070023 adds current-DM-only pending review, completion and
+history APIs. Frozen movement evidence produces possible aura/target candidates;
+it does not claim endpoints prove an entry or a traveled path. Exemptions,
+trigger types and existing character/non-character enemy grouping filter the
+candidates. Malformed aura definitions and ambiguous identity remain visible
+warnings requiring explicit adjudication.
+
+Every candidate needs a saved matching aura receipt or an explicit DM ruling
+(not triggered / handled manually), plus an overall review note. Completion
+checks the exact encounter, captured turn, origin, target and aura, and enforces
+oldest-first review. Replays retain the original result; completion never rolls
+or changes HP. Current ownership protects historical receipts too.
+
+The client repository validates queue ordering and identities, saves the exact
+request before sending it, serializes same-event submissions and recovers from
+server history. Unknown responses retain the original decision for retry;
+malformed storage and failed reads never become empty or completed reviews.
+
+Verified: full required gate, 3,861 unit cases, TypeScript 194/194, build and
+255.7 KB entry budget. Thirteen local database cases cover eligibility,
+permissions, ordering, exact receipts, wrong-turn rejection and rollback without
+repeating damage. Changed client modules lint cleanly; SQL lint has no errors.
+Security advisors retain only the existing keep_warm and client_errors warnings.
+Exact migration source matches the local ledger; no repository migrations remain
+pending locally, and the existing database-only version is preserved.
+
+Propel recheck: current controls, descriptions and power rules pass their tests.
+The branch already includes adjacent Bonus Action entries, free 5 ft / Energy
+Die choices, conditional die expenditure and caster-relative Warp destinations.
+No production deployment occurred.
+
+Next: connect the movement review screen to these APIs and the existing atomic
+save review, remove the legacy movement damage writer, then activate the pending
+review clock guard. The private guard is deliberately not wired into the clock
+until the DM can complete reviews. This backend milestone does not make the
+movement review queue visible or prevent End Turn yet. Previously documented
+path/teleport, insertion/resize, legacy marker and pending-turn gaps remain.
