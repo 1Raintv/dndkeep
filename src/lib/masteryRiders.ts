@@ -119,24 +119,6 @@ export function surveyMasteryMarkers(
   return { adv, dis, consumeKeys };
 }
 
-/** Remove consumed markers from the attacker after their roll. */
-export async function consumeMasteryMarkers(
-  atk: PendingAttack,
-  consumeKeys: string[],
-): Promise<void> {
-  if (consumeKeys.length === 0 || !atk.attacker_participant_id) return;
-  const { removeBuff } = await import('./buffs');
-  for (const key of consumeKeys) {
-    await removeBuff({
-      participantId: atk.attacker_participant_id,
-      key,
-      reason: 'mastery_marker_consumed',
-      campaignId: atk.campaign_id,
-      encounterId: atk.encounter_id,
-    });
-  }
-}
-
 /** Fire the on-hit mastery rider for this attack. Call from
  *  applyDamage after damage lands (hit implied). `damageDealt` gates
  *  Slow and Vex, which require the hit to deal damage per RAW. */

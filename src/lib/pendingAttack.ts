@@ -1,3 +1,4 @@
+import {recordPendingAttackRoll} from './api/pendingAttackRoll';
 import type {AttackRollSnapshot} from '../rules/attackRollSnapshot';
 import {attackRollOutcome} from '../rules/attackRollOutcome';
 import {cancelPendingAttack} from './api/attackCancellation';
@@ -39,7 +40,7 @@ import {
   getAttackRollBonuses, getDamageRiders, removeBuff,
 } from './buffs';
 import type { ActiveBuff } from './buffs';
-import { surveyMasteryMarkers, consumeMasteryMarkers } from './masteryRiders';
+import { surveyMasteryMarkers } from './masteryRiders';
 import { resolveAutomation } from './automations';
 import { CONDITION_MAP } from '../data/conditions';
 import { effectiveCombatAC } from './armorClass';
@@ -387,19 +388,20 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
   let targetBuffs: ActiveBuff[] = [];
   let attackerExhaustion = 0;
   let distanceCells = 99;  // default "ranged / far" — no auto-crit, no Prone bonus
-  if (atk.attacker_participant_id && atk.target_participant_id) {
+  if (atk.attacker_participant_id || atk.target_participant_id) {
     const [aRes, tRes] = await Promise.all([
-      (supabase as any)
+      atk.attacker_participant_id?(supabase as any)
         .from('combat_participants')
         .select('entity_id, participant_type, name, ' + JOINED_COMBATANT_FIELDS)
         .eq('id', atk.attacker_participant_id)
-        .maybeSingle(),
-      (supabase as any)
+        .maybeSingle():Promise.resolve({data:null,error:null}),
+      atk.target_participant_id?(supabase as any)
         .from('combat_participants')
         .select('entity_id, participant_type, name, ' + JOINED_COMBATANT_FIELDS)
         .eq('id', atk.target_participant_id)
-        .maybeSingle(),
+        .maybeSingle():Promise.resolve({data:null,error:null}),
     ]);
+    if(aRes.error||tRes.error||(atk.attacker_participant_id&&!aRes.data?.combatants)||(atk.target_participant_id&&!tRes.data?.combatants))throw new Error('Attack conditions could not be loaded. Refresh before rolling.');
     // v2.317: source HP/conditions/buffs from combatants via normalize.
     const aData = aRes.data ? normalizeParticipantRow(aRes.data) : null;
     const tData = tRes.data ? normalizeParticipantRow(tRes.data) : null;
@@ -420,7 +422,7 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
     // their whole space per RAW, not their anchor cell).
     // Fail-open: if either token is missing, keep the default "far"
     // distance (no auto-crit, no Prone-adjacent advantage).
-    if (aData && tData) {
+    if (aData && tData && atk.attacker_participant_id && atk.target_participant_id) {
       const { distanceBetweenParticipantsFt } = await import('./battleMapGeometry');
       const ft = await distanceBetweenParticipantsFt(
         atk.campaign_id,
@@ -506,31 +508,9 @@ export async function rollAttackRoll(attackId: string): Promise<PendingAttack | 
     attackerId:atk.attacker_participant_id,targetId:atk.target_participant_id,d20,total,targetAC:effectiveAc,
     naturalOneAutoFails,criticalOnHit:autoCrit,automatic:coverLevel==='total'?'failure':'none',result:hitResult};
 
-  // v2.630.0 — consume spent mastery markers (Sap always; Vex only
-  // when this roll targeted the vexed creature).
-  if (masteryMarkers.consumeKeys.length > 0) {
-    await consumeMasteryMarkers(atk, masteryMarkers.consumeKeys);
-  }
-
-
-  const { data: updated,error:rollError } = await supabase
-    .from('pending_attacks')
-    .update({
-      attack_d20: d20,
-      attack_total: total,
-      attack_roll_snapshot: asJsonb(snapshot),
-      hit_result: hitResult,
-      // Store effective AC (with cover bonus baked in) so the log and the
-      // resolution modal both show what the attacker actually had to beat.
-      target_ac: effectiveAc,
-      state: 'attack_rolled',
-    })
-    .eq('id', attackId)
-    .eq('state','declared')
-    .eq('updated_at',atk.updated_at)
-    .select()
-    .single();
-  if(rollError||!updated)throw new Error(rollError?.message??'Attack roll could not be confirmed. Refresh this attack before retrying.');
+  const saved=await recordPendingAttackRoll(atk,snapshot,atk.attacker_participant_id?attackerBuffs:null);
+  if(saved.replayed)return saved.attack;
+  const updated=saved.attack;
 
   // Emit a dedicated cover event first so the log reads naturally:
   //   1. Cover applied (half / three-quarters / total)

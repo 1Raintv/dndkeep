@@ -1,4 +1,5 @@
-import {execFileSync} from 'node:child_process';
+import {execFile,execFileSync} from 'node:child_process';
+import {promisify} from 'node:util';
 import {randomUUID} from 'node:crypto';
 import {expect,test} from '@playwright/test';
 import {gateDbSuite,signInAsSeedDm} from './helpers';
@@ -61,23 +62,106 @@ test.describe('saved attack outcome rules',()=>{
   await signInAsSeedDm(page,email);const id=randomUUID();
   sql(`insert into pending_attacks(id,campaign_id,attacker_name,attacker_type,target_name,target_type,attack_name,attack_kind,attack_bonus,target_ac,chain_id)
    values('${id}','${camp}','Fixture attacker','system','Fixture target','object','Fixture strike','attack_roll',5,15,'${randomUUID()}')`);
-  let dropped=0;await page.route('**/rest/v1/pending_attacks?*',async route=>{
-   if(route.request().method()!=='PATCH'){await route.continue();return;}
+  let dropped=0;await page.route('**/rest/v1/rpc/record_pending_attack_roll',async route=>{
+   if(route.request().method()!=='POST'){await route.continue();return;}
    const response=await route.fetch();expect(response.ok()).toBe(true);dropped++;await route.abort('failed');
   });
   const error=await page.evaluate(async id=>{
    const {rollAttackRoll}=await import('/src/lib/pendingAttack.ts');const random=Math.random;Math.random=()=>0.475;
    try{await rollAttackRoll(id);return null;}catch(cause){return String(cause);}finally{Math.random=random;}
   },id);
-  expect(error).not.toBeNull();expect(dropped).toBe(1);
+  expect(error).not.toBeNull();expect(dropped).toBe(2);
   const saved=JSON.parse(sql(`select attack_roll_snapshot from pending_attacks where id='${id}'`));
   expect(saved).toMatchObject({d20:10,total:15,result:'hit'});
-  await page.unroute('**/rest/v1/pending_attacks?*');await page.reload();
+  await page.unroute('**/rest/v1/rpc/record_pending_attack_roll');await page.reload();
   const recovered=await page.evaluate(async id=>{
    const {rollAttackRoll}=await import('/src/lib/pendingAttack.ts');const random=Math.random;let rolls=0;Math.random=()=>{rolls++;return 0.975;};
    try{return {attack:await rollAttackRoll(id),rolls};}finally{Math.random=random;}
   },id);
   expect(recovered.rolls).toBe(0);expect(recovered.attack?.attack_roll_snapshot).toEqual(saved);
+ });
+
+ function masteryFixture(){
+  const actor=randomUUID(),target=randomUUID(),enc=randomUUID(),id=randomUUID();
+  sql(`insert into combat_encounters(id,campaign_id,status,round_number,current_turn_index) values('${enc}','${camp}','active',1,0);
+   insert into combat_participants(id,encounter_id,campaign_id,participant_type,entity_id,name,turn_order) values
+    ('${actor}','${enc}','${camp}','creature','${actor}','Attacker',0),('${target}','${enc}','${camp}','creature','${target}','Target',1);
+   insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,target_participant_id,attacker_name,attacker_type,target_name,target_type,attack_name,attack_kind,attack_bonus,target_ac,chain_id)
+    values('${id}','${camp}','${enc}','${actor}','${target}','Attacker','monster','Target','monster','Strike','attack_roll',5,15,'${randomUUID()}')`);
+  const buffs=[{key:'mastery_sapped'},{key:'mastery_vexed',onlyVsTargetParticipantId:target},{key:'mastery_vexed',onlyVsTargetParticipantId:actor},{key:'mastery_vexed'},{key:'unrelated',name:'Retained'}];
+  const setBuffs=(value:unknown)=>sql(`update combatants set active_buffs='${JSON.stringify(value)}' where id=(select combatant_id from combat_participants where id='${actor}')`);
+  setBuffs(buffs);
+  const snapshot={version:1,attackId:id,campaignId:camp,encounterId:enc,attackerId:actor,targetId:target,d20:10,total:15,targetAC:15,naturalOneAutoFails:true,criticalOnHit:false,automatic:'none',result:'hit'};
+  const updatedAt=sql(`select updated_at from pending_attacks where id='${id}'`);
+  const call=(snap:unknown=snapshot,expected:unknown=buffs,revision=updatedAt)=>JSON.parse(sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';set local role authenticated;
+   select public.record_pending_attack_roll('${id}','${revision}','${JSON.stringify(snap)}','${JSON.stringify(expected)}');commit;`));
+  const readBuffs=()=>JSON.parse(sql(`select active_buffs from combatants where id=(select combatant_id from combat_participants where id='${actor}')`));
+  return {id,actor,target,enc,buffs,snapshot,call,readBuffs,setBuffs};
+ }
+ test('records the roll and only its applicable mastery markers together, with exact replay',()=>{
+  const f=masteryFixture();expect(f.call()).toMatchObject({replayed:false,attack:{attack_roll_snapshot:f.snapshot}});
+  expect(f.readBuffs()).toEqual(f.buffs.slice(2));
+  // A newly acquired Sap must survive replay of the earlier roll.
+  f.setBuffs(f.buffs);expect(f.call()).toMatchObject({replayed:true,attack:{attack_roll_snapshot:f.snapshot}});expect(f.readBuffs()).toEqual(f.buffs);
+ });
+ test('failed evidence, changed bonuses and stale attacks preserve every marker',()=>{
+  const f=masteryFixture();
+  expect(()=>f.call({...f.snapshot,result:'miss'})).toThrow();expect(f.readBuffs()).toEqual(f.buffs);
+  expect(()=>f.call(f.snapshot,[])).toThrow();expect(f.readBuffs()).toEqual(f.buffs);
+  expect(()=>f.call(f.snapshot,f.buffs,'2020-01-01')).toThrow();expect(f.readBuffs()).toEqual(f.buffs);
+  expect(sql(`select state from pending_attacks where id='${f.id}'`)).toBe('declared');
+ });
+ test('two pending attacks cannot both consume the same one-use markers',()=>{
+  const f=masteryFixture(),second=randomUUID();
+  sql(`insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,target_participant_id,attacker_name,attacker_type,target_name,target_type,attack_name,attack_kind,attack_bonus,target_ac,chain_id)
+   values('${second}','${camp}','${f.enc}','${f.actor}','${f.target}','Attacker','monster','Target','monster','Strike','attack_roll',5,15,'${randomUUID()}')`);
+  const updatedAt=sql(`select updated_at from pending_attacks where id='${second}'`);f.call();
+  expect(()=>sql(`begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';set local role authenticated;
+   select public.record_pending_attack_roll('${second}','${updatedAt}','${JSON.stringify({...f.snapshot,attackId:second})}','${JSON.stringify(f.buffs)}');commit;`)).toThrow();
+  expect(sql(`select state from pending_attacks where id='${second}'`)).toBe('declared');expect(f.readBuffs()).toEqual(f.buffs.slice(2));
+ });
+ test('concurrent rolls serialize the shared mastery budget',async()=>{
+  const f=masteryFixture(),second=randomUUID();
+  sql(`insert into pending_attacks(id,campaign_id,encounter_id,attacker_participant_id,target_participant_id,attacker_name,attacker_type,target_name,target_type,attack_name,attack_kind,attack_bonus,target_ac,chain_id)
+   values('${second}','${camp}','${f.enc}','${f.actor}','${f.target}','Attacker','monster','Target','monster','Strike','attack_roll',5,15,'${randomUUID()}')`);
+  const run=promisify(execFile);
+  const attempts=await Promise.allSettled([f.id,second].map(id=>{
+   const revision=sql(`select updated_at from pending_attacks where id='${id}'`);
+   return run('docker',['exec','supabase_db_dndkeep','psql','-U','postgres','-d','postgres','-qAt','-v','ON_ERROR_STOP=1','-c',
+    `begin;set local request.jwt.claims='{"sub":"${owner}","role":"authenticated"}';set local role authenticated;select public.record_pending_attack_roll('${id}','${revision}','${JSON.stringify({...f.snapshot,attackId:id})}','${JSON.stringify(f.buffs)}');commit;`]);
+  }));
+  expect(attempts.filter(r=>r.status==='fulfilled')).toHaveLength(1);
+  expect(sql(`select count(*) from pending_attacks where id in('${f.id}','${second}') and state='attack_rolled'`)).toBe('1');expect(f.readBuffs()).toEqual(f.buffs.slice(2));
+ });
+ test('campaign players may record their own character but not another participant',()=>{
+  const f=masteryFixture(),player=randomUUID(),character=randomUUID();
+  sql(`insert into auth.users(id,email,raw_user_meta_data) values('${player}','${player}@attack.local','{}');
+   insert into campaign_members(campaign_id,user_id,role) values('${camp}','${player}','player');
+   insert into characters(id,user_id,campaign_id,name,species,class_name,background,level) values('${character}','${player}','${camp}','Player','Human','Psion','Sage',3);`);
+  const call=()=>sql(`begin;set local request.jwt.claims='{"sub":"${player}","role":"authenticated"}';set local role authenticated;
+   select public.record_pending_attack_roll('${f.id}',(select updated_at from pending_attacks where id='${f.id}'),'${JSON.stringify(f.snapshot)}','${JSON.stringify(f.buffs)}');commit;`);
+  try{
+   expect(call).toThrow();
+   sql(`update combatants set definition_type='character',definition_id='${character}' where id=(select combatant_id from combat_participants where id='${f.actor}');
+    update combat_participants set participant_type='character',entity_id='${character}' where id='${f.actor}'`);
+   expect(JSON.parse(call())).toMatchObject({replayed:false});expect(f.readBuffs()).toEqual(f.buffs.slice(2));
+  }finally{sql(`delete from characters where id='${character}';delete from auth.users where id='${player}'`);}
+ });
+ test('anonymous and unrelated authenticated users cannot record or consume markers',()=>{
+  const f=masteryFixture(),stranger=randomUUID();
+  expect(sql(`select has_function_privilege('anon','public.record_pending_attack_roll(uuid,timestamptz,jsonb,jsonb)','execute') or has_function_privilege('anon','dndkeep_private.record_pending_attack_roll(uuid,timestamptz,jsonb,jsonb)','execute')`)).toBe('f');
+  expect(()=>sql(`begin;set local request.jwt.claims='{"sub":"${stranger}","role":"authenticated"}';set local role authenticated;
+   select public.record_pending_attack_roll('${f.id}',now(),'${JSON.stringify(f.snapshot)}','${JSON.stringify(f.buffs)}');commit;`)).toThrow();
+  expect(f.readBuffs()).toEqual(f.buffs);
+ });
+ test('live rolls against a free-text target still consume Sap and keep unscoped Vex',async({page})=>{
+  const f=masteryFixture();sql(`update pending_attacks set target_participant_id=null where id='${f.id}'`);
+  await signInAsSeedDm(page,email);
+  const result=await page.evaluate(async id=>{
+   const {rollAttackRoll}=await import('/src/lib/pendingAttack.ts');const original=Math.random;let calls=0;Math.random=()=>++calls===1?0.475:0.775;
+   try{return {attack:await rollAttackRoll(id),calls};}finally{Math.random=original;}
+  },f.id);
+  expect(result).toMatchObject({calls:2,attack:{state:'attack_rolled',attack_d20:10}});expect(f.readBuffs()).toEqual(f.buffs.slice(1));
  });
 
  test('target checks reject a removed scene instead of loading another campaign map',async({page})=>{

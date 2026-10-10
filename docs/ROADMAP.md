@@ -1,5 +1,30 @@
 # DNDKeep — Two-Track Roadmap
 
+### Attack recording — atomic mastery consumption (local; not released)
+
+Migration 20261010161121 records the original attack snapshot and consumes
+applicable Sap/Vex markers in one transaction. The actor lock serializes
+competing attacks; stale attack revisions or changed buffs reject the roll
+without spending markers. Exact retries return the already-saved attack and
+leave newly acquired markers untouched. Authorization checks the campaign DM
+or owning campaign-member character; anonymous callers are denied.
+
+The live attack path uses this RPC and removes the independent marker writer.
+Attacker effects now load even when the target is manually named. Failed
+participant/condition reads stop before rolling instead of assuming no effects.
+The immutable snapshot remains the receipt; this does not make caller-supplied
+attack modifiers or critical conditions server-derived. Reaction offers,
+attack history and Graze still need durable post-roll settlement; Telepath
+acceptance remains unfinished and must not be enabled before that work.
+
+Validation: full gate passed (4,334 unit tests; entry 255.7 KB), plus eleven
+local database/browser cases including lost replies, simultaneous competing
+rolls, player/DM authorization, failed evidence and free-text-target Sap.
+SQL lint reports no errors or warnings for the new functions; security advisors
+show only existing keep_warm/client_errors findings. Repo chain is now 323;
+retained release rehearsals still cover 321. Production was not changed.
+
+
 ### Connection integration — player controls (local; not released)
 
 The actual character-sheet row now opens saved Connection controls in its
