@@ -1,5 +1,30 @@
 # DNDKeep — Two-Track Roadmap
 
+### Attack reaction failures are visible (local; not released)
+
+Attack-triggered reaction offers now reject failed/missing target, character,
+and mapped attacker reads instead of reporting zero eligible reactions. Map
+lookups use the existing strict-read option so an unavailable scene is not
+mistaken for a theater-of-the-mind encounter. Returned and thrown offer-insert
+errors also propagate instead of reporting the requested offer count as saved.
+The existing attack modal catches these failures, shows them, and reloads saved
+combat state. Existing Counterspell tests are preserved separately.
+
+This is error reporting, not a durable reaction barrier: the original attack
+roll may already be committed, and its replay currently skips offer creation.
+Missing-offer recovery, transactionally saved history, and deferring Graze until
+post-roll reactions settle remain required before exposing Telepath controls.
+Graze also needs the actual attack ability modifier captured at declaration,
+then the shared typed damage/life/concentration application path; the current
+STR/DEX reconstruction and direct HP write are not sufficient.
+
+Focused validation: 12 attack-offer cases plus 7 existing Counterspell cases
+passed without database access. The full gate passed: 4,427 tests, the existing
+TypeScript baseline, hooks, rules, coordinates, anchors, build and bundle budget
+(entry 255.7 KB). Artifact: `.tmp/reaction-offer-errors-gate.log`. Production has
+not been changed.
+
+
 
 ### Release rehearsal refreshed through 332 (production unchanged)
 

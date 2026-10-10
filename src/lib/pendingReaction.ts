@@ -651,22 +651,24 @@ export async function offerReactionsFor(
 ): Promise<number> {
   // Load the target participant and — if character — its character row
   if (!attack.target_participant_id) return 0;
-  const { data: tgt } = await supabase
+  const { data: tgt, error: targetError } = await supabase
     .from('combat_participants')
     .select('id, name, participant_type, entity_id, reaction_used')
     .eq('id', attack.target_participant_id)
     .single();
-  if (!tgt) return 0;
+  // v2.869: an unreadable reactor is not proof that no reaction is eligible.
+  if (targetError || !tgt) throw new Error('Reaction target could not be verified. Refresh the attack before continuing.');
   if (tgt.reaction_used) return 0;              // already used reaction this round
 
   let reactorChar: Character | null = null;
   if (tgt.participant_type === 'character') {
-    const { data: c } = await supabase
+    const { data: c, error: characterError } = await supabase
       .from('characters')
       .select('*')
       .eq('id', tgt.entity_id)
       .single();
-    reactorChar = (c as Character) ?? null;
+    if (characterError || !c) throw new Error('Reaction character could not be verified. Refresh the attack before continuing.');
+    reactorChar = c as Character;
   }
 
   // v2.128.0 — Phase K: compute reactor↔attacker Chebyshev distance from
@@ -677,14 +679,15 @@ export async function offerReactionsFor(
   if (attack.attacker_participant_id) {
     const { loadActiveBattleMap, findTokenForParticipant, distanceBetweenTokensFt } =
       await import('./battleMapGeometry');
-    const bmap = await loadActiveBattleMap(attack.campaign_id);
+    const bmap = await loadActiveBattleMap(attack.campaign_id, {throwOnError:true});
     if (bmap) {
       // Target participant = reactor; already have tgt. Attacker needs a lookup.
-      const { data: atkPart } = await supabase
+      const { data: atkPart, error: attackerError } = await supabase
         .from('combat_participants')
         .select('id, name, participant_type, entity_id')
         .eq('id', attack.attacker_participant_id)
         .maybeSingle();
+      if (attackerError || !atkPart) throw new Error('Reaction range could not be verified. Refresh the attack before continuing.');
       if (atkPart) {
         const reactorToken = findTokenForParticipant(tgt as any, bmap.tokens);
         const attackerToken = findTokenForParticipant(atkPart as any, bmap.tokens);
@@ -721,7 +724,8 @@ export async function offerReactionsFor(
   }
 
   if (offers.length > 0) {
-    await checkedWrite('pending_reactions.insert offers', { count: offers.length }, supabase.from('pending_reactions').insert(offers));
+    const saved = await checkedWrite('pending_reactions.insert offers', { count: offers.length }, supabase.from('pending_reactions').insert(offers));
+    if (saved.error) throw new Error('Reaction offers could not be confirmed. Review this attack before continuing.');
   }
 
   return offers.length;
