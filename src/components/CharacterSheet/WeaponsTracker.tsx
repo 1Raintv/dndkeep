@@ -1,3 +1,4 @@
+import {unarmedSaveRequest,type UnarmedSaveMode} from '../../rules/unarmedStrike';
 import {explicitAttackMode} from '../../rules/attackMode';
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
@@ -76,6 +77,9 @@ export default function WeaponsTracker({
  // reference so the 4 mode buttons (Damage / Grapple / Shove Push / Shove
  // Prone) have everything they need.
  const [unarmedModal, setUnarmedModal] = useState<WeaponItem | null>(null);
+ const [unarmedError,setUnarmedError]=useState('');
+ const [unarmedBusy,setUnarmedBusy]=useState(false);
+ const [unarmedNotice,setUnarmedNotice]=useState('');
  // v2.326.0 — T4: weapon row expansion. Magic weapons (Lucky Blade,
  // staves, etc.) often have a description in `notes` that doesn't fit on
  // the row. Click anywhere outside the Hit/Damage/edit buttons to expand
@@ -86,62 +90,20 @@ export default function WeaponsTracker({
  damageType: 'slashing', range: 'Melee', properties: '', notes: '',
  });
 
- // v2.87.0: Grapple and Shove are 2024 PHB Unarmed Strike modes. Both are
- // contested Athletics checks — the target picks Athletics or Acrobatics.
- // We broadcast the attacker's roll + context; DM adjudicates the target
- // side (they have the monster/NPC stat block and condition state). Each
- // handler: triggerRoll (3D dice + history), logAction (action_log
- // broadcast), then close modal. Closing the modal before the 3D roller
- // settles is fine — triggerRoll's physics are independent of this UI.
- async function handleGrapple(weapon: WeaponItem) {
- const bonus = weapon.athleticsBonus ?? 0;
- const nat = rollDie(20);
- const total = nat + bonus;
- triggerRoll({
- result: nat, dieType: 20, modifier: bonus, total,
- label: `Grapple — Athletics check${bonus >= 0 ? '+' : ''}${bonus}`,
- logHistory,
- });
- if (historyCharacterId) {
- await logAction({
- campaignId: campaignId ?? null,
- characterId: historyCharacterId,
- characterName: characterName ?? '',
- actionType: 'attack',
- actionName: `Grapple (Unarmed Strike) — Athletics`,
- diceExpression: `1d20${bonus >= 0 ? '+' : ''}${bonus}`,
- individualResults: [nat],
- total,
- notes: 'Contested: target rolls STR (Athletics) or DEX (Acrobatics). On success target gains Grappled condition.',
- });
- }
- setUnarmedModal(null);
- }
-
- async function handleShove(weapon: WeaponItem, variant: 'push' | 'prone') {
- const bonus = weapon.athleticsBonus ?? 0;
- const nat = rollDie(20);
- const total = nat + bonus;
- const variantLabel = variant === 'push' ? 'Push 5 ft' : 'Knock Prone';
- triggerRoll({
- result: nat, dieType: 20, modifier: bonus, total,
- label: `Shove (${variantLabel}) — Athletics check${bonus >= 0 ? '+' : ''}${bonus}`,
- logHistory,
- });
- if (historyCharacterId) {
- await logAction({
- campaignId: campaignId ?? null,
- characterId: historyCharacterId,
- characterName: characterName ?? '',
- actionType: 'attack',
- actionName: `Shove — ${variantLabel} (Unarmed Strike)`,
- diceExpression: `1d20${bonus >= 0 ? '+' : ''}${bonus}`,
- individualResults: [nat],
- total,
- notes: `Contested: target rolls STR (Athletics) or DEX (Acrobatics). On success: ${variant === 'push' ? 'target is pushed 5 ft.' : 'target has the Prone condition.'}`,
- });
- }
- setUnarmedModal(null);
+ // v2.869: tabletop declaration only. The target rolls its own chosen save;
+ // this control must never fabricate an attacker Athletics roll or success.
+ async function requestUnarmedSave(weapon:WeaponItem,mode:UnarmedSaveMode){
+  if(unarmedBusy)return;setUnarmedBusy(true);setUnarmedError('');
+  try{
+   const request=unarmedSaveRequest(mode,weapon.unarmedSaveDC??NaN);
+   if(historyCharacterId){
+    const result=await logAction({campaignId:campaignId??null,characterId:historyCharacterId,
+     characterName:characterName??'',actionType:'standard-action',actionName:`${request.name} (Unarmed Strike) — save requested`,notes:request.notes});
+    if(result?.error)throw new Error('The save request could not be logged. Check the action log before trying again.');
+   }
+   setUnarmedNotice(request.notes);setUnarmedModal(null);
+  }catch(error){setUnarmedError(error instanceof Error?error.message:'The save request could not be recorded.');}
+  finally{setUnarmedBusy(false);}
  }
 
  function openEdit(w: WeaponItem) {
@@ -437,7 +399,7 @@ export default function WeaponsTracker({
  {w.unarmedModes ? (
  <button
  className="srow-hit"
- onClick={() => setUnarmedModal(w)}
+ onClick={() => {setUnarmedError('');setUnarmedNotice('');setUnarmedModal(w);}}
  title="Unarmed Strike — pick Damage, Grapple, or Shove"
  style={{
  fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 13,
@@ -624,19 +586,20 @@ export default function WeaponsTracker({
      the existing handleHit + handleDamage chain so it stays consistent with
      other melee attacks. Grapple and Shove use dedicated handlers that roll
      Athletics and broadcast contested-check context for DM adjudication. */}
+ {unarmedNotice&&<p role="status" style={{fontSize:12,whiteSpace:'normal'}}>{unarmedNotice}</p>}
  {unarmedModal && (
  <ModalPortal>
  <div className="modal-overlay" onClick={() => setUnarmedModal(null)}>
  <div
- className="modal"
+ className="modal" role="dialog" aria-modal="true" aria-label="Unarmed Strike"
  onClick={e => e.stopPropagation()}
  style={{
  // v2.174.0 — bumped 480→560 for comfortable line length now
  // that descriptions wrap (previously they overflowed in a
  // single nowrap line, so width didn't matter as much).
  maxWidth: 560, width: 'calc(100vw - 16px)',
- maxHeight: 'calc(100dvh - 32px)',
- display: 'flex', flexDirection: 'column' as const,
+ maxHeight: 'calc(100dvh - 32px)', overflowY:'auto',
+ display: 'block',
  padding: 20,
  }}
  >
@@ -644,11 +607,15 @@ export default function WeaponsTracker({
  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.18em', textTransform: 'uppercase' as const, color: 'var(--c-gold-l)', marginBottom: 4 }}>
  Unarmed Strike
  </div>
+ {unarmedError&&<p role="alert">{unarmedError}</p>}
  <h3 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: 'var(--t-1)', lineHeight: 1.2 }}>
  Choose a mode
  </h3>
- <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--t-3)', lineHeight: 1.5 }}>
- 2024 PHB: you can use one Unarmed Strike per attack action for Damage, Grapple, or Shove.
+ <p style={{ margin: '6px 0 0', fontSize: 11, color: 'var(--t-2)', lineHeight: 1.5 }}>
+ Each Unarmed Strike can deal damage, grapple, or shove. Targets must be within 5 ft and at most one size larger for grapple/shove.
+ </p>
+ <p style={{margin:'6px 0 0',fontSize:11,color:'var(--t-2)',lineHeight:1.5}}>
+ Grapple/shove buttons request a save only. Resolve the target’s save, attack spending and effects with your DM. The base DC uses Strength; apply feature changes, such as eligible Monk Dexterity, at the table.
  </p>
  </div>
 
@@ -684,14 +651,14 @@ export default function WeaponsTracker({
  <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 4, whiteSpace: 'normal' as const }}>
  Damage
  </div>
- <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-2)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
  Roll to hit ({modStr(unarmedModal.attackBonus)}), then {modStr(unarmedModal.damageBonus)} bludgeoning on hit.
  </div>
  </button>
 
- {/* Grapple — contested Athletics */}
+ {/* Grapple — target chooses Strength or Dexterity save */}
  <button
- onClick={() => handleGrapple(unarmedModal)}
+ disabled={unarmedBusy||unarmedModal.unarmedSaveDC==null} onClick={() => void requestUnarmedSave(unarmedModal,'grapple')}
  style={{
  width: '100%', padding: '12px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
@@ -706,14 +673,14 @@ export default function WeaponsTracker({
  <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 4, whiteSpace: 'normal' as const }}>
  Grapple
  </div>
- <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
- Athletics check ({modStr(unarmedModal.athleticsBonus ?? 0)}) vs target's Athletics or Acrobatics. On success: target is Grappled.
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-2)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
+ Target chooses STR or DEX save, base DC {unarmedModal.unarmedSaveDC??'—'}. Failure: Grappled. Requires a free hand.
  </div>
  </button>
 
  {/* Shove — Push 5 ft */}
  <button
- onClick={() => handleShove(unarmedModal, 'push')}
+ disabled={unarmedBusy||unarmedModal.unarmedSaveDC==null} onClick={() => void requestUnarmedSave(unarmedModal,'push')}
  style={{
  width: '100%', padding: '12px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
@@ -728,14 +695,14 @@ export default function WeaponsTracker({
  <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 4, whiteSpace: 'normal' as const }}>
  Shove — Push 5 ft
  </div>
- <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
- Athletics check ({modStr(unarmedModal.athleticsBonus ?? 0)}) vs target's Athletics or Acrobatics. On success: push target 5 feet.
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-2)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
+ Target chooses STR or DEX save, base DC {unarmedModal.unarmedSaveDC??'—'}. Failure: push it 5 feet away from you.
  </div>
  </button>
 
  {/* Shove — Knock Prone */}
  <button
- onClick={() => handleShove(unarmedModal, 'prone')}
+ disabled={unarmedBusy||unarmedModal.unarmedSaveDC==null} onClick={() => void requestUnarmedSave(unarmedModal,'prone')}
  style={{
  width: '100%', padding: '12px 14px', borderRadius: 'var(--r-md)', cursor: 'pointer',
  fontFamily: 'var(--ff-body)', fontWeight: 700, fontSize: 13,
@@ -750,8 +717,8 @@ export default function WeaponsTracker({
  <div style={{ fontFamily: 'var(--ff-stat)', fontWeight: 900, fontSize: 15, marginBottom: 4, whiteSpace: 'normal' as const }}>
  Shove — Knock Prone
  </div>
- <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-3)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
- Athletics check ({modStr(unarmedModal.athleticsBonus ?? 0)}) vs target's Athletics or Acrobatics. On success: target has the Prone condition.
+ <div style={{ fontSize: 11, fontWeight: 500, color: 'var(--t-2)', whiteSpace: 'normal' as const, lineHeight: 1.5 }}>
+ Target chooses STR or DEX save, base DC {unarmedModal.unarmedSaveDC??'—'}. Failure: Prone.
  </div>
  </button>
  </div>

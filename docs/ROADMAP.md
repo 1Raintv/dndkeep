@@ -8647,3 +8647,30 @@ Next: generic mixed/conditional typed damage settlement; broader rider timing,
 level-20 Hunter's Mark scaling, and explicit legacy attack provenance; release
 integration and map functionality/polish. These fixes do not certify all bonus
 spells, equipment effects or old manually declared weapon attacks.
+
+
+### Unarmed Grapple/Shove save requests (2026-10-10, unreleased)
+
+Replaced obsolete attacker Athletics checks in the live WeaponsTracker with
+explicit target Strength-or-Dexterity save requests. The synthesized unarmed
+entry supplies base DC 8 + Strength modifier + proficiency; Athletics expertise
+does not change it. Push 5 feet and knock prone remain separate choices. Controls
+state reach, size and free-hand restrictions and never claim that a save,
+condition or movement has already resolved. Failed logging keeps the dialog open.
+Rules: SRD 5.2.1, Unarmed Strike p.190; Monk Martial Arts p.50.
+https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+
+This is a tabletop request, not automated target resolution or attack-budget
+spending. Eligible Monk Dexterity and other feature overrides remain manual and
+are identified in the dialog. The Damage button's legacy hit/damage sequence is
+unchanged and still needs confirmation-before-damage review. Action logging is
+not a durable, idempotent save declaration.
+
+Verification: nine pure-rule and five additional component regressions; desktop
+and mobile controls pass with clean console and overflow checks. Final screenshots
+inspected. Reintroducing Athletics wording fails the UI regression; restored
+code passes. Full gate passed: 4,025 unit tests, TypeScript 194/194, entry 255.7 KB.
+No database migration or production deployment in this change.
+
+Next: target-save resolution with attack spending and feature-aware DCs; legacy
+unarmed damage hit confirmation; continue Psion and map release integration.

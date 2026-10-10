@@ -1,3 +1,4 @@
+import {unarmedSaveDC} from '../../rules/unarmedStrike';
 import {CampaignDamageRecovery} from './CampaignDamageRecovery';
 import {useCampaignSheetDamage} from '../../lib/hooks/useCampaignSheetDamage';
 import {useActionBudget} from '../../lib/hooks/useActionBudget';
@@ -2594,15 +2595,9 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  // Unarmed Strike — always available per 2024 PHB (p.377)
  // Attack: d20 + STR mod + Proficiency Bonus
  // Damage: flat 1 + STR modifier bludgeoning (no dice roll)
- // v2.87.0: Three modes — Damage (existing), Grapple, Shove (new). Grapple
- // and Shove are contested Athletics checks. We precompute the character's
- // Athletics bonus (STR mod + prof if proficient + prof again if expertise)
- // so the modal can show and roll it without re-deriving.
+ // v2.869: grapple/shove use 8 + STR modifier + proficiency, not Athletics.
  const strMod = computed.modifiers.strength ?? 0;
  const pb = computed.proficiency_bonus ?? 2;
- const isAthleticsProf = (character.skill_proficiencies ?? []).includes('Athletics');
- const isAthleticsExpert = (character.skill_expertises ?? []).includes('Athletics');
- const athleticsBonus = strMod + (isAthleticsProf ? pb : 0) + (isAthleticsExpert ? pb : 0);
  const unarmedStrike: any = {
  id: 'unarmed',
  name: 'Unarmed Strike',
@@ -2614,7 +2609,7 @@ function CharacterSheetContent({ initialCharacter, realtimeEnabled: _realtimeEna
  properties: '',
  notes: '',
  unarmedModes: true,
- athleticsBonus,
+ unarmedSaveDC: unarmedSaveDC(strMod,pb),
  };
  // v2.511.0 — Natural weapons from species traits (Tabaxi Cat's Claws,
  // etc.). Any trait with a `naturalWeapon` field becomes an attackable

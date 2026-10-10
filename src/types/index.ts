@@ -183,12 +183,10 @@ export interface WeaponItem {
   range: string;            // "Melee" | "Ranged (80/320 ft.)" etc.
   properties: string;       // comma-separated: "Versatile, Finesse" etc.
   notes: string;
-  // v2.87.0: Unarmed Strike 2024 PHB — shows Damage/Grapple/Shove mode picker
-  // instead of a simple damage button. Only set on the synthesized Unarmed
-  // Strike row; regular weapons leave this undefined. athleticsBonus supplies
-  // the STR mod + proficiency/expertise for the contested checks used by
-  // Grapple and Shove modes.
+  /** Synthesized Unarmed Strike row; base STR save DC is independent of skill expertise. */
   unarmedModes?: boolean;
+  unarmedSaveDC?: number;
+  /** Legacy display data; never use an Athletics bonus as the grapple/shove DC. */
   athleticsBonus?: number;
 }
 
