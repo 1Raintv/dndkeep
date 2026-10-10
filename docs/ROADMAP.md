@@ -135,6 +135,30 @@ checks are point-in-time evidence, not proof of all runtime compatibility.
 Vercel's preview check for 90477d8a failed with its build-rate-limit result.
 No merge or production migration was attempted.
 
+### Release rehearsal refresh — 321 migrations (not released)
+
+Both retained isolated databases (fresh-chain origin and main-upgrade origin)
+applied Connection lifecycle/API and original attack evidence migrations. Exact
+ledger sets match all 321 repository files. Existing rehearsal migration bytes
+were checked before copying only the three new files. This refresh extends the
+retained rehearsals; it is not a newly reset empty-database run.
+
+SQL lint has zero errors. Expanded schema comparison is identical across 1,159
+columns, 372 function bodies/signatures/ACLs, 248 indexes, 128 policies, 422
+constraints, 94 triggers and 105 table/view security records. Inventory SHA256:
+78b156a52974ab5eefcf8f61ef3f25a73396d901434cb502e84c3bc0f7fe008c.
+
+Rollback-only probes passed on both databases: replaying the three DDL files;
+authenticated Connection begin/finalize/replay with one Energy ledger entry and
+one Bonus Action claim; correct one-hour duration and total; anonymous execution
+denied; private table reads and direct guard execution denied to authenticated.
+Fixture data and replayed DDL were rolled back. Both rehearsal stacks were then
+stopped with volumes preserved; the normal development stack was left running.
+
+This does not prove compatibility with all populated production data, finish
+Telepath reaction integration, or authorize claiming a deployed release. Vercel
+preview is still rate-limited. No production writes or merge were performed.
+
 ### Release rehearsal refresh — 318 migrations (not released)
 
 Both retained isolated databases (fresh-chain origin and main-upgrade origin)
