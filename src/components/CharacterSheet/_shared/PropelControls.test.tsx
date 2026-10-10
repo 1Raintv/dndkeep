@@ -10,7 +10,7 @@ vi.mock('../../../lib/gameUtils',()=>({classSaveDC:(c:Character)=>c.intelligence
 vi.mock('../../../rules/dice',()=>({rollDie:m.roll}));
 vi.mock('./continuePropel',()=>({continuePropel:m.resume}));
 import PropelControls from './PropelControls';
-import {pendingPropel} from '../../../lib/propelRecovery';
+import {pendingPropel,rememberPropel} from '../../../lib/propelRecovery';
 const character={id:'00000000-0000-4000-8000-000000000001',name:'Hero',class_name:'Psion',level:5,intelligence:16,class_resources:{'psionic-energy-dice':2}} as unknown as Character;
 const row={turn_context:{soloTurn:0},request_id:'00000000-0000-4000-8000-000000000002',target:{name:'Goblin'},caster_snapshot:{...character,intelligence:15},mode:'powered',movement:'push',base_roll:3,roll_result:{total:3},outcome:null};
 beforeEach(()=>{localStorage.clear();vi.resetAllMocks();m.context.mockResolvedValue({bonusAvailable:true,turnId:'turn',encounterId:null});m.list.mockResolvedValue({items:[],nextCursor:null});m.roll.mockReturnValue(3);m.begin.mockResolvedValue(row);m.resume.mockResolvedValue(row);m.finish.mockResolvedValue({...row,outcome:'passed',result:{energyCost:0}});});
@@ -22,3 +22,29 @@ it('declares once, freezes target and uses the saved caster DC',async()=>{render
 it('keeps an uncertain declaration and retries the exact saved roll',async()=>{m.begin.mockRejectedValueOnce(new Error('Lost reply'));render(<PropelControls character={character}/>);await choose();fireEvent.click(screen.getByRole('button',{name:'Declare Bonus Action'}));await screen.findByRole('button',{name:'Confirm saved use'});expect(pendingPropel(character.id)).toHaveLength(1);fireEvent.click(screen.getByRole('button',{name:'Confirm saved use'}));await screen.findByText(/Strength save DC 15/);expect(m.begin.mock.calls[0]).toEqual(m.begin.mock.calls[1]);expect(m.roll).toHaveBeenCalledTimes(1);});
 it('keeps an uncertain save outcome instead of permitting a different outcome',async()=>{m.finish.mockRejectedValueOnce(new Error('Lost reply'));render(<PropelControls character={character}/>);await choose();fireEvent.click(screen.getByRole('button',{name:'Declare Bonus Action'}));await screen.findByRole('button',{name:'Save failed'});fireEvent.click(screen.getByRole('button',{name:'Save failed'}));await screen.findByRole('button',{name:'Confirm saved failed result'});expect((screen.getByRole('button',{name:'Save passed'}) as HTMLButtonElement).disabled).toBe(true);expect(pendingPropel(character.id)).toMatchObject([{kind:'finish',request:{outcome:'failed'}}]);});
 it('rejects a turn change before any roll or declaration',async()=>{render(<PropelControls character={character}/>);await choose();m.context.mockResolvedValue({bonusAvailable:true,turnId:'later',encounterId:null});fireEvent.click(screen.getByRole('button',{name:'Declare Bonus Action'}));await screen.findByRole('alert');expect(m.begin).not.toHaveBeenCalled();expect(m.roll).not.toHaveBeenCalled();});
+
+it('rechecks available Energy Dice after the turn read, before rolling',async()=>{
+ const view=render(<PropelControls character={character}/>);await choose();
+ let finishRead!:(value:unknown)=>void;
+ m.context.mockImplementationOnce(()=>new Promise(resolve=>{finishRead=resolve;}));
+ fireEvent.click(screen.getByRole('button',{name:'Declare Bonus Action'}));
+ view.rerender(<PropelControls character={{...character,class_resources:{'psionic-energy-dice':0}}}/>);
+ finishRead({bonusAvailable:true,turnId:'turn',encounterId:null});
+ await screen.findByRole('alert');expect(m.roll).not.toHaveBeenCalled();expect(m.begin).not.toHaveBeenCalled();
+});
+it('does not start a second roll when another tab saves an uncertain use during the turn read',async()=>{
+ render(<PropelControls character={character}/>);await choose();
+ m.context.mockImplementationOnce(async()=>{
+  rememberPropel(character.id,{kind:'begin',request:{requestId:row.request_id,turnId:'turn',mode:'powered',movement:'push',roll:3,target:{name:'Goblin',legalTargetConfirmed:true}}});
+  return {bonusAvailable:true,turnId:'turn',encounterId:null};
+ });
+ fireEvent.click(screen.getByRole('button',{name:'Declare Bonus Action'}));
+ await screen.findByRole('alert');expect(m.roll).not.toHaveBeenCalled();expect(m.begin).not.toHaveBeenCalled();
+ expect(pendingPropel(character.id)).toHaveLength(1);
+});
+it.each(['encounterId','participantId','actorId','ownerTurnId'])('rejects a changed %s even if the turn identifier is unchanged',async field=>{
+ render(<PropelControls character={character}/>);await choose();
+ m.context.mockResolvedValue({bonusAvailable:true,turnId:'turn',encounterId:null,[field]:'changed'});
+ fireEvent.click(screen.getByRole('button',{name:'Declare Bonus Action'}));
+ await screen.findByRole('alert');expect(m.roll).not.toHaveBeenCalled();expect(m.begin).not.toHaveBeenCalled();
+});

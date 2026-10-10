@@ -6406,3 +6406,19 @@ modifier and exhaustion, then changes current effects and verifies the original
 offer still settles at the captured total. Required type/hooks/RAW/coordinates/
 anchors/build/budget gates pass (197/197 TypeScript; entry255.2KB), as do changed-
 file ESLint, diff checks and SQL error-level lint. No production deployment.
+
+
+### Propel declaration revalidation (unreleased)
+
+Propel now rechecks live Energy Dice and saved unconfirmed requests after its
+asynchronous turn read, before rolling or declaring. An exhausted pool or a
+request saved by another tab during that read no longer starts another roll.
+It also compares encounter, participant, actor and owner-turn identities rather
+than relying on the turn identifier alone. Server validation remains authoritative;
+these checks prevent avoidable client rolls, not all cross-tab races.
+
+Verification: 3,259 unit tests and the full required gate pass; changed-file
+ESLint and diff checks are clean. All six added regressions fail against the
+original component (the five existing tests still pass), then pass with the fix.
+No visual layout or database changes. Not deployed. Campaign-sheet damage recovery
+and the shared combat-clock integration remain release work described above.

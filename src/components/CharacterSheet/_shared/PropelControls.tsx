@@ -85,10 +85,14 @@ export default function PropelControls({character,persistence,warp=false,campaig
  }
  function declare(){void run(async(active,id)=>{
   if(!context||!confirmed||!target.trim()||pendingPropel(id).length||pendingPropelSaves(id).length)return;
+  const fresh=await getPropelContext(id);if(!active())return;
+  // v2.869 follow-up — realtime can change resources or another tab can save
+  // an uncertain request during the context read. Recheck before rolling.
   const state=psionicPowerState(latest.current);
   if(!state.valid||(warp&&!state.warp)||(mode==='powered'&&state.dice<1)||(mode==='technique'&&!state.technique))throw new Error('Resources or feature eligibility changed.');
-  const fresh=await getPropelContext(id);if(!active())return;
-  if(!fresh.bonusAvailable||fresh.turnId!==context.turnId)throw new Error('Your turn or Bonus Action changed. Reopen Propel before declaring.');
+  if(pendingPropel(id).length||pendingPropelSaves(id).length)throw new Error('Confirm the saved Propel request before starting another use.');
+  if(!fresh.bonusAvailable||fresh.turnId!==context.turnId||fresh.encounterId!==context.encounterId||fresh.participantId!==context.participantId||fresh.actorId!==context.actorId||fresh.ownerTurnId!==context.ownerTurnId)
+   throw new Error('Your turn or Bonus Action changed. Reopen Propel before declaring.');
   const request:PropelRequest={requestId:crypto.randomUUID(),turnId:fresh.turnId,mode,movement:warp?'warp':'push',roll:mode==='free'?0:rollDie(mode==='technique'?4:state.sides),
    target:fresh.encounterId?{participantId:target,legalTargetConfirmed:true}:{name:target.trim(),legalTargetConfirmed:true}};
   await send({kind:'begin',request},active,id);
