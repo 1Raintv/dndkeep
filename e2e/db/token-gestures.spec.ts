@@ -920,6 +920,7 @@ test.describe('token gestures (local stack)', () => {
 
   test('cancelled drag restores both accounts and ignores other pointers', async ({ page, browser }, info) => {
     test.setTimeout(60_000);
+    let restore:(()=>Promise<void>)|undefined;
     const peerContext = await browser.newContext();
     const peer = await peerContext.newPage();
     const errors: string[] = [];
@@ -939,6 +940,7 @@ test.describe('token gestures (local stack)', () => {
         return { id: t.__tokenId, sx: p.x, sy: p.y };
       }, Object.values(peerTokens).filter((t: any) => t.name === 'Ilyana Vell').map((t:any) => t.id));
       const origin = (await state(page)).tokens[token.id];
+      const campaignId=await campaignIdOf(page);restore=()=>setTokenPos(page,token.id,origin.x,origin.y,campaignId);
       const box = (await page.locator('canvas').first().boundingBox())!;
       await page.mouse.move(box.x+token.sx, box.y+token.sy);
       await page.mouse.down();
@@ -959,15 +961,27 @@ test.describe('token gestures (local stack)', () => {
         await expect.poll(async () => { const t=(await state(p)).tokens[token.id]; return [t.x,t.y]; }).toEqual([origin.x,origin.y]);
         await expect.poll(async () => (await state(p)).locks[token.id]).toBeFalsy();
       }
-      // Cancellation also releases the token for the very next gesture.
-      await page.mouse.move(box.x+token.sx, box.y+token.sy);
-      await page.mouse.down();
-      await page.mouse.move(box.x+token.sx+40, box.y+token.sy+10, { steps: 4 });
-      await expect.poll(async () => (await state(peer)).locks[token.id]).toBeTruthy();
-      await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 })));
-      await page.mouse.up();
-      await expect.poll(async () => (await state(peer)).tokens[token.id].x).toBe(origin.x);
-      await expect.poll(async () => (await state(peer)).locks[token.id]).toBeFalsy();
+      // Cancellation also releases the token for the next gesture, including
+      // a hidden tab that does not dispatch a window blur.
+      for(const cancellation of ['pointercancel','hidden'] as const){
+        await page.mouse.move(box.x+token.sx, box.y+token.sy);
+        await page.mouse.down();
+        await page.mouse.move(box.x+token.sx+40, box.y+token.sy+10, { steps: 4 });
+        await expect.poll(async () => (await state(peer)).locks[token.id]).toBeTruthy();
+        if(cancellation==='pointercancel')await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 1 })));
+        else await page.evaluate(()=>{
+          Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'});
+          try{document.dispatchEvent(new Event('visibilitychange'));}
+          finally{delete (document as any).visibilityState;}
+        });
+        // Assert restoration BEFORE release: a late pointerup is not a drop.
+        for(const view of [page,peer]){
+          await expect.poll(async()=>{const t=(await state(view)).tokens[token.id];return [t.x,t.y];}).toEqual([origin.x,origin.y]);
+          await expect.poll(async()=>(await state(view)).locks[token.id]).toBeFalsy();
+        }
+        expect((await state(page)).dragging).toBeNull();
+        await page.mouse.up();
+      }
       expect(writes, 'cancelled gestures never persist a drop').toHaveLength(0);
       // A real drop snaps, persists, and reaches the other account. Move one
       // unobstructed cell inside the fixture guard room, then restore it.
@@ -990,7 +1004,7 @@ test.describe('token gestures (local stack)', () => {
       }
       expect(errors).toEqual([]);
       await page.screenshot({ path: info.outputPath('token-cancelled.png') });
-    } finally { await peerContext.close(); }
+    } finally { await page.mouse.up();try{await restore?.();}finally{await peerContext.close();} }
   });
 
   // ── v2.746 — drop-shift track ─────────────────────────────────────────

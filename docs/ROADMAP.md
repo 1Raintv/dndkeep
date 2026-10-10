@@ -1,5 +1,26 @@
 # DNDKeep — Two-Track Roadmap
 
+### Hidden-tab single-token drag cancellation (local; not released)
+
+Single-token drag now cancels on a hidden-document visibility change, matching
+group drag and map panning. Previously only pointer cancellation, Escape and blur
+ended that preview; backgrounding without blur could leave a displaced token and
+peer lock active. Cancellation restores the origin, clears preview/drag state,
+releases the peer lock and ignores a later pointer release instead of saving it.
+The listener is removed during scene/viewport cleanup.
+
+The two-account local browser regression now simulates hidden visibility without
+blur and checks both DM and player positions BEFORE pointer release. Desktop and
+mobile pass; screenshots inspected. Removing the listener makes the regression
+fail with the displaced position. Exact restoration passes again, alongside the
+normal-drop test that checks every sampled position remains on the previewed cell.
+Test cleanup restores the fixture even when a regression fails.
+
+Full gate passes: 4,623 tests, TS 193/193, entry 256.1 KB. Evidence:
+.tmp/map-hidden-drag.log, -mutation.log, -restored.log, -gate.log and desktop/mobile
+PNGs. No database migration or production change. Continue map navigation and
+control polish; Psion subclass automation gaps remain queued above/in prior entries.
+
 ### Potent Thoughts progression consistency (local; not released)
 
 Potent Thoughts now uses psionProgression, like the other Psion powers. Its
