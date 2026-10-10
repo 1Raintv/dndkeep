@@ -1,3 +1,4 @@
+import {auraDefenseSuggestion} from '../../rules/auraDefenseSuggestion';
 import {useEffect,useRef,useState} from 'react';
 import ModalPortal from '../shared/ModalPortal';
 import {validReviewedAuraInputs,type ReviewedAuraInputs} from '../../rules/prepareAuraProposal';
@@ -5,7 +6,8 @@ const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&
 /** v2.869: unknown modifiers stay blank. Targeting and qualified defenses need
  * explicit DM review; no dice or writes happen in this component. */
 export default function AuraInputReview({context,onResolve}:{context:Record<string,unknown>;onResolve:(inputs:ReviewedAuraInputs|null)=>void}){
- const [base,setBase]=useState(''),[con,setCon]=useState(''),[affinity,setAffinity]=useState('');
+ const suggested=auraDefenseSuggestion(context);
+ const [base,setBase]=useState(''),[con,setCon]=useState(''),[affinity,setAffinity]=useState(suggested??'');
  const [geometry,setGeometry]=useState(false),[defenses,setDefenses]=useState(false);
  const dialog=useRef<HTMLDivElement>(null),done=useRef(false),resolve=useRef(onResolve);resolve.current=onResolve;
  const close=(value:ReviewedAuraInputs|null)=>{if(done.current)return;done.current=true;resolve.current(value);};
@@ -29,6 +31,7 @@ export default function AuraInputReview({context,onResolve}:{context:Record<stri
  const inputs={baseBonus:autoFail?0:base.trim()===''?NaN:Number(base),conModifier:needsCon?(con.trim()===''?NaN:Number(con)):0,
   affinity,geometryConfirmed:geometry,defensesReviewed:defenses};
  const valid=validReviewedAuraInputs(inputs);
+ useEffect(()=>{setBase('');setCon('');setAffinity(auraDefenseSuggestion(context)??'');setGeometry(false);setDefenses(false);},[context]);
  return <ModalPortal><div className="modal-overlay" onClick={()=>close(null)}><div className="modal" ref={dialog} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Review aura inputs" style={{width:480,maxWidth:'calc(100vw - 24px)',maxHeight:'85dvh',overflowY:'auto',padding:20,overflowWrap:'anywhere'}} onClick={e=>e.stopPropagation()}>
  <h3>{String(aura.name??'Aura')} · Review target</h3>
  <p>{String(actor.name??'Target')} · {String(aura.saveAbility??'')} save vs DC {String(aura.saveDC??'')}</p>
@@ -39,6 +42,7 @@ export default function AuraInputReview({context,onResolve}:{context:Record<stri
  <label>Defense against {String(aura.damageType??'this damage')}<select aria-label="Damage defense" value={affinity} onChange={e=>setAffinity(e.target.value)}>
  <option value="">Choose after review</option><option value="normal">Normal damage</option><option value="resistant">Resistance</option><option value="immune">Immunity</option><option value="vulnerable">Vulnerability</option><option value="resistant-vulnerable">Resistance and vulnerability</option>
  </select></label>
+ {suggested&&<p style={{fontSize:12,margin:0}}>Suggested from current defenses. Review any special circumstances before confirming.</p>}
  <label style={{display:'flex',gap:8,alignItems:'start'}}><input type="checkbox" style={{width:18,height:18,flexShrink:0}} checked={geometry} onChange={e=>setGeometry(e.target.checked)}/>I confirmed this target is inside the aura and is affected by it.</label>
  <label style={{display:'flex',gap:8,alignItems:'start'}}><input type="checkbox" style={{width:18,height:18,flexShrink:0}} checked={defenses} onChange={e=>setDefenses(e.target.checked)}/>I reviewed the modifiers and any conditional damage defenses.</label>
  <p style={{fontSize:12,margin:0}}>Next, review the saved rolls before applying damage. Reviewing later keeps the turn open.</p>

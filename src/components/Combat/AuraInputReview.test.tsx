@@ -29,3 +29,19 @@ it('traps reverse Tab on the dialog and rejects fractional bonuses',()=>{
  for(const checkbox of screen.getAllByRole('checkbox'))fireEvent.click(checkbox);
  expect((screen.getByRole('button',{name:'Roll and review'}) as HTMLButtonElement).disabled).toBe(true);
 });
+
+it('prefills saved resistance but still requires explicit review and allows a DM override',()=>{
+ const done=vi.fn(),saved={...context,aura:{aura:{...context.aura.aura,damageType:'fire'}},target:{...context.target,definition:{species:'Human',damage_resistances:['fire'],damage_immunities:[],damage_vulnerabilities:[]}}};
+ const view=render(<AuraInputReview context={saved} onResolve={done}/>);
+ expect((screen.getByLabelText('Damage defense') as HTMLSelectElement).value).toBe('resistant');
+ expect((screen.getByRole('button',{name:'Roll and review'}) as HTMLButtonElement).disabled).toBe(true);
+ fireEvent.change(screen.getByLabelText('Damage defense'),{target:{value:'normal'}});
+ fireEvent.change(screen.getByLabelText('Base saving throw modifier'),{target:{value:'0'}});fireEvent.change(screen.getByLabelText('Concentration save modifier'),{target:{value:'0'}});
+ for(const checkbox of screen.getAllByRole('checkbox'))fireEvent.click(checkbox);
+ expect((screen.getByRole('button',{name:'Roll and review'}) as HTMLButtonElement).disabled).toBe(false);
+ // A newly loaded snapshot must discard prior manual edits and approvals.
+ view.rerender(<AuraInputReview context={{...saved,target:{...saved.target,definition:{...saved.target.definition,damage_resistances:[]}}}} onResolve={done}/>);
+ expect((screen.getByLabelText('Damage defense') as HTMLSelectElement).value).toBe('normal');
+ expect(screen.getAllByRole('checkbox').every(c=>!(c as HTMLInputElement).checked)).toBe(true);
+ expect((screen.getByRole('button',{name:'Roll and review'}) as HTMLButtonElement).disabled).toBe(true);expect(done).not.toHaveBeenCalled();
+});

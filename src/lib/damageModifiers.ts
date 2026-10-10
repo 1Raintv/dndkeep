@@ -3,13 +3,7 @@
 import type { Character } from '../types';
 import {speciesResistances} from '../rules/speciesResistances';
 
-/** All 13 damage types per the 2024 PHB. Lowercase canonical form. */
-export const DAMAGE_TYPES = [
-  'acid', 'bludgeoning', 'cold', 'fire', 'force', 'lightning',
-  'necrotic', 'piercing', 'poison', 'psychic', 'radiant', 'slashing', 'thunder',
-] as const;
-
-export type DamageType = typeof DAMAGE_TYPES[number];
+export {DAMAGE_TYPES,type DamageType} from '../rules/damageAffinities';
 
 /** Display labels (Title Case for UI). */
 export function labelForDamageType(t: string): string {

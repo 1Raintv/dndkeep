@@ -1,5 +1,35 @@
 # DNDKeep — Two-Track Roadmap
 
+### Aura defense suggestions from saved context (unreleased)
+
+The live end-turn/movement aura review now preselects a defense when its saved
+context provides complete, supported information. This includes Stony resistance
+projected by the preceding migration, species choices, typed buffs, and Petrified.
+Immunity wins; resistance and vulnerability remain a combined choice. The same
+canonical damage-type list is now exported from the pure rules layer, preserving
+existing imports through the library module.
+
+Missing/qualified defenses, unknown creature lists, malformed buffs and missing
+Tiefling legacy remain manual. A suggestion does not approve targeting, base save
+modifiers, concentration modifiers, or the DM review checkbox. The DM can override
+it. A new context clears the previous edits and confirmations before continuing.
+Existing saved proposals keep their original reviewed choice during recovery.
+
+Pure/component regressions cover these boundaries. The actual end-turn review
+runs with and without Stony on desktop/mobile, then postpones and resumes the
+same rolls before atomically finishing the turn. Evidence:
+`.tmp/aura-defense-{unit,browser,gate}.log`; snapshots
+`.tmp/aura-input-{false,true}-{desktop,mobile}.png`.
+Full verification passes (4,835 unit tests, TS 193/193, entry 256.1 KB).
+Four desktop/mobile browser cases pass with the official overflow probe and clean
+console/network checks. Both Stony screenshots were inspected. Disabling the
+prefill makes the new real-browser test fail (expected resistance, received blank);
+restoring it passes again. Mutation evidence: `.tmp/aura-defense-mutation.log`.
+No migration or new public endpoint. The older direct aura resolver, complete
+mixed-damage/standalone review, sheet effect display, and Mutable Form activation
+controls remain follow-up work. Production unchanged.
+
+
 ### Stony resistance in saved damage contexts (local, unreleased)
 
 Migration `20261010235500_mutable_form_damage_resistance.sql` projects the active

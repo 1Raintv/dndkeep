@@ -220,7 +220,12 @@ test.describe('Atomic aura resolution',()=>{
   expect(run(commit(expected,p))).toMatchObject({penalty:{expiredIds:[expired],consumedIds:[active],penalty:2},save:{passed:false},damage:15});
  });
 
- test('End Turn reviews aura inputs and resumes saved rolls after postponing',async({page},info)=>{
+ for(const stony of [false,true])test(`End Turn reviews aura inputs and resumes saved rolls after postponing (Stony ${stony})`,async({page},info)=>{
+  if(stony){
+   sql(`update characters set class_name='Psion',subclass='Metamorph',level=10,class_resources='{"psionic-energy-dice":8}' where id='${b}';
+    begin;set local request.jwt.claims='{"sub":"${dm}","role":"authenticated"}';select dndkeep_private.begin_mutable_form('${b}','${randomUUID()}',dndkeep_private.action_turn_context('${b}')->>'turnId',2,false,'{"kind":"stony","resistance":"Fire"}');commit;`);
+   writeAura([{...aura(),aura:{...aura().aura,damageType:'fire'}}]);
+  }
   const scene=randomUUID();sql(`update campaigns set use_combatants_for_battlemap=true where id='${campaign}';
    insert into scenes(id,campaign_id,owner_id,name,grid_type,grid_size_px,width_cells,height_cells,ambient_light,is_published)
    values('${scene}','${campaign}','${dm}','Aura map','square',70,12,8,'bright',true);
@@ -243,8 +248,9 @@ test.describe('Atomic aura resolution',()=>{
   expect(sql(`select psionic_turn_id from combat_encounters where id='${enc}'`)).toBe(turn);expect(counts().receipt).toBe(0);
   await end.click();await expect(input).toBeVisible();
   await input.getByLabel('Base saving throw modifier',{exact:true}).fill('0');await input.getByLabel('Concentration save modifier',{exact:true}).fill('0');
-  await input.getByLabel('Damage defense',{exact:true}).selectOption('normal');for(const checkbox of await input.getByRole('checkbox').all())await checkbox.check();
-  await input.screenshot({path:`.tmp/aura-input-${info.project.name}.png`});
+  await expect(input.getByLabel('Damage defense',{exact:true})).toHaveValue(stony?'resistant':'normal');
+  await expect(input.getByText('Suggested from current defenses.',{exact:false})).toBeVisible();for(const checkbox of await input.getByRole('checkbox').all())await checkbox.check();
+  await input.screenshot({path:`.tmp/aura-input-${stony}-${info.project.name}.png`});
   if(process.env.DNDKEEP_UI_OVERFLOW_PROBE){const source=readFileSync(process.env.DNDKEEP_UI_OVERFLOW_PROBE,'utf8');const body=source.split('report = await page.evaluate(')[1]?.split('\n  });')[0];expect(body).toBeTruthy();const scoped=body.replace("document.querySelectorAll('*')","document.querySelectorAll('[role=dialog], [role=dialog] *')");const layout=await page.evaluate('('+scoped+'\n})()');expect(layout.sideways,JSON.stringify(layout)).toBe(false);expect(layout.clipped,JSON.stringify(layout)).toEqual([]);expect(layout.pastEdge,JSON.stringify(layout)).toEqual([]);}
   await input.getByRole('button',{name:'Roll and review'}).click();
   const result=page.getByRole('dialog',{name:'Aura: review save'});await expect(result).toBeVisible();const saved=await result.innerText();
