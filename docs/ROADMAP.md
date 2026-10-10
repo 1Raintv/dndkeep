@@ -8340,3 +8340,26 @@ Remaining: persist condition-rider intent and resume it after the resistance
 choice; current pending-attack controls do not automatically restore all inferred
 monster/legendary condition riders. Do not claim complete automation or replay-safe
 batch payment until that continuation and accounting are consolidated. Not deployed.
+
+
+### 2026-10-10 — verify save batch identities (unreleased)
+
+Before adding persisted rider continuation, audited the declaration endpoint.
+It accepted caller-supplied actor/target names, types and entity IDs, and campaign
+access alone permitted declaring for someone else's actor. The existing endpoint
+now delegates to a checked private function: authenticated actor ownership or DM
+control, active matching encounter, canonical participant identities, duplicate
+rejection and stable participant locks. Missing/cross-encounter targets reject
+the entire batch. Creature entity slugs no longer get blindly cast to UUID.
+Anonymous EXECUTE revoked. Signature and ordinary callers remain compatible.
+
+Migration 20261010070036 applied locally, exact SQL ledger recorded/verified,
+foreign history retained, no repository migrations pending. Required project
+gate passed; SQL lint clean; existing keep_warm/client_errors security findings
+unchanged. Seven focused cases passed across SQL checks and real legendary-action
+browser flows. An initial ambiguous SQL alias was caught by lint/runtime tests,
+fixed and the checks rerun. Not deployed.
+
+Rider intent/duration still needs durable capture and atomic continuation after
+Legendary Resistance. This prerequisite does not claim to implement that feature,
+fix all immunity sources, or consolidate batch resource payment.

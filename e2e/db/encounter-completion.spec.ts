@@ -137,6 +137,32 @@ test.describe('Atomic encounter completion',()=>{
    if(waiting&&waiting.exitCode===null){waiting.stdin.end();if(done)await done;}
   }
  });
+
+ const saveBatch=(actor=pa,targets=[{participant_id:pb,name:'Spoofed',type:'creature',entity_id:'not-a-uuid'}])=>`select row_to_json(r) from declare_save_batch('${campaign}','${enc}','${request}','${actor}','Spoofed actor','creature','Batch fixture',15,'DEX','none','1d6','Bludgeoning',null,'${JSON.stringify(targets)}'::jsonb) r`;
+ test('save batches use canonical actor and target identities',()=>{
+  const r=JSON.parse(sql(auth(player,saveBatch())));expect(r.target_name).toBe('B');
+  expect(JSON.parse(sql(`select jsonb_build_object('actor',attacker_name,'actorType',attacker_type,'target',target_name,'targetType',target_type) from pending_attacks where id='${r.pending_attack_id}'`))).toEqual({actor:'A',actorType:'character',target:'B',targetType:'character'});
+ });
+ test('save batches reject another players actor without writing attacks',()=>{
+  expect(()=>sql(auth(player,saveBatch(pb)))).toThrow(/cannot declare saves/);
+  expect(sql(`select count(*) from pending_attacks where encounter_id='${enc}'`)).toBe('0');
+ });
+ test('save batches reject repeated targets and roll back a later missing target',()=>{
+  const target={participant_id:pb,name:'B',type:'character',entity_id:b};
+  expect(()=>sql(auth(dm,saveBatch(pa,[target,target])))).toThrow(/only once/);
+  expect(()=>sql(auth(dm,saveBatch(pa,[target,{...target,participant_id:randomUUID()}])))).toThrow(/no longer in this encounter/);
+  expect(sql(`select count(*) from pending_attacks where encounter_id='${enc}'`)).toBe('0');
+ });
+ test('save batches require an active encounter and retain DM creature control',()=>{
+  sql(`update combat_participants set participant_type='creature',entity_id='catalog-slug' where id='${pa}'`);
+  expect(()=>sql(auth(player,saveBatch()))).toThrow(/cannot declare saves/);expect(JSON.parse(sql(auth(dm,saveBatch()))).target_name).toBe('B');
+  sql(`update pending_attacks set state='canceled' where encounter_id='${enc}'`);finish();expect(()=>sql(auth(dm,saveBatch()))).toThrow(/encounter is unavailable/);
+ });
+
+ test('save batches reject a target in another encounter of the same campaign',()=>{
+  const other=randomUUID();sql(`insert into combat_encounters(id,campaign_id,status) values('${other}','${campaign}','active');update combat_participants set encounter_id='${other}' where id='${pb}'`);
+  expect(()=>sql(auth(dm,saveBatch()))).toThrow(/no longer in this encounter/);expect(sql(`select count(*) from pending_attacks where campaign_id='${campaign}'`)).toBe('0');
+ });
  async function login(page:Page){
   sql(`update auth.users set created_at=now(),updated_at=now(),instance_id='00000000-0000-0000-0000-000000000000',aud='authenticated',role='authenticated',encrypted_password=extensions.crypt('dndkeep-local-test',extensions.gen_salt('bf')),email_confirmed_at=now(),raw_app_meta_data='{"provider":"email","providers":["email"]}',confirmation_token='',recovery_token='',email_change='',email_change_token_new='' where id='${dm}';
    insert into auth.identities(id,provider_id,user_id,identity_data,provider,last_sign_in_at,created_at,updated_at) values(gen_random_uuid(),'${dm}','${dm}',jsonb_build_object('sub','${dm}','email','${dm}@turn.local'),'email',now(),now(),now())`);
