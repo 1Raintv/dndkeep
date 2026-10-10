@@ -83,6 +83,29 @@ test.describe('Deferred Propel movement (private lifecycle)',()=>{
  test('ending the original encounter rejects a new decision',()=>{
   combatFailure();sql(`update combat_encounters set status='ended' where id='${encounter}'`);expect(()=>choose()).toThrow(/original Propel turn/);
  });
+ const api=(operation:string,payload:Record<string,unknown>={},user=owner)=>JSON.parse(sql(auth(`set local role authenticated;select public.propel_movement('${character}','${operation}','${JSON.stringify(payload)}')`,user)));
+ test('authenticated recovery discovers and closes an old unresolved choice without spending',()=>{
+  start();finish();const before=state();expect(api('list').items.map((r:{request_id:string})=>r.request_id)).toEqual([id]);
+  sql(`insert into psionic_solo_turns(character_id,turn_number) values('${character}',1) on conflict(character_id) do update set turn_number=1`);
+  expect(api('list').items).toHaveLength(1);
+  expect(api('close',{declarationId:id}).movement_choice).toMatchObject({choice:'none',feet:0});
+  expect(api('list').items).toHaveLength(0);expect(state()).toBe(before);
+  expect(()=>api('choose',{declarationId:id,choice:'warp'})).toThrow(/already saved/);
+ });
+ test('closing never erases a committed movement and point reads preserve the winner',()=>{
+  start();finish();const saved=api('choose',{declarationId:id,choice:'warp'}).movement_choice;
+  expect(api('close',{declarationId:id}).movement_choice).toEqual(saved);
+  expect(api('read',{declarationId:id}).movement_choice).toEqual(saved);
+ });
+ test('recovery enforces owner scope and rejects malformed or unsupported operations',()=>{
+  start();finish();expect(()=>api('read',{declarationId:id},other)).toThrow();expect(()=>api('list',{},other)).toThrow();
+  expect(()=>api('list',{beforeId:id})).toThrow(/cursor/);
+  expect(()=>api('begin',{declarationId:id})).toThrow(/Unknown movement operation/);
+  expect(()=>api('choose',{declarationId:id,choice:'warp',feet:100})).toThrow(/Invalid movement request/);
+ });
+ test('closure cannot bypass an unresolved save',()=>{
+  start();expect(()=>api('close',{declarationId:id})).toThrow(/final save/);expect(api('list').items).toHaveLength(0);
+ });
  test('concurrent completion returns one saved choice without further spending',async()=>{
   start();finish();const before=state();
   const run=promisify(execFile);

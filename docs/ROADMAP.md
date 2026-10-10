@@ -1,6 +1,32 @@
 # DNDKeep — Two-Track Roadmap
 
 
+### Post-save Propel movement — recovery API and validation (not released)
+
+Migration 20261010165910 exposes owner-scoped read/choose/close/list operations
+through an authenticated invoker facade. Creating deferred declarations remains
+private. Paginated recovery includes older unresolved failed saves, so loss of
+browser storage does not erase them. Closing after turn/progression/roster changes
+records no movement; a concurrent saved choice wins and cannot be erased.
+
+The client API validates the complete original declaration/payment plus the
+separate movement receipt: character/declaration, target, original/enhanced dice,
+Warp subclass/level and movement distance. Inconsistent successful replies remain
+uncertain. Existing and new recovery lists share cursor/page validation.
+
+Validation: all 19 local database cases pass; full gate passes with 4,403 unit
+tests and entry 255.7 KB (TS remains 194/194). SQL lint has no new-function
+warnings/errors; security findings remain keep_warm/client_errors. Exact local
+ledger verified. Repo chain: 329; retained rehearsals: 321. Logs:
+`.tmp/propel-recovery-{db,gate,lint,advisors}.*`.
+
+Player integration is still incomplete: preserve uncertain local requests,
+show/recover the post-save choice in Propel controls, resolve turn-boundary and
+history behavior, then enable the deferred begin path. Map placement remains
+manual and requires destination review. No production changes in this step.
+
+
+
 ### Post-save Propel movement — private saved decision (not released)
 
 Migration 20261010165336 adds opt-in deferred movement declarations and a

@@ -111,10 +111,10 @@ export async function finishPropel(character:string,id:string,outcome:PropelOutc
   if(record.outcome!==outcome||!validPropelSave(evidence,outcome,record.target.participantId)||!actual||!evidence||Object.keys({...actual,...evidence}).some(k=>JSON.stringify(actual[k as keyof PropelSaveDetails])!==JSON.stringify(evidence[k as keyof PropelSaveDetails])))throw invalid();
  }return record;
 }
-export async function listPropel(character:string,cursor:PropelCursor|null=null):Promise<{items:PropelRecord[];nextCursor:PropelCursor|null}>{
- if(cursor&&(!date(cursor.createdAt)||!uuid(cursor.requestId)))throw new PsionicRequestError('Invalid Propel recovery cursor.',true);
- const page=await call(character,'list',{beforeTime:cursor?.createdAt??null,beforeId:cursor?.requestId??null}) as {items:PropelRecord[];nextCursor:PropelCursor|null};
- if(!page||!Array.isArray(page.items)||page.items.length>25||page.items.some(r=>!validPropelRecord(r,character)||r.outcome!==null)
+export function validPropelCursor(cursor:PropelCursor|null){return cursor===null||(date(cursor.createdAt)&&uuid(cursor.requestId));}
+export function validatePropelPage(value:unknown,character:string,cursor:PropelCursor|null,accept:(row:PropelRecord)=>boolean){
+ const page=value as {items:PropelRecord[];nextCursor:PropelCursor|null};
+ if(!page||!Array.isArray(page.items)||page.items.length>25||page.items.some(r=>!validPropelRecord(r,character)||!accept(r))
   ||new Set(page.items.map(r=>r.request_id)).size!==page.items.length)throw invalid();
  const last=page.items[page.items.length-1];
  if(page.items.length===25){if(!page.nextCursor||page.nextCursor.createdAt!==last?.created_at||page.nextCursor.requestId!==last.request_id)throw invalid();}
@@ -122,6 +122,12 @@ export async function listPropel(character:string,cursor:PropelCursor|null=null)
  if(cursor&&page.items.some(r=>!older(r,cursor)))throw invalid();
  if(page.items.some((r,i)=>i>0&&!older(r,{createdAt:page.items[i-1].created_at,requestId:page.items[i-1].request_id})))throw invalid();
  return page;
+}
+
+export async function listPropel(character:string,cursor:PropelCursor|null=null):Promise<{items:PropelRecord[];nextCursor:PropelCursor|null}>{
+ if(!validPropelCursor(cursor))throw new PsionicRequestError('Invalid Propel recovery cursor.',true);
+ const page=await call(character,'list',{beforeTime:cursor?.createdAt??null,beforeId:cursor?.requestId??null});
+ return validatePropelPage(page,character,cursor,row=>row.outcome===null);
 }
 
 /** Read paid choices before resuming an unfinished roll. Never recreate extras. */
