@@ -1,5 +1,16 @@
 # DNDKeep — Two-Track Roadmap
 
+### Free Propel validation audit (local; not released)
+
+Rechecked the owner-provided UA update's Energy Dice table (all 20 levels),
+one-minute/once-per-Long-Rest Restoration, and Connection's base ranges.
+Existing values match. The shared power resolver now rejects Surge/Enkindled
+metadata on the no-die push and Psykinetic free d4, plus nonzero or invalid
+rolls on the no-die push. These options do not roll an Energy Die; accepting
+that metadata could produce false enhancement/payment notes. Regression tests
+cover both save outcomes and retain valid free movement. This is a client
+rules validation change, not a new payment or database path.
+
 ### Compact-screen party panel (local; not released)
 
 The map party panel starts collapsed on viewports at most 600 px wide or

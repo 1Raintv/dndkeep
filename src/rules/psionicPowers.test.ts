@@ -113,3 +113,16 @@ it.each([undefined,0,1,2147483646])('accepts valid Connection counter %s includi
  expect(psionicPowerState(saved)).toMatchObject({connectionValid:true,connectionFree:free});
  expect(resolvePsionicPower(saved,{kind:'connection',free,roll:4})).toMatchObject({cost:free?0:1,patch:{feature_uses:{'Telepathic Connection':(uses??0)+1}}});
 });
+
+
+it.each(['free','technique'] as const)('rejects Energy Die enhancements on %s Propel',mode=>{
+ const psykinetic={...c,level:20,subclass:'Psykinetic'};
+ const base={kind:'propel' as const,mode,roll:mode==='free'?0:4};
+ expect(resolvePsionicPower(psykinetic,base,true)).toMatchObject({cost:0,feet:mode==='free'?5:20});
+ for(const enhancement of [{surged:true,originalRoll:1},{enkindledRolls:[2],originalRoll:2},{originalRoll:4}]) {
+  for(const failed of [true,false])expect(resolvePsionicPower(psykinetic,{...base,...enhancement},failed)).toBeNull();
+ }
+});
+it.each([1,-1,NaN,Infinity])('rejects a fabricated roll on the no-die push (%s)',roll=>{
+ expect(resolvePsionicPower(c,{kind:'propel',mode:'free',roll},true)).toBeNull();
+});

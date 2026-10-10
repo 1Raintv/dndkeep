@@ -27,6 +27,12 @@ export function resolvePsionicPower(c:PsionicPowerCharacter,use:PsionicPowerUse,
   if(!state.valid)return null;
   if(use.kind==='propel'&&use.movement==='warp'&&!state.warp)return null;
   const isTechnique=use.kind==='propel'&&use.mode==='technique';
+  // v2.869 — the baseline push rolls no die, and the Psykinetic d4 is
+  // not an Energy Die. Neither can carry Surge/Enkindled payment claims.
+  if(use.kind==='propel'&&use.mode!=='powered') {
+    if(use.surged||use.enkindledRolls?.length||use.originalRoll!==undefined)return null;
+    if(use.mode==='free'&&use.roll!==0)return null;
+  }
   const rolls=use.kind==='connection'||use.mode!=='free';
   if(rolls&&(isTechnique?(!Number.isInteger(use.roll)||use.roll<1||use.roll>4):!validPsionicRoll(state.level,use.roll,use)))return null;
   if(isTechnique&&!state.technique)return null;
